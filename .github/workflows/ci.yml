@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
+
+jobs:
+  lint-frontend:
+    name: Lint Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run lint
+        run: npm run lint
+
+  lint-backend:
+    name: Lint Backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff
+
+      - name: Run ruff check
+        run: ruff check backend-api/ ai-module/
+
+  test-frontend:
+    name: Test Frontend
+    runs-on: ubuntu-latest
+    needs: lint-frontend
+    if: ${{ hashFiles('frontend/**/*.test.js', 'frontend/**/*.test.jsx', 'frontend/**/*.spec.js', 'frontend/**/*.spec.jsx') != '' }}
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+  test-backend:
+    name: Test Backend
+    runs-on: ubuntu-latest
+    needs: lint-backend
+    if: ${{ hashFiles('backend-api/tests/**/*.py', 'ai-module/tests/**/*.py') != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend-api/requirements.txt
+          pip install pytest pytest-asyncio
+
+      - name: Run tests
+        run: pytest backend-api/ ai-module/ -v

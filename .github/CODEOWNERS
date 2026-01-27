@@ -1,0 +1,24 @@
+# Frontend
+/frontend/ @YJ99Son
+
+# Backend API (FastAPI)
+/backend-api/ @J2hoon10
+
+# AI Module
+/ai-module/ @J2hoon10 @ryejinn
+
+# Backend Spring
+/backend-spring/ @jjjh02
+
+# Data Pipeline
+/data-pipeline/ @J2hoon10
+
+# Infrastructure
+/docker/ @dorae222
+/.github/ @dorae222
+
+# Docs
+/docs/ @YJ99Son
+
+# Tests - AI QA
+/tests/ai/ @ryejinn
