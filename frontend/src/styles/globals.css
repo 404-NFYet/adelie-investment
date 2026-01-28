@@ -1,0 +1,51 @@
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Light Mode (Default) */
+:root {
+  --color-background: #ffffff;
+  --color-surface: #f5f5f5;
+  --color-border: #d4d4d4;
+  --color-text-primary: #0a0a0a;
+  --color-text-secondary: #525252;
+}
+
+/* Dark Mode */
+.dark {
+  --color-background: #0a0a0a;
+  --color-surface: #171717;
+  --color-border: #333333;
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #a3a3a3;
+}
+
+@layer base {
+  html {
+    font-family: 'Inter', 'Noto Sans KR', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-background text-text-primary;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+
+  * {
+    @apply border-border;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply px-4 py-2 bg-primary text-white font-medium rounded-lg 
+           hover:bg-primary-hover transition-colors duration-200;
+  }
+
+  .card {
+    @apply bg-surface rounded-xl p-4 border border-border;
+  }
+}
