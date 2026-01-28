@@ -1,0 +1,23 @@
+# Git 규칙
+
+## 브랜치 전략
+- main: 프로덕션
+- develop: 개발 통합
+- feature/*: 기능 개발
+- fix/*: 버그 수정
+
+## 커밋 규칙 (중요)
+- **Cursor가 직접 커밋 가능** (담당자 계정으로)
+- Co-author 사용 금지
+- 파트별 담당자 계정으로 커밋:
+  - Frontend: git config user.name "YJ99Son" && git config user.email "yj99son@users.noreply.github.com"
+  - Backend API/AI: git config user.name "J2hoon10" && git config user.email "j2hoon10@users.noreply.github.com"
+  - AI QA: git config user.name "ryejinn" && git config user.email "ryejinn@users.noreply.github.com"
+  - Backend Spring: git config user.name "jjjh02" && git config user.email "jjjh02@users.noreply.github.com"
+  - Infra: git config user.name "dorae222" && git config user.email "dorae222@users.noreply.github.com"
+- 커밋 전 반드시 해당 파트 담당자로 git config 설정
+- 커밋 메시지: [타입] 설명 (예: [feat] AI Tutor 기본 구조)
+
+## PR 규칙
+- Copilot이 자동 리뷰
+- 담당자 승인 필요
