@@ -1,0 +1,25 @@
+# 팀 협업 규칙
+
+## 팀 구성
+| 역할 | 이름 | GitHub | 담당 |
+|---|---|---|---|
+| 팀장 | 손영진 | @YJ99Son | 기획, React UI |
+| AI 개발 | 정지훈 | @J2hoon10 | FastAPI, LangGraph |
+| AI QA | 안례진 | @ryejinn | AI 테스트, 프롬프트 |
+| 백엔드 | 허진서 | @jjjh02 | Spring Boot API |
+| 인프라 | 도형준 | @dorae222 | Docker, 인프라 |
+
+## 커뮤니케이션
+- **Discord** 사용 (내부 서버)
+- Slack 사용하지 않음
+
+## 문서화 규칙
+- **일반 다이어그램**: Mermaid 사용 (아키텍처, 플로우, 시퀀스 등)
+  - 마크다운 파일 내 코드블록으로 포함
+- **DB ERD**: [dbdiagram.io](https://dbdiagram.io/) 사용
+  - DBML 파일 저장: `docs/database/*.dbml`
+  - 온라인 에디터에서 시각화
+
+## 공용 API 키
+- 팀 공용 키 사용 (.env)
+- 키 문의: @YJ99Son

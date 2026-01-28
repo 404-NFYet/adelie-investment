@@ -1,0 +1,14 @@
+# Narrative Investment 프로젝트 규칙
+
+## 코드 스타일
+- Frontend: JavaScript, Tailwind CSS
+- Backend: Python (FastAPI), Java (Spring Boot)
+- 한글 주석 권장
+
+## 커밋
+- Cursor가 자동으로 커밋하지 않음
+- 수동 커밋 필요
+
+## API 키
+- .env 파일 사용
+- 절대 하드코딩 금지
