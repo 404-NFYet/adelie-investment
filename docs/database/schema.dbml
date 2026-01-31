@@ -1,0 +1,307 @@
+// Narrative Investment - Database Schema
+// "History Repeats Itself" - 역사는 반복된다
+// https://dbdiagram.io/ 에서 시각화
+
+Project narrative_investment {
+  database_type: 'PostgreSQL'
+  Note: '''
+    # Narrative Investment DB Schema
+    주식 초보자를 위한 과거 사례 기반 학습 플랫폼
+  '''
+}
+
+// ============================================
+// 사용자 관련 테이블
+// ============================================
+
+Table users {
+  id serial [pk]
+  email varchar(255) [unique, not null]
+  username varchar(50) [unique, not null]
+  password_hash varchar(255) [not null]
+  difficulty_level varchar(20) [default: 'beginner', note: 'beginner, elementary, intermediate']
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+  last_login_at timestamp
+  
+  indexes {
+    email
+    username
+  }
+}
+
+Table user_settings {
+  id serial [pk]
+  user_id int [ref: - users.id, not null]
+  theme varchar(10) [default: 'light', note: 'light, dark']
+  push_notification boolean [default: true]
+  morning_briefing_time time [default: '08:00']
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+}
+
+// ============================================
+// 주식 용어 (Glossary)
+// ============================================
+
+Table glossary {
+  id serial [pk]
+  term varchar(100) [unique, not null, note: '용어 (한글)']
+  term_en varchar(100) [note: '용어 (영문)']
+  abbreviation varchar(20) [note: '약어']
+  difficulty varchar(20) [not null, default: 'beginner', note: 'beginner, elementary, intermediate']
+  category varchar(20) [not null, default: 'basic', note: 'basic, market, indicator, technical, product, strategy']
+  definition_short varchar(200) [not null, note: '한줄 정의']
+  definition_full text [note: '상세 설명']
+  example text [note: '예시']
+  formula varchar(200) [note: '공식 (지표인 경우)']
+  related_terms text [note: '관련 용어 (쉼표 구분)']
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+  
+  indexes {
+    difficulty
+    category
+    term
+  }
+}
+
+// ============================================
+// Morning Briefing
+// ============================================
+
+Table daily_briefings {
+  id serial [pk]
+  briefing_date date [unique, not null]
+  market_summary text [note: '시장 요약']
+  top_keywords jsonb [note: '오늘의 키워드 배열']
+  created_at timestamp [default: `now()`]
+  
+  indexes {
+    briefing_date
+  }
+}
+
+Table briefing_stocks {
+  id serial [pk]
+  briefing_id int [ref: > daily_briefings.id, not null]
+  stock_code varchar(10) [not null, note: '종목 코드']
+  stock_name varchar(100) [not null, note: '종목명']
+  change_rate decimal(10,2) [note: '등락률 (%)']
+  volume bigint [note: '거래량']
+  selection_reason varchar(50) [note: 'top_gainer, top_loser, high_volume']
+  keywords jsonb [note: '관련 키워드']
+  created_at timestamp [default: `now()`]
+  
+  indexes {
+    briefing_id
+    stock_code
+  }
+}
+
+// ============================================
+// 과거 사례 (Historical Cases)
+// ============================================
+
+Table historical_cases {
+  id serial [pk]
+  title varchar(200) [not null, note: '사례 제목']
+  event_date date [note: '사건 발생일']
+  event_year int [note: '사건 연도']
+  summary text [not null, note: '사례 요약']
+  full_content text [note: '전체 내용 (스토리텔링)']
+  keywords jsonb [note: '관련 키워드']
+  source_urls jsonb [note: '출처 URL 배열']
+  difficulty varchar(20) [default: 'beginner']
+  view_count int [default: 0]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+  
+  indexes {
+    event_year
+    keywords [type: gin]
+  }
+}
+
+Table case_stock_relations {
+  id serial [pk]
+  case_id int [ref: > historical_cases.id, not null]
+  stock_code varchar(10) [not null]
+  stock_name varchar(100) [not null]
+  relation_type varchar(50) [note: 'main_subject, affected, related']
+  impact_description text [note: '영향 설명']
+  
+  indexes {
+    case_id
+    stock_code
+  }
+}
+
+// ============================================
+// 과거-현재 매칭
+// ============================================
+
+Table case_matches {
+  id serial [pk]
+  current_keyword varchar(100) [not null, note: '현재 키워드']
+  current_stock_code varchar(10) [note: '현재 관련 종목']
+  matched_case_id int [ref: > historical_cases.id, not null]
+  similarity_score decimal(5,4) [note: '유사도 점수 (0~1)']
+  match_reason text [note: '매칭 이유']
+  matched_at timestamp [default: `now()`]
+  
+  indexes {
+    current_keyword
+    matched_at
+  }
+}
+
+// ============================================
+// AI Tutor 세션
+// ============================================
+
+Table tutor_sessions {
+  id serial [pk]
+  user_id int [ref: > users.id]
+  session_uuid uuid [unique, not null]
+  context_type varchar(50) [note: 'briefing, case, comparison, glossary']
+  context_id int [note: '관련 컨텐츠 ID']
+  started_at timestamp [default: `now()`]
+  ended_at timestamp
+  
+  indexes {
+    user_id
+    session_uuid
+  }
+}
+
+Table tutor_messages {
+  id serial [pk]
+  session_id int [ref: > tutor_sessions.id, not null]
+  role varchar(20) [not null, note: 'user, assistant']
+  content text [not null]
+  term_asked varchar(100) [note: '질문한 용어 (있는 경우)']
+  created_at timestamp [default: `now()`]
+  
+  indexes {
+    session_id
+    created_at
+  }
+}
+
+// ============================================
+// 학습 진행 상황
+// ============================================
+
+Table learning_progress {
+  id serial [pk]
+  user_id int [ref: > users.id, not null]
+  content_type varchar(50) [not null, note: 'case, glossary, briefing']
+  content_id int [not null]
+  status varchar(20) [default: 'viewed', note: 'viewed, in_progress, completed']
+  progress_percent int [default: 0]
+  started_at timestamp [default: `now()`]
+  completed_at timestamp
+  
+  indexes {
+    user_id
+    content_type
+    (user_id, content_type, content_id) [unique]
+  }
+}
+
+// ============================================
+// 증권사 리포트
+// ============================================
+
+Table broker_reports {
+  id serial [pk]
+  broker_name varchar(100) [not null, note: '증권사명']
+  report_title varchar(300) [not null]
+  report_date date [not null]
+  stock_codes jsonb [note: '관련 종목 코드 배열']
+  pdf_url varchar(500) [note: '원본 PDF URL']
+  minio_path varchar(500) [note: 'MinIO 저장 경로']
+  extracted_text text [note: 'Vision API 추출 텍스트']
+  summary text [note: 'AI 요약']
+  created_at timestamp [default: `now()`]
+  
+  indexes {
+    report_date
+    broker_name
+  }
+}
+
+// ============================================
+// 가상 포트폴리오 (시뮬레이션)
+// ============================================
+
+Table user_portfolios {
+  id serial [pk]
+  user_id int [ref: > users.id, not null]
+  portfolio_name varchar(100) [default: '내 포트폴리오']
+  initial_cash bigint [default: 10000000, note: '초기 자금 (원)']
+  current_cash bigint [note: '현재 현금']
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+  
+  indexes {
+    user_id
+  }
+}
+
+Table portfolio_holdings {
+  id serial [pk]
+  portfolio_id int [ref: > user_portfolios.id, not null]
+  stock_code varchar(10) [not null]
+  stock_name varchar(100) [not null]
+  quantity int [not null]
+  avg_buy_price decimal(15,2) [not null, note: '평균 매입가']
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+  
+  indexes {
+    portfolio_id
+    stock_code
+  }
+}
+
+Table simulation_trades {
+  id serial [pk]
+  portfolio_id int [ref: > user_portfolios.id, not null]
+  trade_type varchar(10) [not null, note: 'buy, sell']
+  stock_code varchar(10) [not null]
+  stock_name varchar(100) [not null]
+  quantity int [not null]
+  price decimal(15,2) [not null]
+  total_amount decimal(15,2) [not null]
+  trade_reason text [note: '거래 사유 (학습 기록)']
+  traded_at timestamp [default: `now()`]
+  
+  indexes {
+    portfolio_id
+    traded_at
+  }
+}
+
+// ============================================
+// 관계 정의 (Neo4j 연동용 참조)
+// ============================================
+
+Table company_relations {
+  id serial [pk]
+  source_stock_code varchar(10) [not null]
+  target_stock_code varchar(10) [not null]
+  relation_type varchar(50) [not null, note: 'supplier, customer, competitor, subsidiary']
+  relation_detail text
+  data_source varchar(50) [note: 'dart, news, manual']
+  created_at timestamp [default: `now()`]
+  
+  indexes {
+    source_stock_code
+    target_stock_code
+    relation_type
+  }
+  
+  Note: '상세 그래프는 Neo4j에 저장, 이 테이블은 캐시/참조용'
+}
