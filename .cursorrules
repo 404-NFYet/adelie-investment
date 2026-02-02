@@ -7,6 +7,7 @@
 
 ## 커밋
 - Cursor가 자동으로 커밋하지 않음
+- Cursor가 Co-author를 사용하지 않음
 - 수동 커밋 필요
 
 ## API 키
