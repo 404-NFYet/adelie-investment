@@ -23,10 +23,14 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
 
-    # JWT
-    JWT_SECRET: str = "change-me-in-production"
+    # JWT (반드시 .env에서 설정 필요)
+    JWT_SECRET: str = ""
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 30
+
+    # API Keys (반드시 .env에서 설정 필요)
+    OPENAI_API_KEY: str = ""
+    PERPLEXITY_API_KEY: str = ""
 
     # CORS
     CORS_ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
