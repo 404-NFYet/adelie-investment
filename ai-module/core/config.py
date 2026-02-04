@@ -11,8 +11,8 @@ from typing import Optional
 
 from dotenv import load_dotenv
 
-# .env 파일 경로 설정
-ENV_PATH = Path("/home/hj/2026/project/narrative-investment/.env")
+# .env 파일 경로 설정 (프로젝트 루트 기준 상대 경로)
+ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
 
 # 환경 변수 로드
 load_dotenv(ENV_PATH)
