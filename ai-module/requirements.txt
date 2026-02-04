@@ -6,6 +6,7 @@ langchain==0.3.14
 langchain-openai==0.3.0
 langchain-community==0.3.14
 langgraph==0.2.60
+langgraph-checkpoint-postgres>=2.0.0
 langsmith==0.2.10
 
 # LLM providers
