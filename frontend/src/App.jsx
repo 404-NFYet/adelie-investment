@@ -1,45 +1,58 @@
-import { useState } from 'react';
+/**
+ * App.jsx - Main application component
+ * Routes and global providers
+ */
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { UserProvider, useUser } from './contexts/UserContext';
+import { TutorProvider } from './contexts/TutorContext';
+import { ThemeProvider } from './contexts/ThemeContext';
+import { TutorModal, ErrorBoundary, ToastProvider } from './components';
+import BottomNav from './components/BottomNav';
+import { Onboarding, Home, Comparison, Story, Companies, History, Matching, Auth, Search, Profile } from './pages';
 
-function App() {
-  const [isDarkMode, setIsDarkMode] = useState(false);
+function ProtectedRoute({ children }) {
+  const { user, settings } = useUser();
+  // 온보딩 완료 또는 토큰 인증된 사용자 허용
+  if (!user && !settings.hasCompletedOnboarding) return <Navigate to="/onboarding" replace />;
+  return children;
+}
 
-  const toggleDarkMode = () => {
-    setIsDarkMode(!isDarkMode);
-    document.documentElement.classList.toggle('dark');
-  };
-
+function AppRoutes() {
   return (
-    <div className="min-h-screen bg-background text-text-primary transition-colors duration-300">
-      <header className="p-4 border-b border-border">
-        <div className="max-w-mobile mx-auto flex items-center justify-between">
-          <h1 className="text-xl font-bold">
-            <span className="text-primary">Narrative</span> Investment
-          </h1>
-          <button
-            onClick={toggleDarkMode}
-            className="p-2 rounded-lg bg-surface hover:bg-border transition-colors"
-            aria-label="Toggle dark mode"
-          >
-            {isDarkMode ? '☀️' : '🌙'}
-          </button>
-        </div>
-      </header>
-
-      <main className="max-w-mobile mx-auto p-4">
-        <section className="mt-8 text-center">
-          <h2 className="text-2xl font-bold mb-4">
-            AI 기반 투자 스토리텔링
-          </h2>
-          <p className="text-text-secondary mb-6">
-            복잡한 투자를 쉬운 이야기로
-          </p>
-          <p className="font-handwriting text-3xl text-primary">
-            Your Investment Journey Starts Here
-          </p>
-        </section>
-      </main>
-    </div>
+    <Routes>
+      <Route path="/onboarding" element={<Onboarding />} />
+      <Route path="/auth" element={<Auth />} />
+      <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
+      <Route path="/search" element={<ProtectedRoute><Search /></ProtectedRoute>} />
+      <Route path="/comparison" element={<ProtectedRoute><Comparison /></ProtectedRoute>} />
+      <Route path="/story" element={<ProtectedRoute><Story /></ProtectedRoute>} />
+      <Route path="/companies" element={<ProtectedRoute><Companies /></ProtectedRoute>} />
+      <Route path="/history" element={<ProtectedRoute><History /></ProtectedRoute>} />
+      <Route path="/matching" element={<ProtectedRoute><Matching /></ProtectedRoute>} />
+      <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }
 
-export default App;
+export default function App() {
+  return (
+    <BrowserRouter>
+      <ThemeProvider>
+        <UserProvider>
+          <TutorProvider>
+            <ErrorBoundary>
+              <ToastProvider>
+                <div className="app-container">
+                  <AppRoutes />
+                  <TutorModal />
+                  <BottomNav />
+                </div>
+              </ToastProvider>
+            </ErrorBoundary>
+          </TutorProvider>
+        </UserProvider>
+      </ThemeProvider>
+    </BrowserRouter>
+  );
+}
