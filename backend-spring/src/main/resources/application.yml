@@ -1,0 +1,52 @@
+spring:
+  application:
+    name: narrative-investment-backend
+  
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://10.10.10.10:5432/narrative_invest}
+    username: ${DB_USER:narative}
+    password: ${DB_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+  
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: ${SHOW_SQL:false}
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  
+  data:
+    redis:
+      host: ${REDIS_HOST:10.10.10.10}
+      port: ${REDIS_PORT:6379}
+
+server:
+  port: ${SERVER_PORT:8080}
+
+# JWT Configuration
+jwt:
+  secret: ${JWT_SECRET:your-super-secret-jwt-key-for-narrative-investment-2026}
+  expiration: 86400000  # 24 hours in milliseconds
+  refresh-expiration: 604800000  # 7 days in milliseconds
+
+# Logging
+logging:
+  level:
+    root: INFO
+    com.narrative.invest: DEBUG
+    org.springframework.security: DEBUG
+
+---
+# Development profile
+spring:
+  config:
+    activate:
+      on-profile: dev
+  jpa:
+    show-sql: true
+  
+logging:
+  level:
+    com.narrative.invest: DEBUG

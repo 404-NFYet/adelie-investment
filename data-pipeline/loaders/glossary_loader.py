@@ -72,10 +72,12 @@ def insert_glossary_data(engine, glossary_list: list[dict]):
     insert_sql = """
     INSERT INTO glossary (
         term, term_en, abbreviation, difficulty, category,
-        definition_short, definition_full, example, formula, related_terms
+        definition_short, definition_full, example, formula, related_terms,
+        created_at, updated_at
     ) VALUES (
         :term, :term_en, :abbreviation, :difficulty, :category,
-        :definition_short, :definition_full, :example, :formula, :related_terms
+        :definition_short, :definition_full, :example, :formula, :related_terms,
+        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
     )
     ON CONFLICT (term) DO UPDATE SET
         term_en = EXCLUDED.term_en,

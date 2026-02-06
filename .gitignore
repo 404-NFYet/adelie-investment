@@ -130,6 +130,7 @@ Thumbs.db
 # ============================================
 .cursor/debug.log
 .cursor/settings.json
+.cursor/
 
 # ============================================
 # 기타
@@ -137,3 +138,4 @@ Thumbs.db
 *.bak
 *.backup
 .history/
+backend-spring/bin/
