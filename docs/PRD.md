@@ -1208,3 +1208,43 @@ research-reports/
 | 버전 | 날짜 | 작성자 | 변경 내용 |
 |------|------|--------|----------|
 | 1.0 | 2026-02-05 | Team | 초기 버전 작성 |
+| 1.1 | 2026-02-06 | Team | UI 플로우 및 API 엔드포인트 추가 |
+
+---
+
+## UI 플로우
+
+### 메인 학습 플로우
+
+```
+온보딩 → 홈(키워드 선택) → 매칭 결과 → 스토리 → 비교 분석 → 관련 기업 → 홈
+```
+
+### 페이지별 기능 명세
+
+| 페이지 | 경로 | 핵심 기능 |
+|--------|------|-----------|
+| 온보딩 | /onboarding | 투자 경험 수준 선택 (입문/초급/중급) |
+| 홈 | / | 오늘의 키워드 3개 표시, START BRIEFING |
+| 매칭 | /matching | SYNC RATE 표시, 과거 사례 매칭 결과, KEY INSIGHT |
+| 스토리 | /story | 역사적 사례 내러티브, Thinking Point, 용어 하이라이트 |
+| 비교 분석 | /comparison | PER 차트 비교, 본문 분석, 의견 투표 |
+| 관련 기업 | /companies | 역할별(대장주/장비주/잠룡) 기업 분류 |
+| 검색 | /search | 키워드 자유 검색 |
+| 히스토리 | /history | 학습 이력 조회 |
+
+### API 엔드포인트
+
+| Method | Path | 설명 |
+|--------|------|------|
+| GET | /api/v1/health | 헬스체크 |
+| GET | /api/v1/briefing/today | 오늘의 브리핑 |
+| GET | /api/v1/glossary | 용어집 조회 |
+| GET | /api/v1/search/cases | 역사적 사례 검색 |
+| POST | /api/v1/tutor/chat | AI 튜터 채팅 (SSE) |
+| GET | /api/v1/tutor/explain/{term} | 용어 설명 |
+| POST | /api/v1/pipeline/trigger | 파이프라인 실행 |
+| POST | /api/v1/highlight | 용어 하이라이팅 |
+| GET | /api/v1/story/{case_id} | 스토리 콘텐츠 |
+| GET | /api/v1/comparison/{case_id} | 비교 분석 |
+| GET | /api/v1/companies/{case_id} | 관련 기업 |
