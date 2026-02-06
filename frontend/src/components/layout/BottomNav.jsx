@@ -1,18 +1,19 @@
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useTutor } from '../contexts';
+import { useTutor } from '../../contexts';
 
 export default function BottomNav() {
   const navigate = useNavigate();
   const location = useLocation();
   const { openTutor } = useTutor();
-  
+
   // Don't show on learning flow pages or auth/onboarding
-  const hiddenPaths = ['/matching', '/story', '/comparison', '/companies', '/auth', '/onboarding'];
+  const hiddenPaths = ['/matching', '/story', '/comparison', '/companies', '/auth', '/onboarding', '/narrative'];
   if (hiddenPaths.some(p => location.pathname.startsWith(p))) return null;
 
   const tabs = [
     { id: 'home', icon: '🏠', label: '홈', path: '/', onClick: () => navigate('/') },
     { id: 'search', icon: '🔍', label: '검색', path: '/search', onClick: () => navigate('/search') },
+    { id: 'portfolio', icon: '💰', label: '투자', path: '/portfolio', onClick: () => navigate('/portfolio') },
     { id: 'tutor', icon: '💬', label: 'AI 튜터', path: null, onClick: () => openTutor() },
     { id: 'profile', icon: '👤', label: '마이', path: '/profile', onClick: () => navigate('/profile') },
   ];
