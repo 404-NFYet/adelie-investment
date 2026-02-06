@@ -58,6 +58,131 @@ class Neo4jService:
         except Exception:
             return False
 
+    def _run_query(
+        self,
+        query: str,
+        parameters: Optional[dict[str, Any]] = None,
+    ) -> list[dict[str, Any]]:
+        """내부 쿼리 실행 헬퍼."""
+        with self._driver.session(database=self._database) as session:
+            result = session.run(query, parameters or {})
+            return [record.data() for record in result]
+
+    def _run_query_single(
+        self,
+        query: str,
+        parameters: Optional[dict[str, Any]] = None,
+    ) -> Optional[dict[str, Any]]:
+        """내부 단일 결과 쿼리 실행 헬퍼."""
+        with self._driver.session(database=self._database) as session:
+            result = session.run(query, parameters or {})
+            record = result.single()
+            return record.data() if record else None
+
+    def get_company(self, stock_code: str) -> Optional[dict[str, Any]]:
+        """
+        종목 코드로 기업 정보 조회.
+        
+        Args:
+            stock_code: 종목 코드 (예: 005930)
+            
+        Returns:
+            기업 정보 dict 또는 None
+        """
+        query = """
+        MATCH (c:Company)
+        WHERE c.stock_code = $stock_code 
+           OR c.name = $stock_code 
+           OR c.name_en = $stock_code
+        RETURN c {.*} as company
+        LIMIT 1
+        """
+        result = self._run_query_single(query, {"stock_code": stock_code})
+        return result.get("company") if result else None
+
+    def get_competitors(self, stock_code: str) -> list[dict[str, Any]]:
+        """
+        종목 코드로 경쟁사 목록 조회.
+        
+        Args:
+            stock_code: 종목 코드
+            
+        Returns:
+            경쟁사 목록. 각 항목은 {"company": {...}, "segment": "..."} 형태
+        """
+        query = """
+        MATCH (c:Company)-[r:COMPETES_WITH]-(competitor:Company)
+        WHERE c.stock_code = $stock_code 
+           OR c.name = $stock_code
+        RETURN 
+            competitor {.*} as company,
+            r.segment as segment
+        ORDER BY competitor.name
+        """
+        results = self._run_query(query, {"stock_code": stock_code})
+        return [
+            {
+                "company": row.get("company", {}),
+                "segment": row.get("segment", ""),
+            }
+            for row in results
+        ]
+
+    def get_supply_chain(
+        self,
+        stock_code: str,
+        direction: str = "both",
+        max_hops: int = 2,
+    ) -> list[dict[str, Any]]:
+        """
+        종목 코드로 공급망 관계 조회.
+        
+        Args:
+            stock_code: 종목 코드
+            direction: 방향 (suppliers/customers/both)
+            max_hops: 최대 홉 수
+            
+        Returns:
+            공급망 목록. 각 항목은 {"company": {...}, "hops": int, "relationships": [...]} 형태
+        """
+        results = []
+        
+        if direction in ("suppliers", "both"):
+            supplier_query = f"""
+            MATCH path = (supplier:Company)-[r:SUPPLIES*1..{max_hops}]->(c:Company)
+            WHERE c.stock_code = $stock_code OR c.name = $stock_code
+            RETURN 
+                supplier {{.*}} as company,
+                length(path) as hops,
+                [rel in r | {{type: type(rel), product: rel.product}}] as relationships
+            ORDER BY length(path)
+            """
+            for row in self._run_query(supplier_query, {"stock_code": stock_code}):
+                results.append({
+                    "company": row.get("company", {}),
+                    "hops": row.get("hops", 1),
+                    "relationships": row.get("relationships", []),
+                })
+        
+        if direction in ("customers", "both"):
+            customer_query = f"""
+            MATCH path = (c:Company)-[r:SUPPLIES*1..{max_hops}]->(customer:Company)
+            WHERE c.stock_code = $stock_code OR c.name = $stock_code
+            RETURN 
+                customer {{.*}} as company,
+                length(path) as hops,
+                [rel in r | {{type: type(rel), product: rel.product}}] as relationships
+            ORDER BY length(path)
+            """
+            for row in self._run_query(customer_query, {"stock_code": stock_code}):
+                results.append({
+                    "company": row.get("company", {}),
+                    "hops": row.get("hops", 1),
+                    "relationships": row.get("relationships", []),
+                })
+        
+        return results
+
 
 def get_neo4j_service() -> Neo4jService:
     """Neo4j 서비스 인스턴스 반환."""
