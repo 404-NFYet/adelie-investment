@@ -2,10 +2,10 @@
  * HighlightedText.jsx - AI 생성 콘텐츠 내 어려운 용어 하이라이팅
  * [[용어]] 형식의 마킹된 텍스트를 파싱하여 클릭 가능한 하이라이트로 렌더링
  */
-import { useTutor } from '../contexts/TutorContext';
+import { useTermContext } from '../../contexts/TermContext';
 
 export default function HighlightedText({ content, onTermClick }) {
-  const { openTutor } = useTutor();
+  const { openTermSheet } = useTermContext();
 
   // [[term]] 패턴을 찾아 하이라이트 처리
   const parseContent = (text) => {
@@ -47,7 +47,7 @@ export default function HighlightedText({ content, onTermClick }) {
     if (onTermClick) {
       onTermClick(term);
     } else {
-      openTutor(term);
+      openTermSheet(term);
     }
   };
 

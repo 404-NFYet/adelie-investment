@@ -2,7 +2,7 @@
  * KeywordCard.jsx - 키워드 선택 카드
  * 카테고리 배지와 키워드 정보를 표시
  */
-export default function KeywordCard({ category, title, description, onClick, selected = false }) {
+export default function KeywordCard({ category, title, tagline, description, onClick, selected = false }) {
   return (
     <div
       onClick={onClick}
@@ -17,6 +17,13 @@ export default function KeywordCard({ category, title, description, onClick, sel
       <h3 className="text-lg font-bold mb-2">
         {title}
       </h3>
+
+      {/* Tagline (선택적) */}
+      {tagline && (
+        <p className="text-primary text-sm font-semibold mb-1">
+          {tagline}
+        </p>
+      )}
       
       {/* Description */}
       <p className="text-secondary text-sm leading-relaxed">
