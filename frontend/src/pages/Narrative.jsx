@@ -133,8 +133,27 @@ function ActionStep({ companies, caseId }) {
   );
 }
 
-/* ── 브리핑 완료 보상 축하 오버레이 ── */
-function RewardCelebration({ reward, onClose }) {
+/* ── 브리핑 완료 보상 축하 오버레이 + 간단 피드백 ── */
+const FEEDBACK_EMOJIS = [
+  { emoji: '😊', label: 'good', text: '유익했어요' },
+  { emoji: '😐', label: 'neutral', text: '보통이에요' },
+  { emoji: '😢', label: 'bad', text: '아쉬워요' },
+];
+
+function RewardCelebration({ reward, onClose, caseId }) {
+  const [feedbackSent, setFeedbackSent] = useState(false);
+
+  const sendFeedback = async (label) => {
+    setFeedbackSent(true);
+    try {
+      await fetch('/api/v1/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ page: 'narrative', rating_label: label, case_id: caseId }),
+      });
+    } catch {}
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -155,9 +174,31 @@ function RewardCelebration({ reward, onClose }) {
         <p className="text-sm text-text-secondary mb-1">
           모의투자 자금이 지급되었습니다
         </p>
-        <p className="text-xs text-text-muted mb-6">
+        <p className="text-xs text-text-muted mb-4">
           7일 후 수익률이 양(+)이면 1.5배 보너스!
         </p>
+
+        {/* 간단 피드백 */}
+        {!feedbackSent ? (
+          <div className="mb-4">
+            <p className="text-xs text-text-secondary mb-2">이 브리핑 어땠나요?</p>
+            <div className="flex justify-center gap-4">
+              {FEEDBACK_EMOJIS.map(fb => (
+                <button
+                  key={fb.label}
+                  onClick={() => sendFeedback(fb.label)}
+                  className="flex flex-col items-center gap-1 hover:scale-110 transition-transform"
+                >
+                  <span className="text-2xl">{fb.emoji}</span>
+                  <span className="text-[10px] text-text-muted">{fb.text}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <p className="text-xs text-primary mb-4">감사합니다!</p>
+        )}
+
         <button
           onClick={onClose}
           className="w-full py-3 rounded-xl bg-primary text-white font-semibold hover:bg-primary-hover transition-colors"
@@ -407,7 +448,7 @@ export default function Narrative() {
 
       {/* ── 보상 축하 오버레이 ── */}
       {showReward && rewardData && (
-        <RewardCelebration reward={rewardData} onClose={handleRewardClose} />
+        <RewardCelebration reward={rewardData} onClose={handleRewardClose} caseId={caseId} />
       )}
     </div>
   );

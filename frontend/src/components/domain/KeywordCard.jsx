@@ -2,6 +2,8 @@
  * KeywordCard.jsx - 키워드 선택 카드
  * 카테고리 배지와 키워드 정보를 표시
  */
+import HighlightedText from './HighlightedText';
+
 export default function KeywordCard({ category, title, tagline, description, onClick, selected = false }) {
   return (
     <div
@@ -25,9 +27,9 @@ export default function KeywordCard({ category, title, tagline, description, onC
         </p>
       )}
       
-      {/* Description */}
+      {/* Description - HighlightedText로 <mark> 태그 렌더링 */}
       <p className="text-secondary text-sm leading-relaxed">
-        {description}
+        <HighlightedText content={description} />
       </p>
     </div>
   );

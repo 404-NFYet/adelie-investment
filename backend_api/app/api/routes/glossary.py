@@ -29,7 +29,7 @@ async def _generate_term_definition(term: str) -> dict:
         from openai import AsyncOpenAI
         api_key = os.getenv("OPENAI_API_KEY", "")
         if not api_key:
-            return {"term": term, "definition_short": f"{term}은(는) 투자에서 중요한 개념이에요."}
+            raise HTTPException(status_code=503, detail="용어 설명 서비스를 사용할 수 없습니다 (API key 미설정)")
 
         client = AsyncOpenAI(api_key=api_key)
         response = await client.chat.completions.create(
@@ -50,12 +50,11 @@ async def _generate_term_definition(term: str) -> dict:
         result = json.loads(response.choices[0].message.content)
         result["term"] = term  # 원래 용어 보존
         return result
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.warning(f"LLM 용어 생성 실패 ({term}): {e}")
-        return {
-            "term": term,
-            "definition_short": f"{term}은(는) 투자할 때 알아두면 좋은 핵심 개념이에요.",
-        }
+        logger.error(f"LLM 용어 생성 실패 ({term}): {e}")
+        raise HTTPException(status_code=502, detail=f"용어 설명 생성 실패: {e}")
 
 
 async def _get_or_generate_term(term: str, db: AsyncSession) -> dict:

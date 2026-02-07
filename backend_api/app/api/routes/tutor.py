@@ -3,11 +3,12 @@
 import json
 import logging
 import uuid
+from datetime import datetime
 from typing import AsyncGenerator, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from openai import AsyncOpenAI
 
@@ -176,6 +177,22 @@ async def generate_tutor_response(
         except Exception:
             pass  # 컨텍스트 로드 실패해도 대화는 계속
 
+    # 포트폴리오 컨텍스트 주입 (개인화된 조언용)
+    try:
+        portfolio_result = await db.execute(text(
+            "SELECT current_cash, initial_cash FROM user_portfolios WHERE user_id = :uid LIMIT 1"
+        ), {"uid": 1})  # TODO: 실제 user_id 전달
+        pf_row = portfolio_result.fetchone()
+        if pf_row:
+            holdings_result = await db.execute(text(
+                "SELECT stock_name, quantity, avg_buy_price FROM portfolio_holdings WHERE portfolio_id = (SELECT id FROM user_portfolios WHERE user_id = 1 LIMIT 1)"
+            ))
+            holdings = holdings_result.fetchall()
+            holdings_text = ", ".join(f"{h[0]} {h[1]}주(평균 {int(h[2]):,}원)" for h in holdings) if holdings else "없음"
+            page_context += f"\n\n[사용자 포트폴리오]\n보유 현금: {int(pf_row[0]):,}원 / 초기 자본: {int(pf_row[1]):,}원\n보유 종목: {holdings_text}"
+    except Exception:
+        pass
+
     system_prompt = get_difficulty_prompt(request.difficulty)
     if page_context:
         system_prompt += page_context
@@ -232,28 +249,45 @@ async def generate_tutor_response(
                 total_tokens = chunk.usage.total_tokens
         
         try:
-            session = TutorSession(
-                session_uuid=uuid.UUID(session_id) if session_id else uuid.uuid4(),
-                context_type=request.context_type,
-                context_id=request.context_id,
-            )
-            db.add(session)
-            await db.flush()
-            
+            # 기존 세션이 있으면 재사용, 없으면 생성
+            session_obj = None
+            if request.session_id:
+                existing = await db.execute(
+                    select(TutorSession).where(TutorSession.session_uuid == uuid.UUID(request.session_id))
+                )
+                session_obj = existing.scalar_one_or_none()
+
+            if not session_obj:
+                session_obj = TutorSession(
+                    session_uuid=uuid.UUID(session_id) if session_id else uuid.uuid4(),
+                    context_type=request.context_type,
+                    context_id=request.context_id,
+                    title=request.message[:50],
+                    message_count=0,
+                )
+                db.add(session_obj)
+                await db.flush()
+
             user_msg = TutorMessage(
-                session_id=session.id,
+                session_id=session_obj.id,
                 role="user",
                 content=request.message,
+                message_type="text",
             )
             db.add(user_msg)
-            
+
             assistant_msg = TutorMessage(
-                session_id=session.id,
+                session_id=session_obj.id,
                 role="assistant",
                 content=full_response,
+                message_type="text",
             )
             db.add(assistant_msg)
-            
+
+            # 세션 메타데이터 업데이트
+            session_obj.message_count = (session_obj.message_count or 0) + 2
+            session_obj.last_message_at = datetime.utcnow()
+
             await db.commit()
         except Exception as e:
             logger.warning("Failed to save tutor session: %s", e)
@@ -280,6 +314,14 @@ async def generate_tutor_response(
                     max_tokens=2000,
                 )
                 html_content = viz_response.choices[0].message.content
+                # ```html 코드 블록 제거 (LLM이 감쌀 수 있음)
+                if html_content.startswith("```"):
+                    html_content = html_content.split("```", 2)[1]
+                    if html_content.startswith("html"):
+                        html_content = html_content[4:]
+                    if "```" in html_content:
+                        html_content = html_content.rsplit("```", 1)[0]
+                    html_content = html_content.strip()
                 # HTML 태그가 포함되어 있으면 시각화 이벤트 전송
                 if "<" in html_content and "plotly" in html_content.lower():
                     yield f"event: visualization\ndata: {json.dumps({'type': 'visualization', 'format': 'html', 'content': html_content})}\n\n"

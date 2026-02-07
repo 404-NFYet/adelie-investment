@@ -76,7 +76,7 @@ async def get_today_keywords(
             if case:
                 case_kw = case.keywords if isinstance(case.keywords, dict) else json.loads(case.keywords) if case.keywords else {}
                 comparison = case_kw.get("comparison", {})
-                sync_rate = case_kw.get("sync_rate", 70)
+                sync_rate = comparison.get("sync_rate", 0)
                 
                 case_info = {
                     "case_id": case.id,
@@ -88,15 +88,17 @@ async def get_today_keywords(
                         "title": case.title,
                         "label": comparison.get("past_label", str(case.event_year)),
                     },
-                    "present_label": comparison.get("present_label", "2026"),
+                    "present_label": comparison.get("present_label", ""),
                 }
         
+        stocks = kw.get("stocks", [])
+
         keywords_with_cases.append({
             "id": i + 1,
             "category": kw.get("category", "GENERAL"),
             "title": kw_title,
             "description": kw.get("description", ""),
-            "stocks": kw.get("stocks", []),
+            "stocks": stocks,
             **(case_info or {}),
         })
     

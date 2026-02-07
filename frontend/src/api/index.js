@@ -117,6 +117,22 @@ export const keywordsApi = {
     fetch(`${API_BASE_URL}/api/v1/keywords/history`).then((r) => r.json()),
 };
 
+// Notification API
+export const notificationApi = {
+  getAll: (userId, page = 1, perPage = 20) =>
+    fetch(`${API_BASE_URL}/api/v1/notifications/${userId}?page=${page}&per_page=${perPage}`).then(r => r.json()),
+
+  getUnreadCount: (userId) =>
+    fetch(`${API_BASE_URL}/api/v1/notifications/${userId}/unread-count`).then(r => r.json()),
+
+  markAsRead: (userId, notificationIds = null) =>
+    fetch(`${API_BASE_URL}/api/v1/notifications/${userId}/read`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notification_ids: notificationIds }),
+    }).then(r => r.json()),
+};
+
 // Tutor API (SSE streaming)
 export const tutorApi = {
   chat: async function* (message, sessionId, difficulty, contextType, contextId) {
