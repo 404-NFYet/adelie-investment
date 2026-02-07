@@ -21,6 +21,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.util.Arrays;
 import java.util.List;
 
 @Configuration
@@ -65,11 +66,12 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of(
-            "http://localhost:3000",
-            "http://localhost:3001",
-            "http://localhost:5173"
-        ));
+        // 환경변수 CORS_ALLOWED_ORIGINS가 있으면 사용, 없으면 기본값
+        String corsOrigins = System.getenv("CORS_ALLOWED_ORIGINS");
+        List<String> origins = (corsOrigins != null && !corsOrigins.isEmpty())
+            ? Arrays.asList(corsOrigins.split(","))
+            : List.of("http://localhost:3000", "http://localhost:3001", "http://localhost:5173");
+        configuration.setAllowedOrigins(origins);
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);
