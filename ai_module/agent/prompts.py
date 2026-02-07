@@ -83,6 +83,9 @@ def get_system_prompt(difficulty: str = "beginner", context: str = None) -> str:
     """
     Get the complete system prompt for the AI Tutor.
     
+    마크다운 기반 프롬프트가 있으면 우선 사용하고,
+    없으면 기존 Python 문자열 프롬프트로 폴백합니다.
+    
     Args:
         difficulty: Difficulty level (beginner/elementary/intermediate)
         context: Additional context to include
@@ -90,6 +93,27 @@ def get_system_prompt(difficulty: str = "beginner", context: str = None) -> str:
     Returns:
         Complete system prompt
     """
+    # 마크다운 기반 프롬프트 시도
+    try:
+        from ai_module.prompts import load_prompt
+        spec = load_prompt("tutor_system", difficulty=difficulty)
+        prompt = spec.body
+        
+        # 난이도별 프롬프트 추가
+        try:
+            diff_spec = load_prompt(f"tutor_{difficulty}")
+            prompt += "\n\n" + diff_spec.body
+        except FileNotFoundError:
+            pass
+        
+        if context:
+            prompt += f"\n\n## 현재 컨텍스트\n{context}"
+        
+        return prompt
+    except (ImportError, FileNotFoundError):
+        pass
+    
+    # 폴백: 기존 Python 문자열 프롬프트
     prompt = BASE_SYSTEM_PROMPT
     
     # Add difficulty-specific instructions
