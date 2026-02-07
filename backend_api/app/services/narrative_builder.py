@@ -1,7 +1,10 @@
 """내러티브 섹션 빌더 서비스.
 
-6개 스텝(mirroring, intro, development, climax, conclusion, action)의
+7개 스텝(background, mirroring, difference, devils_advocate, simulation, result, action)의
 콘텐츠를 구성하는 빌더 함수를 제공한다.
+
+LLM이 생성한 narrative 데이터가 있으면 그대로 사용하고,
+없으면 기존 빌더 로직으로 fallback한다.
 """
 
 import re
@@ -30,7 +33,87 @@ def split_paragraphs(content: str) -> list[str]:
     return [p.strip() for p in content.split("\n\n") if p.strip()]
 
 
-# --- 섹션 빌더 ---
+# --- 7단계 통합 빌더 ---
+
+STEP_KEYS = ["background", "mirroring", "difference", "devils_advocate", "simulation", "result", "action"]
+
+
+def build_all_steps(
+    narrative_data: Optional[dict],
+    comparison: dict,
+    paragraphs: list[str],
+    briefing: Optional[DailyBriefing],
+    briefing_stocks: list[BriefingStock],
+    case_stocks: list[CaseStockRelation],
+) -> dict:
+    """7단계 steps를 빌드. LLM narrative가 있으면 우선 사용, 없으면 fallback."""
+    if narrative_data and _is_valid_narrative(narrative_data):
+        return _build_from_llm(narrative_data, case_stocks, comparison)
+
+    # fallback: 기존 빌더 로직
+    return _build_fallback(comparison, paragraphs, briefing, briefing_stocks, case_stocks)
+
+
+def _is_valid_narrative(narrative_data: dict) -> bool:
+    """LLM narrative 데이터가 7단계 구조인지 확인."""
+    required = ["background", "mirroring", "difference", "devils_advocate"]
+    return all(key in narrative_data for key in required)
+
+
+def _build_from_llm(narrative_data: dict, case_stocks: list[CaseStockRelation], comparison: dict) -> dict:
+    """LLM이 생성한 7단계 narrative 데이터를 그대로 반환."""
+    steps = {}
+    for key in STEP_KEYS:
+        section = narrative_data.get(key, {})
+        if isinstance(section, str):
+            section = {"content": section, "bullets": []}
+        steps[key] = {
+            "bullets": section.get("bullets", []),
+            "content": section.get("content", ""),
+            "chart": section.get("chart"),
+        }
+    return steps
+
+
+def _build_fallback(
+    comparison: dict,
+    paragraphs: list[str],
+    briefing: Optional[DailyBriefing],
+    briefing_stocks: list[BriefingStock],
+    case_stocks: list[CaseStockRelation],
+) -> dict:
+    """기존 6단계 빌더를 7단계에 맞게 매핑."""
+    return {
+        "background": build_background(briefing, briefing_stocks),
+        "mirroring": build_mirroring(comparison, paragraphs),
+        "difference": build_difference(comparison, paragraphs),
+        "devils_advocate": build_devils_advocate(comparison, paragraphs),
+        "simulation": build_simulation(comparison, paragraphs),
+        "result": build_result(comparison, paragraphs),
+        "action": build_action(case_stocks, comparison),
+    }
+
+
+# --- 개별 섹션 빌더 (fallback용) ---
+
+def build_background(briefing: Optional[DailyBriefing], briefing_stocks: list[BriefingStock]) -> dict:
+    """background 섹션: 오늘의 시장 브리핑 요약."""
+    bullets = []
+    if briefing and briefing.top_keywords:
+        for kw in briefing.top_keywords.get("keywords", [])[:3]:
+            bullets.append(kw.get("title", "") if isinstance(kw, dict) else kw)
+
+    content = highlight_terms(briefing.market_summary or "시장 요약이 없습니다.") if briefing else ""
+
+    gainers = [s for s in briefing_stocks if s.selection_reason == "top_gainer"]
+    chart_points = [
+        ChartDataPoint(label=s.stock_name, value=float(s.change_rate) if s.change_rate else 0.0, color="#22c55e")
+        for s in gainers[:5]
+    ]
+    chart = ChartData(chart_type="single_bar", title="오늘의 상승 TOP", unit="%", data_points=chart_points) if chart_points else None
+
+    return NarrativeSection(bullets=bullets, content=content, chart=chart).model_dump()
+
 
 def build_mirroring(comparison: dict, paragraphs: list[str]) -> dict:
     """mirroring 섹션: 과거-현재 대비."""
@@ -72,70 +155,34 @@ def build_mirroring(comparison: dict, paragraphs: list[str]) -> dict:
     return NarrativeSection(bullets=bullets, content=content, chart=chart).model_dump()
 
 
-def build_intro(briefing: Optional[DailyBriefing], briefing_stocks: list[BriefingStock]) -> dict:
-    """intro 섹션: 오늘의 시장 브리핑 요약."""
-    bullets = []
-    if briefing and briefing.top_keywords:
-        for kw in briefing.top_keywords.get("keywords", [])[:3]:
-            bullets.append(kw.get("title", "") if isinstance(kw, dict) else kw)
-
-    content = highlight_terms(briefing.market_summary or "시장 요약이 없습니다.") if briefing else ""
-
-    gainers = [s for s in briefing_stocks if s.selection_reason == "top_gainer"]
-    chart_points = [
-        ChartDataPoint(label=s.stock_name, value=float(s.change_rate) if s.change_rate else 0.0, color="#22c55e")
-        for s in gainers[:5]
-    ]
-    chart = ChartData(chart_type="single_bar", title="오늘의 상승 TOP", unit="%", data_points=chart_points) if chart_points else None
-
-    return NarrativeSection(bullets=bullets, content=content, chart=chart).model_dump()
-
-
-def build_development(comparison: dict, paragraphs: list[str]) -> dict:
-    """development 섹션: 트렌드 분석."""
-    trend_data = comparison.get("trend_data", {})
+def build_difference(comparison: dict, paragraphs: list[str]) -> dict:
+    """difference 섹션: 과거와 현재의 차이."""
     analysis = comparison.get("analysis", [])
-
-    bullets = [trend_data["title"]] if trend_data.get("title") else []
-    content = highlight_terms(paragraphs[1]) if len(paragraphs) > 1 else (highlight_terms(analysis[0]) if analysis else "")
-
-    chart_points = [ChartDataPoint(label=dp.get("label", ""), value=float(dp.get("value", 0))) for dp in trend_data.get("data_points", [])]
-    chart = ChartData(chart_type="trend_line", title=trend_data.get("title", "트렌드"), unit=trend_data.get("unit", ""), data_points=chart_points) if chart_points else None
-
-    return NarrativeSection(bullets=bullets, content=content, chart=chart).model_dump()
+    bullets = analysis[:3] if analysis else ["과거와 현재의 차이를 분석합니다."]
+    content = highlight_terms(paragraphs[1]) if len(paragraphs) > 1 else ""
+    return NarrativeSection(bullets=bullets, content=content, chart=None).model_dump()
 
 
-def build_climax(comparison: dict, paragraphs: list[str]) -> dict:
-    """climax 섹션: 리스크 지표."""
-    risk_data = comparison.get("risk_data", {})
-    analysis = comparison.get("analysis", [])
-
-    bullets = [risk_data["title"]] if risk_data.get("title") else []
-    bullets.extend(analysis[1:3])
-
-    content = highlight_terms(paragraphs[2]) if len(paragraphs) > 2 else (highlight_terms(" ".join(analysis[1:])) if len(analysis) > 1 else "")
-
-    chart_points = [ChartDataPoint(label=dp.get("label", ""), value=float(dp.get("value", 0)), color="#f59e0b") for dp in risk_data.get("data_points", [])]
-    chart = ChartData(chart_type="risk_indicator", title=risk_data.get("title", "리스크 지표"), unit=risk_data.get("unit", ""), data_points=chart_points) if chart_points else None
-
-    return NarrativeSection(bullets=bullets, content=content, chart=chart).model_dump()
+def build_devils_advocate(comparison: dict, paragraphs: list[str]) -> dict:
+    """devils_advocate 섹션: 반대 시나리오."""
+    bullets = ["예상과 다를 수 있는 시나리오입니다.", "시장은 항상 불확실합니다.", "리스크 관리가 핵심입니다."]
+    content = highlight_terms(paragraphs[2]) if len(paragraphs) > 2 else "반대 시나리오를 고려해보세요."
+    return NarrativeSection(bullets=bullets, content=content, chart=None).model_dump()
 
 
-def build_conclusion(comparison: dict, paragraphs: list[str]) -> dict:
-    """conclusion 섹션: 전략/교훈 요약."""
-    strategy_data = comparison.get("strategy_data", {})
+def build_simulation(comparison: dict, paragraphs: list[str]) -> dict:
+    """simulation 섹션: 과거 사례 시뮬레이션."""
+    bullets = ["과거 사례를 기반으로 시뮬레이션합니다."]
+    content = highlight_terms(paragraphs[3]) if len(paragraphs) > 3 else "과거 사례를 기반으로 모의 투자를 진행합니다."
+    return NarrativeSection(bullets=bullets, content=content, chart=None).model_dump()
 
-    bullets = [strategy_data["title"]] if strategy_data.get("title") else []
-    if comparison.get("poll_question"):
-        bullets.append(f"💡 {comparison['poll_question']}")
 
-    remaining = paragraphs[3:] if len(paragraphs) > 3 else paragraphs[-1:] if paragraphs else []
-    content = highlight_terms("\n\n".join(remaining)) if remaining else ""
-
-    chart_points = [ChartDataPoint(label=dp.get("label", ""), value=float(dp.get("value", 0)), color="#8b5cf6") for dp in strategy_data.get("data_points", [])]
-    chart = ChartData(chart_type="single_bar", title=strategy_data.get("title", "전략 비교"), unit=strategy_data.get("unit", ""), data_points=chart_points) if chart_points else None
-
-    return NarrativeSection(bullets=bullets, content=content, chart=chart).model_dump()
+def build_result(comparison: dict, paragraphs: list[str]) -> dict:
+    """result 섹션: 시뮬레이션 결과."""
+    bullets = ["시뮬레이션 결과를 확인하세요."]
+    remaining = paragraphs[4:] if len(paragraphs) > 4 else paragraphs[-1:] if paragraphs else []
+    content = highlight_terms("\n\n".join(remaining)) if remaining else "결과를 분석합니다."
+    return NarrativeSection(bullets=bullets, content=content, chart=None).model_dump()
 
 
 def build_action(case_stocks: list[CaseStockRelation], comparison: dict) -> dict:

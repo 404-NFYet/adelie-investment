@@ -5,14 +5,14 @@ import { useUser } from './UserContext';
 const PortfolioContext = createContext(null);
 
 export function PortfolioProvider({ children }) {
-  const { user } = useUser();
+  const { user, isLoading: isUserLoading } = useUser();
   const [portfolio, setPortfolio] = useState(null);
   const [summary, setSummary] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // 게스트이면 API 호출 안 함 (콘솔 404 방지)
+  // 유저 로딩 완료 후에만 게스트 판정 (로딩 중에는 false)
   const userId = user?.id;
-  const isGuest = !userId;
+  const isGuest = !isUserLoading && !userId;
 
   const fetchPortfolio = useCallback(async () => {
     if (isGuest) return;

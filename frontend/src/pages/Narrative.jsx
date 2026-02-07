@@ -1,24 +1,28 @@
 /**
- * Narrative.jsx - 6단계 내러티브 캐러셀 페이지
- * 과거 사례 분석부터 투자 액션까지의 스토리텔링 뷰
+ * Narrative.jsx - 7단계 내러티브 캐러셀 페이지
+ * background → mirroring → difference → devils_advocate → simulation → result → action
  * + 모의투자 매매 기능 + 브리핑 완료 보상
  */
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { renderChart, ChartContainer } from '../components/charts';
-import { CompanyCard, TradeModal } from '../components';
+import ReactMarkdown from 'react-markdown';
+import rehypeRaw from 'rehype-raw';
+import { ChartContainer } from '../components/charts';
+import { TradeModal } from '../components';
 import { narrativeApi } from '../api';
 import { usePortfolio } from '../contexts/PortfolioContext';
+import { useTermContext } from '../contexts/TermContext';
 
-/* ── 스텝 정의 ── */
+/* ── 7단계 스텝 정의 ── */
 const STEPS = [
-  { key: 'mirroring',   label: '과거 사례 분석', emoji: '🔍' },
-  { key: 'intro',       label: '브리핑 시작',   emoji: '📋' },
-  { key: 'development', label: '시장 흐름',     emoji: '📈' },
-  { key: 'climax',      label: '핵심 리스크',   emoji: '⚠️' },
-  { key: 'conclusion',  label: '대응 전략',     emoji: '🎯' },
-  { key: 'action',      label: '투자 액션',     emoji: '🚀' },
+  { key: 'background',      title: '현재 배경',     subtitle: '지금 왜 이게 이슈인지',   color: '#FF6B00', emoji: '🐧' },
+  { key: 'mirroring',       title: '과거 유사 사례', subtitle: '과거에도 비슷한 일이',    color: '#8B95A1', emoji: '🐧' },
+  { key: 'difference',      title: '지금은 달라요',  subtitle: '과거와 현재의 핵심 차이', color: '#3B82F6', emoji: '🐧' },
+  { key: 'devils_advocate',  title: '반대 시나리오',  subtitle: '다른 가능성도 봐야 해요', color: '#EF4444', emoji: '🐧' },
+  { key: 'simulation',      title: '모의 투자',      subtitle: '과거 사례로 시뮬레이션',  color: '#8B5CF6', emoji: '🐧' },
+  { key: 'result',          title: '결과 보고',      subtitle: '시뮬레이션 결과는?',      color: '#10B981', emoji: '🐧' },
+  { key: 'action',          title: '투자 액션',      subtitle: '자, 이제 투자해볼까요?',  color: '#FF6B00', emoji: '🐧' },
 ];
 
 /* ── 슬라이드 애니메이션 variants ── */
@@ -33,18 +37,41 @@ function formatKRW(value) {
 }
 
 /* ── Key Takeaways 카드 ── */
-function TakeawayCard({ bullets, isMirroring }) {
-  const dotColor = isMirroring ? 'bg-[#ADB5BD]' : 'bg-primary';
+function TakeawayCard({ bullets, stepConfig }) {
+  const isDevil = stepConfig.key === 'devils_advocate';
   return (
-    <div className="bg-surface-elevated rounded-[32px] p-6 shadow-card">
-      <h4 className="text-xs font-bold text-text-secondary tracking-widest mb-4">
-        KEY TAKEAWAYS
+    <div className="bg-surface-elevated rounded-[24px] p-5 shadow-card">
+      <h4
+        className="text-[10px] font-bold tracking-widest mb-3 uppercase"
+        style={{ color: stepConfig.color }}
+      >
+        {isDevil ? 'Counter Arguments' : 'Key Takeaways'}
       </h4>
       <ul className="space-y-3">
         {bullets.map((b, i) => (
-          <li key={i} className="flex items-start gap-3">
-            <span className={`w-2 h-2 mt-1.5 rounded-full flex-shrink-0 ${dotColor}`} />
-            <span className="text-sm leading-relaxed text-text-primary">{b}</span>
+          <li key={i} className="flex items-start gap-3 text-sm leading-relaxed text-text-primary">
+            {isDevil ? (
+              <span className="w-5 h-5 rounded-md bg-red-50 text-red-500 text-[10px] font-bold flex items-center justify-center mt-0.5 flex-shrink-0">
+                {i + 1}
+              </span>
+            ) : (
+              <span
+                className="w-1.5 h-1.5 rounded-full mt-[7px] flex-shrink-0"
+                style={{ backgroundColor: stepConfig.color }}
+              />
+            )}
+            <div className="flex-1">
+              <ReactMarkdown
+                rehypePlugins={[rehypeRaw]}
+                components={{
+                  mark: ({ node, ...props }) => (
+                    <mark className="term font-bold text-primary bg-primary-light px-1 py-0.5 rounded cursor-pointer" {...props} />
+                  ),
+                }}
+              >
+                {b}
+              </ReactMarkdown>
+            </div>
           </li>
         ))}
       </ul>
@@ -53,22 +80,37 @@ function TakeawayCard({ bullets, isMirroring }) {
 }
 
 /* ── Narrative 텍스트 카드 ── */
-function NarrativeCard({ content, isMirroring }) {
-  const label = isMirroring ? 'ARCHIVE' : 'NARRATIVE';
+function NarrativeCard({ content, stepConfig }) {
   return (
-    <div className="bg-surface-elevated rounded-[32px] p-6 shadow-card">
-      <span className="text-[10px] font-bold tracking-widest text-primary mb-3 block">
-        {label}
-      </span>
-      <p className="text-sm leading-relaxed text-text-primary whitespace-pre-line">
-        {content}
-      </p>
+    <div className="bg-surface-elevated rounded-[24px] p-5 shadow-card relative">
+      <div
+        className="absolute -top-2.5 left-5 px-2.5 py-0.5 text-[9px] font-bold tracking-widest bg-surface-elevated border border-border rounded-md"
+        style={{ color: stepConfig.color }}
+      >
+        {stepConfig.subtitle}
+      </div>
+      <div className="text-sm leading-relaxed text-text-primary prose prose-sm max-w-none mt-1">
+        {content.split('\n\n').map((paragraph, pIdx) => (
+          <div key={pIdx} className={pIdx > 0 ? 'mt-3' : ''}>
+            <ReactMarkdown
+              rehypePlugins={[rehypeRaw]}
+              components={{
+                mark: ({ node, ...props }) => (
+                  <mark className="term font-bold text-primary bg-primary-light px-1 py-0.5 rounded cursor-pointer" {...props} />
+                ),
+              }}
+            >
+              {paragraph}
+            </ReactMarkdown>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
-/* ── Step 6: 투자 액션 카드 (매수/매도 버튼 포함) ── */
-function ActionStep({ companies, caseId }) {
+/* ── Step 7: 투자 액션 카드 (매수/매도 버튼 포함) ── */
+function ActionStep({ companies, caseId, stepData, onSkip }) {
   const [tradeModal, setTradeModal] = useState({ isOpen: false, stock: null, type: 'buy' });
 
   const openTrade = (company, type) => {
@@ -81,14 +123,36 @@ function ActionStep({ companies, caseId }) {
 
   return (
     <div className="space-y-4">
-      <div className="bg-surface-elevated rounded-[32px] p-6 shadow-card text-center">
-        <span className="text-4xl block mb-3">🚀</span>
-        <h3 className="text-lg font-bold mb-1">투자 액션</h3>
-        <p className="text-sm text-text-secondary">
-          분석을 바탕으로 종목을 선택하고 매매하세요
-        </p>
-      </div>
+      {/* 투자 전략 안내 */}
+      {stepData?.content && (
+        <div className="bg-surface-elevated rounded-[24px] p-5 shadow-card">
+          <span className="text-[10px] font-bold tracking-widest text-primary mb-3 block">
+            투자 전략
+          </span>
+          <p className="text-sm leading-relaxed text-text-primary whitespace-pre-line">
+            {stepData.content}
+          </p>
+        </div>
+      )}
 
+      {/* bullets */}
+      {stepData?.bullets?.length > 0 && (
+        <div className="bg-surface-elevated rounded-[24px] p-5 shadow-card">
+          <h4 className="text-[10px] font-bold tracking-widest text-primary mb-3 uppercase">
+            Key Points
+          </h4>
+          <ul className="space-y-2">
+            {stepData.bullets.map((b, i) => (
+              <li key={i} className="flex items-start gap-3 text-sm leading-relaxed text-text-primary">
+                <span className="w-1.5 h-1.5 rounded-full mt-[7px] flex-shrink-0 bg-primary" />
+                <span>{b}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* 기업 목록 + 매수/매도 */}
       <div className="space-y-3">
         {companies.map((c) => (
           <div key={c.stock_code} className="card p-4">
@@ -98,7 +162,10 @@ function ActionStep({ companies, caseId }) {
               </div>
               <div className="flex-1">
                 <p className="font-bold text-sm">{c.stock_name}</p>
-                <p className="text-xs text-text-secondary">{c.stock_code} {c.relation_type ? `| ${c.relation_type}` : ''}</p>
+                <p className="text-xs text-text-secondary">
+                  {c.relation_type === 'main_subject' ? '핵심 종목' : c.relation_type === 'related' ? '관련 종목' : c.relation_type ? '연관 종목' : ''}
+                  {c.stock_code ? <span className="text-text-muted ml-1">{c.stock_code}</span> : ''}
+                </p>
               </div>
             </div>
             {(c.impact_description || c.relation_detail) && (
@@ -121,6 +188,14 @@ function ActionStep({ companies, caseId }) {
           </div>
         ))}
       </div>
+
+      {/* 매매 건너뛰기 버튼 */}
+      <button
+        onClick={onSkip}
+        className="w-full py-3 rounded-xl text-sm font-medium text-text-secondary bg-surface border border-border hover:bg-border-light transition-colors"
+      >
+        매매 건너뛰고 완료하기
+      </button>
 
       <TradeModal
         isOpen={tradeModal.isOpen}
@@ -236,14 +311,16 @@ function BottomNavBar({ current, total, onPrev, onNext, isLast }) {
         </button>
 
         {/* 도트 인디케이터 + 펭귄 */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {Array.from({ length: total }).map((_, i) => (
             <span
               key={i}
               className={`rounded-full transition-all duration-300 ${
                 i === current
                   ? 'w-6 h-2.5 bg-primary'
-                  : 'w-2.5 h-2.5 bg-border'
+                  : i < current
+                    ? 'w-2.5 h-2.5 bg-primary/40'
+                    : 'w-2.5 h-2.5 bg-border'
               }`}
             />
           ))}
@@ -278,6 +355,8 @@ export default function Narrative() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { claimReward } = usePortfolio();
+  const { openTermSheet } = useTermContext();
+  const contentRef = useRef(null);
 
   const keyword = searchParams.get('keyword') || '';
   const caseId = searchParams.get('caseId') || '';
@@ -306,6 +385,21 @@ export default function Narrative() {
       .catch((e) => { console.error('Narrative fetch error:', e); setError(e.message); setIsLoading(false); });
   }, [caseId]);
 
+  // 용어 하이라이트 클릭 → TermBottomSheet 연동
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    const handler = (e) => {
+      const term = e.target.closest('.term');
+      if (term) {
+        e.preventDefault();
+        openTermSheet(term.textContent);
+      }
+    };
+    el.addEventListener('click', handler);
+    return () => el.removeEventListener('click', handler);
+  }, [openTermSheet]);
+
   // 모든 Hook은 early return 이전에 호출 (React Hooks 규칙)
   const pageTitle = useMemo(
     () => keyword || 'AI 투자 브리핑',
@@ -323,7 +417,6 @@ export default function Narrative() {
   const stepMeta = STEPS[currentStep];
   const isActionStep = stepMeta.key === 'action';
   const stepData = data.steps[stepMeta.key];
-  const isMirroring = stepMeta.key === 'mirroring';
 
   /* 네비게이션 핸들러 */
   const goPrev = () => {
@@ -350,13 +443,23 @@ export default function Narrative() {
     }
   };
 
+  const handleSkipTrading = async () => {
+    try {
+      const reward = await claimReward(Number(caseId));
+      setRewardData(reward);
+      setShowReward(true);
+    } catch {
+      navigate('/');
+    }
+  };
+
   const handleRewardClose = () => {
     setShowReward(false);
     navigate('/portfolio');
   };
 
   return (
-    <div className="min-h-screen bg-background pb-24">
+    <div className="bg-background pb-24">
       {/* ── 플로팅 헤더 ── */}
       <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-md">
         <div className="max-w-mobile mx-auto px-4 pt-4 pb-3">
@@ -378,13 +481,30 @@ export default function Narrative() {
             )}
           </div>
 
+          {/* 7칸 프로그레스 바 */}
+          <div className="flex items-center gap-1 mb-3">
+            {STEPS.map((step, idx) => (
+              <div
+                key={idx}
+                className="h-[3px] flex-1 rounded-full transition-all duration-500"
+                style={{
+                  backgroundColor: idx <= currentStep ? stepMeta.color : '#E5E8EB',
+                  opacity: idx <= currentStep ? 1 : 0.4,
+                }}
+              />
+            ))}
+          </div>
+
           {/* 스텝 라벨 + 제목 */}
           <div className="flex items-center gap-3">
-            <span className="text-xs font-bold text-primary bg-primary-light px-3 py-1 rounded-full">
-              STEP {currentStep + 1}
+            <span
+              className="text-[10px] font-bold tracking-widest px-3 py-1 rounded-full uppercase"
+              style={{ color: stepMeta.color, backgroundColor: `${stepMeta.color}15` }}
+            >
+              Step {currentStep + 1} of {STEPS.length}
             </span>
             <h1 className="text-lg font-bold text-text-primary truncate">
-              {stepMeta.label}
+              {stepMeta.title}
             </h1>
             <span className="text-xl ml-auto">{stepMeta.emoji}</span>
           </div>
@@ -392,7 +512,7 @@ export default function Narrative() {
       </header>
 
       {/* ── 메인 콘텐츠 (애니메이션) ── */}
-      <main className="max-w-mobile mx-auto px-4 pt-2">
+      <main ref={contentRef} className="max-w-mobile mx-auto px-4 pt-2">
         <AnimatePresence mode="wait" custom={direction}>
           <motion.div
             key={currentStep}
@@ -405,31 +525,46 @@ export default function Narrative() {
             className="space-y-4"
           >
             {isActionStep ? (
-              /* Step 6: 투자 액션 */
-              <ActionStep companies={data.related_companies || []} caseId={caseId} />
+              /* Step 7: 투자 액션 */
+              <ActionStep companies={data.related_companies || []} caseId={caseId} stepData={stepData} onSkip={handleSkipTrading} />
             ) : stepData ? (
-              /* Steps 1-5: 분석 콘텐츠 */
+              /* Steps 1-6: 분석 콘텐츠 */
               <>
-                {/* Key Takeaways */}
+                {/* Key Takeaways / Counter Arguments */}
                 {stepData.bullets && stepData.bullets.length > 0 && (
-                  <TakeawayCard bullets={stepData.bullets} isMirroring={isMirroring} />
+                  <TakeawayCard bullets={stepData.bullets} stepConfig={stepMeta} />
                 )}
 
-                {/* 차트 영역 */}
-                {stepData.chart && stepData.chart.chart_type && (
-                  <ChartContainer>
-                    {renderChart(stepData.chart.chart_type, stepData.chart)}
-                  </ChartContainer>
+                {/* 차트 영역: Plotly data/layout이면 직접, chart_type이면 기존 */}
+                {stepData.chart && (
+                  <div className="rounded-[20px] border border-border overflow-hidden bg-white/70 shadow-sm">
+                    <ChartContainer
+                      chartData={stepData.chart}
+                      stepKey={stepMeta.key}
+                      color={stepMeta.color}
+                    />
+                  </div>
+                )}
+
+                {/* 차트 없을 때 플레이스홀더 */}
+                {!stepData.chart && (
+                  <div className="rounded-[20px] border border-border overflow-hidden bg-white/70 shadow-sm">
+                    <ChartContainer
+                      chartData={null}
+                      stepKey={stepMeta.key}
+                      color={stepMeta.color}
+                    />
+                  </div>
                 )}
 
                 {/* 내러티브 텍스트 */}
                 {stepData.content && (
-                  <NarrativeCard content={stepData.content} isMirroring={isMirroring} />
+                  <NarrativeCard content={stepData.content} stepConfig={stepMeta} />
                 )}
               </>
             ) : (
               /* 데이터 없는 스텝 fallback */
-              <div className="bg-surface-elevated rounded-[32px] p-6 shadow-card text-center">
+              <div className="bg-surface-elevated rounded-[24px] p-6 shadow-card text-center">
                 <p className="text-sm text-text-secondary">이 단계의 콘텐츠를 준비 중입니다.</p>
               </div>
             )}

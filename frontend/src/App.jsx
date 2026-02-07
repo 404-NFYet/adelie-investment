@@ -29,6 +29,7 @@ const Narrative = lazy(() => import('./pages/Narrative'));
 const Notifications = lazy(() => import('./pages/Notifications'));
 const Portfolio = lazy(() => import('./pages/Portfolio'));
 const Profile = lazy(() => import('./pages/Profile'));
+const TutorChat = lazy(() => import('./pages/TutorChat'));
 
 function ProtectedRoute({ children }) {
   const { user, settings } = useUser();
@@ -61,6 +62,7 @@ function AppRoutes() {
         <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
         <Route path="/portfolio" element={<ProtectedRoute><Portfolio /></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+        <Route path="/tutor" element={<ProtectedRoute><TutorChat /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>
