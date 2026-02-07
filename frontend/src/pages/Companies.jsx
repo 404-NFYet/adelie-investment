@@ -4,7 +4,7 @@
  */
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import AppHeader from '../components/AppHeader';
+import AppHeader from '../components/layout/AppHeader';
 import { useTheme } from '../contexts/ThemeContext';
 import { useUser } from '../contexts';
 import { casesApi } from '../api';

@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { useUser, DIFFICULTY_LEVELS } from '../contexts';
 import { useTheme } from '../contexts/ThemeContext';
 import { motion } from 'framer-motion';
-import AppHeader from '../components/AppHeader';
+import AppHeader from '../components/layout/AppHeader';
 
 const DIFFICULTY_OPTIONS = [
   { value: DIFFICULTY_LEVELS.BEGINNER, label: '입문' },
