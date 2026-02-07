@@ -3,7 +3,7 @@
  * 화면 하단에서 슬라이드 업되는 챗봇 패널
  */
 import { useState, useEffect, useRef } from 'react';
-import { useTutor } from '../contexts/TutorContext';
+import { useTutor } from '../../contexts/TutorContext';
 
 export default function TutorPanel() {
   const { isOpen, closeTutor, currentTerm } = useTutor();
