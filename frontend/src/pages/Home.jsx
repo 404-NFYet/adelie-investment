@@ -5,7 +5,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { KeywordCard, PenguinMascot } from '../components';
-import AppHeader from '../components/AppHeader';
+import AppHeader from '../components/layout/AppHeader';
 import { keywordsApi } from '../api';
 
 export default function Home() {

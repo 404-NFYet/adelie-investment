@@ -35,7 +35,18 @@ async def get_today_keywords(
     briefing = result.scalar_one_or_none()
     
     if not briefing or not briefing.top_keywords:
-        raise HTTPException(status_code=404, detail="No keywords for this date")
+        # 해당 날짜에 데이터 없으면 가장 최근 데이터로 폴백 (주말/공휴일 대응)
+        fallback_stmt = (
+            select(DailyBriefing)
+            .where(DailyBriefing.top_keywords.isnot(None))
+            .order_by(DailyBriefing.briefing_date.desc())
+            .limit(1)
+        )
+        fallback_result = await db.execute(fallback_stmt)
+        briefing = fallback_result.scalar_one_or_none()
+        if not briefing or not briefing.top_keywords:
+            raise HTTPException(status_code=404, detail="No keywords available")
+        target_date = briefing.briefing_date
     
     kw_data = briefing.top_keywords if isinstance(briefing.top_keywords, dict) else json.loads(briefing.top_keywords)
     keywords_raw = kw_data.get("keywords", [])
