@@ -69,7 +69,6 @@ function NarrativeCard({ content, isMirroring }) {
 
 /* ── Step 6: 투자 액션 카드 (매수/매도 버튼 포함) ── */
 function ActionStep({ companies, caseId }) {
-  const navigate = useNavigate();
   const [tradeModal, setTradeModal] = useState({ isOpen: false, stock: null, type: 'buy' });
 
   const openTrade = (company, type) => {
@@ -84,33 +83,37 @@ function ActionStep({ companies, caseId }) {
     <div className="space-y-4">
       <div className="bg-surface-elevated rounded-[32px] p-6 shadow-card text-center">
         <span className="text-4xl block mb-3">🚀</span>
-        <h3 className="text-lg font-bold mb-1">Investment Action</h3>
+        <h3 className="text-lg font-bold mb-1">투자 액션</h3>
         <p className="text-sm text-text-secondary">
-          분석을 바탕으로 주목할 기업들을 확인하고 매매하세요
+          분석을 바탕으로 종목을 선택하고 매매하세요
         </p>
       </div>
 
       <div className="space-y-3">
         {companies.map((c) => (
-          <div key={c.stock_code}>
-            <CompanyCard
-              name={c.stock_name}
-              code={c.stock_code}
-              role={c.relation_type}
-              description={c.impact_description || c.relation_detail || ''}
-              onClick={() => navigate(`/companies?caseId=${caseId}`)}
-            />
-            {/* 매수/매도 버튼 */}
-            <div className="flex gap-2 mt-2 px-1">
+          <div key={c.stock_code} className="card p-4">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                <span className="font-bold text-primary">{c.stock_name?.charAt(0)}</span>
+              </div>
+              <div className="flex-1">
+                <p className="font-bold text-sm">{c.stock_name}</p>
+                <p className="text-xs text-text-secondary">{c.stock_code} {c.relation_type ? `| ${c.relation_type}` : ''}</p>
+              </div>
+            </div>
+            {(c.impact_description || c.relation_detail) && (
+              <p className="text-xs text-text-secondary mb-3">{c.impact_description || c.relation_detail}</p>
+            )}
+            <div className="flex gap-2">
               <button
                 onClick={() => openTrade(c, 'buy')}
-                className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white bg-green-500 hover:bg-green-600 transition-colors"
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white bg-red-500 hover:bg-red-600 transition-colors"
               >
                 매수
               </button>
               <button
                 onClick={() => openTrade(c, 'sell')}
-                className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white bg-red-500 hover:bg-red-600 transition-colors"
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white bg-blue-500 hover:bg-blue-600 transition-colors"
               >
                 매도
               </button>

@@ -258,6 +258,34 @@ async def generate_tutor_response(
         except Exception as e:
             logger.warning("Failed to save tutor session: %s", e)
         
+        # 시각화 자동 감지: 사용자 메시지나 응답에 차트 키워드가 있으면 Plotly 생성
+        viz_keywords = ["차트", "그래프", "시각화", "그려", "보여줘", "chart", "graph"]
+        should_viz = any(kw in request.message.lower() for kw in viz_keywords)
+
+        if should_viz and full_response:
+            try:
+                viz_prompt = f"다음 내용을 Plotly 차트로 표현하세요. 반드시 HTML만 반환하세요 (```html 없이):\n{full_response[:500]}"
+                viz_response = await client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": (
+                            "당신은 Plotly.js 차트 전문가입니다. "
+                            "주어진 내용을 시각화하는 완전한 HTML을 생성하세요. "
+                            "HTML에 <script src='https://cdn.plot.ly/plotly-latest.min.js'></script>를 포함하세요. "
+                            "디자인: 배경 투명, 한글 폰트, 색상 #FF6B00 주황 기반. "
+                            "오직 HTML 코드만 반환하세요."
+                        )},
+                        {"role": "user", "content": viz_prompt},
+                    ],
+                    max_tokens=2000,
+                )
+                html_content = viz_response.choices[0].message.content
+                # HTML 태그가 포함되어 있으면 시각화 이벤트 전송
+                if "<" in html_content and "plotly" in html_content.lower():
+                    yield f"event: visualization\ndata: {json.dumps({'type': 'visualization', 'format': 'html', 'content': html_content})}\n\n"
+            except Exception as viz_err:
+                logger.warning(f"시각화 생성 실패: {viz_err}")
+
         yield f"event: done\ndata: {json.dumps({'session_id': session_id, 'total_tokens': total_tokens})}\n\n"
         
     except Exception as e:

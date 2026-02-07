@@ -99,6 +99,19 @@ export function TutorProvider({ children }) {
               // done: 세션 ID 업데이트
               if (data.session_id) setSessionId(data.session_id);
 
+              // visualization: 차트 렌더링
+              if (data.type === 'visualization') {
+                const vizMessage = {
+                  id: Date.now() + 2,
+                  role: 'visualization',
+                  content: data.content,
+                  format: data.format || 'html',
+                  timestamp: new Date().toISOString(),
+                };
+                setMessages((prev) => [...prev, vizMessage]);
+                continue;
+              }
+
               // error: 에러 표시
               if (data.type === 'error' && data.error) {
                 setMessages((prev) =>
