@@ -134,6 +134,34 @@ export function TutorProvider({ children }) {
     [sessionId, contextInfo]
   );
 
+  // 세션 관리
+  const [sessions, setSessions] = useState([]);
+  const [activeSessionId, setActiveSessionId] = useState(null);
+
+  const createNewChat = useCallback(() => {
+    setMessages([]);
+    setSessionId(null);
+    setCurrentTerm(null);
+    setActiveSessionId(null);
+  }, []);
+
+  const deleteChat = useCallback((id) => {
+    setSessions(prev => prev.filter(s => s.id !== id));
+    if (activeSessionId === id) {
+      createNewChat();
+    }
+  }, [activeSessionId, createNewChat]);
+
+  const loadChatHistory = useCallback((id) => {
+    setActiveSessionId(id);
+    // TODO: API에서 세션 메시지 로드
+  }, []);
+
+  const requestVisualization = useCallback((query) => {
+    // 시각화 요청을 챗봇 메시지로 전달
+    sendMessage(`${query} (차트로 보여주세요)`, 'beginner');
+  }, [sendMessage]);
+
   const clearMessages = () => {
     setMessages([]);
     setSessionId(null);
@@ -154,6 +182,12 @@ export function TutorProvider({ children }) {
         setContextInfo,
         currentTerm,
         setCurrentTerm,
+        sessions,
+        activeSessionId,
+        createNewChat,
+        deleteChat,
+        loadChatHistory,
+        requestVisualization,
       }}
     >
       {children}
