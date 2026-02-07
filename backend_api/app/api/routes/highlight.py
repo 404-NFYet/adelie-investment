@@ -7,14 +7,30 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-# Add ai-module to path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent.parent / "ai-module"))
+# Add ai-module to path (여러 경로 시도)
+for ai_path in [
+    Path(__file__).resolve().parent.parent.parent.parent.parent / "ai-module",
+    Path(__file__).resolve().parent.parent.parent.parent.parent / "ai_module",
+]:
+    if ai_path.exists():
+        sys.path.insert(0, str(ai_path))
 
-from services.term_highlighter import (
-    highlight_terms_in_content,
-    extract_terms_from_highlighted,
-    get_terms_for_difficulty,
-)
+try:
+    from services.term_highlighter import (
+        highlight_terms_in_content,
+        extract_terms_from_highlighted,
+        get_terms_for_difficulty,
+    )
+except ImportError:
+    # Docker 환경에서 ai_module이 별도 컨테이너인 경우 스텁 사용
+    import logging
+    logging.getLogger(__name__).warning("term_highlighter를 찾을 수 없어 스텁을 사용합니다")
+    def highlight_terms_in_content(content, terms=None, difficulty=None):
+        return content
+    def extract_terms_from_highlighted(content):
+        return []
+    def get_terms_for_difficulty(difficulty="beginner"):
+        return []
 
 router = APIRouter(prefix="/highlight", tags=["Term Highlighting"])
 
