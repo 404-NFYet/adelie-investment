@@ -90,10 +90,11 @@ def generate_keyword_themes(stocks: list[dict]) -> list[dict]:
 - category는 영문 대문자 (예: "AI & TECH", "BIO & PHARMA", "POLICY", "ECONOMY", "MATERIALS", "ENERGY")
 - title은 한국어로 흥미롭고 도발적인 질문/주장 형태 (예: "AI 반도체 거품론", "바이오 신약의 빛과 그림자")
 - description은 한국어 2-3문장으로 현재 상황과 투자 관점을 설명
+- stocks는 각 종목에 대해 stock_code, stock_name, reason(이 테마에 포함된 이유 1-2문장)을 포함
 
 JSON 형식:
 {{"keywords": [
-  {{"category": "...", "title": "...", "description": "...", "stocks": ["005930", "000660"]}}
+  {{"category": "...", "title": "...", "description": "...", "stocks": [{{"stock_code": "005930", "stock_name": "삼성전자", "reason": "AI 반도체 수요 급증에 따른 메모리 가격 상승 수혜"}}]}}
 ]}}"""
             }
         ],

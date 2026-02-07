@@ -46,23 +46,45 @@ def collect_and_seed():
     keywords = [
         {"title": f"{gainers[0]['stock_name']}, 급등세 지속될까?",
          "category": "급등주", "description": f"{gainers[0]['change_rate']:+.1f}% 급등",
-         "stocks": [g["stock_code"] for g in gainers[:2]],
+         "stocks": [
+             {"stock_code": g["stock_code"], "stock_name": g["stock_name"],
+              "reason": f"등락률 {g['change_rate']:+.1f}%, 오늘 급등주 상위"}
+             for g in gainers[:2]
+         ],
          "tagline": "급등주 분석"},
-        {"title": f"<mark class='term'>변동성</mark> 확대, {losers[0]['stock_name']} 주의보",
+        {"title": f"변동성 확대, {losers[0]['stock_name']} 주의보",
          "category": "급락주", "description": f"{losers[0]['change_rate']:.1f}% 하락",
-         "stocks": [l["stock_code"] for l in losers[:2]],
+         "stocks": [
+             {"stock_code": l["stock_code"], "stock_name": l["stock_name"],
+              "reason": f"등락률 {l['change_rate']:.1f}%, 오늘 급락 종목"}
+             for l in losers[:2]
+         ],
          "tagline": "급락 종목"},
-        {"title": f"거래량 폭발! <mark class='term'>거래량</mark>이 말하는 것",
+        {"title": "거래량 폭발! 거래량이 말하는 것",
          "category": "거래량", "description": f"{high_vol[0]['stock_name']} 주목",
-         "stocks": [h["stock_code"] for h in high_vol[:2]],
+         "stocks": [
+             {"stock_code": h["stock_code"], "stock_name": h["stock_name"],
+              "reason": f"거래량 {h['volume']:,}주, 거래량 상위 종목"}
+             for h in high_vol[:2]
+         ],
          "tagline": "거래량 분석"},
-        {"title": f"<mark class='term'>모멘텀</mark> 투자, 수익률의 비밀",
+        {"title": "모멘텀 투자, 수익률의 비밀",
          "category": "투자전략", "description": "추세 추종 전략 분석",
-         "stocks": [gainers[2]["stock_code"], gainers[3]["stock_code"]],
+         "stocks": [
+             {"stock_code": gainers[2]["stock_code"], "stock_name": gainers[2]["stock_name"],
+              "reason": f"등락률 {gainers[2]['change_rate']:+.1f}%, 모멘텀 상승 신호"},
+             {"stock_code": gainers[3]["stock_code"], "stock_name": gainers[3]["stock_name"],
+              "reason": f"등락률 {gainers[3]['change_rate']:+.1f}%, 추세 추종 대상"},
+         ],
          "tagline": "모멘텀 전략"},
-        {"title": f"<mark class='term'>PER</mark>로 보는 저평가 종목 찾기",
+        {"title": "PER로 보는 저평가 종목 찾기",
          "category": "가치투자", "description": "밸류에이션 분석",
-         "stocks": [high_vol[2]["stock_code"], high_vol[3]["stock_code"]],
+         "stocks": [
+             {"stock_code": high_vol[2]["stock_code"], "stock_name": high_vol[2]["stock_name"],
+              "reason": f"거래량 {high_vol[2]['volume']:,}주, 가치투자 관심 종목"},
+             {"stock_code": high_vol[3]["stock_code"], "stock_name": high_vol[3]["stock_name"],
+              "reason": f"거래량 {high_vol[3]['volume']:,}주, 밸류에이션 분석 대상"},
+         ],
          "tagline": "가치투자"},
     ]
 
