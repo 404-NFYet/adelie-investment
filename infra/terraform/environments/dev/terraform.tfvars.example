@@ -1,0 +1,17 @@
+# Dev 환경 변수 값 (실제 값으로 교체 후 terraform.tfvars로 저장)
+# 주의: terraform.tfvars는 .gitignore에 포함되어야 합니다
+
+aws_region       = "ap-northeast-2"
+bastion_key_name = "adelie-bastion-key"
+allowed_ssh_cidr = "YOUR_IP/32"  # 관리자 IP만 허용
+
+# Database
+db_password = "CHANGE_ME_STRONG_PASSWORD"
+
+# API Keys
+openai_api_key     = "sk-xxx"
+perplexity_api_key = "pplx-xxx"
+claude_api_key     = "sk-ant-xxx"
+kis_app_key        = "xxx"
+kis_app_secret     = "xxx"
+jwt_secret         = "CHANGE_ME_32_CHARS_MINIMUM"
