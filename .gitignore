@@ -39,8 +39,8 @@ frontend/.vite/
 *.local
 
 # Backend (Python)
-backend-api/dist/
-ai-module/dist/
+backend_api/dist/
+ai_module/dist/
 *.pyc
 .pytest_cache/
 .coverage
@@ -85,12 +85,13 @@ coverage/
 test-results/
 playwright-report/
 *.html.report
+tests/viz_test_output/
 
 # ============================================
 # 데이터 파일 (민감 정보)
 # ============================================
-data-pipeline/output/
-data-pipeline/cache/
+data_pipeline/output/
+data_pipeline/cache/
 *.pdf
 *.csv
 !docs/**/*.csv
