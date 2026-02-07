@@ -100,7 +100,7 @@ export default function Portfolio() {
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="card text-center py-12">
             <p className="text-4xl mb-4">🐧</p>
             <h3 className="font-bold text-lg mb-2">모의투자를 시작해볼까요?</h3>
-            <p className="text-sm text-text-secondary mb-6">회원가입하면 1,000만원의 가상 투자금으로<br/>모의투자를 시작할 수 있어요!</p>
+            <p className="text-sm text-text-secondary mb-6">회원가입하면 100만원의 가상 투자금으로<br/>모의투자를 시작할 수 있어요!</p>
             <button onClick={() => setShowAuthPrompt(true)} className="btn-primary px-8 py-3 rounded-xl font-semibold">시작하기</button>
           </motion.div>
         </main>
@@ -165,6 +165,33 @@ export default function Portfolio() {
             <div><p className="text-xs text-text-secondary">투자 금액</p><p className="text-sm font-semibold">{formatKRW(portfolio.total_value - portfolio.current_cash)}</p></div>
           </div>
         </motion.div>
+
+        {/* 종목별 수익률 바 */}
+        {portfolio.holdings.length > 0 && (
+          <div className="card">
+            <h3 className="text-xs font-semibold text-text-secondary mb-3">종목별 수익률</h3>
+            <div className="space-y-2">
+              {portfolio.holdings.map(h => {
+                const pct = h.profit_loss_pct || 0;
+                const barWidth = Math.min(Math.abs(pct) * 2, 100);
+                return (
+                  <div key={h.stock_code} className="flex items-center gap-2 text-xs">
+                    <span className="w-16 truncate font-medium">{h.stock_name}</span>
+                    <div className="flex-1 h-4 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden relative">
+                      <div
+                        className={`h-full rounded-full ${pct >= 0 ? 'bg-red-400' : 'bg-blue-400'}`}
+                        style={{ width: `${barWidth}%` }}
+                      />
+                    </div>
+                    <span className={`w-14 text-right font-semibold ${pct > 0 ? 'text-red-500' : pct < 0 ? 'text-blue-500' : 'text-text-secondary'}`}>
+                      {pct > 0 ? '+' : ''}{pct}%
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* 3탭 전환 */}
         <div className="flex gap-2">

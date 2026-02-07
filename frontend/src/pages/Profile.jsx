@@ -9,6 +9,64 @@ import { useTheme } from '../contexts/ThemeContext';
 import { motion } from 'framer-motion';
 import AppHeader from '../components/layout/AppHeader';
 
+/* ── 인라인 피드백 컴포넌트 ── */
+function InlineFeedback() {
+  const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState('');
+  const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    if (rating === 0) return;
+    setSubmitting(true);
+    try {
+      await fetch('/api/v1/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ page: 'profile', rating, comment: comment || null }),
+      });
+      setSubmitted(true);
+    } catch {}
+    setSubmitting(false);
+  };
+
+  if (submitted) {
+    return (
+      <div className="text-center py-4">
+        <p className="text-2xl mb-1">🐧</p>
+        <p className="text-sm font-medium">감사합니다!</p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <h2 className="text-lg font-bold mb-3">의견 보내기</h2>
+      <div className="flex gap-2 mb-3">
+        {[1, 2, 3, 4, 5].map(star => (
+          <button key={star} onClick={() => setRating(star)} className={`text-xl transition-transform ${star <= rating ? 'scale-110' : 'opacity-30'}`}>
+            ⭐
+          </button>
+        ))}
+      </div>
+      <textarea
+        value={comment}
+        onChange={(e) => setComment(e.target.value)}
+        placeholder="더 나은 서비스를 위해 의견을 남겨주세요"
+        className="w-full p-3 rounded-xl border border-border bg-surface text-sm resize-none mb-3"
+        rows={2}
+      />
+      <button
+        onClick={handleSubmit}
+        disabled={rating === 0 || submitting}
+        className="w-full py-2.5 rounded-xl font-semibold text-white bg-primary hover:bg-primary/90 disabled:opacity-40 transition-colors text-sm"
+      >
+        {submitting ? '전송 중...' : '보내기'}
+      </button>
+    </>
+  );
+}
+
 const DIFFICULTY_OPTIONS = [
   { value: DIFFICULTY_LEVELS.BEGINNER, label: '입문' },
   { value: DIFFICULTY_LEVELS.ELEMENTARY, label: '초급' },
@@ -146,6 +204,16 @@ export default function Profile() {
               )}
             </>
           )}
+        </motion.div>
+
+        {/* 의견 보내기 */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.35 }}
+          className="card"
+        >
+          <InlineFeedback />
         </motion.div>
 
         {/* 앱 정보 */}
