@@ -50,7 +50,9 @@ async def get_portfolio(user_id: int, db: AsyncSession = Depends(get_db)):
 
     for h in portfolio.holdings:
         price_data = await get_current_price(h.stock_code)
-        current_price = price_data["current_price"] if price_data else 0
+        current_price = price_data["current_price"] if price_data else None
+        if current_price is None:
+            current_price = int(h.avg_buy_price)  # 가격 조회 실패 시 매입가로 폴백
         current_value = current_price * h.quantity
         invested = float(h.avg_buy_price) * h.quantity
         profit_loss = current_value - invested
