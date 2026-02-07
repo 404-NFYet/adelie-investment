@@ -5,7 +5,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { HighlightedText, ThinkingPoint, NextStepButton } from '../components';
-import AppHeader from '../components/AppHeader';
+import AppHeader from '../components/layout/AppHeader';
 import { useTheme } from '../contexts/ThemeContext';
 import { casesApi } from '../api';
 

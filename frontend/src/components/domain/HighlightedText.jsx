@@ -1,15 +1,17 @@
 /**
- * HighlightedText.jsx - AI 생성 콘텐츠 내 어려운 용어 하이라이팅
- * [[용어]] 형식의 마킹된 텍스트를 파싱하여 클릭 가능한 하이라이트로 렌더링
+ * HighlightedText.jsx - AI 생성 콘텐츠 내 용어 하이라이팅
+ * <mark class='term'>용어</mark> 및 [[용어]] 형식을 모두 지원.
+ * 클릭하면 TermBottomSheet에서 LLM 동적 설명을 표시.
  */
 import { useTermContext } from '../../contexts/TermContext';
 
 export default function HighlightedText({ content, onTermClick }) {
   const { openTermSheet } = useTermContext();
 
-  // [[term]] 패턴을 찾아 하이라이트 처리
+  // <mark class='term'>term</mark> 및 [[term]] 패턴을 모두 파싱
   const parseContent = (text) => {
-    const pattern = /\[\[([^\]]+)\]\]/g;
+    // 두 패턴을 모두 매칭: <mark class='term'>...</mark> 또는 [[...]]
+    const pattern = /<mark\s+class=['"]term['"]>(.*?)<\/mark>|\[\[([^\]]+)\]\]/g;
     const parts = [];
     let lastIndex = 0;
     let match;
@@ -17,27 +19,19 @@ export default function HighlightedText({ content, onTermClick }) {
     while ((match = pattern.exec(text)) !== null) {
       // 일반 텍스트 추가
       if (match.index > lastIndex) {
-        parts.push({
-          type: 'text',
-          content: text.slice(lastIndex, match.index),
-        });
+        parts.push({ type: 'text', content: text.slice(lastIndex, match.index) });
       }
 
-      // 하이라이트 용어 추가
-      parts.push({
-        type: 'term',
-        content: match[1],
-      });
+      // 하이라이트 용어 추가 (그룹 1 또는 그룹 2)
+      const term = match[1] || match[2];
+      parts.push({ type: 'term', content: term });
 
       lastIndex = match.index + match[0].length;
     }
 
     // 남은 텍스트 추가
     if (lastIndex < text.length) {
-      parts.push({
-        type: 'text',
-        content: text.slice(lastIndex),
-      });
+      parts.push({ type: 'text', content: text.slice(lastIndex) });
     }
 
     return parts;
@@ -58,14 +52,14 @@ export default function HighlightedText({ content, onTermClick }) {
       {parts.map((part, index) => {
         if (part.type === 'term') {
           return (
-            <span
+            <mark
               key={index}
-              className="term-highlight"
+              className="term-highlight bg-primary/10 text-primary rounded px-0.5 cursor-pointer hover:bg-primary/20 transition-colors"
               onClick={() => handleTermClick(part.content)}
               title="클릭하여 설명 보기"
             >
               {part.content}
-            </span>
+            </mark>
           );
         }
         return <span key={index}>{part.content}</span>;

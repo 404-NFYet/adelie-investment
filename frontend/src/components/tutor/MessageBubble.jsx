@@ -4,7 +4,8 @@
  */
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { renderMarkdown } from '../../utils/markdown';
+import ReactMarkdown from 'react-markdown';
+import rehypeRaw from 'rehype-raw';
 import PenguinLoading from '../common/PenguinLoading';
 
 // 출처 분류 체계 (온톨로지 기반)
@@ -122,7 +123,9 @@ export default function Message({ message }) {
         </div>
         <div className={`px-4 py-3 rounded-2xl rounded-tl-md ${message.isError ? 'bg-error-light text-error border border-error/20' : 'bg-surface border border-border'}`}>
           {message.isError ? <p className="text-sm">{message.content}</p> : (
-            <div className="text-sm leading-relaxed text-text-primary prose-sm" dangerouslySetInnerHTML={{ __html: renderMarkdown(message.content) }} />
+            <div className="text-sm leading-relaxed text-text-primary prose prose-sm prose-headings:text-text-primary prose-strong:text-text-primary prose-code:text-primary prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs max-w-none dark:prose-invert">
+              <ReactMarkdown rehypePlugins={[rehypeRaw]}>{message.content}</ReactMarkdown>
+            </div>
           )}
           {message.isStreaming && <span className="inline-block w-1.5 h-4 bg-primary animate-pulse ml-0.5 rounded-sm" />}
         </div>
