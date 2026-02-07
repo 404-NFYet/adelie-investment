@@ -1,0 +1,68 @@
+# ============================================================
+# Adelie Investment - 개발 환경 (infra-server 공유 DB 연결)
+# 사용법: docker compose -f docker-compose.dev.yml up
+# ============================================================
+
+services:
+  # --- Frontend (React + Vite + Nginx) ---
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_FASTAPI_URL: ""
+        VITE_SPRING_URL: ""
+    ports:
+      - "3001:80"
+    depends_on:
+      - backend-api
+      - backend-spring
+    restart: unless-stopped
+
+  # --- FastAPI Backend ---
+  backend-api:
+    build: ./backend_api
+    ports:
+      - "8082:8082"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://narative:password@10.10.10.10:5432/narrative_invest
+      REDIS_URL: redis://10.10.10.10:6379/1
+      REDIS_HOST: 10.10.10.10
+      REDIS_PORT: 6379
+      NEO4J_URI: bolt://10.10.10.10:7687
+      MINIO_ENDPOINT: http://10.10.10.10:9000
+    volumes:
+      - ./backend_api/app:/app/app  # 핫 리로드
+      - ./ai_module:/app/ai_module  # AI 모듈 공유
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8082 --reload
+    restart: unless-stopped
+    develop:
+      watch:
+        - action: sync
+          path: ./backend_api/app
+          target: /app/app
+        - action: rebuild
+          path: ./backend_api/requirements.txt
+
+  # --- Spring Boot Backend ---
+  backend-spring:
+    build: ./backend-spring
+    ports:
+      - "8083:8083"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://10.10.10.10:5432/narrative_invest
+      SPRING_DATASOURCE_USERNAME: narative
+      SPRING_DATASOURCE_PASSWORD: password
+      JWT_SECRET: ${JWT_SECRET:-narrative-invest-jwt-secret-change-in-production}
+    restart: unless-stopped
+
+  # --- AI Pipeline (on-demand) ---
+  ai-pipeline:
+    build: ./ai_module
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://narative:password@10.10.10.10:5432/narrative_invest
+      REDIS_URL: redis://10.10.10.10:6379/1
+      NEO4J_URI: bolt://10.10.10.10:7687
+    profiles:
+      - pipeline

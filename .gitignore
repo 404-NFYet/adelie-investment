@@ -140,3 +140,10 @@ Thumbs.db
 *.backup
 .history/
 backend-spring/bin/
+
+# 참고용 (커밋 제외)
+adelie_fe_test/
+KIS_API_RESEARCH_SUMMARY.md
+test-results/
+playwright-report/
+*.plan.md
