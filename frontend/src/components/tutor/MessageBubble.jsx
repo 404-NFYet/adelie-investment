@@ -68,6 +68,24 @@ function SourceBadge({ sources }) {
   );
 }
 
+// iframe srcDoc에 responsive wrapper 주입
+const wrapResponsiveHtml = (html) => `<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { overflow: hidden; max-width: 480px; width: 100%; }
+    .plotly-graph-div, .js-plotly-plot { width: 100% !important; max-width: 480px !important; }
+    .plot-container { width: 100% !important; max-width: 480px !important; }
+    .svg-container { width: 100% !important; max-width: 480px !important; }
+    table { max-width: 100%; overflow-x: auto; display: block; }
+    img { max-width: 100%; height: auto; }
+  </style>
+</head>
+<body>${html}</body>
+</html>`;
+
 function VisualizationMessage({ message }) {
   const [expanded, setExpanded] = useState(false);
   const [iframeLoaded, setIframeLoaded] = useState(false);
@@ -89,6 +107,8 @@ function VisualizationMessage({ message }) {
     clearTimeout(timerRef.current);
   };
 
+  const responsiveContent = hasContent ? wrapResponsiveHtml(message.content) : '';
+
   return (
     <motion.div className="mb-4" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
       <div className="flex items-center gap-1.5 mb-1.5">
@@ -96,7 +116,7 @@ function VisualizationMessage({ message }) {
         <span className="text-xs text-text-secondary">차트</span>
         {message.executionTime && <span className="text-[10px] text-text-secondary ml-auto">{message.executionTime}ms</span>}
       </div>
-      <div className={`rounded-2xl border border-border overflow-hidden bg-white transition-all ${expanded ? 'h-[400px]' : 'h-[280px]'}`}>
+      <div className={`rounded-2xl border border-border overflow-hidden bg-white transition-all max-w-[480px] ${expanded ? 'h-[480px]' : 'h-[320px]'}`}>
         {hasContent ? (
           timedOut && !iframeLoaded ? (
             <div className="flex flex-col items-center justify-center h-full gap-2">
@@ -114,7 +134,7 @@ function VisualizationMessage({ message }) {
                 <div className="flex items-center justify-center h-full text-sm text-text-secondary animate-pulse">차트 로딩 중...</div>
               )}
               <iframe
-                srcDoc={message.content}
+                srcDoc={responsiveContent}
                 className={`w-full h-full border-0 ${iframeLoaded ? '' : 'hidden'}`}
                 sandbox="allow-scripts allow-same-origin"
                 title="차트"

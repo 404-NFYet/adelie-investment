@@ -1,4 +1,4 @@
-"""내러티브 스토리 API 라우트.
+"""내러티브 스토리 API 라우트 (7단계).
 
 빌더 로직은 app.services.narrative_builder로 분리됨.
 이 파일은 DB 쿼리 + 빌더 호출 + 응답 조립만 담당.
@@ -18,12 +18,7 @@ from app.models.briefing import DailyBriefing, BriefingStock
 from app.schemas.narrative import NarrativeResponse
 from app.services.narrative_builder import (
     split_paragraphs,
-    build_mirroring,
-    build_intro,
-    build_development,
-    build_climax,
-    build_conclusion,
-    build_action,
+    build_all_steps,
 )
 
 logger = logging.getLogger("narrative_api.narrative")
@@ -81,7 +76,7 @@ async def _fetch_market_history(db: AsyncSession, days: int = 5) -> list[dict]:
 
 @router.get("/{case_id}", response_model=NarrativeResponse)
 async def get_narrative(case_id: int, db: AsyncSession = Depends(get_db)) -> NarrativeResponse:
-    """사례 기반 내러티브 스토리를 6단계로 반환."""
+    """사례 기반 내러티브 스토리를 7단계로 반환."""
     case = await _fetch_case(db, case_id)
     case_stocks = await _fetch_case_stocks(db, case_id)
     briefing = await _fetch_latest_briefing(db)
@@ -92,21 +87,23 @@ async def get_narrative(case_id: int, db: AsyncSession = Depends(get_db)) -> Nar
 
     kw_data: dict = case.keywords if isinstance(case.keywords, dict) else {}
     comparison: dict = kw_data.get("comparison", {})
+    narrative_data: Optional[dict] = kw_data.get("narrative")
     keyword_list: list[str] = kw_data.get("keywords", [])
     keyword = keyword_list[0] if keyword_list else case.title
-    sync_rate: int = kw_data.get("sync_rate", 0)
+    sync_rate: int = comparison.get("sync_rate", 0)
 
     paragraphs = split_paragraphs(case.full_content or case.summary or "")
     briefing_stocks: list[BriefingStock] = list(briefing.stocks) if briefing else []
 
-    steps = {
-        "mirroring": build_mirroring(comparison, paragraphs),
-        "intro": build_intro(briefing, briefing_stocks),
-        "development": build_development(comparison, paragraphs),
-        "climax": build_climax(comparison, paragraphs),
-        "conclusion": build_conclusion(comparison, paragraphs),
-        "action": build_action(case_stocks, comparison),
-    }
+    # LLM narrative가 있으면 우선 사용, 없으면 fallback
+    steps = build_all_steps(
+        narrative_data=narrative_data,
+        comparison=comparison,
+        paragraphs=paragraphs,
+        briefing=briefing,
+        briefing_stocks=briefing_stocks,
+        case_stocks=case_stocks,
+    )
 
     related_companies = [
         {"stock_code": r.stock_code, "stock_name": r.stock_name, "relation_type": r.relation_type or "related", "impact_description": r.impact_description or ""}

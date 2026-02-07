@@ -9,7 +9,10 @@
 | 3 | [03_DEPLOYMENT.md](03_DEPLOYMENT.md) | 배포 담당 | deploy-test 배포, Cloudflare Tunnel, AWS Terraform |
 | 4 | [04_TESTING.md](04_TESTING.md) | 개발자 | pytest, Playwright E2E, 부하 테스트 |
 | 5 | [05_AI_PIPELINE.md](05_AI_PIPELINE.md) | AI 담당 | 데이터 수집, 키워드 생성, 역사적 사례 매칭, 프롬프트 관리 |
-| 6 | [06_CONTRIBUTING.md](06_CONTRIBUTING.md) | 전체 팀원 | PR 규칙, 코드 스타일, 브랜치 전략 |
+| 6 | [06_CONTRIBUTING.md](06_CONTRIBUTING.md) | 전체 팀원 | Git 전략, 커밋 컨벤션, PR 워크플로우, 릴리스 프로세스, 모노레포 구조 |
+| 7 | [07_CHANGELOG.md](07_CHANGELOG.md) | 전체 팀원 | 날짜별 변경 이력 (버그 수정, 기능, UI, 인프라) |
+| 8 | [08_SCHEDULER.md](08_SCHEDULER.md) | 백엔드/배포 | 데일리 파이프라인 스케줄러 (APScheduler, KST 08:00) |
+| 9 | [09_LEADERBOARD.md](09_LEADERBOARD.md) | 프론트/백엔드 | 수익률 리더보드 API 스펙 + 컴포넌트 구조 |
 
 ## 참고 문서
 

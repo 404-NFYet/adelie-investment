@@ -101,7 +101,7 @@ data_pipeline/cache/
 # ============================================
 # 차트/미디어 캐시
 # ============================================
-charts/
+/charts/
 *.png
 *.jpg
 *.jpeg
@@ -146,6 +146,7 @@ CLAUDE.md
 *.backup
 .history/
 backend-spring/bin/
+capture
 
 # 참고용 (커밋 제외)
 adelie_fe_test/

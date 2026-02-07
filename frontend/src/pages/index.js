@@ -14,3 +14,4 @@ export { default as Profile } from './Profile';
 export { default as Narrative } from './Narrative';
 export { default as Notifications } from './Notifications';
 export { default as Portfolio } from './Portfolio';
+export { default as TutorChat } from './TutorChat';
