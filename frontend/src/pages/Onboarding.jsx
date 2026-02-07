@@ -1,61 +1,65 @@
 /**
- * Onboarding.jsx - 3단계 자동 전환 온보딩
- * 클린 화이트 디자인 + 자동/스와이프 전환 + 난이도 선택 + 홈으로 이동
+ * Onboarding.jsx - 스크롤 기반 온보딩
+ * 섹션별 fade-in (IntersectionObserver) + 난이도 선택 + 시작
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useUser, DIFFICULTY_LEVELS } from '../contexts';
-import PenguinMascot from '../components/common/PenguinMascot';
 
-const AUTO_ADVANCE_MS = 3500;
+function useFadeIn() {
+  const ref = useRef(null);
+  const [visible, setVisible] = useState(false);
 
-const STEPS = [
-  {
-    id: 'welcome',
-    auto: true,
-  },
-  {
-    id: 'value',
-    auto: true,
-    title: '과거에서 배우는 투자, AI와 함께',
-    desc: '역사적 사례를 스토리로 풀어내고\nAI 튜터가 맞춤 설명해드려요',
-  },
-  {
-    id: 'difficulty',
-    auto: false,
-    title: '투자 경험을 알려주세요',
-    desc: '맞춤형 설명을 위해 선택해주세요',
-  },
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) setVisible(true); },
+      { threshold: 0.2 }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
+  return { ref, visible };
+}
+
+function FadeSection({ children, className = '', delay = 0 }) {
+  const { ref, visible } = useFadeIn();
+  return (
+    <div
+      ref={ref}
+      className={`transition-all duration-700 ease-out ${className}`}
+      style={{
+        opacity: visible ? 1 : 0,
+        transform: visible ? 'translateY(0)' : 'translateY(32px)',
+        transitionDelay: `${delay}ms`,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+const DIFFICULTY_OPTIONS = [
+  { value: DIFFICULTY_LEVELS.BEGINNER, label: '입문', desc: '주식 투자를 처음 시작해요' },
+  { value: DIFFICULTY_LEVELS.ELEMENTARY, label: '초급', desc: '기본 용어는 알고 있어요' },
+  { value: DIFFICULTY_LEVELS.INTERMEDIATE, label: '중급', desc: '투자 경험이 어느 정도 있어요' },
 ];
 
 export default function Onboarding() {
-  const [step, setStep] = useState(0);
   const [selectedDifficulty, setSelectedDifficulty] = useState(null);
   const { settings, setDifficulty, completeOnboarding, loginAsGuest } = useUser();
   const navigate = useNavigate();
 
-  // 이미 온보딩 완료했으면 홈으로
   useEffect(() => {
     if (settings.hasCompletedOnboarding) {
       navigate('/', { replace: true });
     }
   }, [settings.hasCompletedOnboarding, navigate]);
 
-  // 자동 전환 (처음 2단계)
-  useEffect(() => {
-    if (STEPS[step]?.auto) {
-      const timer = setTimeout(() => setStep(s => s + 1), AUTO_ADVANCE_MS);
-      return () => clearTimeout(timer);
-    }
-  }, [step]);
-
   const handleComplete = useCallback(() => {
-    if (selectedDifficulty) {
-      setDifficulty(selectedDifficulty);
-    } else {
-      setDifficulty(DIFFICULTY_LEVELS.BEGINNER);
-    }
+    setDifficulty(selectedDifficulty || DIFFICULTY_LEVELS.BEGINNER);
     completeOnboarding();
     loginAsGuest();
     navigate('/', { replace: true });
@@ -68,133 +72,91 @@ export default function Onboarding() {
     navigate('/', { replace: true });
   };
 
-  const current = STEPS[step];
-  const isLast = step === STEPS.length - 1;
-
   return (
-    <div className="min-h-screen bg-white transition-all duration-500 flex flex-col relative overflow-hidden">
+    <div className="min-h-screen bg-white">
       {/* 건너뛰기 */}
-      <div className="p-4 flex justify-end relative z-10">
-        <button onClick={handleSkip} className="text-gray-400 hover:text-gray-600 text-sm transition-colors">
-          건너뛰기
-        </button>
-      </div>
-
-      {/* 콘텐츠 */}
-      <div className="flex-1 flex flex-col items-center justify-center p-6 max-w-mobile mx-auto relative z-10">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={current.id}
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: -20 }}
-            transition={{ duration: 0.5, ease: [0.23, 1, 0.32, 1] }}
-            className="text-center w-full"
-          >
-            {current.id === 'welcome' ? (
-              <>
-                <motion.div
-                  initial={{ scale: 0.5, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ delay: 0.2, duration: 0.6 }}
-                  className="mb-8"
-                >
-                  <PenguinMascot variant="welcome" size={120} />
-                </motion.div>
-                <motion.h1
-                  className="font-cursive text-4xl font-bold text-primary mb-3"
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.4 }}
-                >
-                  아델리에 투자
-                </motion.h1>
-                <motion.p
-                  className="text-gray-500 text-lg"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.7 }}
-                >
-                  역사는 반복된다, 투자도 마찬가지
-                </motion.p>
-              </>
-            ) : current.id === 'difficulty' ? (
-              <div className="bg-gray-50 border border-gray-200 rounded-3xl p-8 shadow-sm">
-                <h2 className="text-2xl font-bold text-gray-900 mb-2">{current.title}</h2>
-                <p className="text-gray-500 mb-6 text-sm">{current.desc}</p>
-                <div className="space-y-3">
-                  {[
-                    { value: DIFFICULTY_LEVELS.BEGINNER, label: '입문', desc: '주식 투자를 처음 시작해요' },
-                    { value: DIFFICULTY_LEVELS.ELEMENTARY, label: '초급', desc: '기본 용어는 알고 있어요' },
-                    { value: DIFFICULTY_LEVELS.INTERMEDIATE, label: '중급', desc: '투자 경험이 어느 정도 있어요' },
-                  ].map(opt => (
-                    <button
-                      key={opt.value}
-                      onClick={() => setSelectedDifficulty(opt.value)}
-                      className={`w-full p-4 rounded-2xl border-2 text-left transition-all ${
-                        selectedDifficulty === opt.value
-                          ? 'border-primary bg-primary-light'
-                          : 'border-gray-200 bg-white hover:border-gray-300'
-                      }`}
-                    >
-                      <div className={`font-bold ${selectedDifficulty === opt.value ? 'text-primary' : 'text-gray-900'}`}>{opt.label}</div>
-                      <div className="text-sm text-gray-500">{opt.desc}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="bg-gray-50 border border-gray-200 rounded-3xl p-8 shadow-sm">
-                <div className="text-5xl mb-6">🐧</div>
-                <h2 className="text-2xl font-bold text-gray-900 mb-3">{current.title}</h2>
-                <p className="text-gray-600 whitespace-pre-line leading-relaxed">{current.desc}</p>
-              </div>
-            )}
-          </motion.div>
-        </AnimatePresence>
-      </div>
-
-      {/* 하단 (프로그레스 + 버튼) */}
-      <div className="p-6 max-w-mobile mx-auto w-full relative z-10">
-        {/* 프로그레스 */}
-        <div className="flex justify-center gap-2 mb-6">
-          {STEPS.map((_, i) => (
-            <div key={i} className="relative h-1 flex-1 max-w-[60px] rounded-full bg-gray-200 overflow-hidden">
-              {i < step && <div className="absolute inset-0 bg-primary rounded-full" />}
-              {i === step && STEPS[i].auto && (
-                <motion.div
-                  className="absolute inset-y-0 left-0 bg-primary rounded-full"
-                  initial={{ width: '0%' }}
-                  animate={{ width: '100%' }}
-                  transition={{ duration: AUTO_ADVANCE_MS / 1000, ease: 'linear' }}
-                />
-              )}
-              {i === step && !STEPS[i].auto && <div className="absolute inset-0 bg-primary/40 rounded-full" />}
-            </div>
-          ))}
+      <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-md">
+        <div className="max-w-mobile mx-auto px-6 py-3 flex justify-end">
+          <button onClick={handleSkip} className="text-sm text-text-muted hover:text-text-secondary transition-colors">
+            건너뛰기
+          </button>
         </div>
+      </div>
 
-        {/* 버튼 */}
-        {isLast ? (
+      <div className="max-w-mobile mx-auto px-6 pb-16">
+        {/* 섹션 1: 로고 + 웰컴 */}
+        <FadeSection className="pt-16 pb-20 text-center">
+          <h1 className="text-4xl font-bold tracking-tight text-text-primary mb-4">
+            ADELIE
+          </h1>
+          <p className="text-lg text-text-secondary leading-relaxed">
+            역사는 반복된다,<br />투자도 마찬가지
+          </p>
+        </FadeSection>
+
+        {/* 섹션 2: 가치 제안 */}
+        <FadeSection className="pb-20">
+          <div className="space-y-6">
+            {[
+              {
+                title: '과거에서 배우는 투자',
+                desc: '역사적 사례를 스토리로 풀어내어\n현재 시장을 이해할 수 있어요',
+              },
+              {
+                title: 'AI 튜터와 함께',
+                desc: '모르는 용어, 궁금한 종목이 있으면\nAI에게 바로 물어보세요',
+              },
+              {
+                title: '모의투자로 연습',
+                desc: '가상 자금으로 실전처럼 투자하고\n결과를 확인해보세요',
+              },
+            ].map((item, i) => (
+              <FadeSection key={i} delay={i * 120}>
+                <div className="p-5 rounded-2xl bg-surface border border-border">
+                  <h3 className="text-base font-semibold text-text-primary mb-1.5">{item.title}</h3>
+                  <p className="text-sm text-text-secondary whitespace-pre-line leading-relaxed">{item.desc}</p>
+                </div>
+              </FadeSection>
+            ))}
+          </div>
+        </FadeSection>
+
+        {/* 섹션 3: 난이도 선택 + 시작 */}
+        <FadeSection className="pb-20">
+          <h2 className="text-xl font-bold text-text-primary mb-2">투자 경험을 알려주세요</h2>
+          <p className="text-sm text-text-secondary mb-6">맞춤형 설명을 위해 선택해주세요</p>
+
+          <div className="space-y-3 mb-8">
+            {DIFFICULTY_OPTIONS.map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => setSelectedDifficulty(opt.value)}
+                className={`w-full p-4 rounded-2xl border text-left transition-all ${
+                  selectedDifficulty === opt.value
+                    ? 'border-primary bg-primary-light'
+                    : 'border-border bg-surface-elevated hover:border-text-muted'
+                }`}
+              >
+                <div className={`font-semibold text-sm ${selectedDifficulty === opt.value ? 'text-primary' : 'text-text-primary'}`}>
+                  {opt.label}
+                </div>
+                <div className="text-xs text-text-secondary mt-0.5">{opt.desc}</div>
+              </button>
+            ))}
+          </div>
+
           <button
             onClick={handleComplete}
-            className={`w-full py-4 rounded-2xl font-semibold text-lg transition-all ${
-              selectedDifficulty
-                ? 'bg-primary text-white hover:bg-primary-hover shadow-lg'
-                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-            }`}
             disabled={!selectedDifficulty}
+            className={`w-full py-4 rounded-2xl font-semibold text-base transition-all ${
+              selectedDifficulty
+                ? 'bg-primary text-white hover:bg-primary-hover'
+                : 'bg-surface text-text-muted border border-border cursor-not-allowed'
+            }`}
           >
             시작하기
           </button>
-        ) : (
-          <button
-            onClick={() => setStep(s => s + 1)}
-            className="w-full py-4 rounded-2xl font-semibold text-lg bg-primary text-white hover:bg-primary-hover transition-all"
-          >
-            다음
-          </button>
-        )}
+        </FadeSection>
       </div>
     </div>
   );
