@@ -54,7 +54,7 @@ export default function HighlightedText({ content, onTermClick }) {
           return (
             <mark
               key={index}
-              className="term-highlight bg-primary/10 text-primary rounded px-0.5 cursor-pointer hover:bg-primary/20 transition-colors"
+              className="term-highlight"
               onClick={() => handleTermClick(part.content)}
               title="클릭하여 설명 보기"
             >
