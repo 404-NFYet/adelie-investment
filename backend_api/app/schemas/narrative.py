@@ -1,6 +1,6 @@
-"""내러티브 스토리 응답 스키마."""
+"""내러티브 스토리 응답 스키마 (7단계)."""
 
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel
 
@@ -16,11 +16,14 @@ class ChartDataPoint(BaseModel):
 class ChartData(BaseModel):
     """차트 데이터 (비교 바, 트렌드 라인, 리스크 지표 등)."""
 
-    chart_type: str  # comparison_bar, trend_line, risk_indicator, single_bar 등
+    chart_type: Optional[str] = None  # comparison_bar, trend_line 등 (기존 호환)
     title: Optional[str] = None
     unit: Optional[str] = None
     data_points: list[ChartDataPoint] = []
     annotation: Optional[str] = None
+    # Plotly 직접 렌더링용 (7단계 narrative)
+    data: Optional[list[dict]] = None
+    layout: Optional[dict] = None
 
 
 class ComparisonPoint(BaseModel):
@@ -33,20 +36,20 @@ class ComparisonPoint(BaseModel):
 
 
 class NarrativeSection(BaseModel):
-    """내러티브 한 섹션 (도입, 전개, 절정, 결론 등)."""
+    """내러티브 한 섹션."""
 
     bullets: list[str] = []
     content: str = ""
-    chart: Optional[ChartData] = None
+    chart: Optional[Any] = None  # ChartData 또는 Plotly {data, layout} dict
     comparison_points: Optional[list[ComparisonPoint]] = None
 
 
 class NarrativeResponse(BaseModel):
-    """내러티브 전체 응답."""
+    """내러티브 전체 응답 (7단계)."""
 
     case_id: int
     keyword: str
-    steps: dict  # keys: mirroring, intro, development, climax, conclusion
+    steps: dict  # keys: background, mirroring, difference, devils_advocate, simulation, result, action
     related_companies: list[dict] = []
     sync_rate: int = 0
     market_data: Optional[dict] = None
