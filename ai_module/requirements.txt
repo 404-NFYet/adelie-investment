@@ -1,23 +1,26 @@
 # AI Module Dependencies
 # narrative-investment ai-module
 
-# LangChain ecosystem
-langchain==0.3.14
-langchain-openai==0.3.0
-langchain-community==0.3.14
-langgraph==0.2.60
-langgraph-checkpoint-postgres>=2.0.0
-langsmith==0.2.10
+# LangChain ecosystem (1.x)
+langchain>=1.0.0
+langchain-openai>=0.3.0
+langchain-community>=0.3.0
+langgraph>=1.0.0
+langsmith>=0.3.0
 
 # LLM providers
-openai==1.58.0
+openai>=1.50.0
+anthropic>=0.40.0
 
 # Graph database
-neo4j==5.27.0
+neo4j>=5.20.0
 
 # Document processing
-pymupdf==1.25.0
-pillow==11.0.0
+pymupdf>=1.25.0
+pillow>=10.0.0
 
 # Numerical computing
-numpy==2.2.0
+numpy>=1.26.0
+
+# Utils
+python-dotenv>=1.0.0
