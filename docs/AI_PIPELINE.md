@@ -2,6 +2,24 @@
 
 ## 아키텍처
 
+### 데이터 생성 파이프라인
+
+#### 1. 시장 데이터 수집 (`scripts/seed_fresh_data.py`)
+- pykrx로 당일 급등주, 급락주, 거래량 상위 종목 수집
+- `daily_briefings`, `briefing_stocks` 테이블에 저장
+- 키워드 title에 `<mark class='term'>용어</mark>` 형식 포함
+
+#### 2. 역사적 사례 생성 (`scripts/generate_cases.py`)
+- GPT-4o-mini로 각 키워드별 유사 역사적 사례 자동 생성
+- `historical_cases` - 사례 제목, 요약, 전체 스토리, 비교 지표
+- `case_matches` - 키워드 ↔ 케이스 매핑 (유사도 점수)
+- `case_stock_relations` - 케이스 ↔ 관련 종목 연결
+
+```bash
+# deploy-test에서 실행
+docker exec -e OPENAI_API_KEY="$KEY" adelie-backend-api python /app/generate_cases.py
+```
+
 ### 용어 생성 방식: 동적 LLM
 
 정적 DB 용어사전 대신 LLM이 동적으로 용어를 설명합니다.

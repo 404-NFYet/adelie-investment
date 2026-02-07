@@ -18,6 +18,19 @@ REGISTRY=dorae222 TAG=latest docker compose -f docker-compose.prod.yml up -d
 docker compose -f docker-compose.prod.yml ps
 ```
 
+### 데이터 초기화 (최초 배포 또는 데이터 리셋 시)
+
+```bash
+# 1. 시장 데이터 수집 (키워드 + 종목)
+docker exec adelie-backend-api python /app/scripts/seed_fresh_data.py
+
+# 2. 역사적 사례 생성 (LLM 기반, OPENAI_API_KEY 필요)
+docker exec -e OPENAI_API_KEY="$OPENAI_API_KEY" adelie-backend-api python /app/generate_cases.py
+
+# 데이터 확인
+docker exec adelie-postgres psql -U adelie -d adelie -c "SELECT COUNT(*) FROM historical_cases;"
+```
+
 ### Cloudflare Tunnel 설정
 
 ```bash
