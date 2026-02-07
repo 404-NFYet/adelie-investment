@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme } from '../../contexts/ThemeContext';
 
 export default function AppHeader({ showBack = false, title = null }) {
   const navigate = useNavigate();
