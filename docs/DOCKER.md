@@ -47,6 +47,9 @@ make clean          # 정리
    ↓
 6. deploy-test에서:
    REGISTRY=dorae222 TAG=v1.1 docker compose -f docker-compose.prod.yml up -d
+   ↓
+7. 데이터 초기화 (필요 시):
+   docker exec -e OPENAI_API_KEY="$KEY" adelie-backend-api python /app/generate_cases.py
 ```
 
 ## 핫 리로드 (개발 환경)
