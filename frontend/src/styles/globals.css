@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Jua&family=Gaegu:wght@400;700&family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -160,8 +160,8 @@
 
   /* Term Highlight */
   .term-highlight {
-    @apply cursor-pointer underline decoration-dotted decoration-primary
-           bg-primary-light text-primary px-1 rounded
+    @apply cursor-pointer
+           bg-primary-light text-primary px-1 rounded font-medium
            hover:bg-primary hover:text-white transition-colors;
   }
 

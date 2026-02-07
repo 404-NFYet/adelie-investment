@@ -125,12 +125,26 @@ export default function Profile() {
               로그아웃
             </button>
           ) : (
-            <button
-              onClick={() => navigate('/auth')}
-              className="btn-primary w-full"
-            >
-              계정 등록하기
-            </button>
+            <>
+              <button
+                onClick={() => navigate('/auth')}
+                className="btn-primary w-full"
+              >
+                계정 등록하기
+              </button>
+              {isGuest && (
+                <button
+                  onClick={() => {
+                    logout();
+                    localStorage.removeItem('userSettings');
+                    navigate('/onboarding', { replace: true });
+                  }}
+                  className="btn-secondary w-full text-sm"
+                >
+                  게스트 모드 나가기
+                </button>
+              )}
+            </>
           )}
         </motion.div>
 
