@@ -75,10 +75,12 @@ const wrapResponsiveHtml = (html) => `<!DOCTYPE html>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { overflow-x: hidden; max-width: 100vw; }
-    .plotly-graph-div, .js-plotly-plot { width: 100% !important; }
-    .plot-container { width: 100% !important; }
-    .svg-container { width: 100% !important; }
+    html, body { overflow: hidden; max-width: 480px; width: 100%; }
+    .plotly-graph-div, .js-plotly-plot { width: 100% !important; max-width: 480px !important; }
+    .plot-container { width: 100% !important; max-width: 480px !important; }
+    .svg-container { width: 100% !important; max-width: 480px !important; }
+    table { max-width: 100%; overflow-x: auto; display: block; }
+    img { max-width: 100%; height: auto; }
   </style>
 </head>
 <body>${html}</body>
@@ -114,7 +116,7 @@ function VisualizationMessage({ message }) {
         <span className="text-xs text-text-secondary">차트</span>
         {message.executionTime && <span className="text-[10px] text-text-secondary ml-auto">{message.executionTime}ms</span>}
       </div>
-      <div className={`rounded-2xl border border-border overflow-hidden bg-white transition-all ${expanded ? 'h-[480px]' : 'h-[320px]'}`}>
+      <div className={`rounded-2xl border border-border overflow-hidden bg-white transition-all max-w-[480px] ${expanded ? 'h-[480px]' : 'h-[320px]'}`}>
         {hasContent ? (
           timedOut && !iframeLoaded ? (
             <div className="flex flex-col items-center justify-center h-full gap-2">

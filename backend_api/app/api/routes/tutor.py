@@ -21,6 +21,12 @@ from app.models.tutor import TutorSession, TutorMessage
 from app.models.glossary import Glossary
 from app.schemas.tutor import TutorChatRequest, TutorChatEvent
 from app.services import get_redis_cache
+from app.services.tutor_engine import (
+    _collect_glossary_context,
+    _collect_db_context,
+    _collect_stock_context,
+)
+from app.services.stock_resolver import detect_stock_codes
 
 router = APIRouter(prefix="/tutor", tags=["AI Tutor"])
 
@@ -193,9 +199,31 @@ async def generate_tutor_response(
     except Exception:
         pass
 
+    # 출처 수집 (glossary, DB 사례/리포트, 주가/기업관계)
+    sources = []
+    extra_context = ""
+    try:
+        glossary_context, glossary_sources = await _collect_glossary_context(request.message, db)
+        db_context, db_sources = await _collect_db_context(request.message, db)
+        detected_stocks = detect_stock_codes(request.message)
+        stock_context, chart_data, stock_sources = await _collect_stock_context(
+            request.message, detected_stocks, db
+        )
+        sources = glossary_sources + db_sources + stock_sources
+        if glossary_context:
+            extra_context += f"\n\n참고할 용어 정의:{glossary_context}"
+        if db_context:
+            extra_context += f"\n\n참고할 내부 데이터:{db_context}"
+        if stock_context:
+            extra_context += f"\n\n참고할 종목 데이터:{stock_context}"
+    except Exception as e:
+        logger.warning("출처 수집 실패 (무시): %s", e)
+
     system_prompt = get_difficulty_prompt(request.difficulty)
     if page_context:
         system_prompt += page_context
+    if extra_context:
+        system_prompt += extra_context
 
     # 용어 설명은 LLM이 응답 내에서 자연스럽게 처리하도록 프롬프트에 지시
     system_prompt += "\n\n투자 용어가 나오면 괄호 안에 쉬운 설명을 덧붙여주세요. 예: PER(주가수익비율, 주가를 이익으로 나눈 값)."
@@ -305,7 +333,7 @@ async def generate_tutor_response(
                         {"role": "system", "content": (
                             "당신은 Plotly.js 차트 전문가입니다. "
                             "주어진 내용을 시각화하는 완전한 HTML을 생성하세요. "
-                            "HTML에 <script src='https://cdn.plot.ly/plotly-latest.min.js'></script>를 포함하세요. "
+                            "HTML에 <script src='https://cdn.plot.ly/plotly-2.35.2.min.js'></script>를 포함하세요. "
                             "디자인: 배경 투명, 한글 폰트, 색상 #FF6B00 주황 기반. "
                             "오직 HTML 코드만 반환하세요."
                         )},
@@ -328,7 +356,11 @@ async def generate_tutor_response(
             except Exception as viz_err:
                 logger.warning(f"시각화 생성 실패: {viz_err}")
 
-        yield f"event: done\ndata: {json.dumps({'session_id': session_id, 'total_tokens': total_tokens})}\n\n"
+        done_data = {'session_id': session_id, 'total_tokens': total_tokens}
+        if sources:
+            done_data['type'] = 'done'
+            done_data['sources'] = sources
+        yield f"event: done\ndata: {json.dumps(done_data)}\n\n"
         
     except Exception as e:
         yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"

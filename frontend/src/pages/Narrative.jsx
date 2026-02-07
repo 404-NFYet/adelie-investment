@@ -3,7 +3,7 @@
  * background → mirroring → difference → devils_advocate → simulation → result → action
  * + 모의투자 매매 기능 + 브리핑 완료 보상
  */
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
@@ -12,6 +12,7 @@ import { ChartContainer } from '../components/charts';
 import { TradeModal } from '../components';
 import { narrativeApi } from '../api';
 import { usePortfolio } from '../contexts/PortfolioContext';
+import { useTermContext } from '../contexts/TermContext';
 
 /* ── 7단계 스텝 정의 ── */
 const STEPS = [
@@ -109,7 +110,7 @@ function NarrativeCard({ content, stepConfig }) {
 }
 
 /* ── Step 7: 투자 액션 카드 (매수/매도 버튼 포함) ── */
-function ActionStep({ companies, caseId, stepData }) {
+function ActionStep({ companies, caseId, stepData, onSkip }) {
   const [tradeModal, setTradeModal] = useState({ isOpen: false, stock: null, type: 'buy' });
 
   const openTrade = (company, type) => {
@@ -184,6 +185,14 @@ function ActionStep({ companies, caseId, stepData }) {
           </div>
         ))}
       </div>
+
+      {/* 매매 건너뛰기 버튼 */}
+      <button
+        onClick={onSkip}
+        className="w-full py-3 rounded-xl text-sm font-medium text-text-secondary bg-surface border border-border hover:bg-border-light transition-colors"
+      >
+        매매 건너뛰고 완료하기
+      </button>
 
       <TradeModal
         isOpen={tradeModal.isOpen}
@@ -343,6 +352,8 @@ export default function Narrative() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { claimReward } = usePortfolio();
+  const { openTermSheet } = useTermContext();
+  const contentRef = useRef(null);
 
   const keyword = searchParams.get('keyword') || '';
   const caseId = searchParams.get('caseId') || '';
@@ -370,6 +381,21 @@ export default function Narrative() {
       .then((d) => { setData(d); setIsLoading(false); })
       .catch((e) => { console.error('Narrative fetch error:', e); setError(e.message); setIsLoading(false); });
   }, [caseId]);
+
+  // 용어 하이라이트 클릭 → TermBottomSheet 연동
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    const handler = (e) => {
+      const term = e.target.closest('.term');
+      if (term) {
+        e.preventDefault();
+        openTermSheet(term.textContent);
+      }
+    };
+    el.addEventListener('click', handler);
+    return () => el.removeEventListener('click', handler);
+  }, [openTermSheet]);
 
   // 모든 Hook은 early return 이전에 호출 (React Hooks 규칙)
   const pageTitle = useMemo(
@@ -411,6 +437,16 @@ export default function Narrative() {
         // 이미 보상 받았거나 오류 → 홈으로 이동
         navigate('/');
       }
+    }
+  };
+
+  const handleSkipTrading = async () => {
+    try {
+      const reward = await claimReward(Number(caseId));
+      setRewardData(reward);
+      setShowReward(true);
+    } catch {
+      navigate('/');
     }
   };
 
@@ -473,7 +509,7 @@ export default function Narrative() {
       </header>
 
       {/* ── 메인 콘텐츠 (애니메이션) ── */}
-      <main className="max-w-mobile mx-auto px-4 pt-2">
+      <main ref={contentRef} className="max-w-mobile mx-auto px-4 pt-2">
         <AnimatePresence mode="wait" custom={direction}>
           <motion.div
             key={currentStep}
@@ -487,7 +523,7 @@ export default function Narrative() {
           >
             {isActionStep ? (
               /* Step 7: 투자 액션 */
-              <ActionStep companies={data.related_companies || []} caseId={caseId} stepData={stepData} />
+              <ActionStep companies={data.related_companies || []} caseId={caseId} stepData={stepData} onSkip={handleSkipTrading} />
             ) : stepData ? (
               /* Steps 1-6: 분석 콘텐츠 */
               <>
