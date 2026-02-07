@@ -35,8 +35,8 @@ async def get_or_create_portfolio(db: AsyncSession, user_id: int) -> UserPortfol
         portfolio = UserPortfolio(
             user_id=user_id,
             portfolio_name="내 포트폴리오",
-            initial_cash=10_000_000,
-            current_cash=10_000_000,
+            initial_cash=1_000_000,
+            current_cash=1_000_000,
         )
         db.add(portfolio)
         await db.commit()

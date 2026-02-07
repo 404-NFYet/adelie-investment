@@ -1,15 +1,26 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { API_BASE_URL } from '../config';
 
 const TutorContext = createContext(null);
+const SESSION_KEY = 'adelie_tutor_session';
 
 export function TutorProvider({ children }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [sessionId, setSessionId] = useState(null);
+  const [sessionId, setSessionId] = useState(() => {
+    try { return localStorage.getItem(SESSION_KEY) || null; } catch { return null; }
+  });
   const [messages, setMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [contextInfo, setContextInfo] = useState(null);
   const [currentTerm, setCurrentTerm] = useState(null);
+
+  // sessionId를 localStorage에 저장
+  useEffect(() => {
+    try {
+      if (sessionId) localStorage.setItem(SESSION_KEY, sessionId);
+      else localStorage.removeItem(SESSION_KEY);
+    } catch {}
+  }, [sessionId]);
 
   const openTutor = (termOrContext = null) => {
     setIsOpen(true);
@@ -100,16 +111,26 @@ export function TutorProvider({ children }) {
               if (data.session_id) setSessionId(data.session_id);
 
               // visualization: 차트 렌더링
-              if (data.type === 'visualization') {
+              if (data.type === 'visualization' && data.content) {
                 const vizMessage = {
-                  id: Date.now() + 2,
+                  id: Date.now() + Math.random(),
                   role: 'visualization',
                   content: data.content,
                   format: data.format || 'html',
+                  executionTime: data.execution_time_ms,
                   timestamp: new Date().toISOString(),
                 };
                 setMessages((prev) => [...prev, vizMessage]);
                 continue;
+              }
+
+              // done: sources 수집
+              if (data.type === 'done' && data.sources) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantMessage.id ? { ...m, sources: data.sources } : m
+                  )
+                );
               }
 
               // error: 에러 표시
@@ -165,9 +186,22 @@ export function TutorProvider({ children }) {
     }
   }, [activeSessionId, createNewChat]);
 
-  const loadChatHistory = useCallback((id) => {
+  const loadChatHistory = useCallback(async (id) => {
     setActiveSessionId(id);
-    // TODO: API에서 세션 메시지 로드
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/tutor/sessions/${id}/messages`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const loaded = (data.messages || []).map((m, i) => ({
+        id: Date.now() + i,
+        role: m.role,
+        content: m.content,
+        timestamp: m.created_at,
+        isStreaming: false,
+      }));
+      setMessages(loaded);
+      setSessionId(id);
+    } catch {}
   }, []);
 
   const requestVisualization = useCallback((query) => {

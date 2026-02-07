@@ -1,27 +1,55 @@
 /**
  * Search.jsx - 검색 화면
+ * 인기 키워드: API에서 오늘의 키워드를 가져옴
+ * 최근 검색: localStorage에서 실제 검색 기록을 관리
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { KeywordCard } from '../components';
 import AppHeader from '../components/layout/AppHeader';
+import { keywordsApi } from '../api/keywords';
 
-const SEARCH_HISTORY = ['AI 반도체', '2차전지 구조조정', '금리 인하'];
-const POPULAR_KEYWORDS = [
-  { id: 1, category: 'TRENDING', title: '중국 CATL 공습', description: '배터리 가격 폭락과 한국 기업 영향' },
-  { id: 2, category: 'CLASSIC', title: '2008 금융위기', description: '리먼브라더스 파산과 글로벌 증시 폭락' },
-  { id: 3, category: 'INSIGHT', title: '바이오 테마주', description: '2015년 바이오 버블과 현재 비교' },
-];
+const SEARCH_HISTORY_KEY = 'adelie_search_history';
+const MAX_HISTORY = 10;
+
+function getSearchHistory() {
+  try {
+    return JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY)) || [];
+  } catch { return []; }
+}
+
+function addSearchHistory(term) {
+  const history = getSearchHistory().filter(h => h !== term);
+  history.unshift(term);
+  localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(history.slice(0, MAX_HISTORY)));
+}
 
 export default function Search() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [query, setQuery] = useState(searchParams.get('keyword') || '');
+  const [searchHistory, setSearchHistory] = useState(getSearchHistory);
+  const [popularKeywords, setPopularKeywords] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    keywordsApi.getToday()
+      .then(data => setPopularKeywords(data.keywords || []))
+      .catch(() => setPopularKeywords([]))
+      .finally(() => setLoading(false));
+  }, []);
 
   const handleSearch = (e) => {
     e.preventDefault();
     if (!query.trim()) return;
+    addSearchHistory(query.trim());
+    setSearchHistory(getSearchHistory());
     navigate(`/comparison?keyword=${encodeURIComponent(query)}`);
+  };
+
+  const clearHistory = () => {
+    localStorage.removeItem(SEARCH_HISTORY_KEY);
+    setSearchHistory([]);
   };
 
   return (
@@ -34,17 +62,28 @@ export default function Search() {
         </form>
       </div>
       <main className="container py-6">
-        <div className="mb-8">
-          <h2 className="text-lg font-semibold mb-3">최근 검색</h2>
-          <div className="flex flex-wrap gap-2">
-            {SEARCH_HISTORY.map((term, i) => <button key={i} onClick={() => navigate(`/comparison?keyword=${encodeURIComponent(term)}`)} className="tag">{term}</button>)}
+        {searchHistory.length > 0 && (
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-semibold">최근 검색</h2>
+              <button onClick={clearHistory} className="text-sm text-text-tertiary">전체 삭제</button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {searchHistory.map((term, i) => <button key={i} onClick={() => navigate(`/comparison?keyword=${encodeURIComponent(term)}`)} className="tag">{term}</button>)}
+            </div>
           </div>
-        </div>
+        )}
         <div>
-          <h2 className="text-lg font-semibold mb-3">인기 키워드</h2>
-          <div className="space-y-4">
-            {POPULAR_KEYWORDS.map((kw) => <KeywordCard key={kw.id} category={kw.category} title={kw.title} description={kw.description} onClick={() => navigate(`/comparison?keyword=${encodeURIComponent(kw.title)}`)} />)}
-          </div>
+          <h2 className="text-lg font-semibold mb-3">오늘의 키워드</h2>
+          {loading ? (
+            <p className="text-text-tertiary text-sm">불러오는 중...</p>
+          ) : popularKeywords.length > 0 ? (
+            <div className="space-y-4">
+              {popularKeywords.map((kw) => <KeywordCard key={kw.id} category={kw.category} title={kw.title} description={kw.description} onClick={() => navigate(`/comparison?keyword=${encodeURIComponent(kw.title)}`)} />)}
+            </div>
+          ) : (
+            <p className="text-text-tertiary text-sm">키워드가 없습니다.</p>
+          )}
         </div>
       </main>
     </div>

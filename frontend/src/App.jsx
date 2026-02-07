@@ -26,6 +26,7 @@ const Companies = lazy(() => import('./pages/Companies'));
 const History = lazy(() => import('./pages/History'));
 const Matching = lazy(() => import('./pages/Matching'));
 const Narrative = lazy(() => import('./pages/Narrative'));
+const Notifications = lazy(() => import('./pages/Notifications'));
 const Portfolio = lazy(() => import('./pages/Portfolio'));
 const Profile = lazy(() => import('./pages/Profile'));
 
@@ -57,6 +58,7 @@ function AppRoutes() {
         <Route path="/history" element={<ProtectedRoute><History /></ProtectedRoute>} />
         <Route path="/matching" element={<ProtectedRoute><Matching /></ProtectedRoute>} />
         <Route path="/narrative" element={<ProtectedRoute><Narrative /></ProtectedRoute>} />
+        <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
         <Route path="/portfolio" element={<ProtectedRoute><Portfolio /></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
