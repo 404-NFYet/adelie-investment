@@ -25,6 +25,7 @@ for _mod_name in ["health", "briefing", "glossary", "cases", "tutor", "pipeline"
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.services import get_redis_cache, close_redis_cache
+from app.core.scheduler import start_scheduler, stop_scheduler
 
 # --- 구조화된 로깅 설정 ---
 logging.basicConfig(
@@ -46,8 +47,11 @@ async def lifespan(app: FastAPI):
         logger.info("Redis cache connected")
     else:
         logger.warning("Redis cache not available (running without cache)")
+    # 데일리 파이프라인 스케줄러 시작
+    start_scheduler()
     yield
     # Shutdown
+    stop_scheduler()
     await close_redis_cache()
     logger.info("%s shutting down...", settings.APP_NAME)
 
