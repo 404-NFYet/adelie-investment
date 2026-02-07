@@ -1,5 +1,5 @@
 /**
- * Portfolio.jsx - 모의투자 포트폴리오 (3탭: 보유종목/자유매매/보상내역)
+ * Portfolio.jsx - 모의투자 포트폴리오 (4탭: 보유종목/자유매매/보상내역/랭킹)
  */
 import { useEffect, useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
@@ -12,7 +12,9 @@ import TradeModal from '../components/domain/TradeModal';
 import StockDetail from '../components/trading/StockDetail';
 import StockSearch from '../components/trading/StockSearch';
 import RewardCard from '../components/trading/RewardCard';
+import Leaderboard from '../components/trading/Leaderboard';
 import { API_BASE_URL } from '../config';
+import useCountUp from '../hooks/useCountUp';
 
 function formatKRW(value) {
   return new Intl.NumberFormat('ko-KR').format(Math.round(value)) + '원';
@@ -79,7 +81,7 @@ function TradeItem({ trade }) {
 
 /* ── 메인 컴포넌트 ── */
 export default function Portfolio() {
-  const { user } = useUser();
+  const { user, isLoading: isUserLoading } = useUser();
   const { portfolio, isLoading, fetchPortfolio, isGuest } = usePortfolio();
   const [activeTab, setActiveTab] = useState('holdings');
   const [trades, setTrades] = useState([]);
@@ -90,6 +92,49 @@ export default function Portfolio() {
   const [tradeModal, setTradeModal] = useState({ isOpen: false, stock: null, type: 'buy' });
 
   const userId = user?.id;
+
+  // 총 자산 count-up
+  const animatedTotal = useCountUp(portfolio?.total_value || 0, 800);
+  const animatedPL = useCountUp(portfolio?.total_profit_loss || 0, 800);
+
+  // 포트폴리오 초기 로드
+  useEffect(() => { if (userId) fetchPortfolio(); }, [userId, fetchPortfolio]);
+
+  // 거래 내역 로드
+  useEffect(() => {
+    if (activeTab === 'holdings' && trades.length === 0 && userId) {
+      portfolioApi.getTradeHistory(userId, 50).then(data => setTrades(data.trades || [])).catch(() => {});
+    }
+  }, [activeTab, userId]);
+
+  // 보상 내역 로드
+  useEffect(() => {
+    if (activeTab === 'rewards' && rewards.length === 0 && userId) {
+      portfolioApi.getRewards(userId).then(data => setRewards(data.rewards || [])).catch(() => {});
+    }
+  }, [activeTab, userId]);
+
+  // 자유매매 탭 - 랭킹 로드
+  useEffect(() => {
+    if (activeTab === 'trading' && ranking.length === 0) {
+      fetch(`${API_BASE_URL}/api/v1/trading/ranking?type=volume`).then(r => r.json()).then(d => setRanking(d.ranking || [])).catch(() => {});
+    }
+  }, [activeTab]);
+
+  const handleStockSelect = (stock) => setStockDetail({ isOpen: true, stock });
+  const handleTrade = (stock, type) => {
+    setStockDetail({ isOpen: false, stock: null });
+    setTradeModal({ isOpen: true, stock, type });
+  };
+
+  // 유저 로딩 중이면 로딩 표시
+  if (isUserLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="animate-pulse text-text-secondary">로딩 중...</div>
+      </div>
+    );
+  }
 
   // 게스트이면 인증 유도
   if (isGuest || !userId) {
@@ -109,35 +154,6 @@ export default function Portfolio() {
     );
   }
 
-  useEffect(() => { fetchPortfolio(); }, [fetchPortfolio]);
-
-  // 거래 내역 로드
-  useEffect(() => {
-    if (activeTab === 'holdings' && trades.length === 0) {
-      portfolioApi.getTradeHistory(userId, 50).then(data => setTrades(data.trades || [])).catch(() => {});
-    }
-  }, [activeTab, userId]);
-
-  // 보상 내역 로드
-  useEffect(() => {
-    if (activeTab === 'rewards' && rewards.length === 0) {
-      portfolioApi.getRewards(userId).then(data => setRewards(data.rewards || [])).catch(() => {});
-    }
-  }, [activeTab, userId]);
-
-  // 자유매매 탭 - 랭킹 로드
-  useEffect(() => {
-    if (activeTab === 'trading' && ranking.length === 0) {
-      fetch(`${API_BASE_URL}/api/v1/trading/ranking?type=volume`).then(r => r.json()).then(d => setRanking(d.ranking || [])).catch(() => {});
-    }
-  }, [activeTab]);
-
-  const handleStockSelect = (stock) => setStockDetail({ isOpen: true, stock });
-  const handleTrade = (stock, type) => {
-    setStockDetail({ isOpen: false, stock: null });
-    setTradeModal({ isOpen: true, stock, type });
-  };
-
   if (isLoading || !portfolio) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -156,9 +172,9 @@ export default function Portfolio() {
         {/* 총 자산 카드 */}
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="card text-center">
           <p className="text-xs text-text-secondary mb-1">총 자산</p>
-          <p className="text-2xl font-bold">{formatKRW(portfolio.total_value)}</p>
+          <p className="text-2xl font-bold">{formatKRW(animatedTotal)}</p>
           <p className={`text-sm font-semibold mt-1 ${isPositive ? 'text-red-500' : isNegative ? 'text-blue-500' : 'text-text-secondary'}`}>
-            {isPositive ? '+' : ''}{formatKRW(portfolio.total_profit_loss)} ({isPositive ? '+' : ''}{portfolio.total_profit_loss_pct}%)
+            {isPositive ? '+' : ''}{formatKRW(animatedPL)} ({isPositive ? '+' : ''}{portfolio.total_profit_loss_pct}%)
           </p>
           <div className="flex justify-around mt-4 pt-3 border-t border-border">
             <div><p className="text-xs text-text-secondary">보유 현금</p><p className="text-sm font-semibold">{formatKRW(portfolio.current_cash)}</p></div>
@@ -177,7 +193,7 @@ export default function Portfolio() {
                 return (
                   <div key={h.stock_code} className="flex items-center gap-2 text-xs">
                     <span className="w-16 truncate font-medium">{h.stock_name}</span>
-                    <div className="flex-1 h-4 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden relative">
+                    <div className="flex-1 h-4 bg-surface rounded-full overflow-hidden relative">
                       <div
                         className={`h-full rounded-full ${pct >= 0 ? 'bg-red-400' : 'bg-blue-400'}`}
                         style={{ width: `${barWidth}%` }}
@@ -193,12 +209,13 @@ export default function Portfolio() {
           </div>
         )}
 
-        {/* 3탭 전환 */}
+        {/* 4탭 전환 */}
         <div className="flex gap-2">
           {[
             { key: 'holdings', label: '보유 종목' },
             { key: 'trading', label: '자유 매매' },
             { key: 'rewards', label: '보상 내역' },
+            { key: 'leaderboard', label: '랭킹' },
           ].map(tab => (
             <button
               key={tab.key}
@@ -248,13 +265,13 @@ export default function Portfolio() {
                     <button
                       key={s.stock_code}
                       onClick={() => handleStockSelect(s)}
-                      className="w-full flex items-center justify-between py-2 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg px-2 transition-colors"
+                      className="w-full flex items-center justify-between py-2 hover:bg-surface rounded-lg px-2 transition-colors"
                     >
                       <div className="flex items-center gap-3">
-                        <span className="text-xs font-bold text-gray-400 w-5">{i + 1}</span>
+                        <span className="text-xs font-bold text-text-muted w-5">{i + 1}</span>
                         <div className="text-left">
                           <p className="text-sm font-medium">{s.stock_name}</p>
-                          <p className="text-xs text-gray-500">{s.stock_code}</p>
+                          <p className="text-xs text-text-secondary">{s.stock_code}</p>
                         </div>
                       </div>
                       <div className="text-right">
@@ -284,6 +301,11 @@ export default function Portfolio() {
               rewards.map(r => <RewardCard key={r.id} reward={r} />)
             )}
           </div>
+        )}
+
+        {/* 랭킹 탭 */}
+        {activeTab === 'leaderboard' && (
+          <Leaderboard userId={userId} />
         )}
       </main>
 
