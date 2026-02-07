@@ -1,15 +1,16 @@
 """포트폴리오 및 모의투자 API 라우트."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from pydantic import BaseModel
+from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.models.portfolio import SimulationTrade
-from app.models.reward import BriefingReward
+from app.models.reward import BriefingReward, DwellReward
 from app.schemas.portfolio import (
     PortfolioResponse,
     PortfolioSummary,
@@ -31,6 +32,7 @@ from app.services.portfolio_service import (
     check_and_apply_multiplier,
 )
 from app.services.stock_price_service import get_current_price, get_batch_prices
+from app.api.routes.notification import create_notification
 
 logger = logging.getLogger("narrative_api.portfolio")
 
@@ -215,6 +217,15 @@ async def claim_briefing_reward(
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
 
+    # 알림 생성
+    await create_notification(
+        db, user_id, "reward",
+        "브리핑 완료 보상",
+        f"+{reward.base_reward:,.0f}원 지급! 7일 후 수익률 보너스 기회",
+        data={"case_id": req.case_id, "amount": reward.base_reward},
+    )
+    await db.commit()
+
     return RewardResponse(
         reward_id=reward.id,
         base_reward=reward.base_reward,
@@ -249,3 +260,94 @@ async def get_rewards(user_id: int, db: AsyncSession = Depends(get_db)):
         ))
 
     return RewardsListResponse(rewards=items)
+
+
+# ──────────────────── Dwell Reward ────────────────────
+
+DWELL_REWARD_AMOUNT = 50_000  # 체류 보상 5만원
+DWELL_MIN_SECONDS = 180  # 최소 3분
+
+
+class DwellRewardRequest(BaseModel):
+    page: str
+    dwell_seconds: int
+
+
+@router.post("/{user_id}/dwell-reward")
+async def claim_dwell_reward(
+    user_id: int, req: DwellRewardRequest, db: AsyncSession = Depends(get_db)
+):
+    """체류 시간 보상 청구. 3분 이상 학습 시 5만원 지급. 페이지당 1일 1회."""
+    if req.dwell_seconds < DWELL_MIN_SECONDS:
+        raise HTTPException(status_code=400, detail="체류 시간이 부족합니다 (최소 3분)")
+
+    portfolio = await get_or_create_portfolio(db, user_id)
+
+    # 오늘 같은 페이지에서 이미 보상을 받았는지 확인
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    existing = await db.execute(
+        select(DwellReward).where(
+            and_(
+                DwellReward.user_id == user_id,
+                DwellReward.page == req.page,
+                DwellReward.created_at >= today_start,
+            )
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="오늘 이미 이 페이지에서 체류 보상을 받았습니다")
+
+    # 보상 지급
+    portfolio.current_cash += DWELL_REWARD_AMOUNT
+    reward = DwellReward(
+        user_id=user_id,
+        portfolio_id=portfolio.id,
+        page=req.page,
+        dwell_seconds=req.dwell_seconds,
+        reward_amount=DWELL_REWARD_AMOUNT,
+    )
+    db.add(reward)
+
+    # 알림 생성
+    await create_notification(
+        db, user_id, "dwell",
+        "체류 보상",
+        f"3분 이상 학습! +{DWELL_REWARD_AMOUNT:,}원 보상",
+        data={"page": req.page, "amount": DWELL_REWARD_AMOUNT},
+    )
+    await db.commit()
+
+    return {
+        "reward_amount": DWELL_REWARD_AMOUNT,
+        "page": req.page,
+        "message": f"+{DWELL_REWARD_AMOUNT:,}원 체류 보상 지급!",
+    }
+
+
+# ──────────────────── Stock Chart ────────────────────
+
+
+@router.get("/stock/chart/{stock_code}")
+async def get_stock_chart(stock_code: str, days: int = Query(20, ge=5, le=60)):
+    """종목 가격 차트 데이터 (pykrx 일봉)."""
+    try:
+        from pykrx import stock
+        end_date = datetime.now().strftime("%Y%m%d")
+        start_date = (datetime.now() - timedelta(days=days + 10)).strftime("%Y%m%d")
+        df = stock.get_market_ohlcv(start_date, end_date, stock_code)
+        if df.empty:
+            raise HTTPException(status_code=404, detail="차트 데이터 없음")
+        df = df.tail(days)
+        return {
+            "stock_code": stock_code,
+            "dates": [d.strftime("%Y-%m-%d") for d in df.index],
+            "opens": df["시가"].tolist(),
+            "highs": df["고가"].tolist(),
+            "lows": df["저가"].tolist(),
+            "closes": df["종가"].tolist(),
+            "volumes": df["거래량"].tolist(),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"차트 데이터 조회 실패: {e}")
