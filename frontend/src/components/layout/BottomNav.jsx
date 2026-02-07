@@ -1,4 +1,5 @@
 import { useNavigate, useLocation } from 'react-router-dom';
+import { motion } from 'framer-motion';
 
 export default function BottomNav() {
   const navigate = useNavigate();
@@ -10,7 +11,6 @@ export default function BottomNav() {
 
   const tabs = [
     { id: 'home', label: '홈', path: '/', onClick: () => navigate('/') },
-    { id: 'search', label: '검색', path: '/search', onClick: () => navigate('/search') },
     { id: 'portfolio', label: '투자', path: '/portfolio', onClick: () => navigate('/portfolio') },
     { id: 'tutor', label: 'AI 튜터', path: '/tutor', onClick: () => navigate('/tutor') },
     { id: 'profile', label: '마이', path: '/profile', onClick: () => navigate('/profile') },
@@ -20,11 +20,6 @@ export default function BottomNav() {
     home: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" />
-      </svg>
-    ),
-    search: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
       </svg>
     ),
     portfolio: (
@@ -53,8 +48,15 @@ export default function BottomNav() {
             <button
               key={tab.id}
               onClick={tab.onClick}
-              className={`flex flex-col items-center gap-0.5 py-1 px-3 transition-colors ${isActive ? 'text-primary' : 'text-text-secondary'}`}
+              className={`relative flex flex-col items-center gap-0.5 py-1 px-3 transition-colors ${isActive ? 'text-primary' : 'text-text-secondary'}`}
             >
+              {isActive && (
+                <motion.div
+                  layoutId="activeTab"
+                  className="absolute -top-2 left-1/2 -translate-x-1/2 w-5 h-0.5 bg-primary rounded-full"
+                  transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                />
+              )}
               {icons[tab.id]}
               <span className="text-[10px] font-medium">{tab.label}</span>
             </button>
