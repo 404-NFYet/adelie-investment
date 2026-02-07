@@ -35,7 +35,10 @@ export default function Home() {
 
   const handleKeywordSelect = (keyword) => {
     setSelectedId(keyword.id);
-    navigate(`/matching?keyword=${encodeURIComponent(keyword.title)}&caseId=${keyword.case_id}&syncRate=${keyword.sync_rate || 75}`);
+    navigate(
+      `/matching?keyword=${encodeURIComponent(keyword.title)}&caseId=${keyword.case_id}&syncRate=${keyword.sync_rate || 75}`,
+      { state: { stocks: keyword.stocks || [] } }
+    );
   };
 
   return (
