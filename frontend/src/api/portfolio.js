@@ -36,4 +36,8 @@ export const portfolioApi = {
   /** 종목 차트 데이터 */
   getStockChart: (stockCode, days = 20) =>
     fetchJson(`${API_BASE_URL}/api/v1/portfolio/stock/chart/${stockCode}?days=${days}`),
+
+  /** 리더보드 조회 */
+  getLeaderboard: (userId, limit = 20) =>
+    fetchJson(`${API_BASE_URL}/api/v1/portfolio/leaderboard/ranking?user_id=${userId}&limit=${limit}`),
 };
