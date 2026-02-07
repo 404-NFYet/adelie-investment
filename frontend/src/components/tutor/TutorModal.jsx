@@ -5,11 +5,11 @@
  */
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useTutor, useUser } from '../contexts';
-import PenguinMascot from './common/PenguinMascot';
-import Message, { TypingIndicator } from './tutor/MessageBubble';
-import SessionSidebar from './tutor/SessionSidebar';
-import ChatInput from './tutor/ChatInput';
+import { useTutor, useUser } from '../../contexts';
+import PenguinMascot from '../common/PenguinMascot';
+import Message, { TypingIndicator } from './MessageBubble';
+import SessionSidebar from './SessionSidebar';
+import ChatInput from './ChatInput';
 
 export default function TutorModal() {
   const {

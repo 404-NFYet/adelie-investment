@@ -5,7 +5,7 @@ pykrx를 사용한 주식 데이터 수집 모듈
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from pykrx import stock
@@ -24,12 +24,31 @@ def get_top_movers(date: str, top_n: int = 10) -> dict:
     Returns:
         dict: {"gainers": [...], "losers": [...]}
     """
-    # 날짜 형식 정규화
+    # 날짜 형식 정규화 + 주말/공휴일 대응
     date_str = date.replace("-", "")
+    dt = datetime.strptime(date_str, "%Y%m%d")
+    if dt.weekday() == 5:  # 토요일 -> 금요일
+        dt -= timedelta(days=1)
+        date_str = dt.strftime("%Y%m%d")
+        logger.info(f"토요일 -> 금요일로 변경: {date_str}")
+    elif dt.weekday() == 6:  # 일요일 -> 금요일
+        dt -= timedelta(days=2)
+        date_str = dt.strftime("%Y%m%d")
+        logger.info(f"일요일 -> 금요일로 변경: {date_str}")
     
     try:
         # 전 종목 등락률 조회
         df = stock.get_market_ohlcv_by_ticker(date_str, market="ALL")
+        
+        if df.empty:
+            # 공휴일 등으로 데이터 없으면 최대 5일 전까지 시도
+            for days_back in range(1, 6):
+                fallback_date = (dt - timedelta(days=days_back)).strftime("%Y%m%d")
+                df = stock.get_market_ohlcv_by_ticker(fallback_date, market="ALL")
+                if not df.empty:
+                    date_str = fallback_date
+                    logger.info(f"폴백 날짜 사용: {date_str}")
+                    break
         
         if df.empty:
             logger.warning(f"No data for date: {date_str}")
