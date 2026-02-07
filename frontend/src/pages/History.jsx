@@ -4,7 +4,7 @@
  */
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import AppHeader from '../components/AppHeader';
+import AppHeader from '../components/layout/AppHeader';
 import { keywordsApi } from '../api';
 import { PenguinMascot } from '../components';
 

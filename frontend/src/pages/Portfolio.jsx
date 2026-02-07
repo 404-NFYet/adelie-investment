@@ -8,6 +8,7 @@ import AppHeader from '../components/layout/AppHeader';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import { portfolioApi } from '../api';
 import { useUser } from '../contexts/UserContext';
+import AuthPrompt from '../components/common/AuthPrompt';
 
 function formatKRW(value) {
   return new Intl.NumberFormat('ko-KR').format(Math.round(value)) + '원';
@@ -81,8 +82,35 @@ export default function Portfolio() {
   const [activeTab, setActiveTab] = useState('holdings');
   const [trades, setTrades] = useState([]);
   const [tradesLoading, setTradesLoading] = useState(false);
+  const [showAuthPrompt, setShowAuthPrompt] = useState(false);
 
+  const isGuest = user?.isGuest || !user?.isAuthenticated;
   const userId = user?.id || 1;
+
+  // 게스트이면 회원가입 유도
+  if (isGuest && !user?.id) {
+    return (
+      <div className="min-h-screen bg-background pb-24">
+        <AppHeader title="모의투자" />
+        <main className="container py-6">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="card text-center py-12">
+            <p className="text-4xl mb-4">🐧</p>
+            <h3 className="font-bold text-lg mb-2">모의투자를 시작해볼까요?</h3>
+            <p className="text-sm text-text-secondary mb-6">
+              회원가입하면 1,000만원의 가상 투자금으로<br/>모의투자를 시작할 수 있어요!
+            </p>
+            <button
+              onClick={() => setShowAuthPrompt(true)}
+              className="btn-primary px-8 py-3 rounded-xl font-semibold"
+            >
+              시작하기
+            </button>
+          </motion.div>
+        </main>
+        <AuthPrompt isOpen={showAuthPrompt} onClose={() => setShowAuthPrompt(false)} />
+      </div>
+    );
+  }
 
   useEffect(() => {
     fetchPortfolio();

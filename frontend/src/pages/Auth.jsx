@@ -79,7 +79,7 @@ export default function Auth() {
           animate={{ opacity: 1, y: 0 }}
           onClick={() => navigate('/')}
         >
-          <h1 className="font-handwriting text-4xl text-primary">History Mirror</h1>
+          <h1 className="font-handwriting text-4xl text-primary">아델리에 투자</h1>
           <p className="text-text-secondary text-sm mt-1">역사는 반복된다</p>
         </motion.div>
 

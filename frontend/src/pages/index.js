@@ -11,3 +11,5 @@ export { default as History } from './History';
 export { default as Matching } from './Matching';
 export { default as Auth } from './Auth';
 export { default as Profile } from './Profile';
+export { default as Narrative } from './Narrative';
+export { default as Portfolio } from './Portfolio';

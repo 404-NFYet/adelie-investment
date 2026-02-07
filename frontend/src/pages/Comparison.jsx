@@ -5,7 +5,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { HighlightedText, OpinionPoll, NextStepButton } from '../components';
-import AppHeader from '../components/AppHeader';
+import AppHeader from '../components/layout/AppHeader';
 import { useTheme } from '../contexts/ThemeContext';
 import { casesApi } from '../api';
 
@@ -155,7 +155,7 @@ export default function Comparison() {
             <OpinionPoll
               question={data.poll.question}
               options={data.poll.options}
-              onSelect={(optionId) => console.log('Selected:', optionId)}
+              onSelect={() => {}}
             />
           </>
         )}

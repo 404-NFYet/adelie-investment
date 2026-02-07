@@ -4,8 +4,13 @@
 
 import { API_BASE_URL } from '../config';
 
+// Re-export module APIs
+export { portfolioApi } from './portfolio';
+export { narrativeApi } from './narrative';
+
 // Auth API (Spring Boot)
-const SPRING_URL = import.meta.env.VITE_SPRING_URL || 'http://localhost:8083';
+// 프로덕션에서는 빈 문자열 -> nginx 프록시를 통해 요청
+const SPRING_URL = import.meta.env.VITE_SPRING_URL || '';
 
 export const authApi = {
   login: (email, password) =>
@@ -13,8 +18,11 @@ export const authApi = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
-    }).then(r => {
-      if (!r.ok) throw new Error('Login failed');
+    }).then(async r => {
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        throw new Error(data.message || '로그인에 실패했습니다');
+      }
       return r.json();
     }),
 
@@ -23,8 +31,13 @@ export const authApi = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, username }),
-    }).then(r => {
-      if (!r.ok) throw new Error('Registration failed');
+    }).then(async r => {
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        // Spring Boot validation 에러 메시지 추출
+        const msg = data.errors?.[0]?.defaultMessage || data.message || '회원가입에 실패했습니다';
+        throw new Error(msg);
+      }
       return r.json();
     }),
 
