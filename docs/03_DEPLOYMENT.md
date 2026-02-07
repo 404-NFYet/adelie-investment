@@ -31,6 +31,41 @@ docker exec -e OPENAI_API_KEY="$OPENAI_API_KEY" adelie-backend-api python /app/g
 docker exec adelie-postgres psql -U adelie -d adelie -c "SELECT COUNT(*) FROM historical_cases;"
 ```
 
+### 업데이트 배포 (이미지 교체)
+
+코드 변경 후 deploy-test에 반영하는 절차입니다.
+
+```bash
+# 1. 로컬에서 이미지 빌드
+make build-frontend   # 프론트엔드 변경 시
+make build-api        # 백엔드 변경 시
+
+# 2. Docker Hub에 푸시
+make push
+
+# 3. deploy-test 서버에서 이미지 갱신
+ssh deploy-test
+cd ~/adelie-investment
+REGISTRY=dorae222 TAG=latest docker compose -f docker-compose.prod.yml pull frontend backend-api
+REGISTRY=dorae222 TAG=latest docker compose -f docker-compose.prod.yml up -d frontend backend-api
+
+# 4. 서비스 상태 확인
+docker compose -f docker-compose.prod.yml ps
+docker compose -f docker-compose.prod.yml logs backend-api --tail=30
+```
+
+### 스케줄러 확인
+
+백엔드 서비스 시작 시 데일리 파이프라인 스케줄러가 자동 등록됩니다.
+
+```bash
+# 스케줄러 등록 로그 확인
+docker compose -f docker-compose.prod.yml logs backend-api | grep "scheduler"
+# 기대: "daily pipeline scheduled for 08:00 KST (UTC 23:00, Sun-Thu)"
+```
+
+상세 내용: [08_SCHEDULER.md](08_SCHEDULER.md) 참조
+
 ### Cloudflare Tunnel 설정
 
 ```bash
