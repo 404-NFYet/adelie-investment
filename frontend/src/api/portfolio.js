@@ -32,4 +32,8 @@ export const portfolioApi = {
   /** 보상 목록 조회 */
   getRewards: (userId) =>
     fetchJson(`${API_BASE_URL}/api/v1/portfolio/${userId}/rewards`),
+
+  /** 종목 차트 데이터 */
+  getStockChart: (stockCode, days = 20) =>
+    fetchJson(`${API_BASE_URL}/api/v1/portfolio/stock/chart/${stockCode}?days=${days}`),
 };
