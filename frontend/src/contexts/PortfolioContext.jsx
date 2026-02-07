@@ -10,9 +10,12 @@ export function PortfolioProvider({ children }) {
   const [summary, setSummary] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const userId = user?.id || 1;
+  // 게스트이면 API 호출 안 함 (콘솔 404 방지)
+  const userId = user?.id;
+  const isGuest = !userId;
 
   const fetchPortfolio = useCallback(async () => {
+    if (isGuest) return;
     setIsLoading(true);
     try {
       const data = await portfolioApi.getPortfolio(userId);
@@ -22,39 +25,45 @@ export function PortfolioProvider({ children }) {
     } finally {
       setIsLoading(false);
     }
-  }, [userId]);
+  }, [userId, isGuest]);
 
   const fetchSummary = useCallback(async () => {
+    if (isGuest) return;
     try {
       const data = await portfolioApi.getPortfolioSummary(userId);
       setSummary(data);
     } catch (err) {
       console.error('Portfolio summary error:', err);
     }
-  }, [userId]);
+  }, [userId, isGuest]);
 
   const executeTrade = useCallback(async (tradeData) => {
+    if (isGuest) throw new Error('로그인이 필요합니다');
     const result = await portfolioApi.executeTrade(userId, tradeData);
     await fetchPortfolio();
     return result;
-  }, [userId, fetchPortfolio]);
+  }, [userId, isGuest, fetchPortfolio]);
 
   const claimReward = useCallback(async (caseId) => {
+    if (isGuest) return;
     const result = await portfolioApi.claimBriefingReward(userId, caseId);
     await fetchSummary();
     return result;
-  }, [userId, fetchSummary]);
+  }, [userId, isGuest, fetchSummary]);
 
-  // 초기 로드
+  // 초기 로드 (인증된 사용자만)
   useEffect(() => {
-    fetchSummary();
-  }, [fetchSummary]);
+    if (!isGuest) {
+      fetchSummary();
+    }
+  }, [fetchSummary, isGuest]);
 
   return (
     <PortfolioContext.Provider value={{
       portfolio,
       summary,
       isLoading,
+      isGuest,
       fetchPortfolio,
       fetchSummary,
       executeTrade,

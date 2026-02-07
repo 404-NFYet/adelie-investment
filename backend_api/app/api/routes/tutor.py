@@ -155,27 +155,33 @@ async def generate_tutor_response(
         yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'OpenAI API key not configured'})}\n\n"
         return
     
-    glossary_terms_to_search = []
-    common_terms = ["PER", "PBR", "EPS", "ROE", "ROA", "ETF", "배당", "시가총액"]
-    for term in common_terms:
-        if term.lower() in request.message.lower():
-            glossary_terms_to_search.append(term)
-    
-    glossary_context = ""
-    if glossary_terms_to_search:
-        yield f"event: step\ndata: {json.dumps({'type': 'tool_call', 'tool': 'get_glossary', 'args': {'terms': glossary_terms_to_search}})}\n\n"
-        
-        for term in glossary_terms_to_search:
-            result = await db.execute(
-                select(Glossary).where(Glossary.term.ilike(f"%{term}%"))
-            )
-            glossary_item = result.scalar_one_or_none()
-            if glossary_item:
-                glossary_context += f"\n{glossary_item.term}: {glossary_item.definition_short}"
-    
+    # 컨텍스트 주입 (사용자가 보고 있는 페이지 기반)
+    page_context = ""
+    if request.context_type and request.context_id:
+        try:
+            if request.context_type == "briefing":
+                ctx_result = await db.execute(text(
+                    "SELECT market_summary, top_keywords FROM daily_briefings WHERE id = :id"
+                ), {"id": request.context_id})
+                ctx_row = ctx_result.fetchone()
+                if ctx_row:
+                    page_context = f"\n\n[현재 보고 있는 브리핑]\n시장 요약: {ctx_row[0]}\n키워드: {ctx_row[1]}"
+            elif request.context_type == "case":
+                ctx_result = await db.execute(text(
+                    "SELECT title, summary FROM historical_cases WHERE id = :id"
+                ), {"id": request.context_id})
+                ctx_row = ctx_result.fetchone()
+                if ctx_row:
+                    page_context = f"\n\n[현재 보고 있는 사례]\n제목: {ctx_row[0]}\n요약: {ctx_row[1]}"
+        except Exception:
+            pass  # 컨텍스트 로드 실패해도 대화는 계속
+
     system_prompt = get_difficulty_prompt(request.difficulty)
-    if glossary_context:
-        system_prompt += f"\n\n참고할 용어 정의:{glossary_context}"
+    if page_context:
+        system_prompt += page_context
+
+    # 용어 설명은 LLM이 응답 내에서 자연스럽게 처리하도록 프롬프트에 지시
+    system_prompt += "\n\n투자 용어가 나오면 괄호 안에 쉬운 설명을 덧붙여주세요. 예: PER(주가수익비율, 주가를 이익으로 나눈 값)."
     
     # Load previous messages for multi-turn
     prev_msgs = []

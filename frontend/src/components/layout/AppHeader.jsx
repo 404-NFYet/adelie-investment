@@ -19,7 +19,7 @@ export default function AppHeader({ showBack = false, title = null }) {
               className="font-cursive text-2xl text-primary cursor-pointer" 
               onClick={() => navigate('/')}
             >
-              History Mirror
+              아델리에 투자
             </h1>
             {title && (
               <span className="text-sm text-text-secondary ml-1">/ {title}</span>
