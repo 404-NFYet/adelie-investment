@@ -8,7 +8,6 @@ import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { SyncRate, HighlightedText } from '../components';
 import AppHeader from '../components/layout/AppHeader';
-import TradeModal from '../components/domain/TradeModal';
 import { casesApi } from '../api';
 
 // <mark class='term'>...</mark> 태그 제거 유틸리티
@@ -29,8 +28,6 @@ export default function Matching() {
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [tradeModal, setTradeModal] = useState({ isOpen: false, stock: null, type: 'buy' });
-
   useEffect(() => {
     const fetchMatching = async () => {
       if (!caseId) {
@@ -190,16 +187,6 @@ export default function Matching() {
                           </p>
                         )}
                       </div>
-                      <button
-                        onClick={() => setTradeModal({
-                          isOpen: true,
-                          stock: { stock_code: stock.stock_code, stock_name: stock.stock_name || stock.stock_code },
-                          type: 'buy',
-                        })}
-                        className="flex-shrink-0 px-3 py-1.5 bg-green-500 text-white text-xs font-semibold rounded-lg hover:bg-green-600 transition-colors"
-                      >
-                        매수
-                      </button>
                     </div>
                   ))}
                 </div>
@@ -216,7 +203,7 @@ export default function Matching() {
               <p className="text-secondary text-sm mb-4">어떻게 전개될지 궁금하신가요?</p>
               <button
                 className="btn-primary w-full max-w-xs"
-                onClick={() => navigate(`/story?caseId=${caseId}`)}
+                onClick={() => navigate(`/narrative?caseId=${caseId}&keyword=${encodeURIComponent(keyword)}`)}
               >
                 NEXT STEP →
               </button>
@@ -225,14 +212,6 @@ export default function Matching() {
         )}
       </main>
 
-      {/* Trade Modal */}
-      <TradeModal
-        isOpen={tradeModal.isOpen}
-        onClose={() => setTradeModal({ isOpen: false, stock: null, type: 'buy' })}
-        stock={tradeModal.stock}
-        tradeType={tradeModal.type}
-        caseId={caseId}
-      />
     </div>
   );
 }
