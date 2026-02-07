@@ -76,7 +76,7 @@ async def get_today_keywords(
             if case:
                 case_kw = case.keywords if isinstance(case.keywords, dict) else json.loads(case.keywords) if case.keywords else {}
                 comparison = case_kw.get("comparison", {})
-                sync_rate = case_kw.get("sync_rate", 70)
+                sync_rate = comparison.get("sync_rate", 0)
                 
                 case_info = {
                     "case_id": case.id,
@@ -88,26 +88,17 @@ async def get_today_keywords(
                         "title": case.title,
                         "label": comparison.get("past_label", str(case.event_year)),
                     },
-                    "present_label": comparison.get("present_label", "2026"),
+                    "present_label": comparison.get("present_label", ""),
                 }
         
-        # stocks 데이터 정규화: 문자열 배열 → 객체 배열 호환
-        raw_stocks = kw.get("stocks", [])
-        if raw_stocks and isinstance(raw_stocks[0], str):
-            # 레거시: ["005930", "000660"] → 객체로 변환
-            stocks_normalized = [
-                {"stock_code": code, "stock_name": code, "reason": ""}
-                for code in raw_stocks
-            ]
-        else:
-            stocks_normalized = raw_stocks
+        stocks = kw.get("stocks", [])
 
         keywords_with_cases.append({
             "id": i + 1,
             "category": kw.get("category", "GENERAL"),
             "title": kw_title,
             "description": kw.get("description", ""),
-            "stocks": stocks_normalized,
+            "stocks": stocks,
             **(case_info or {}),
         })
     
