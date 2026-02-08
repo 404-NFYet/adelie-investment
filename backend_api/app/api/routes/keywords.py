@@ -91,12 +91,23 @@ async def get_today_keywords(
                     "present_label": comparison.get("present_label", "2026"),
                 }
         
+        # stocks 데이터 정규화: 문자열 배열 → 객체 배열 호환
+        raw_stocks = kw.get("stocks", [])
+        if raw_stocks and isinstance(raw_stocks[0], str):
+            # 레거시: ["005930", "000660"] → 객체로 변환
+            stocks_normalized = [
+                {"stock_code": code, "stock_name": code, "reason": ""}
+                for code in raw_stocks
+            ]
+        else:
+            stocks_normalized = raw_stocks
+
         keywords_with_cases.append({
             "id": i + 1,
             "category": kw.get("category", "GENERAL"),
             "title": kw_title,
             "description": kw.get("description", ""),
-            "stocks": kw.get("stocks", []),
+            "stocks": stocks_normalized,
             **(case_info or {}),
         })
     
