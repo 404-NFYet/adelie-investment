@@ -23,38 +23,55 @@ MAX_RETRIES = 2
 
 
 def generate_historical_case(keyword_title: str, category: str, stocks: list[str]) -> dict:
-    """LLM으로 역사적 유사 사례 생성. 실패 시 예외를 그대로 raise한다."""
+    """LLM으로 역사적 유사 사례 + 7단계 narrative 생성. 실패 시 예외를 그대로 raise한다."""
     clean_title = strip_marks(keyword_title)
 
-    prompt = f"""당신은 한국 주식 시장 역사 전문가입니다.
+    prompt = f"""당신은 친근한 투자 메이트 '아델리'입니다. 한국 주식 시장 역사 전문가이기도 합니다.
 현재 키워드: "{clean_title}" (카테고리: {category})
 관련 종목 코드: {stocks}
 
-이 키워드와 유사한 과거 한국 주식 시장의 역사적 사례를 생성해주세요.
+이 키워드와 유사한 과거 한국 주식 시장의 역사적 사례를 생성하고, 7단계 내러티브를 작성해주세요.
 
-다음 JSON 형식으로 응답해주세요:
+7단계 섹션:
+1. background — 현재 배경 (지금 왜 이게 이슈인지)
+2. mirroring — 과거 유사 사례 (어떤 시절과 비슷한지)
+3. difference — 지금은 이게 달라요 (과거와의 차이)
+4. devils_advocate — 반대 시나리오 3가지 (이런 관점도 있어요)
+5. simulation — 모의 투자 (과거 사례로 시뮬레이션)
+6. result — 결과 보고 (시뮬레이션 결과)
+7. action — 투자 액션 (실전 전략)
+
+규칙:
+- 각 섹션 content는 2~3문장, 핵심 용어를 <mark class="term">단어</mark>로 감싸기 (섹션당 1~2개)
+- 모든 섹션에 Plotly chart 포함: data:[{{x:[],y:[],type,name}}], layout:{{title}}
+- devils_advocate의 bullets는 반드시 3개 (반대 포인트)
+- simulation에는 투자 금액, 기간, 수익률이 포함된 chart
+- 실제 역사적 사건 기반, 2000-2023년 사이
+
+다음 JSON 형식으로 응답:
 {{
-    "title": "과거 사례 제목 (예: 2000년 IT 버블과 바이오주 급등의 유사성)",
-    "event_year": 연도 (숫자, 예: 2000),
-    "summary": "2-3문장의 요약",
-    "full_content": "3-5문단의 상세 스토리텔링 (과거 사건 설명, 현재와의 유사점, 투자자 교훈)",
-    "sync_rate": 유사도 (60-90 사이 숫자),
-    "past_label": "과거 라벨 (예: IT 버블)",
-    "present_label": "현재 라벨 (예: 바이오 급등)",
-    "past_metric": {{
-        "value": 과거 지표값 (숫자),
-        "company": "과거 대표 종목명",
-        "metric_name": "지표명 (예: 등락률, PER)"
+    "title": "과거 사례 제목",
+    "event_year": 연도(숫자),
+    "summary": "2-3문장 요약",
+    "full_content": "3-5문단 상세 스토리텔링",
+    "sync_rate": 유사도(60-90),
+    "past_label": "과거 라벨",
+    "present_label": "현재 라벨",
+    "narrative": {{
+        "background": {{"bullets": ["포인트1", "포인트2"], "content": "현재 배경 설명", "chart": {{"data": [{{"x": [], "y": [], "type": "bar", "name": ""}}], "layout": {{"title": ""}}}}}},
+        "mirroring": {{"bullets": [], "content": "과거 유사 사례 설명", "chart": {{"data": [], "layout": {{}}}}}},
+        "difference": {{"bullets": [], "content": "과거와 현재 차이 설명", "chart": {{"data": [], "layout": {{}}}}}},
+        "devils_advocate": {{"bullets": ["반대포인트1", "반대포인트2", "반대포인트3"], "content": "반대 시나리오 설명", "chart": {{"data": [], "layout": {{}}}}}},
+        "simulation": {{"bullets": [], "content": "시뮬레이션 설명", "chart": {{"data": [], "layout": {{}}}}}},
+        "result": {{"bullets": [], "content": "결과 설명", "chart": {{"data": [], "layout": {{}}}}}},
+        "action": {{"bullets": [], "content": "투자 전략 설명"}}
     }},
-    "present_metric": {{
-        "value": 현재 추정 지표값 (숫자),
-        "metric_name": "지표명"
-    }},
-    "key_insight": "핵심 인사이트 (한 문장)",
-    "glossary_terms": ["관련 용어1", "관련 용어2"]
+    "past_metric": {{"value": 숫자, "company": "종목명", "metric_name": "지표명"}},
+    "present_metric": {{"value": 숫자, "metric_name": "지표명"}},
+    "key_insight": "핵심 인사이트",
+    "glossary_terms": ["용어1", "용어2"]
 }}
 
-실제 역사적 사건을 기반으로 작성하되, 2000-2023년 사이의 사건이어야 합니다.
 JSON만 출력하세요."""
 
     last_error = None
@@ -64,7 +81,7 @@ JSON만 출력하세요."""
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.7,
-                max_tokens=2000,
+                max_tokens=4000,
             )
             content = response.choices[0].message.content.strip()
 
@@ -165,7 +182,7 @@ async def main():
             failed.append(kw_title)
             continue
 
-        # historical_cases에 삽입
+        # historical_cases에 삽입 (7단계 narrative 포함)
         keywords_jsonb = json.dumps({
             "comparison": {
                 "past_metric": case_data.get("past_metric", {}),
@@ -174,6 +191,7 @@ async def main():
                 "past_label": case_data.get("past_label", "과거"),
                 "present_label": case_data.get("present_label", "현재"),
             },
+            "narrative": case_data.get("narrative", {}),
             "glossary_terms": case_data.get("glossary_terms", []),
             "key_insight": case_data.get("key_insight", "")
         }, ensure_ascii=False)
