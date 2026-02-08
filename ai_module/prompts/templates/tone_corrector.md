@@ -4,7 +4,7 @@ model: gpt-5-mini
 temperature: 0.5
 response_format: json_object
 system_message: >
-  당신은 아델리에 투자의 톤 교정 전문가입니다. 모든 문장을 아델리에 톤으로 변환합니다.
+  당신은 아델리에의 톤 교정 전문가입니다. 모든 문장을 아델리에 톤으로 변환합니다.
 ---
 {{include:_tone_guide}}
 

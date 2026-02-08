@@ -6,7 +6,7 @@ thinking: true
 thinking_effort: medium
 response_format: json_object
 system_message: >
-  당신은 투자 내러티브 기획자입니다. 7단계 스토리 구조를 설계합니다.
+  당신은 금융 학습 내러티브 기획자입니다. 7단계 스토리 구조를 설계합니다.
 ---
 {{include:_tone_guide}}
 
@@ -28,8 +28,8 @@ system_message: >
   "mirroring": { "outline": "과거 사례 1문장 요약", "key_data": ["핵심 비교 포인트"] },
   "difference": { "outline": "차이점 1문장 요약", "key_data": ["핵심 차이 3가지"] },
   "devils_advocate": { "outline": "반대 시나리오 요약", "contrarian_points": ["반대 포인트 3가지"] },
-  "simulation": { "outline": "모의투자 설정", "parameters": {"initial": 10000000, "period": "6개월"} },
+  "simulation": { "outline": "포트폴리오 시뮬레이션 설정", "parameters": {"initial": 10000000, "period": "6개월"} },
   "result": { "outline": "결과 요약", "insights": ["핵심 인사이트"] },
-  "action": { "outline": "투자 액션 요약", "checklist": ["체크리스트 항목"] }
+  "action": { "outline": "실전 액션 요약", "checklist": ["체크리스트 항목"] }
 }
 ```
