@@ -162,7 +162,10 @@ function ActionStep({ companies, caseId, stepData, onSkip }) {
               </div>
               <div className="flex-1">
                 <p className="font-bold text-sm">{c.stock_name}</p>
-                <p className="text-xs text-text-secondary">{c.stock_code} {c.relation_type ? `| ${c.relation_type}` : ''}</p>
+                <p className="text-xs text-text-secondary">
+                  {c.relation_type === 'main_subject' ? '핵심 종목' : c.relation_type === 'related' ? '관련 종목' : c.relation_type ? '연관 종목' : ''}
+                  {c.stock_code ? <span className="text-text-muted ml-1">{c.stock_code}</span> : ''}
+                </p>
               </div>
             </div>
             {(c.impact_description || c.relation_detail) && (
@@ -456,7 +459,7 @@ export default function Narrative() {
   };
 
   return (
-    <div className="min-h-screen bg-background pb-24">
+    <div className="bg-background pb-24">
       {/* ── 플로팅 헤더 ── */}
       <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-md">
         <div className="max-w-mobile mx-auto px-4 pt-4 pb-3">
