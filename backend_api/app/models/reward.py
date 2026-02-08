@@ -44,6 +44,28 @@ class BriefingReward(Base):
     )
 
 
+class DwellReward(Base):
+    """체류 시간 보상 모델. 3분 이상 학습 시 5만원 지급."""
+
+    __tablename__ = "dwell_rewards"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    portfolio_id: Mapped[int] = mapped_column(ForeignKey("user_portfolios.id"), nullable=False)
+    page: Mapped[str] = mapped_column(String(50), nullable=False, comment="narrative, story, comparison")
+    dwell_seconds: Mapped[int] = mapped_column(Integer, nullable=False, comment="체류 시간 (초)")
+    reward_amount: Mapped[int] = mapped_column(BigInteger, default=50_000, comment="보상 금액 (원)")
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship()
+    portfolio: Mapped["UserPortfolio"] = relationship()
+
+    __table_args__ = (
+        Index("ix_dwell_rewards_user_id", "user_id"),
+        Index("ix_dwell_rewards_created_at", "created_at"),
+    )
+
+
 # Forward references
 from app.models.user import User
 from app.models.portfolio import UserPortfolio

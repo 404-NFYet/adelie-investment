@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import uuid4
 
-from sqlalchemy import String, Text, ForeignKey, Index
+from sqlalchemy import Boolean, Integer, String, Text, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -23,6 +23,10 @@ class TutorSession(Base):
         String(50), comment="briefing, case, comparison, glossary"
     )
     context_id: Mapped[Optional[int]] = mapped_column(comment="관련 컨텐츠 ID")
+    title: Mapped[Optional[str]] = mapped_column(String(200), nullable=True, comment="세션 제목")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, comment="활성 세션 여부")
+    message_count: Mapped[int] = mapped_column(Integer, default=0, comment="메시지 수")
+    last_message_at: Mapped[Optional[datetime]] = mapped_column(nullable=True, comment="마지막 메시지 시각")
     started_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     ended_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
     
@@ -45,6 +49,7 @@ class TutorMessage(Base):
     session_id: Mapped[int] = mapped_column(ForeignKey("tutor_sessions.id"), nullable=False)
     role: Mapped[str] = mapped_column(String(20), nullable=False, comment="user, assistant")
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    message_type: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, comment="text, visualization")
     term_asked: Mapped[Optional[str]] = mapped_column(String(100), comment="질문한 용어 (있는 경우)")
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     
