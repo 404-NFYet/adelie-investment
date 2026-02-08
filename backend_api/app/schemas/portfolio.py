@@ -119,3 +119,24 @@ class RewardItem(BaseModel):
 class RewardsListResponse(BaseModel):
     """보상 목록."""
     rewards: list[RewardItem]
+
+
+# --- Leaderboard ---
+
+class LeaderboardEntry(BaseModel):
+    """리더보드 항목."""
+    rank: int
+    user_id: int
+    username: str
+    total_value: float
+    profit_loss: float
+    profit_loss_pct: float
+    is_me: bool = False
+
+
+class LeaderboardResponse(BaseModel):
+    """리더보드 응답."""
+    my_rank: Optional[int] = None
+    my_entry: Optional[LeaderboardEntry] = None
+    rankings: list[LeaderboardEntry]
+    total_users: int
