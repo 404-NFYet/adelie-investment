@@ -32,12 +32,21 @@ make dev-frontend     # 프론트만
 make dev-api          # FastAPI만
 ```
 
-## 6. 접속 URL
+## 6. 데이터 초기화 (최초 1회)
+```bash
+# 1. 시장 데이터 수집 (키워드 + 종목)
+docker exec adelie-backend-api python /app/scripts/seed_fresh_data.py
+
+# 2. 역사적 사례 생성 (LLM 기반)
+docker exec -e OPENAI_API_KEY="$OPENAI_API_KEY" adelie-backend-api python /app/generate_cases.py
+```
+
+## 7. 접속 URL
 - 프론트엔드: http://localhost:3001
 - FastAPI Docs: http://localhost:8082/docs
 - **데모 사이트**: https://demo.adelie-invest.com
 
-## 7. 이미지 빌드/배포
+## 8. 이미지 빌드/배포
 ```bash
 make build TAG=v1.0   # Docker 이미지 빌드
 make push TAG=v1.0    # Docker Hub 푸시
