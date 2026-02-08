@@ -1,13 +1,14 @@
 /**
  * Matching.jsx - 매칭 완료 화면
  * 키워드 선택 후 과거-현재 유사도 매칭 결과를 표시
+ * 관련 기업 섹션 + 모의 투자 연동
  */
 import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { SyncRate, HighlightedText } from '../components';
 import AppHeader from '../components/layout/AppHeader';
-import { useTheme } from '../contexts/ThemeContext';
+import TradeModal from '../components/domain/TradeModal';
 import { casesApi } from '../api';
 
 // <mark class='term'>...</mark> 태그 제거 유틸리티
@@ -18,15 +19,17 @@ const stripMarkTags = (text) => {
 
 export default function Matching() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const keyword = searchParams.get('keyword') || '';
   const caseId = searchParams.get('caseId') || '';
   const syncRate = parseInt(searchParams.get('syncRate') || '75', 10);
-  const { isDarkMode, toggleTheme } = useTheme();
+  const stocks = location.state?.stocks || [];
 
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [tradeModal, setTradeModal] = useState({ isOpen: false, stock: null, type: 'buy' });
 
   useEffect(() => {
     const fetchMatching = async () => {
@@ -148,7 +151,7 @@ export default function Matching() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.6 }}
-              className="w-full bg-surface rounded-card p-5 mb-8"
+              className="w-full bg-surface rounded-card p-5 mb-6"
             >
               <h3 className="text-xs font-semibold text-secondary tracking-widest mb-3">
                 KEY INSIGHT
@@ -157,6 +160,51 @@ export default function Matching() {
                 <HighlightedText content={data.keyInsight} />
               </p>
             </motion.div>
+
+            {/* 관련 기업 섹션 */}
+            {stocks.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.7 }}
+                className="w-full mb-8"
+              >
+                <h3 className="text-xs font-semibold text-secondary tracking-widest mb-3">
+                  RELATED COMPANIES
+                </h3>
+                <div className="space-y-3">
+                  {stocks.map((stock, idx) => (
+                    <div key={stock.stock_code || idx} className="card flex items-start gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-bold text-sm text-text-primary">
+                            {stock.stock_name || stock.stock_code}
+                          </span>
+                          <span className="text-xs text-text-muted">
+                            {stock.stock_code}
+                          </span>
+                        </div>
+                        {stock.reason && (
+                          <p className="text-xs text-text-secondary leading-relaxed">
+                            {stock.reason}
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => setTradeModal({
+                          isOpen: true,
+                          stock: { stock_code: stock.stock_code, stock_name: stock.stock_name || stock.stock_code },
+                          type: 'buy',
+                        })}
+                        className="flex-shrink-0 px-3 py-1.5 bg-green-500 text-white text-xs font-semibold rounded-lg hover:bg-green-600 transition-colors"
+                      >
+                        매수
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
 
             {/* 하단 질문 + 버튼 */}
             <motion.div
@@ -176,6 +224,15 @@ export default function Matching() {
           </>
         )}
       </main>
+
+      {/* Trade Modal */}
+      <TradeModal
+        isOpen={tradeModal.isOpen}
+        onClose={() => setTradeModal({ isOpen: false, stock: null, type: 'buy' })}
+        stock={tradeModal.stock}
+        tradeType={tradeModal.type}
+        caseId={caseId}
+      />
     </div>
   );
 }
