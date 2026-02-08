@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { SyncRate, HighlightedText } from '../components';
-import AppHeader from '../components/AppHeader';
+import AppHeader from '../components/layout/AppHeader';
 import { useTheme } from '../contexts/ThemeContext';
 import { casesApi } from '../api';
 

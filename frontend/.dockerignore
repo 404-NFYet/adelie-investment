@@ -1,0 +1,12 @@
+node_modules
+dist
+.env
+.env.*
+*.log
+.git
+.gitignore
+e2e
+playwright.config.js
+playwright-report
+test-results
+README.md

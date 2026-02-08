@@ -12,7 +12,16 @@ from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
-from app.api.routes import health, briefing, glossary, cases, tutor, pipeline, highlight, keywords
+import importlib
+import logging as _logging
+
+# 각 라우터를 개별적으로 import (Docker 환경에서 일부 모듈 미존재 시 graceful 처리)
+_route_modules = {}
+for _mod_name in ["health", "briefing", "glossary", "cases", "tutor", "pipeline", "highlight", "keywords", "feedback", "trading", "narrative", "portfolio", "tutor_sessions", "tutor_explain", "visualization"]:
+    try:
+        _route_modules[_mod_name] = importlib.import_module(f"app.api.routes.{_mod_name}")
+    except Exception as _e:
+        _logging.getLogger("startup").warning(f"라우터 '{_mod_name}' 로드 실패 (무시): {_e}")
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.services import get_redis_cache, close_redis_cache
@@ -114,15 +123,30 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
-app.include_router(health.router, prefix="/api/v1", tags=["Health"])
-app.include_router(briefing.router, prefix="/api/v1", tags=["Briefing"])
-app.include_router(glossary.router, prefix="/api/v1", tags=["Glossary"])
-app.include_router(cases.router, prefix="/api/v1", tags=["Cases"])
-app.include_router(tutor.router, prefix="/api/v1", tags=["AI Tutor"])
-app.include_router(pipeline.router, prefix="/api/v1", tags=["Pipeline"])
-app.include_router(highlight.router, prefix="/api/v1", tags=["Highlighting"])
-app.include_router(keywords.router, prefix="/api/v1", tags=["Keywords"])
+# Include routers (로드 성공한 모듈만 등록)
+_router_config = {
+    "health": ("Health", "/api/v1"),
+    "briefing": ("Briefing", "/api/v1"),
+    "glossary": ("Glossary", "/api/v1"),
+    "cases": ("Cases", "/api/v1"),
+    "tutor": ("AI Tutor", "/api/v1"),
+    "pipeline": ("Pipeline", "/api/v1"),
+    "highlight": ("Highlighting", "/api/v1"),
+    "keywords": ("Keywords", "/api/v1"),
+    "feedback": ("Feedback", "/api/v1"),
+    "trading": ("Trading", "/api/v1"),
+    "narrative": ("Narrative", "/api/v1"),
+    "portfolio": ("Portfolio", "/api/v1"),
+    "tutor_sessions": ("Tutor Sessions", "/api/v1"),
+    "tutor_explain": ("Tutor Explain", "/api/v1"),
+    "visualization": ("Visualization", "/api/v1"),
+}
+for _name, (_tag, _prefix) in _router_config.items():
+    _mod = _route_modules.get(_name)
+    if _mod and hasattr(_mod, "router"):
+        app.include_router(_mod.router, prefix=_prefix, tags=[_tag])
+    else:
+        logger.warning(f"라우터 '{_name}' 건너뜀 (미로드)")
 
 
 @app.get("/")
@@ -135,7 +159,7 @@ async def root():
     }
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  
     import uvicorn
 
     uvicorn.run(

@@ -4,7 +4,7 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { KeywordCard } from '../components';
-import AppHeader from '../components/AppHeader';
+import AppHeader from '../components/layout/AppHeader';
 
 const SEARCH_HISTORY = ['AI 반도체', '2차전지 구조조정', '금리 인하'];
 const POPULAR_KEYWORDS = [
