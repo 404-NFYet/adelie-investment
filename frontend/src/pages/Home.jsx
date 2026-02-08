@@ -4,9 +4,11 @@
  */
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { KeywordCard, PenguinMascot } from '../components';
 import AppHeader from '../components/layout/AppHeader';
 import { keywordsApi } from '../api';
+import useCountUp from '../hooks/useCountUp';
 
 export default function Home() {
   const navigate = useNavigate();
@@ -14,6 +16,8 @@ export default function Home() {
   const [selectedId, setSelectedId] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  const animatedCount = useCountUp(keywords.length, 600);
 
   useEffect(() => {
     const fetchKeywords = async () => {
@@ -53,7 +57,7 @@ export default function Home() {
           <p className="text-secondary text-sm">
             {new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}
           </p>
-          <h2 className="text-2xl font-bold mt-1">{keywords.length}가지 키워드</h2>
+          <h2 className="text-2xl font-bold mt-1">{Math.round(animatedCount)}가지 키워드</h2>
           <p className="text-secondary text-sm mt-2 leading-relaxed whitespace-pre-line">
             {'현재 시장에서 가장 뜨거운 주제를 선택하여\n과거의 정답지에서 힌트를 얻으세요.'}
           </p>
@@ -78,23 +82,29 @@ export default function Home() {
           <PenguinMascot variant="loading" message="오늘의 키워드를 준비 중입니다..." />
         )}
 
-        {/* Keyword Cards */}
+        {/* Keyword Cards - stagger 입장 */}
         {!isLoading && !error && (
           <div className="space-y-4">
-            {keywords.map((keyword) => (
-              <KeywordCard
+            {keywords.map((keyword, index) => (
+              <motion.div
                 key={keyword.id}
-                category={keyword.category}
-                title={keyword.title}
-                description={keyword.description}
-                selected={selectedId === keyword.id}
-                onClick={() => setSelectedId(keyword.id)}
-              />
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.08, duration: 0.4 }}
+              >
+                <KeywordCard
+                  category={keyword.category}
+                  title={keyword.title}
+                  description={keyword.description}
+                  selected={selectedId === keyword.id}
+                  onClick={() => setSelectedId(keyword.id)}
+                />
+              </motion.div>
             ))}
           </div>
         )}
 
-        {/* START BRIEFING 버튼 - 키워드 선택 시 표시 (네비바 위에 위치) */}
+        {/* START BRIEFING 버튼 */}
         {selectedId && (
           <div className="flex justify-center mt-6 mb-4">
             <button
