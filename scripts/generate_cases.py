@@ -19,11 +19,14 @@ def strip_marks(text: str) -> str:
     return re.sub(r"<mark\s+class=['\"]term['\"]>(.*?)</mark>", r"\1", text)
 
 
+MAX_RETRIES = 2
+
+
 def generate_historical_case(keyword_title: str, category: str, stocks: list[str]) -> dict:
-    """LLM으로 역사적 유사 사례 생성."""
+    """LLM으로 역사적 유사 사례 생성. 실패 시 예외를 그대로 raise한다."""
     clean_title = strip_marks(keyword_title)
-    
-    prompt = f"""당신은 한국 주식 시장 역사 전문가입니다. 
+
+    prompt = f"""당신은 한국 주식 시장 역사 전문가입니다.
 현재 키워드: "{clean_title}" (카테고리: {category})
 관련 종목 코드: {stocks}
 
@@ -54,39 +57,30 @@ def generate_historical_case(keyword_title: str, category: str, stocks: list[str
 실제 역사적 사건을 기반으로 작성하되, 2000-2023년 사이의 사건이어야 합니다.
 JSON만 출력하세요."""
 
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=2000,
-        )
-        content = response.choices[0].message.content.strip()
-        
-        # JSON 파싱 (코드 블록 제거)
-        if content.startswith("```"):
-            content = content.split("```")[1]
-            if content.startswith("json"):
-                content = content[4:]
-        content = content.strip()
-        
-        return json.loads(content)
-    except Exception as e:
-        print(f"  [ERROR] LLM 생성 실패: {e}")
-        # 기본값 반환
-        return {
-            "title": f"{clean_title}와 유사한 과거 사례",
-            "event_year": 2008,
-            "summary": "과거 유사한 시장 상황이 있었습니다.",
-            "full_content": "상세 내용은 추후 업데이트 예정입니다.",
-            "sync_rate": 70,
-            "past_label": "과거 사례",
-            "present_label": "현재 상황",
-            "past_metric": {"value": 50, "company": "과거 기업", "metric_name": "등락률"},
-            "present_metric": {"value": 40, "metric_name": "등락률"},
-            "key_insight": "역사는 반복됩니다.",
-            "glossary_terms": []
-        }
+    last_error = None
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
+                max_tokens=2000,
+            )
+            content = response.choices[0].message.content.strip()
+
+            # JSON 파싱 (코드 블록 제거)
+            if content.startswith("```"):
+                content = content.split("```")[1]
+                if content.startswith("json"):
+                    content = content[4:]
+            content = content.strip()
+
+            return json.loads(content)
+        except Exception as e:
+            last_error = e
+            print(f"  [RETRY {attempt}/{MAX_RETRIES}] {e}")
+
+    raise RuntimeError(f"LLM 생성 {MAX_RETRIES}회 실패: {last_error}")
 
 
 async def main():
@@ -138,17 +132,39 @@ async def main():
     print(f"Briefing ID: {briefing_id}, 날짜: {briefing_date}")
     print(f"키워드 {len(keywords)}개 발견")
     
-    # 3. 각 키워드에 대해 historical_case 생성
+    # 3. OPENAI_API_KEY 확인
+    if not os.getenv("OPENAI_API_KEY"):
+        print("[FATAL] OPENAI_API_KEY 환경변수가 설정되지 않았습니다.")
+        await conn.close()
+        raise SystemExit(1)
+
+    # 4. 각 키워드에 대해 historical_case 생성
+    failed = []
     for i, kw in enumerate(keywords):
-        kw_title = kw.get("title", f"키워드 {i+1}")
-        kw_category = kw.get("category", "GENERAL")
+        kw_title = kw.get("title", "")
+        kw_category = kw.get("category", "")
         kw_stocks = kw.get("stocks", [])
-        
+
+        if not kw_title:
+            print(f"\n[{i+1}/{len(keywords)}] SKIP - 제목 없음")
+            continue
+
         print(f"\n[{i+1}/{len(keywords)}] {kw_title}")
-        
+
+        # stocks에서 코드 추출
+        stock_codes = [
+            s.get("stock_code", "") if isinstance(s, dict) else s
+            for s in kw_stocks
+        ]
+
         # LLM으로 사례 생성
-        case_data = generate_historical_case(kw_title, kw_category, kw_stocks)
-        
+        try:
+            case_data = generate_historical_case(kw_title, kw_category, stock_codes)
+        except RuntimeError as e:
+            print(f"  [SKIP] {e}")
+            failed.append(kw_title)
+            continue
+
         # historical_cases에 삽입
         keywords_jsonb = json.dumps({
             "comparison": {
@@ -177,7 +193,7 @@ async def main():
         print(f"  → historical_cases: id={case_id}")
         
         # case_matches에 삽입
-        stock_code = kw_stocks[0] if kw_stocks else None
+        stock_code = stock_codes[0] if stock_codes else None
         match_id = await conn.fetchval("""
             INSERT INTO case_matches
             (current_keyword, current_stock_code, matched_case_id, similarity_score, match_reason, matched_at)
@@ -193,12 +209,17 @@ async def main():
         print(f"  → case_matches: id={match_id}")
         
         # case_stock_relations에 삽입 (키워드 관련 종목들)
-        for j, stock_code in enumerate(kw_stocks):
-            from pykrx import stock
-            try:
-                stock_name = stock.get_market_ticker_name(stock_code) or f"종목 {stock_code}"
-            except Exception:
-                stock_name = f"종목 {stock_code}"
+        for j, sc in enumerate(stock_codes):
+            stock_code = sc
+            # stocks가 객체 배열이면 stock_name 직접 사용
+            if j < len(kw_stocks) and isinstance(kw_stocks[j], dict):
+                stock_name = kw_stocks[j].get("stock_name", f"종목 {stock_code}")
+            else:
+                from pykrx import stock as pykrx_stock
+                try:
+                    stock_name = pykrx_stock.get_market_ticker_name(stock_code) or f"종목 {stock_code}"
+                except Exception:
+                    stock_name = f"종목 {stock_code}"
             
             relation_type = "main_subject" if j == 0 else "related"
             rel_id = await conn.fetchval("""
@@ -224,8 +245,13 @@ async def main():
     print(f"historical_cases: {final_cases}건")
     print(f"case_matches: {final_matches}건")
     print(f"case_stock_relations: {final_relations}건")
-    
+    if failed:
+        print(f"실패 ({len(failed)}건): {failed}")
+
     await conn.close()
+
+    if failed:
+        raise SystemExit(f"{len(failed)}건 실패")
 
 
 if __name__ == "__main__":
