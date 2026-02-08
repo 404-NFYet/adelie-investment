@@ -5,6 +5,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { portfolioApi } from '../../api';
+import MiniChart from './MiniChart';
 
 function formatKRW(val) {
   return new Intl.NumberFormat('ko-KR').format(Math.round(val)) + '원';
@@ -12,15 +13,20 @@ function formatKRW(val) {
 
 export default function StockDetail({ isOpen, onClose, stock, onTrade }) {
   const [price, setPrice] = useState(null);
+  const [chart, setChart] = useState(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (isOpen && stock?.stock_code) {
       setLoading(true);
-      portfolioApi.getStockPrice(stock.stock_code)
-        .then(data => setPrice(data))
-        .catch(() => setPrice(null))
-        .finally(() => setLoading(false));
+      setChart(null);
+      Promise.all([
+        portfolioApi.getStockPrice(stock.stock_code).catch(() => null),
+        portfolioApi.getStockChart(stock.stock_code, 20).catch(() => null),
+      ]).then(([priceData, chartData]) => {
+        setPrice(priceData);
+        setChart(chartData);
+      }).finally(() => setLoading(false));
     }
   }, [isOpen, stock]);
 
@@ -78,6 +84,18 @@ export default function StockDetail({ isOpen, onClose, stock, onTrade }) {
           ) : (
             <div className="bg-gray-50 dark:bg-gray-800 rounded-2xl p-4 mb-4 text-center text-gray-500 text-sm">
               시세 정보를 불러올 수 없습니다
+            </div>
+          )}
+
+          {/* 미니 차트 */}
+          {chart?.closes?.length > 0 && (
+            <div className="mb-4">
+              <MiniChart
+                dates={chart.dates}
+                values={chart.closes}
+                color="auto"
+                height={100}
+              />
             </div>
           )}
 

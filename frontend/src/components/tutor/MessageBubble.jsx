@@ -2,7 +2,7 @@
  * MessageBubble - 채팅 메시지 렌더링 컴포넌트
  * Message, SourceBadge, VisualizationMessage, TypingIndicator 포함
  */
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
@@ -71,7 +71,23 @@ function SourceBadge({ sources }) {
 function VisualizationMessage({ message }) {
   const [expanded, setExpanded] = useState(false);
   const [iframeLoaded, setIframeLoaded] = useState(false);
+  const [timedOut, setTimedOut] = useState(false);
+  const timerRef = useRef(null);
   const hasContent = message.format === 'html' && message.content;
+
+  // 10초 타임아웃
+  useEffect(() => {
+    if (hasContent && !iframeLoaded) {
+      timerRef.current = setTimeout(() => setTimedOut(true), 10_000);
+    }
+    return () => clearTimeout(timerRef.current);
+  }, [hasContent, iframeLoaded]);
+
+  const handleLoad = () => {
+    setIframeLoaded(true);
+    setTimedOut(false);
+    clearTimeout(timerRef.current);
+  };
 
   return (
     <motion.div className="mb-4" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
@@ -82,23 +98,35 @@ function VisualizationMessage({ message }) {
       </div>
       <div className={`rounded-2xl border border-border overflow-hidden bg-white transition-all ${expanded ? 'h-[400px]' : 'h-[280px]'}`}>
         {hasContent ? (
-          <>
-            {!iframeLoaded && (
-              <div className="flex items-center justify-center h-full text-sm text-text-secondary animate-pulse">차트 로딩 중...</div>
-            )}
-            <iframe
-              srcDoc={message.content}
-              className={`w-full h-full border-0 ${iframeLoaded ? '' : 'hidden'}`}
-              sandbox="allow-scripts allow-same-origin"
-              title="차트"
-              onLoad={() => setIframeLoaded(true)}
-            />
-          </>
+          timedOut && !iframeLoaded ? (
+            <div className="flex flex-col items-center justify-center h-full gap-2">
+              <p className="text-sm text-text-secondary">차트 로딩에 실패했습니다</p>
+              <button
+                onClick={() => { setTimedOut(false); setIframeLoaded(false); }}
+                className="text-xs text-primary font-medium hover:underline"
+              >
+                다시 시도
+              </button>
+            </div>
+          ) : (
+            <>
+              {!iframeLoaded && (
+                <div className="flex items-center justify-center h-full text-sm text-text-secondary animate-pulse">차트 로딩 중...</div>
+              )}
+              <iframe
+                srcDoc={message.content}
+                className={`w-full h-full border-0 ${iframeLoaded ? '' : 'hidden'}`}
+                sandbox="allow-scripts allow-same-origin"
+                title="차트"
+                onLoad={handleLoad}
+              />
+            </>
+          )
         ) : (
           <div className="flex items-center justify-center h-full text-sm text-text-secondary">차트를 생성할 수 없습니다</div>
         )}
       </div>
-      {hasContent && (
+      {hasContent && iframeLoaded && (
         <button onClick={() => setExpanded(!expanded)} className="text-xs text-text-secondary hover:text-primary transition-colors mt-1">{expanded ? '축소' : '확대'}</button>
       )}
     </motion.div>
