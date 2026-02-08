@@ -100,16 +100,26 @@ export function TutorProvider({ children }) {
               if (data.session_id) setSessionId(data.session_id);
 
               // visualization: 차트 렌더링
-              if (data.type === 'visualization') {
+              if (data.type === 'visualization' && data.content) {
                 const vizMessage = {
-                  id: Date.now() + 2,
+                  id: Date.now() + Math.random(),
                   role: 'visualization',
                   content: data.content,
                   format: data.format || 'html',
+                  executionTime: data.execution_time_ms,
                   timestamp: new Date().toISOString(),
                 };
                 setMessages((prev) => [...prev, vizMessage]);
                 continue;
+              }
+
+              // done: sources 수집
+              if (data.type === 'done' && data.sources) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantMessage.id ? { ...m, sources: data.sources } : m
+                  )
+                );
               }
 
               // error: 에러 표시

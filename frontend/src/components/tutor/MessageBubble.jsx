@@ -70,6 +70,9 @@ function SourceBadge({ sources }) {
 
 function VisualizationMessage({ message }) {
   const [expanded, setExpanded] = useState(false);
+  const [iframeLoaded, setIframeLoaded] = useState(false);
+  const hasContent = message.format === 'html' && message.content;
+
   return (
     <motion.div className="mb-4" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
       <div className="flex items-center gap-1.5 mb-1.5">
@@ -78,13 +81,26 @@ function VisualizationMessage({ message }) {
         {message.executionTime && <span className="text-[10px] text-text-secondary ml-auto">{message.executionTime}ms</span>}
       </div>
       <div className={`rounded-2xl border border-border overflow-hidden bg-white transition-all ${expanded ? 'h-[400px]' : 'h-[280px]'}`}>
-        {message.format === 'html' ? (
-          <iframe srcDoc={message.content} className="w-full h-full border-0" sandbox="allow-scripts" title="차트" />
+        {hasContent ? (
+          <>
+            {!iframeLoaded && (
+              <div className="flex items-center justify-center h-full text-sm text-text-secondary animate-pulse">차트 로딩 중...</div>
+            )}
+            <iframe
+              srcDoc={message.content}
+              className={`w-full h-full border-0 ${iframeLoaded ? '' : 'hidden'}`}
+              sandbox="allow-scripts allow-same-origin"
+              title="차트"
+              onLoad={() => setIframeLoaded(true)}
+            />
+          </>
         ) : (
-          <div className="flex items-center justify-center h-full text-sm text-text-secondary">차트를 불러올 수 없습니다</div>
+          <div className="flex items-center justify-center h-full text-sm text-text-secondary">차트를 생성할 수 없습니다</div>
         )}
       </div>
-      <button onClick={() => setExpanded(!expanded)} className="text-xs text-text-secondary hover:text-primary transition-colors mt-1">{expanded ? '축소' : '확대'}</button>
+      {hasContent && (
+        <button onClick={() => setExpanded(!expanded)} className="text-xs text-text-secondary hover:text-primary transition-colors mt-1">{expanded ? '축소' : '확대'}</button>
+      )}
     </motion.div>
   );
 }
