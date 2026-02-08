@@ -7,15 +7,41 @@ import AppHeader from '../components/layout/AppHeader';
 import { useUser } from '../contexts/UserContext';
 import { notificationApi } from '../api';
 
-const TYPE_CONFIG = {
-  reward: { icon: '💰', label: '보상' },
-  dwell: { icon: '⏱️', label: '체류 보상' },
-  bonus: { icon: '🎁', label: '보너스' },
-  system: { icon: '📢', label: '시스템' },
+const NotifIcon = ({ type }) => {
+  const icons = {
+    reward: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+      </svg>
+    ),
+    dwell: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+      </svg>
+    ),
+    bonus: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="20 12 20 22 4 22 4 12" /><rect x="2" y="7" width="20" height="5" /><line x1="12" y1="22" x2="12" y2="7" /><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z" /><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z" />
+      </svg>
+    ),
+    system: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" />
+      </svg>
+    ),
+  };
+  return icons[type] || icons.system;
+};
+
+const TYPE_LABELS = {
+  reward: '보상',
+  dwell: '체류 보상',
+  bonus: '보너스',
+  system: '시스템',
 };
 
 function NotificationItem({ notification, onRead }) {
-  const config = TYPE_CONFIG[notification.type] || TYPE_CONFIG.system;
+  const label = TYPE_LABELS[notification.type] || TYPE_LABELS.system;
   const isUnread = !notification.is_read;
 
   return (
@@ -25,13 +51,13 @@ function NotificationItem({ notification, onRead }) {
       className={`card flex items-start gap-3 ${isUnread ? 'border-l-4 border-l-primary' : 'opacity-75'}`}
       onClick={() => isUnread && onRead?.(notification.id)}
     >
-      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-        <span className="text-lg">{config.icon}</span>
+      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 text-primary">
+        <NotifIcon type={notification.type} />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
           <span className="text-xs font-medium text-primary bg-primary/10 px-2 py-0.5 rounded">
-            {config.label}
+            {label}
           </span>
           {isUnread && (
             <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
@@ -116,7 +142,11 @@ export default function Notifications() {
 
         {!isLoading && notifications.length === 0 && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="card text-center py-12">
-            <p className="text-3xl mb-3">🔔</p>
+            <div className="w-10 h-10 mx-auto mb-3 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" />
+              </svg>
+            </div>
             <p className="text-text-secondary text-sm">아직 알림이 없습니다</p>
             <p className="text-text-muted text-xs mt-1">브리핑을 완독하면 보상 알림을 받을 수 있어요</p>
           </motion.div>

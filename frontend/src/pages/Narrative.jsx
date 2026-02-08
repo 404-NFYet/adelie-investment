@@ -13,16 +13,17 @@ import { TradeModal } from '../components';
 import { narrativeApi } from '../api';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import { useTermContext } from '../contexts/TermContext';
+import { formatKRW } from '../utils/formatNumber';
 
 /* ── 7단계 스텝 정의 ── */
 const STEPS = [
-  { key: 'background',      title: '현재 배경',     subtitle: '지금 왜 이게 이슈인지',   color: '#FF6B00', emoji: '🐧' },
-  { key: 'mirroring',       title: '과거 유사 사례', subtitle: '과거에도 비슷한 일이',    color: '#8B95A1', emoji: '🐧' },
-  { key: 'difference',      title: '지금은 달라요',  subtitle: '과거와 현재의 핵심 차이', color: '#3B82F6', emoji: '🐧' },
-  { key: 'devils_advocate',  title: '반대 시나리오',  subtitle: '다른 가능성도 봐야 해요', color: '#EF4444', emoji: '🐧' },
-  { key: 'simulation',      title: '모의 투자',      subtitle: '과거 사례로 시뮬레이션',  color: '#8B5CF6', emoji: '🐧' },
-  { key: 'result',          title: '결과 보고',      subtitle: '시뮬레이션 결과는?',      color: '#10B981', emoji: '🐧' },
-  { key: 'action',          title: '투자 액션',      subtitle: '자, 이제 투자해볼까요?',  color: '#FF6B00', emoji: '🐧' },
+  { key: 'background',      title: '현재 배경',     subtitle: '지금 왜 이게 이슈인지',   color: '#FF6B00' },
+  { key: 'mirroring',       title: '과거 유사 사례', subtitle: '과거에도 비슷한 일이',    color: '#8B95A1' },
+  { key: 'difference',      title: '지금은 달라요',  subtitle: '과거와 현재의 핵심 차이', color: '#3B82F6' },
+  { key: 'devils_advocate',  title: '반대 시나리오',  subtitle: '다른 가능성도 봐야 해요', color: '#EF4444' },
+  { key: 'simulation',      title: '모의 투자',      subtitle: '과거 사례로 시뮬레이션',  color: '#8B5CF6' },
+  { key: 'result',          title: '결과 보고',      subtitle: '시뮬레이션 결과는?',      color: '#10B981' },
+  { key: 'action',          title: '실전 액션',      subtitle: '자, 이제 시작해볼까요?',  color: '#FF6B00' },
 ];
 
 /* ── 슬라이드 애니메이션 variants ── */
@@ -32,15 +33,17 @@ const slideVariants = {
   exit: (dir) => ({ x: dir > 0 ? -300 : 300, opacity: 0 }),
 };
 
-function formatKRW(value) {
-  return new Intl.NumberFormat('ko-KR').format(Math.round(value)) + '원';
+/* ── 깨진 bullet 텍스트 정제 ── */
+function cleanBullet(text) {
+  if (!text) return '';
+  return text.replace(/\(\s*\)/g, '').replace(/\s{2,}/g, ' ').trim();
 }
 
 /* ── Key Takeaways 카드 ── */
 function TakeawayCard({ bullets, stepConfig }) {
   const isDevil = stepConfig.key === 'devils_advocate';
   return (
-    <div className="bg-surface-elevated rounded-[24px] p-5 shadow-card">
+    <div className="bg-surface-elevated rounded-[24px] p-4 shadow-card">
       <h4
         className="text-[10px] font-bold tracking-widest mb-3 uppercase"
         style={{ color: stepConfig.color }}
@@ -69,7 +72,7 @@ function TakeawayCard({ bullets, stepConfig }) {
                   ),
                 }}
               >
-                {b}
+                {cleanBullet(b)}
               </ReactMarkdown>
             </div>
           </li>
@@ -82,7 +85,7 @@ function TakeawayCard({ bullets, stepConfig }) {
 /* ── Narrative 텍스트 카드 ── */
 function NarrativeCard({ content, stepConfig }) {
   return (
-    <div className="bg-surface-elevated rounded-[24px] p-5 shadow-card relative">
+    <div className="bg-surface-elevated rounded-[24px] p-4 shadow-card relative">
       <div
         className="absolute -top-2.5 left-5 px-2.5 py-0.5 text-[9px] font-bold tracking-widest bg-surface-elevated border border-border rounded-md"
         style={{ color: stepConfig.color }}
@@ -100,7 +103,7 @@ function NarrativeCard({ content, stepConfig }) {
                 ),
               }}
             >
-              {paragraph}
+              {cleanBullet(paragraph)}
             </ReactMarkdown>
           </div>
         ))}
@@ -109,7 +112,7 @@ function NarrativeCard({ content, stepConfig }) {
   );
 }
 
-/* ── Step 7: 투자 액션 카드 (매수/매도 버튼 포함) ── */
+/* ── Step 7: 실전 액션 카드 (매수/매도 버튼 포함) ── */
 function ActionStep({ companies, caseId, stepData, onSkip }) {
   const [tradeModal, setTradeModal] = useState({ isOpen: false, stock: null, type: 'buy' });
 
@@ -123,21 +126,21 @@ function ActionStep({ companies, caseId, stepData, onSkip }) {
 
   return (
     <div className="space-y-4">
-      {/* 투자 전략 안내 */}
+      {/* 실전 전략 안내 */}
       {stepData?.content && (
-        <div className="bg-surface-elevated rounded-[24px] p-5 shadow-card">
+        <div className="bg-surface-elevated rounded-[24px] p-4 shadow-card">
           <span className="text-[10px] font-bold tracking-widest text-primary mb-3 block">
-            투자 전략
+            실전 전략
           </span>
           <p className="text-sm leading-relaxed text-text-primary whitespace-pre-line">
-            {stepData.content}
+            {cleanBullet(stepData.content)}
           </p>
         </div>
       )}
 
       {/* bullets */}
       {stepData?.bullets?.length > 0 && (
-        <div className="bg-surface-elevated rounded-[24px] p-5 shadow-card">
+        <div className="bg-surface-elevated rounded-[24px] p-4 shadow-card">
           <h4 className="text-[10px] font-bold tracking-widest text-primary mb-3 uppercase">
             Key Points
           </h4>
@@ -145,7 +148,7 @@ function ActionStep({ companies, caseId, stepData, onSkip }) {
             {stepData.bullets.map((b, i) => (
               <li key={i} className="flex items-start gap-3 text-sm leading-relaxed text-text-primary">
                 <span className="w-1.5 h-1.5 rounded-full mt-[7px] flex-shrink-0 bg-primary" />
-                <span>{b}</span>
+                <span>{cleanBullet(b)}</span>
               </li>
             ))}
           </ul>
@@ -209,10 +212,10 @@ function ActionStep({ companies, caseId, stepData, onSkip }) {
 }
 
 /* ── 브리핑 완료 보상 축하 오버레이 + 간단 피드백 ── */
-const FEEDBACK_EMOJIS = [
-  { emoji: '😊', label: 'good', text: '유익했어요' },
-  { emoji: '😐', label: 'neutral', text: '보통이에요' },
-  { emoji: '😢', label: 'bad', text: '아쉬워요' },
+const FEEDBACK_OPTIONS = [
+  { label: 'good', text: '유익했어요' },
+  { label: 'neutral', text: '보통이에요' },
+  { label: 'bad', text: '아쉬워요' },
 ];
 
 function RewardCelebration({ reward, onClose, caseId }) {
@@ -241,31 +244,34 @@ function RewardCelebration({ reward, onClose, caseId }) {
         transition={{ type: 'spring', damping: 20, stiffness: 300 }}
         className="bg-surface-elevated rounded-[32px] p-8 max-w-sm w-full text-center shadow-card"
       >
-        <span className="text-5xl block mb-4">🎉</span>
+        <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#FF6B00" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
+          </svg>
+        </div>
         <h2 className="text-xl font-bold mb-2">브리핑 완료!</h2>
         <p className="text-3xl font-bold text-primary mb-2">
           +{formatKRW(reward.base_reward)}
         </p>
         <p className="text-sm text-text-secondary mb-1">
-          모의투자 자금이 지급되었습니다
+          학습 자금이 지급되었습니다
         </p>
         <p className="text-xs text-text-muted mb-4">
           7일 후 수익률이 양(+)이면 1.5배 보너스!
         </p>
 
-        {/* 간단 피드백 */}
+        {/* 간단 피드백 - 텍스트 칩 버튼 */}
         {!feedbackSent ? (
           <div className="mb-4">
             <p className="text-xs text-text-secondary mb-2">이 브리핑 어땠나요?</p>
-            <div className="flex justify-center gap-4">
-              {FEEDBACK_EMOJIS.map(fb => (
+            <div className="flex justify-center gap-2">
+              {FEEDBACK_OPTIONS.map(fb => (
                 <button
                   key={fb.label}
                   onClick={() => sendFeedback(fb.label)}
-                  className="flex flex-col items-center gap-1 hover:scale-110 transition-transform"
+                  className="px-3 py-1.5 rounded-full text-xs font-medium border border-border hover:border-primary hover:text-primary transition-colors"
                 >
-                  <span className="text-2xl">{fb.emoji}</span>
-                  <span className="text-[10px] text-text-muted">{fb.text}</span>
+                  {fb.text}
                 </button>
               ))}
             </div>
@@ -310,7 +316,7 @@ function BottomNavBar({ current, total, onPrev, onNext, isLast }) {
           </svg>
         </button>
 
-        {/* 도트 인디케이터 + 펭귄 */}
+        {/* 도트 인디케이터 */}
         <div className="flex items-center gap-1.5">
           {Array.from({ length: total }).map((_, i) => (
             <span
@@ -324,7 +330,6 @@ function BottomNavBar({ current, total, onPrev, onNext, isLast }) {
               }`}
             />
           ))}
-          <span className="ml-1 text-base" role="img" aria-label="penguin">🐧</span>
         </div>
 
         {/* 다음/완료 버튼 */}
@@ -402,7 +407,7 @@ export default function Narrative() {
 
   // 모든 Hook은 early return 이전에 호출 (React Hooks 규칙)
   const pageTitle = useMemo(
-    () => keyword || 'AI 투자 브리핑',
+    () => keyword || 'AI 브리핑',
     [keyword],
   );
 
@@ -434,10 +439,9 @@ export default function Narrative() {
       // 마지막 스텝: 브리핑 완료 보상 청구
       try {
         const reward = await claimReward(Number(caseId));
-        setRewardData(reward);
+        setRewardData(reward || { base_reward: 100000 });
         setShowReward(true);
       } catch (e) {
-        // 이미 보상 받았거나 오류 → 홈으로 이동
         navigate('/');
       }
     }
@@ -446,7 +450,7 @@ export default function Narrative() {
   const handleSkipTrading = async () => {
     try {
       const reward = await claimReward(Number(caseId));
-      setRewardData(reward);
+      setRewardData(reward || { base_reward: 100000 });
       setShowReward(true);
     } catch {
       navigate('/');
@@ -463,7 +467,7 @@ export default function Narrative() {
       {/* ── 플로팅 헤더 ── */}
       <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-md">
         <div className="max-w-mobile mx-auto px-4 pt-4 pb-3">
-          {/* 상단: 뒤로가기 + 동기화율 */}
+          {/* 상단: 뒤로가기 + 유사도 */}
           <div className="flex items-center justify-between mb-3">
             <button
               onClick={() => navigate(-1)}
@@ -476,7 +480,7 @@ export default function Narrative() {
             </button>
             {syncRate > 0 && (
               <span className="text-xs font-semibold text-primary bg-primary-light px-3 py-1 rounded-full">
-                싱크율 {syncRate}%
+                유사도 {syncRate}%
               </span>
             )}
           </div>
@@ -503,10 +507,9 @@ export default function Narrative() {
             >
               Step {currentStep + 1} of {STEPS.length}
             </span>
-            <h1 className="text-lg font-bold text-text-primary truncate">
+            <h1 className="text-base font-bold text-text-primary truncate">
               {stepMeta.title}
             </h1>
-            <span className="text-xl ml-auto">{stepMeta.emoji}</span>
           </div>
         </div>
       </header>
@@ -525,7 +528,7 @@ export default function Narrative() {
             className="space-y-4"
           >
             {isActionStep ? (
-              /* Step 7: 투자 액션 */
+              /* Step 7: 실전 액션 */
               <ActionStep companies={data.related_companies || []} caseId={caseId} stepData={stepData} onSkip={handleSkipTrading} />
             ) : stepData ? (
               /* Steps 1-6: 분석 콘텐츠 */

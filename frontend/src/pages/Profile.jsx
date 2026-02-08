@@ -33,7 +33,7 @@ function InlineFeedback() {
   if (submitted) {
     return (
       <div className="text-center py-4">
-        <p className="text-2xl mb-1">🐧</p>
+        <img src="/images/penguin-3d.png" alt="Adelie" className="w-10 h-10 mx-auto mb-1" />
         <p className="text-sm font-medium">감사합니다!</p>
       </div>
     );
@@ -45,7 +45,7 @@ function InlineFeedback() {
       <div className="flex gap-2 mb-3">
         {[1, 2, 3, 4, 5].map(star => (
           <button key={star} onClick={() => setRating(star)} className={`text-xl transition-transform ${star <= rating ? 'scale-110' : 'opacity-30'}`}>
-            ⭐
+            <svg width="20" height="20" viewBox="0 0 24 24" fill={star <= rating ? '#FF6B00' : 'none'} stroke="#FF6B00" strokeWidth="1.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
           </button>
         ))}
       </div>

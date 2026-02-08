@@ -5,11 +5,8 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { portfolioApi } from '../../api';
+import { formatKRW, formatVolume } from '../../utils/formatNumber';
 import MiniChart from './MiniChart';
-
-function formatKRW(val) {
-  return new Intl.NumberFormat('ko-KR').format(Math.round(val)) + '원';
-}
 
 export default function StockDetail({ isOpen, onClose, stock, onTrade }) {
   const [price, setPrice] = useState(null);
@@ -77,7 +74,7 @@ export default function StockDetail({ isOpen, onClose, stock, onTrade }) {
               </div>
               {price.volume && (
                 <div className="text-xs text-gray-500 mt-1">
-                  거래량 {new Intl.NumberFormat('ko-KR').format(price.volume)}
+                  거래량 {formatVolume(price.volume)}
                 </div>
               )}
             </div>

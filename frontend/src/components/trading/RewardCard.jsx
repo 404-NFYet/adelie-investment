@@ -2,15 +2,12 @@
  * RewardCard.jsx - 보상 상태 카드
  */
 import { motion } from 'framer-motion';
-
-function formatKRW(val) {
-  return new Intl.NumberFormat('ko-KR').format(Math.round(val)) + '원';
-}
+import { formatKRW } from '../../utils/formatNumber';
 
 const STATUS_LABELS = {
-  pending: { label: '대기 중', color: 'text-yellow-600 bg-yellow-50', icon: '⏳' },
-  applied: { label: '보너스 적용', color: 'text-green-600 bg-green-50', icon: '🎉' },
-  expired: { label: '보너스 소멸', color: 'text-gray-500 bg-gray-50', icon: '⏰' },
+  pending: { label: '대기 중', color: 'text-yellow-600 bg-yellow-50' },
+  applied: { label: '보너스 적용', color: 'text-green-600 bg-green-50' },
+  expired: { label: '보너스 소멸', color: 'text-gray-500 bg-gray-50' },
 };
 
 export default function RewardCard({ reward }) {
@@ -27,7 +24,6 @@ export default function RewardCard({ reward }) {
     >
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
-          <span className="text-xl">{status.icon}</span>
           <div>
             <p className="font-semibold text-sm">브리핑 보상</p>
             <p className="text-xs text-gray-500">

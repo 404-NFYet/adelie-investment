@@ -40,7 +40,7 @@ export default function SyncRate({ rate = 0, size = 120, strokeWidth = 10 }) {
           <span className="text-xs text-secondary">SYNC</span>
         </div>
       </div>
-      <p className="text-sm text-secondary mt-2">과거-현재 유사도</p>
+      <p className="text-sm text-secondary mt-2">과거 패턴 유사도</p>
     </div>
   );
 }

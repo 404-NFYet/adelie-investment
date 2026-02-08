@@ -55,7 +55,8 @@ const STEP_GRAPHICS = {
   action: (color) => (
     <svg viewBox="0 0 200 100" className="w-full h-full">
       <circle cx="100" cy="45" r="25" fill={color} opacity="0.15" />
-      <text x="100" y="50" textAnchor="middle" fontSize="20">🚀</text>
+      <path d="M90 45 L100 25 L110 45 L100 40 Z" fill={color} />
+      <line x1="100" y1="40" x2="100" y2="60" stroke={color} strokeWidth="2" />
       <text x="100" y="90" textAnchor="middle" fontSize="9" fill={color}>액션 플랜</text>
     </svg>
   ),

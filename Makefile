@@ -14,7 +14,7 @@ SERVICES = frontend backend-api backend-spring ai-pipeline
 # --- 도움말 ---
 help:
 	@echo ""
-	@echo "  아델리에 투자 - Makefile 명령어"
+	@echo "  아델리에 - Makefile 명령어"
 	@echo "  ================================"
 	@echo ""
 	@echo "  빌드/배포:"

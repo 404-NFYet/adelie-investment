@@ -11,9 +11,8 @@ export default function BottomNav() {
 
   const tabs = [
     { id: 'home', label: '홈', path: '/', onClick: () => navigate('/') },
-    { id: 'portfolio', label: '투자', path: '/portfolio', onClick: () => navigate('/portfolio') },
+    { id: 'portfolio', label: '포트폴리오', path: '/portfolio', onClick: () => navigate('/portfolio') },
     { id: 'tutor', label: 'AI 튜터', path: '/tutor', onClick: () => navigate('/tutor') },
-    { id: 'profile', label: '마이', path: '/profile', onClick: () => navigate('/profile') },
   ];
 
   const icons = {
@@ -24,17 +23,12 @@ export default function BottomNav() {
     ),
     portfolio: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+        <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" />
       </svg>
     ),
     tutor: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-      </svg>
-    ),
-    profile: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
       </svg>
     ),
   };

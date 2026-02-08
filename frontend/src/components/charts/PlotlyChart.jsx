@@ -15,15 +15,21 @@ const DEFAULT_LAYOUT = {
     color: '#4E5968',
     size: 11,
   },
-  margin: { t: 40, r: 20, b: 40, l: 50 },
+  margin: { t: 30, r: 15, b: 50, l: 55 },
   showlegend: false,
   xaxis: {
     gridcolor: '#F2F4F6',
     linecolor: '#E5E8EB',
+    automargin: true,
+    tickangle: -30,
+    tickfont: { size: 9 },
   },
   yaxis: {
     gridcolor: '#F2F4F6',
     linecolor: '#E5E8EB',
+    automargin: true,
+    tickfont: { size: 9 },
+    separatethousands: true,
   },
 };
 

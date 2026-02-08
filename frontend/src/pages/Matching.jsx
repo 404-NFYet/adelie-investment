@@ -107,13 +107,9 @@ export default function Matching() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.2 }}
-              className="text-2xl font-bold text-center leading-relaxed mb-8"
+              className="text-xl font-bold text-center leading-relaxed mb-6"
             >
-              현재 상황은
-              <br />
-              {data.past.year}년 {data.past.event}과
-              <br />
-              가장 유사합니다.
+              현재 상황은 {data.past.year}년<br />{data.past.event}과 가장 유사합니다.
             </motion.h2>
 
             {/* PAST / SYNC RATE / PRESENT 3열 */}
@@ -121,25 +117,25 @@ export default function Matching() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.5, delay: 0.4 }}
-              className="card w-full flex items-center justify-between gap-2 mb-8"
+              className="card w-full flex items-center justify-between gap-1 mb-8"
             >
               {/* PAST */}
               <div className="flex flex-col items-center flex-1">
-                <span className="text-xs text-secondary tracking-wider mb-1">PAST</span>
+                <span className="text-[10px] text-secondary tracking-wider mb-1">PAST</span>
                 <span className="text-2xl font-bold">{data.past.year}</span>
-                <span className="text-xs text-secondary mt-1">{data.past.label}</span>
+                <span className="text-[10px] text-secondary mt-1">{data.past.label}</span>
               </div>
 
               {/* SYNC RATE */}
               <div className="flex-shrink-0">
-                <SyncRate rate={data.syncRate} size={100} strokeWidth={8} />
+                <SyncRate rate={data.syncRate} size={80} strokeWidth={8} />
               </div>
 
               {/* PRESENT */}
               <div className="flex flex-col items-center flex-1">
-                <span className="text-xs text-secondary tracking-wider mb-1">PRESENT</span>
+                <span className="text-[10px] text-secondary tracking-wider mb-1">PRESENT</span>
                 <span className="text-2xl font-bold">{data.present.year}</span>
-                <span className="text-xs text-secondary mt-1">{stripMarkTags(data.present.label)}</span>
+                <span className="text-[10px] text-secondary mt-1">{stripMarkTags(data.present.label)}</span>
               </div>
             </motion.div>
 
