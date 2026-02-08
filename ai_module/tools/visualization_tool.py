@@ -13,6 +13,9 @@ VISUALIZATION_SYSTEM_PROMPT = """Python Plotly를 사용하여 시각화 코드�
 - 그리드: color='#F2F4F6'
 - 축: color='#8B95A1', size=11
 - 마진: dict(t=50, b=60, l=60, r=30)
+- config: {'responsive': True, 'displayModeBar': False}
+- layout에 autosize=True 필수 포함
+- 모바일(480px) 대응: 폰트 크기 12 이하, 마진 최소화
 
 ## Plotly API 주의사항
 - go.Scatter의 textposition: 'top center', 'bottom center' 등만 유효 ('outside'는 Bar 전용!)
