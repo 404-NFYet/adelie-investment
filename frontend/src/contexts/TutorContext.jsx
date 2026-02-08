@@ -133,6 +133,15 @@ export function TutorProvider({ children }) {
                 );
               }
 
+              // sources 별도 이벤트 (tutor_engine 경유 시)
+              if (data.type === 'sources' && data.sources) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantMessage.id ? { ...m, sources: data.sources } : m
+                  )
+                );
+              }
+
               // error: 에러 표시
               if (data.type === 'error' && data.error) {
                 setMessages((prev) =>

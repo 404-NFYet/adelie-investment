@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Jua&family=Gaegu:wght@400;700&family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -37,8 +37,7 @@
   --color-info-light: #DBEAFE;
   
   /* Typography */
-  --font-cursive: 'Caveat', cursive;
-  --font-sans: 'Inter', 'Noto Sans KR', sans-serif;
+  --font-sans: 'Inter', 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 /* Dark Mode */
@@ -191,7 +190,6 @@
 @layer utilities {
   .text-gain { color: #10B981; }
   .text-loss { color: #EF4444; }
-  .font-cursive { font-family: var(--font-cursive); }
 }
 
 /* Penguin animations */

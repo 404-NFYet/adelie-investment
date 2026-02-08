@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
+import { authApi } from '../api/auth';
 
 const UserContext = createContext(null);
 
@@ -36,14 +37,28 @@ export function UserProvider({ children }) {
     localStorage.setItem('userSettings', JSON.stringify(settings));
   }, [settings]);
 
-  // Initialize user (check for token)
+  // Initialize user (check for token and restore user info)
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (token) {
-      // Simple check: token exists, assume valid (actual validation on API calls)
-      setUser({ isAuthenticated: true });
+      authApi.getMe(token)
+        .then(data => {
+          setUser({
+            id: data.id,
+            email: data.email,
+            username: data.username,
+            isAuthenticated: true,
+          });
+        })
+        .catch(() => {
+          // 토큰 만료 또는 유효하지 않음 → 제거
+          localStorage.removeItem('token');
+          localStorage.removeItem('refreshToken');
+        })
+        .finally(() => setIsLoading(false));
+    } else {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   }, []);
 
   const updateSettings = (newSettings) => {
