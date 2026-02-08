@@ -33,6 +33,7 @@ export default function AppHeader({ showBack = false, title = null }) {
               className="flex items-center gap-1.5 cursor-pointer"
               onClick={() => navigate('/')}
             >
+              <img src="/images/penguin-3d.png" alt="Adelie" className="w-7 h-7" />
               <h1 className="text-lg font-bold tracking-tight text-text-primary">
                 ADELIE
               </h1>
