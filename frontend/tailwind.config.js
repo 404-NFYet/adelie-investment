@@ -40,7 +40,7 @@ export default {
       },
       fontFamily: {
         sans: ['Inter', 'Noto Sans KR', 'sans-serif'],
-        cursive: ['Caveat', 'cursive'],
+        cursive: ['Jua', 'Gaegu', 'cursive'],
       },
       borderRadius: {
         card: '16px',

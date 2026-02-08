@@ -15,12 +15,15 @@ export default function AppHeader({ showBack = false, title = null }) {
                 <span className="text-lg">←</span>
               </button>
             )}
-            <h1 
-              className="font-cursive text-2xl text-primary cursor-pointer" 
+            <div
+              className="flex items-center gap-1.5 cursor-pointer"
               onClick={() => navigate('/')}
             >
-              아델리에 투자
-            </h1>
+              <span className="text-xl">🐧</span>
+              <h1 className="font-cursive text-2xl text-primary">
+                아델리에 투자
+              </h1>
+            </div>
             {title && (
               <span className="text-sm text-text-secondary ml-1">/ {title}</span>
             )}
