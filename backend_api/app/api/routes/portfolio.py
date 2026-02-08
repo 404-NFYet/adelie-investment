@@ -24,6 +24,8 @@ from app.schemas.portfolio import (
     RewardResponse,
     RewardItem,
     RewardsListResponse,
+    LeaderboardEntry,
+    LeaderboardResponse,
 )
 from app.services.portfolio_service import (
     get_or_create_portfolio,
@@ -33,10 +35,86 @@ from app.services.portfolio_service import (
 )
 from app.services.stock_price_service import get_current_price, get_batch_prices
 from app.api.routes.notification import create_notification
+from app.models.user import User
+from app.models.portfolio import UserPortfolio, PortfolioHolding
 
 logger = logging.getLogger("narrative_api.portfolio")
 
 router = APIRouter(prefix="/portfolio", tags=["Portfolio"])
+
+
+# ──────────────────── Leaderboard ────────────────────
+
+
+@router.get("/leaderboard/ranking", response_model=LeaderboardResponse)
+async def get_leaderboard(
+    current_user_id: int = Query(0, alias="user_id"),
+    limit: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+):
+    """수익률 리더보드 조회."""
+    # 모든 포트폴리오 조회
+    stmt = (
+        select(UserPortfolio, User.username)
+        .join(User, User.id == UserPortfolio.user_id)
+        .order_by(UserPortfolio.user_id)
+    )
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    entries = []
+    for portfolio, username in rows:
+        # 보유 종목 평가액 계산
+        total_holdings = 0.0
+        for h in portfolio.holdings:
+            price_data = await get_current_price(h.stock_code)
+            if price_data:
+                total_holdings += price_data["current_price"] * h.quantity
+            else:
+                total_holdings += float(h.avg_buy_price) * h.quantity
+
+        total_value = portfolio.current_cash + total_holdings
+        profit_loss = total_value - portfolio.initial_cash
+        profit_loss_pct = (profit_loss / portfolio.initial_cash * 100) if portfolio.initial_cash > 0 else 0
+
+        entries.append({
+            "user_id": portfolio.user_id,
+            "username": username,
+            "total_value": total_value,
+            "profit_loss": profit_loss,
+            "profit_loss_pct": round(profit_loss_pct, 2),
+        })
+
+    # 수익률 내림차순 정렬 + 랭킹 부여
+    entries.sort(key=lambda e: e["profit_loss_pct"], reverse=True)
+
+    rankings = []
+    my_entry = None
+    my_rank = None
+
+    for i, e in enumerate(entries):
+        rank = i + 1
+        is_me = e["user_id"] == current_user_id
+        entry = LeaderboardEntry(
+            rank=rank,
+            user_id=e["user_id"],
+            username=e["username"],
+            total_value=e["total_value"],
+            profit_loss=e["profit_loss"],
+            profit_loss_pct=e["profit_loss_pct"],
+            is_me=is_me,
+        )
+        if is_me:
+            my_entry = entry
+            my_rank = rank
+        rankings.append(entry)
+
+    return LeaderboardResponse(
+        my_rank=my_rank,
+        my_entry=my_entry,
+        rankings=rankings[:limit],
+        total_users=len(entries),
+    )
 
 
 # ──────────────────── Portfolio ────────────────────
