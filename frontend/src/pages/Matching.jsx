@@ -10,6 +10,12 @@ import AppHeader from '../components/layout/AppHeader';
 import { useTheme } from '../contexts/ThemeContext';
 import { casesApi } from '../api';
 
+// <mark class='term'>...</mark> 태그 제거 유틸리티
+const stripMarkTags = (text) => {
+  if (!text) return '';
+  return text.replace(/<mark\s+class=['"]term['"]>(.*?)<\/mark>/g, '$1');
+};
+
 export default function Matching() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -133,7 +139,7 @@ export default function Matching() {
               <div className="flex flex-col items-center flex-1">
                 <span className="text-xs text-secondary tracking-wider mb-1">PRESENT</span>
                 <span className="text-2xl font-bold">{data.present.year}</span>
-                <span className="text-xs text-secondary mt-1">{data.present.label}</span>
+                <span className="text-xs text-secondary mt-1">{stripMarkTags(data.present.label)}</span>
               </div>
             </motion.div>
 
