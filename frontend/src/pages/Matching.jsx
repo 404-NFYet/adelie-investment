@@ -6,7 +6,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { SyncRate, HighlightedText } from '../components';
+import { HighlightedText } from '../components';
 import AppHeader from '../components/layout/AppHeader';
 import { casesApi } from '../api';
 
@@ -22,8 +22,6 @@ export default function Matching() {
   const [searchParams] = useSearchParams();
   const keyword = searchParams.get('keyword') || '';
   const caseId = searchParams.get('caseId') || '';
-  const syncRate = parseInt(searchParams.get('syncRate') || '75', 10);
-  const stocks = location.state?.stocks || [];
 
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -44,9 +42,9 @@ export default function Matching() {
         ]);
         const contentText = storyResult.content || storyResult.summary || '';
         const sentences = contentText.split('. ').slice(0, 2);
-        const keyInsight = sentences.join('. ') + (sentences.length > 0 ? '.' : '');
+        const keyInsight = compResult.key_insight ||
+                           (sentences.join('. ') + (sentences.length > 0 ? '.' : ''));
         setData({
-          syncRate: syncRate,
           past: {
             year: compResult.past_event?.year || 2000,
             label: compResult.past_event?.label || '',
@@ -66,7 +64,7 @@ export default function Matching() {
       }
     };
     fetchMatching();
-  }, [caseId, syncRate, keyword]);
+  }, [caseId, keyword]);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -112,12 +110,12 @@ export default function Matching() {
               현재 상황은 {data.past.year}년<br />{data.past.event}과 가장 유사합니다.
             </motion.h2>
 
-            {/* PAST / SYNC RATE / PRESENT 3열 */}
+            {/* PAST / PRESENT 비교 */}
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.5, delay: 0.4 }}
-              className="card w-full flex items-center justify-between gap-1 mb-8"
+              className="card w-full flex items-center justify-between gap-2 mb-8"
             >
               {/* PAST */}
               <div className="flex flex-col items-center flex-1">
@@ -126,9 +124,11 @@ export default function Matching() {
                 <span className="text-[10px] text-secondary mt-1">{data.past.label}</span>
               </div>
 
-              {/* SYNC RATE */}
-              <div className="flex-shrink-0">
-                <SyncRate rate={data.syncRate} size={80} strokeWidth={8} />
+              {/* 연결 화살표 */}
+              <div className="flex-shrink-0 px-2">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-primary">
+                  <path d="M5 12h14" /><path d="M13 6l6 6-6 6" />
+                </svg>
               </div>
 
               {/* PRESENT */}
@@ -153,41 +153,6 @@ export default function Matching() {
                 <HighlightedText content={data.keyInsight} />
               </p>
             </motion.div>
-
-            {/* 관련 기업 섹션 */}
-            {stocks.length > 0 && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: 0.7 }}
-                className="w-full mb-8"
-              >
-                <h3 className="text-xs font-semibold text-secondary tracking-widest mb-3">
-                  RELATED COMPANIES
-                </h3>
-                <div className="space-y-3">
-                  {stocks.map((stock, idx) => (
-                    <div key={stock.stock_code || idx} className="card flex items-start gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-bold text-sm text-text-primary">
-                            {stock.stock_name || stock.stock_code}
-                          </span>
-                          <span className="text-xs text-text-muted">
-                            {stock.stock_code}
-                          </span>
-                        </div>
-                        {stock.reason && (
-                          <p className="text-xs text-text-secondary leading-relaxed">
-                            {stock.reason}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </motion.div>
-            )}
 
             {/* 하단 질문 + 버튼 */}
             <motion.div
