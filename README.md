@@ -1,11 +1,11 @@
-# Narrative Investment
+# Adelie (아델리에)
 
-## "History Repeats Itself" - 역사는 반복된다
+## "History Repeats Itself" - 과거에서 배우는 금융 학습 플랫폼
 
-주식 시장의 과거 사례를 통해 현재를 이해하고, 미래를 준비하는 AI 기반 투자 교육 플랫폼입니다.
+한국 금융 시장의 과거 사례를 통해 현재를 이해하고, 미래를 준비하는 AI 기반 금융 학습 플랫폼입니다.
 
-주식 초보자들이 겪는 가장 큰 어려움은 "지금 무슨 일이 일어나고 있는지" 맥락을 이해하지 못하는 것입니다.
-Narrative Investment는 과거의 유사한 사례를 스토리텔링 방식으로 제공하여, 사용자가 현재 시장 상황을 직관적으로 이해할 수 있도록 돕습니다.
+금융 시장 초보자들이 겪는 가장 큰 어려움은 "지금 무슨 일이 일어나고 있는지" 맥락을 이해하지 못하는 것입니다.
+아델리에는 과거의 유사한 사례를 스토리텔링 방식으로 제공하여, 사용자가 현재 시장 상황을 직관적으로 이해할 수 있도록 돕습니다.
 
 ---
 
@@ -79,7 +79,7 @@ graph TB
 ## 디렉토리 구조
 
 ```
-narrative-investment/
+adelie-investment/
 ├── frontend/                # React 프론트엔드 (Vite + Tailwind)
 │   ├── src/
 │   │   ├── components/      # UI 컴포넌트
@@ -146,8 +146,8 @@ narrative-investment/
 ### 1. 저장소 클론 및 환경 변수 설정
 
 ```bash
-git clone https://github.com/your-org/narrative-investment.git
-cd narrative-investment
+git clone https://github.com/404-NFYet/adelie-investment.git
+cd adelie-investment
 
 # 환경 변수 설정
 cp .env.example .env

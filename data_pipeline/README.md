@@ -1,6 +1,6 @@
-# Narrative Investment Data Pipeline
+# Adelie Data Pipeline
 
-주식 데이터 및 리서치 리포트 수집을 위한 데이터 파이프라인입니다.
+금융 시장 데이터 및 리서치 리포트 수집을 위한 데이터 파이프라인입니다.
 
 ## 기능
 

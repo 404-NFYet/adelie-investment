@@ -1,4 +1,4 @@
-# VPC 모듈 - Public/Private 서브넷, IGW, NAT, Route Tables
+# Adelie VPC 모듈 - Public/Private 서브넷, IGW, NAT, Route Tables
 
 variable "vpc_cidr" { type = string }
 variable "public_subnets" { type = list(string) }
