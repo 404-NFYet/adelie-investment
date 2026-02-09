@@ -10,9 +10,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'images/*.png'],
       manifest: {
-        name: '아델리에 투자',
+        name: '아델리에',
         short_name: '아델리에',
-        description: 'AI 기반 투자 스토리텔링 플랫폼 - 역사는 반복된다',
+        description: 'AI 기반 금융 학습 플랫폼 - 역사는 반복된다',
         theme_color: '#FF6B00',
         background_color: '#ffffff',
         display: 'standalone',

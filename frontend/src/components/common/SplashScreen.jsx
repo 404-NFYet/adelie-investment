@@ -5,7 +5,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const TAGLINE = '역사는 반복된다, 투자도 마찬가지';
+const TAGLINE = '역사는 반복된다, 시장도 마찬가지';
 
 export default function SplashScreen({ onComplete }) {
   const [show, setShow] = useState(true);
@@ -44,7 +44,7 @@ export default function SplashScreen({ onComplete }) {
             transition={{ delay: 0.3, duration: 0.5 }}
             className="text-2xl font-bold text-text-primary mb-3"
           >
-            아델리에 투자
+            아델리에
           </motion.h1>
 
           {/* 태그라인 - 글자별 순차 등장 */}
@@ -69,7 +69,7 @@ export default function SplashScreen({ onComplete }) {
             transition={{ delay: 1.2, duration: 0.5 }}
             className="text-xs text-text-muted mt-2"
           >
-            AI 기반 투자 교육 플랫폼
+            AI 기반 금융 학습 플랫폼
           </motion.p>
 
           {/* 로딩 바 0→100% */}

@@ -4,12 +4,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { portfolioApi } from '../../api';
-
-const MEDALS = ['', '1st', '2nd', '3rd'];
-
-function formatKRW(value) {
-  return new Intl.NumberFormat('ko-KR').format(Math.round(value)) + '원';
-}
+import { formatKRW } from '../../utils/formatNumber';
 
 export default function Leaderboard({ userId }) {
   const [data, setData] = useState(null);
@@ -34,7 +29,11 @@ export default function Leaderboard({ userId }) {
   if (!data || data.rankings.length === 0) {
     return (
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="card text-center py-8">
-        <p className="text-3xl mb-3">🏆</p>
+        <div className="w-10 h-10 mx-auto mb-3 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" /><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" /><path d="M4 22h16" /><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" /><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" /><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+          </svg>
+        </div>
         <p className="text-text-secondary text-sm">아직 랭킹 데이터가 없습니다</p>
         <p className="text-text-muted text-xs mt-1">투자를 시작하면 순위가 표시됩니다</p>
       </motion.div>
@@ -87,7 +86,7 @@ export default function Leaderboard({ userId }) {
               <div className="flex items-center gap-3">
                 <span className="w-6 text-center">
                   {entry.rank <= 3 ? (
-                    <span className="text-base">{entry.rank === 1 ? '🥇' : entry.rank === 2 ? '🥈' : '🥉'}</span>
+                    <span className={`text-xs font-bold ${entry.rank === 1 ? 'text-yellow-500' : entry.rank === 2 ? 'text-gray-400' : 'text-amber-600'}`}>{entry.rank}</span>
                   ) : (
                     <span className="text-xs font-bold text-text-muted">{entry.rank}</span>
                   )}

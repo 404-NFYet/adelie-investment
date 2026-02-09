@@ -1,5 +1,5 @@
 /**
- * Portfolio.jsx - 모의투자 포트폴리오 (4탭: 보유종목/자유매매/보상내역/랭킹)
+ * Portfolio.jsx - 포트폴리오 (4탭: 보유종목/자유매매/보상내역/랭킹)
  */
 import { useEffect, useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
@@ -15,10 +15,7 @@ import RewardCard from '../components/trading/RewardCard';
 import Leaderboard from '../components/trading/Leaderboard';
 import { API_BASE_URL } from '../config';
 import useCountUp from '../hooks/useCountUp';
-
-function formatKRW(value) {
-  return new Intl.NumberFormat('ko-KR').format(Math.round(value)) + '원';
-}
+import { formatKRW } from '../utils/formatNumber';
 
 /* ── 보유 종목 카드 ── */
 function HoldingCard({ holding, onClick }) {
@@ -140,12 +137,12 @@ export default function Portfolio() {
   if (isGuest || !userId) {
     return (
       <div className="min-h-screen bg-background pb-24">
-        <AppHeader title="모의투자" />
+        <AppHeader title="포트폴리오" />
         <main className="container py-6">
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="card text-center py-12">
-            <p className="text-4xl mb-4">🐧</p>
-            <h3 className="font-bold text-lg mb-2">모의투자를 시작해볼까요?</h3>
-            <p className="text-sm text-text-secondary mb-6">회원가입하면 100만원의 가상 투자금으로<br/>모의투자를 시작할 수 있어요!</p>
+            <img src="/images/penguin-3d.png" alt="Adelie" className="w-16 h-16 mx-auto mb-4" />
+            <h3 className="font-bold text-lg mb-2">포트폴리오를 시작해볼까요?</h3>
+            <p className="text-sm text-text-secondary mb-6">회원가입하면 100만원의 학습 자금으로<br/>실전 연습을 시작할 수 있어요!</p>
             <button onClick={() => setShowAuthPrompt(true)} className="btn-primary px-8 py-3 rounded-xl font-semibold">시작하기</button>
           </motion.div>
         </main>
@@ -167,7 +164,7 @@ export default function Portfolio() {
 
   return (
     <div className="min-h-screen bg-background pb-24">
-      <AppHeader title="모의투자" />
+      <AppHeader title="포트폴리오" />
       <main className="container py-6 space-y-4">
         {/* 총 자산 카드 */}
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="card text-center">
@@ -234,7 +231,7 @@ export default function Portfolio() {
           <div className="space-y-3">
             {portfolio.holdings.length === 0 ? (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="card text-center py-8">
-                <p className="text-3xl mb-3">🐧</p>
+                <img src="/images/penguin-3d.png" alt="Adelie" className="w-12 h-12 mx-auto mb-3" />
                 <p className="text-text-secondary text-sm">아직 보유 종목이 없습니다</p>
                 <p className="text-text-muted text-xs mt-1">브리핑에서 투자하거나 자유 매매를 시작해보세요</p>
               </motion.div>
@@ -293,7 +290,11 @@ export default function Portfolio() {
           <div className="space-y-3">
             {rewards.length === 0 ? (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="card text-center py-8">
-                <p className="text-3xl mb-3">🎁</p>
+                <div className="w-10 h-10 mx-auto mb-3 rounded-full bg-primary/10 flex items-center justify-center">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FF6B00" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 12 20 22 4 22 4 12" /><rect x="2" y="7" width="20" height="5" /><line x1="12" y1="22" x2="12" y2="7" /><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z" /><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z" />
+                  </svg>
+                </div>
                 <p className="text-text-secondary text-sm">아직 받은 보상이 없습니다</p>
                 <p className="text-text-muted text-xs mt-1">브리핑을 완독하면 보상을 받을 수 있어요</p>
               </motion.div>

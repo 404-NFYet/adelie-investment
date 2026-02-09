@@ -52,7 +52,7 @@ export default function TutorModal() {
     }
   };
 
-  const quickQuestions = ['PER이 뭔가요?', '오늘 시장 어때요?', '초보자 투자 팁'];
+  const quickQuestions = ['PER이 뭔가요?', '오늘 시장 어때요?', '초보자 학습 팁'];
 
   return (
     <AnimatePresence>
@@ -69,7 +69,7 @@ export default function TutorModal() {
             <div className="border-b border-border">
               <div className="flex items-center justify-between p-4">
                 <div className="flex items-center gap-2">
-                  <span className="text-2xl">🐧</span>
+                  <img src="/images/penguin-3d.png" alt="AI Tutor" className="w-8 h-8" />
                   <div>
                     <h2 className="font-bold text-text-primary">AI 튜터</h2>
                     <p className="text-xs text-text-secondary capitalize">{settings.difficulty} 모드</p>
@@ -91,7 +91,7 @@ export default function TutorModal() {
             <div className="flex-1 overflow-y-auto p-4" style={{ height: 'calc(85vh - 140px)' }}>
               {messages.length === 0 ? (
                 <div className="text-center py-6">
-                  <PenguinMascot variant="welcome" message="안녕하세요! 투자에 대해 궁금한 점을 물어보세요." />
+                  <PenguinMascot variant="welcome" message="안녕하세요! 시장에 대해 궁금한 점을 물어보세요." />
                   <div className="space-y-2 mt-4">
                     {quickQuestions.map((q) => (
                       <button key={q} onClick={() => sendMessage(q, settings.difficulty)} className="block w-full text-left px-4 py-3 bg-surface rounded-xl text-sm text-text-primary hover:bg-border transition-colors">{q}</button>
