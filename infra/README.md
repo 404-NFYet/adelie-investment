@@ -1,4 +1,4 @@
-# Narrative Investment - Infrastructure Setup
+# Adelie - Infrastructure Setup
 
 ## 개요
 

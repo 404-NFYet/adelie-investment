@@ -1,5 +1,5 @@
 # ============================================================
-# Adelie Investment - Dev 환경 Terraform 진입점
+# Adelie - Dev 환경 Terraform 진입점
 # 사용법: terraform init && terraform plan && terraform apply
 # ============================================================
 

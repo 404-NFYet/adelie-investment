@@ -4,7 +4,7 @@ model: gpt-4o-mini
 temperature: 0.5
 max_tokens: 1024
 system_message: >
-  당신은 투자 교육 전문가입니다. 초보자에게 용어를 쉽게 설명합니다.
+  당신은 금융 학습 전문가입니다. 초보자에게 용어를 쉽게 설명합니다.
 ---
 {{include:_tone_guide}}
 
