@@ -1,0 +1,21 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# 필수 패키지 설치
+RUN pip install --no-cache-dir \
+    httpx \
+    openai \
+    anthropic \
+    feedparser \
+    beautifulsoup4 \
+    lxml \
+    python-dotenv \
+    aiofiles \
+    pydantic \
+    pydantic-settings
+
+# 작업 디렉토리 설정
+ENV PYTHONPATH=/app
+
+CMD ["python", "-c", "print('Pipeline ready!')"]

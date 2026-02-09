@@ -41,16 +41,6 @@ class PerplexityConfig:
 
 
 @dataclass
-class Neo4jConfig:
-    """Neo4j 데이터베이스 설정."""
-    
-    uri: str = field(default_factory=lambda: os.getenv("NEO4J_URI", "bolt://localhost:7687"))
-    username: str = field(default_factory=lambda: os.getenv("NEO4J_USERNAME", "neo4j"))
-    password: str = field(default_factory=lambda: os.getenv("NEO4J_PASSWORD", ""))
-    database: str = field(default_factory=lambda: os.getenv("NEO4J_DATABASE", "neo4j"))
-
-
-@dataclass
 class LangSmithConfig:
     """LangSmith 트레이싱 설정."""
     
@@ -69,7 +59,6 @@ class AISettings:
     
     openai: OpenAIConfig = field(default_factory=OpenAIConfig)
     perplexity: PerplexityConfig = field(default_factory=PerplexityConfig)
-    neo4j: Neo4jConfig = field(default_factory=Neo4jConfig)
     langsmith: LangSmithConfig = field(default_factory=LangSmithConfig)
     
     def validate(self) -> list[str]:

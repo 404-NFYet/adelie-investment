@@ -74,8 +74,6 @@ class TutorAgent:
             get_glossary,
             lookup_term,
             search_historical_cases,
-            get_related_companies,
-            get_supply_chain,
             get_today_briefing,
             compare_past_present,
         )
@@ -84,8 +82,6 @@ class TutorAgent:
             get_glossary,
             lookup_term,
             search_historical_cases,
-            get_related_companies,
-            get_supply_chain,
             get_today_briefing,
             compare_past_present,
         ]

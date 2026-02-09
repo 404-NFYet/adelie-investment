@@ -17,7 +17,7 @@ import logging as _logging
 
 # 각 라우터를 개별적으로 import (Docker 환경에서 일부 모듈 미존재 시 graceful 처리)
 _route_modules = {}
-for _mod_name in ["health", "briefing", "glossary", "cases", "tutor", "pipeline", "highlight", "keywords", "feedback", "trading", "narrative", "portfolio", "tutor_sessions", "tutor_explain", "visualization", "notification"]:
+for _mod_name in ["health", "briefing", "briefings", "glossary", "cases", "tutor", "pipeline", "highlight", "keywords", "feedback", "trading", "narrative", "portfolio", "tutor_sessions", "tutor_explain", "visualization", "notification", "chat", "quiz_reward"]:
     try:
         _route_modules[_mod_name] = importlib.import_module(f"app.api.routes.{_mod_name}")
     except Exception as _e:
@@ -145,6 +145,9 @@ _router_config = {
     "tutor_explain": ("Tutor Explain", "/api/v1"),
     "visualization": ("Visualization", "/api/v1"),
     "notification": ("Notifications", "/api/v1"),
+    "briefings": ("Briefings", "/api/v1"),
+    "chat": ("Chat", "/api/v1"),
+    "quiz_reward": ("Quiz", "/api/v1"),
 }
 for _name, (_tag, _prefix) in _router_config.items():
     _mod = _route_modules.get(_name)
