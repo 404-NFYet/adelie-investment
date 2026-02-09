@@ -53,7 +53,7 @@ export default function InstallPrompt() {
         className="fixed bottom-20 left-4 right-4 bg-primary text-white rounded-2xl p-4 shadow-xl z-40 max-w-mobile mx-auto"
       >
         <div className="flex items-center gap-3">
-          <span className="text-3xl">🐧</span>
+          <img src="/images/penguin-3d.png" alt="Adelie" className="w-10 h-10" />
           <div className="flex-1">
             <p className="font-bold text-sm">아델리에 앱 설치</p>
             <p className="text-xs opacity-80">홈 화면에 추가하면 더 빠르게!</p>

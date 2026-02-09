@@ -26,7 +26,7 @@ def generate_historical_case(keyword_title: str, category: str, stocks: list[str
     """LLM으로 역사적 유사 사례 + 7단계 narrative 생성. 실패 시 예외를 그대로 raise한다."""
     clean_title = strip_marks(keyword_title)
 
-    prompt = f"""당신은 친근한 투자 메이트 '아델리'입니다. 한국 주식 시장 역사 전문가이기도 합니다.
+    prompt = f"""당신은 친근한 금융 학습 메이트 '아델리'입니다. 한국 주식 시장 역사 전문가이기도 합니다.
 현재 키워드: "{clean_title}" (카테고리: {category})
 관련 종목 코드: {stocks}
 
@@ -39,11 +39,14 @@ def generate_historical_case(keyword_title: str, category: str, stocks: list[str
 4. devils_advocate — 반대 시나리오 3가지 (이런 관점도 있어요)
 5. simulation — 모의 투자 (과거 사례로 시뮬레이션)
 6. result — 결과 보고 (시뮬레이션 결과)
-7. action — 투자 액션 (실전 전략)
+7. action — 실전 액션 (실전 전략)
 
 규칙:
 - 각 섹션 content는 2~3문장, 핵심 용어를 <mark class="term">단어</mark>로 감싸기 (섹션당 1~2개)
-- 모든 섹션에 Plotly chart 포함: data:[{{x:[],y:[],type,name}}], layout:{{title}}
+- background content 필수 포함: (1) 왜 지금 시장에서 중요한지 (트리거 이벤트), (2) 관련 수치/데이터, (3) 시장 참여자들이 주목하는 이유
+- 모든 섹션에 Plotly chart 포함: data:[{{x:[],y:[],type,name}}], layout:{{title,xaxis:{{title}},yaxis:{{title}}}}
+- 차트 요구사항: (1) 실제 연도/날짜 사용 (예: 2020, 2021, 2022), (2) 실제 수치 사용 (0이나 빈 값 금지), (3) title은 한국어로 간결하게, (4) xaxis.title, yaxis.title 필수
+- bullets 포맷 규칙: (1) 종목명 포함 시 "종목명 (코드)" 형식 (예: "삼성전자 (005930)"), (2) 빈 괄호 () 금지, (3) 수치 포함 시 "종목명: 지표 값" 형식 (예: "삼성전자: PER 12.5배")
 - devils_advocate의 bullets는 반드시 3개 (반대 포인트)
 - simulation에는 투자 금액, 기간, 수익률이 포함된 chart
 - 실제 역사적 사건 기반, 2000-2023년 사이

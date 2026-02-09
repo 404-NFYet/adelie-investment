@@ -5,11 +5,8 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { portfolioApi } from '../../api';
+import { formatKRW } from '../../utils/formatNumber';
 import { usePortfolio } from '../../contexts/PortfolioContext';
-
-function formatKRW(value) {
-  return new Intl.NumberFormat('ko-KR').format(Math.round(value)) + '원';
-}
 
 export default function TradeModal({ isOpen, onClose, stock, tradeType, caseId }) {
   const { executeTrade, portfolio } = usePortfolio();
