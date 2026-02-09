@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import String, Integer, BigInteger, Float, ForeignKey, Index
+from sqlalchemy import String, Integer, BigInteger, Float, Boolean, ForeignKey, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -14,6 +14,10 @@ class BriefingReward(Base):
 
     Lifecycle:
       pending → (7일 경과) → applied (수익+: 1.5배 보너스) or expired (손실: 보너스 소멸)
+    
+    퀴즈 보상:
+      - 정답 시: base_reward = 100,000 (10만원)
+      - 오답 시: base_reward = 10,000 (1만원)
     """
 
     __tablename__ = "briefing_rewards"
@@ -22,7 +26,8 @@ class BriefingReward(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     portfolio_id: Mapped[int] = mapped_column(ForeignKey("user_portfolios.id"), nullable=False)
     case_id: Mapped[int] = mapped_column(Integer, nullable=False, comment="completed briefing case")
-    base_reward: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="기본 보상 (원)")
+    quiz_correct: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, comment="퀴즈 정답 여부")
+    base_reward: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="기본 보상 (원) - 정답 10만/오답 1만")
     multiplier: Mapped[float] = mapped_column(Float, default=1.0, comment="gamification multiplier")
     final_reward: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="최종 지급액 (원)")
     status: Mapped[str] = mapped_column(
@@ -41,6 +46,8 @@ class BriefingReward(Base):
         Index("ix_briefing_rewards_user_id", "user_id"),
         Index("ix_briefing_rewards_status", "status"),
         Index("ix_briefing_rewards_maturity", "maturity_at"),
+        Index("ix_briefing_rewards_case_id", "case_id"),
+        Index("ix_briefing_rewards_portfolio_id", "portfolio_id"),
     )
 
 
@@ -63,6 +70,7 @@ class DwellReward(Base):
     __table_args__ = (
         Index("ix_dwell_rewards_user_id", "user_id"),
         Index("ix_dwell_rewards_created_at", "created_at"),
+        Index("ix_dwell_rewards_portfolio_id", "portfolio_id"),
     )
 
 

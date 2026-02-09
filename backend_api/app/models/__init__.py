@@ -8,7 +8,8 @@ from app.models.tutor import TutorSession, TutorMessage
 from app.models.learning import LearningProgress
 from app.models.report import BrokerReport
 from app.models.portfolio import UserPortfolio, PortfolioHolding, SimulationTrade
-from app.models.company import CompanyRelation
+from app.models.reward import BriefingReward, DwellReward
+from app.models.narrative import DailyNarrative, NarrativeScenario
 
 __all__ = [
     "User",
@@ -26,5 +27,8 @@ __all__ = [
     "UserPortfolio",
     "PortfolioHolding",
     "SimulationTrade",
-    "CompanyRelation",
+    "BriefingReward",
+    "DwellReward",
+    "DailyNarrative",
+    "NarrativeScenario",
 ]

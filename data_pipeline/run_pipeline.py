@@ -3,14 +3,13 @@
 Narrative Investment - Data Pipeline Runner
 
 통합 데이터 파이프라인 실행 스크립트.
-주식 데이터 수집, 리포트 크롤링, PDF 추출, 그래프 DB 적재를 수행합니다.
+주식 데이터 수집, 리포트 크롤링, PDF 추출을 수행합니다.
 
 사용법:
     python run_pipeline.py --all          # 모든 파이프라인 실행
     python run_pipeline.py --stock        # 주식 데이터만
     python run_pipeline.py --report       # 리포트 크롤링만
     python run_pipeline.py --vision       # PDF Vision 추출만
-    python run_pipeline.py --neo4j        # Neo4j 적재만
     python run_pipeline.py --date 20260205  # 특정 날짜
 """
 
@@ -249,82 +248,6 @@ class PipelineRunner:
         self.results["vision"] = result
         return result
     
-    def run_neo4j_loading(self) -> dict:
-        """Neo4j에 기업 관계 데이터 적재"""
-        print("\n" + "-" * 40)
-        print("🔗 Phase 4: Neo4j Graph Loading")
-        print("-" * 40)
-        
-        result = {
-            "task": "neo4j_loading",
-            "status": "pending",
-            "data": {},
-        }
-        
-        try:
-            from services.neo4j_service import get_neo4j_service
-            
-            neo4j = get_neo4j_service()
-            
-            if not neo4j.verify_connectivity():
-                raise ConnectionError("Neo4j connection failed")
-            
-            start_time = time.time()
-            
-            # Initialize schema
-            print("  📐 Initializing schema...")
-            neo4j.init_schema()
-            
-            # Load companies from stock collection results
-            if "stock" in self.results and self.results["stock"]["status"] == "success":
-                print("  📥 Loading companies from stock data...")
-                
-                # TODO: 실제 운영에서는 수집된 stock 데이터에서 기업 목록을 추출해야 함.
-                #       현재는 하드코딩된 샘플 데이터를 사용하고 있으므로,
-                #       self.results["stock"]["data"]에서 동적으로 로드하도록 개선 필요.
-                sample_companies = [
-                    {"stock_code": "005930", "name": "삼성전자", "market": "KOSPI"},
-                    {"stock_code": "000660", "name": "SK하이닉스", "market": "KOSPI"},
-                    {"stock_code": "035420", "name": "NAVER", "market": "KOSPI"},
-                    {"stock_code": "035720", "name": "카카오", "market": "KOSPI"},
-                    {"stock_code": "051910", "name": "LG화학", "market": "KOSPI"},
-                ]
-                
-                count = neo4j.bulk_create_companies(sample_companies)
-                print(f"    Created {count} company nodes")
-                
-                # TODO: 관계 데이터도 하드코딩 → 수집된 데이터 기반으로 변경 필요
-                sample_relationships = [
-                    {"supplier_code": "000660", "customer_code": "005930", "product": "메모리 반도체", "confidence": 0.95},
-                    {"supplier_code": "051910", "customer_code": "005930", "product": "배터리", "confidence": 0.8},
-                ]
-                
-                rel_count = neo4j.bulk_create_relationships(sample_relationships)
-                print(f"    Created {rel_count} relationships")
-            
-            # Get stats
-            stats = neo4j.get_graph_stats()
-            
-            elapsed = time.time() - start_time
-            
-            result["status"] = "success"
-            result["data"] = {
-                "graph_stats": stats,
-            }
-            result["duration_seconds"] = elapsed
-            
-            print(f"  ✅ Neo4j loading complete")
-            print(f"  📊 Stats: {stats}")
-            print(f"  ⏱️ Duration: {elapsed:.2f}s")
-            
-        except Exception as e:
-            result["status"] = "failed"
-            result["error"] = str(e)
-            print(f"  ❌ Error: {e}")
-        
-        self.results["neo4j"] = result
-        return result
-    
     def save_briefing_to_db(self) -> dict:
         """브리핑 데이터를 PostgreSQL에 저장"""
         print("\n" + "-" * 40)
@@ -419,10 +342,7 @@ class PipelineRunner:
         # Phase 3: Vision Extraction
         await self.run_vision_extraction()
         
-        # Phase 4: Neo4j Loading
-        self.run_neo4j_loading()
-        
-        # Phase 5: Save to DB
+        # Phase 4: Save to DB
         self.save_briefing_to_db()
         
         total_elapsed = time.time() - total_start
@@ -462,7 +382,6 @@ Examples:
     parser.add_argument("--stock", action="store_true", help="Run stock data collection")
     parser.add_argument("--report", action="store_true", help="Run report collection")
     parser.add_argument("--vision", action="store_true", help="Run Vision API extraction")
-    parser.add_argument("--neo4j", action="store_true", help="Run Neo4j loading")
     parser.add_argument("--date", type=str, help="Target date (YYYYMMDD)")
     parser.add_argument("--pages", type=int, default=2, help="Report pages to crawl")
     parser.add_argument("--limit", type=int, default=5, help="Vision extraction limit")
@@ -471,7 +390,7 @@ Examples:
     args = parser.parse_args()
     
     # If no specific task, default to --all
-    if not any([args.all, args.stock, args.report, args.vision, args.neo4j]):
+    if not any([args.all, args.stock, args.report, args.vision]):
         args.all = True
     
     runner = PipelineRunner(date=args.date)
@@ -491,9 +410,6 @@ Examples:
             
             if args.vision:
                 await runner.run_vision_extraction(limit=args.limit)
-            
-            if args.neo4j:
-                runner.run_neo4j_loading()
     
     asyncio.run(run())
     

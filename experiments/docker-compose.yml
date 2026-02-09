@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  # 파이프라인 실험 환경
+  pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile.pipeline
+    volumes:
+      - ./pipeline:/app/pipeline
+      - ./naver_crawler:/app/naver_crawler
+      - ./data:/app/data
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: tail -f /dev/null  # 컨테이너 유지용
+    networks:
+      - experiment-net
+
+  # 로컬 PostgreSQL (선택)
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: adelie
+      POSTGRES_PASSWORD: adelie_local
+      POSTGRES_DB: adelie_experiments
+    volumes:
+      - experiment_pg_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    networks:
+      - experiment-net
+    profiles:
+      - with-db
+
+  # 로컬 Redis (선택)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    networks:
+      - experiment-net
+    profiles:
+      - with-db
+
+networks:
+  experiment-net:
+    driver: bridge
+
+volumes:
+  experiment_pg_data:

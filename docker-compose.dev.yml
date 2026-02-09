@@ -29,7 +29,6 @@ services:
       REDIS_URL: redis://10.10.10.10:6379/1
       REDIS_HOST: 10.10.10.10
       REDIS_PORT: 6379
-      NEO4J_URI: bolt://10.10.10.10:7687
       MINIO_ENDPOINT: http://10.10.10.10:9000
     volumes:
       - ./backend_api/app:/app/app  # 핫 리로드
@@ -63,6 +62,5 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://narative:password@10.10.10.10:5432/narrative_invest
       REDIS_URL: redis://10.10.10.10:6379/1
-      NEO4J_URI: bolt://10.10.10.10:7687
     profiles:
       - pipeline
