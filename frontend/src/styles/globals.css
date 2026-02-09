@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@300;400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -37,7 +37,11 @@
   --color-info-light: #DBEAFE;
   
   /* Typography */
-  --font-sans: 'Inter', 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-sans: 'IBM Plex Sans KR', 'IBM Plex Sans', 'Inter', 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif;
+
+  /* Glassmorphism Shadows */
+  --glass-shadow: 0 8px 30px rgba(0, 0, 0, 0.04);
+  --premium-shadow: 0 20px 50px rgba(0, 0, 0, 0.05);
 }
 
 /* Dark Mode */
@@ -72,6 +76,25 @@
 }
 
 @layer components {
+  /* Glassmorphism */
+  .glass-card {
+    @apply bg-white/80 backdrop-blur-xl border border-white/40;
+    box-shadow: var(--glass-shadow);
+  }
+
+  .glass-header {
+    @apply bg-white/70 backdrop-blur-md border border-white/40 shadow-sm;
+  }
+
+  .premium-shadow {
+    box-shadow: var(--premium-shadow);
+  }
+
+  /* Term Highlight (adelie_fe_test style) */
+  .term {
+    @apply bg-[#FFF0E5] text-[#FF6B00] font-semibold px-1 rounded cursor-pointer transition-colors hover:bg-[#FFE0CC];
+  }
+
   /* Container */
   .container {
     @apply max-w-mobile mx-auto px-4;
