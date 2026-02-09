@@ -9,12 +9,31 @@ def collect_and_seed():
     today = datetime.now()
     if today.weekday() >= 5:
         today -= timedelta(days=(today.weekday() - 4))
-    date_str = today.strftime("%Y%m%d")
-    print(f"수집 날짜: {date_str}")
 
-    df = stock.get_market_ohlcv_by_ticker(date_str, market="ALL")
-    df = df[df["거래량"] > 0]
-    print(f"전체 종목: {len(df)}")
+    # 데이터 수집 재시도 로직 (최대 5일 전까지)
+    df = None
+    for i in range(5):
+        target_date = today - timedelta(days=i)
+        date_str = target_date.strftime("%Y%m%d")
+        print(f"수집 시도: {date_str} ({target_date.strftime('%Y-%m-%d %A')})")
+
+        try:
+            df = stock.get_market_ohlcv_by_ticker(date_str, market="ALL")
+            df = df[df["거래량"] > 0]
+            print(f"전체 종목: {len(df)}")
+
+            if len(df) > 0:
+                print(f"✅ 데이터 수집 성공: {date_str}")
+                break
+            else:
+                print(f"⚠️ 데이터 없음, 이전 날짜 시도...")
+        except Exception as e:
+            print(f"❌ 에러: {e}, 이전 날짜 시도...")
+            continue
+
+    if df is None or len(df) == 0:
+        print("❌ 데이터 수집 실패: 최근 5일 내 거래 데이터 없음")
+        return
 
     df_sorted = df.sort_values("등락률", ascending=False)
 
