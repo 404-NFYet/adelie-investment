@@ -35,10 +35,12 @@ sys.path.insert(0, str(project_root))
 
 # 기존 함수들 임포트
 from scripts.seed_fresh_data_integrated import (
+    SECTOR_ROTATION_MAP,
     calculate_quality_score,
     calculate_technical_indicators,
     calculate_trend_metrics,
     cluster_by_sector,
+    determine_economic_cycle,
     fetch_multi_day_data,
     get_latest_trading_date,
     select_top_themes,
@@ -252,7 +254,7 @@ def search_catalysts_perplexity_node(state: KeywordPipelineState) -> dict:
                 response = client.chat.completions.create(
                     model="sonar-pro",
                     messages=[{"role": "user", "content": query}],
-                    search_domain_filter=KOREAN_FINANCIAL_DOMAINS,
+                    web_search_options={"search_domain_filter": KOREAN_FINANCIAL_DOMAINS},
                 )
 
                 content = response.choices[0].message.content
@@ -361,7 +363,7 @@ def research_sector_deep_dive_node(state: KeywordPipelineState) -> dict:
                 response = client.chat.completions.create(
                     model="sonar-pro",
                     messages=[{"role": "user", "content": query}],
-                    search_domain_filter=KOREAN_FINANCIAL_DOMAINS,
+                    web_search_options={"search_domain_filter": KOREAN_FINANCIAL_DOMAINS},
                 )
 
                 sector_analyses[sector] = {
@@ -415,7 +417,7 @@ def research_macro_environment_node(state: KeywordPipelineState) -> dict:
         response = client.chat.completions.create(
             model="sonar-pro",
             messages=[{"role": "user", "content": query}],
-            search_domain_filter=KOREAN_FINANCIAL_DOMAINS,
+            web_search_options={"search_domain_filter": KOREAN_FINANCIAL_DOMAINS},
         )
 
         citations = getattr(response, "citations", []) or []
@@ -499,6 +501,18 @@ def select_final_keywords_node(state: KeywordPipelineState) -> dict:
     try:
         candidates = state["keyword_candidates"]
         stocks = state["enriched_stocks"]
+
+        # Sector Rotation 점수 조정 (macro_context 활용)
+        macro_context = state.get("macro_context") or {}
+        if macro_context.get("analysis"):
+            cycle = determine_economic_cycle(macro_context)
+            print(f"  경기 사이클: {cycle}")
+            favored = SECTOR_ROTATION_MAP.get(cycle, [])
+            for kw in candidates:
+                sector = kw.get("sector", "")
+                if any(f in sector for f in favored):
+                    kw["quality_score"] = min(100, kw["quality_score"] + 10)
+                    print(f"    ↑ {kw['title']}: +10점 (섹터 로테이션 {cycle})")
 
         # 점수순 정렬
         sorted_kw = sorted(candidates, key=lambda k: k["quality_score"], reverse=True)

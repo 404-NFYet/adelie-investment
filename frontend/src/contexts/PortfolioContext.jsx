@@ -5,17 +5,15 @@ import { useUser } from './UserContext';
 const PortfolioContext = createContext(null);
 
 export function PortfolioProvider({ children }) {
-  const { user, isLoading: isUserLoading } = useUser();
+  const { user } = useUser();
   const [portfolio, setPortfolio] = useState(null);
   const [summary, setSummary] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // 유저 로딩 완료 후에만 게스트 판정 (로딩 중에는 false)
   const userId = user?.id;
-  const isGuest = !isUserLoading && !userId;
 
   const fetchPortfolio = useCallback(async () => {
-    if (isGuest) return;
+    if (!userId) return;
     setIsLoading(true);
     try {
       const data = await portfolioApi.getPortfolio(userId);
@@ -25,45 +23,45 @@ export function PortfolioProvider({ children }) {
     } finally {
       setIsLoading(false);
     }
-  }, [userId, isGuest]);
+  }, [userId]);
 
   const fetchSummary = useCallback(async () => {
-    if (isGuest) return;
+    if (!userId) return;
     try {
       const data = await portfolioApi.getPortfolioSummary(userId);
       setSummary(data);
     } catch (err) {
       console.error('Portfolio summary error:', err);
     }
-  }, [userId, isGuest]);
+  }, [userId]);
 
   const executeTrade = useCallback(async (tradeData) => {
-    if (isGuest) throw new Error('로그인이 필요합니다');
+    if (!userId) throw new Error('로그인이 필요합니다');
     const result = await portfolioApi.executeTrade(userId, tradeData);
     await fetchPortfolio();
     return result;
-  }, [userId, isGuest, fetchPortfolio]);
+  }, [userId, fetchPortfolio]);
 
   const claimReward = useCallback(async (caseId) => {
-    if (isGuest) return;
+    if (!userId) return;
     const result = await portfolioApi.claimBriefingReward(userId, caseId);
     await fetchSummary();
     return result;
-  }, [userId, isGuest, fetchSummary]);
+  }, [userId, fetchSummary]);
 
   // 초기 로드 (인증된 사용자만)
   useEffect(() => {
-    if (!isGuest) {
+    if (userId) {
       fetchSummary();
+      fetchPortfolio();  // 포트폴리오도 함께 로드
     }
-  }, [fetchSummary, isGuest]);
+  }, [fetchSummary, fetchPortfolio, userId]);
 
   return (
     <PortfolioContext.Provider value={{
       portfolio,
       summary,
       isLoading,
-      isGuest,
       fetchPortfolio,
       fetchSummary,
       executeTrade,

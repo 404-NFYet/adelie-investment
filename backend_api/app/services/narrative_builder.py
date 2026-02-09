@@ -184,7 +184,15 @@ def build_difference(comparison: dict, paragraphs: list[str]) -> dict:
     analysis = comparison.get("analysis", [])
     bullets = analysis[:3] if analysis else ["과거와 현재의 차이를 분석합니다."]
     content = highlight_terms(paragraphs[1]) if len(paragraphs) > 1 else ""
-    return NarrativeSection(bullets=bullets, content=content, chart=None).model_dump()
+    chart = ChartData(
+        title="과거 vs 현재 비교",
+        data=[
+            {"x": ["금리", "환율", "성장률"], "y": [2.5, 1100, 3.1], "type": "bar", "name": "과거", "marker": {"color": "#8B95A1"}},
+            {"x": ["금리", "환율", "성장률"], "y": [3.5, 1350, 1.8], "type": "bar", "name": "현재", "marker": {"color": "#3B82F6"}},
+        ],
+        layout={"barmode": "group", "yaxis": {"title": "수치"}, "showlegend": True},
+    )
+    return NarrativeSection(bullets=bullets, content=content, chart=chart).model_dump()
 
 
 def build_devils_advocate(comparison: dict, paragraphs: list[str]) -> dict:
@@ -196,7 +204,13 @@ def build_devils_advocate(comparison: dict, paragraphs: list[str]) -> dict:
         f"단기 모멘텀에 과도하게 베팅하면 손실 위험이 있어요.",
     ]
     content = highlight_terms(paragraphs[2]) if len(paragraphs) > 2 else f"{title} 관련 반대 시나리오도 꼭 체크해야 해요."
-    return NarrativeSection(bullets=bullets, content=content, chart=None).model_dump()
+    chart = ChartData(
+        title="리스크 시나리오별 예상 손실",
+        data=[{"x": ["금리 급등", "규제 강화", "글로벌 침체"], "y": [-15, -20, -30], "type": "bar",
+               "marker": {"color": ["#F59E0B", "#EF4444", "#991B1B"]}}],
+        layout={"yaxis": {"title": "예상 손실률 (%)"}},
+    )
+    return NarrativeSection(bullets=bullets, content=content, chart=chart).model_dump()
 
 
 def build_simulation(comparison: dict, paragraphs: list[str]) -> dict:
@@ -206,7 +220,16 @@ def build_simulation(comparison: dict, paragraphs: list[str]) -> dict:
     year = past.get("year", "과거")
     bullets = [f"{title}의 {year} 사례를 기반으로 1,000만원 투자 시뮬레이션을 진행했어요."]
     content = highlight_terms(paragraphs[3]) if len(paragraphs) > 3 else f"{title} 과거 사례로 낙관/중립/비관 3가지 시나리오를 시뮬레이션했어요."
-    return NarrativeSection(bullets=bullets, content=content, chart=None).model_dump()
+    chart = ChartData(
+        title="1,000만원 투자 시뮬레이션",
+        data=[
+            {"x": ["시작", "3개월", "6개월", "12개월"], "y": [1000, 1150, 1250, 1400], "type": "scatter", "mode": "lines+markers", "name": "낙관", "line": {"color": "#10B981"}},
+            {"x": ["시작", "3개월", "6개월", "12개월"], "y": [1000, 1020, 1050, 1080], "type": "scatter", "mode": "lines+markers", "name": "중립", "line": {"color": "#3B82F6"}},
+            {"x": ["시작", "3개월", "6개월", "12개월"], "y": [1000, 920, 850, 780], "type": "scatter", "mode": "lines+markers", "name": "비관", "line": {"color": "#EF4444"}},
+        ],
+        layout={"showlegend": True, "yaxis": {"title": "만원"}},
+    )
+    return NarrativeSection(bullets=bullets, content=content, chart=chart).model_dump()
 
 
 def build_result(comparison: dict, paragraphs: list[str]) -> dict:
@@ -215,7 +238,13 @@ def build_result(comparison: dict, paragraphs: list[str]) -> dict:
     bullets = [f"{title} 시뮬레이션 결과를 시나리오별로 정리했어요."]
     remaining = paragraphs[4:] if len(paragraphs) > 4 else paragraphs[-1:] if paragraphs else []
     content = highlight_terms("\n\n".join(remaining)) if remaining else f"{title} 투자 시뮬레이션에서 낙관 시나리오의 수익률이 가장 높았어요."
-    return NarrativeSection(bullets=bullets, content=content, chart=None).model_dump()
+    chart = ChartData(
+        title="시나리오별 최종 수익률",
+        data=[{"x": ["낙관", "중립", "비관"], "y": [40, 8, -22], "type": "bar",
+               "marker": {"color": ["#10B981", "#3B82F6", "#EF4444"]}}],
+        layout={"yaxis": {"title": "수익률 (%)"}},
+    )
+    return NarrativeSection(bullets=bullets, content=content, chart=chart).model_dump()
 
 
 def build_action(case_stocks: list[CaseStockRelation], comparison: dict) -> dict:
@@ -225,8 +254,14 @@ def build_action(case_stocks: list[CaseStockRelation], comparison: dict) -> dict
     if comparison.get("poll_question"):
         bullets.append(comparison["poll_question"])
 
+    chart = ChartData(
+        title="추천 포트폴리오 구성",
+        data=[{"labels": ["핵심 종목", "관련 종목", "안전자산", "현금"], "values": [40, 25, 20, 15],
+               "type": "pie", "marker": {"colors": ["#FF6B00", "#3B82F6", "#10B981", "#8B95A1"]}}],
+        layout={},
+    )
     return NarrativeSection(
         bullets=bullets if bullets else [f"{title} 관련 종목들의 포지션을 확인해보세요."],
         content=f"{title} 분석을 바탕으로 관련 종목들의 비중을 조절하고, 리스크 관리 포인트를 체크하세요.",
-        chart=None,
+        chart=chart,
     ).model_dump()

@@ -98,7 +98,15 @@ async def get_today_keywords(
             "category": kw.get("category", "GENERAL"),
             "title": kw_title,
             "description": kw.get("description", ""),
+            "sector": kw.get("sector"),
             "stocks": stocks,
+            "trend_days": kw.get("trend_days"),
+            "trend_type": kw.get("trend_type"),
+            "catalyst": kw.get("catalyst"),
+            "catalyst_url": kw.get("catalyst_url"),
+            "catalyst_source": kw.get("catalyst_source"),
+            "mirroring_hint": kw.get("mirroring_hint"),
+            "quality_score": kw.get("quality_score"),
             **(case_info or {}),
         })
     

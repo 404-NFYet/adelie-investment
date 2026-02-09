@@ -110,13 +110,14 @@ export function TutorProvider({ children }) {
               // done: 세션 ID 업데이트
               if (data.session_id) setSessionId(data.session_id);
 
-              // visualization: 차트 렌더링
-              if (data.type === 'visualization' && data.content) {
+              // visualization: 차트 렌더링 (JSON chartData 우선, HTML 폴백)
+              if (data.type === 'visualization' && (data.chartData || data.content)) {
                 const vizMessage = {
                   id: Date.now() + Math.random(),
                   role: 'visualization',
-                  content: data.content,
+                  content: data.content || null,
                   format: data.format || 'html',
+                  chartData: data.chartData || null,
                   executionTime: data.execution_time_ms,
                   timestamp: new Date().toISOString(),
                 };

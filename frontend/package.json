@@ -13,6 +13,7 @@
     "chart.js": "^4.5.1",
     "framer-motion": "^12.0.0",
     "plotly.js": "^3.3.1",
+    "plotly.js-basic-dist-min": "^3.3.1",
     "react": "^19.0.0",
     "react-chartjs-2": "^5.3.1",
     "react-dom": "^19.0.0",

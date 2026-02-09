@@ -25,8 +25,11 @@ class PipelineConfig:
     anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
     perplexity_api_key: str = os.getenv("PERPLEXITY_API_KEY", "")
     
+    # 데이터베이스 (선택)
+    database_url: str = os.getenv("DATABASE_URL", "")
+    
     # 출력 설정
-    output_dir: str = os.getenv("OUTPUT_DIR", "/app/data")
+    output_dir: str = os.getenv("OUTPUT_DIR", "./data")
     
     def validate(self) -> bool:
         """설정 유효성 검사."""

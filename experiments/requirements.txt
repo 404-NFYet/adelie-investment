@@ -1,0 +1,32 @@
+# Adelie Experiments - 데이터 파이프라인 실험 환경
+# pip install -r requirements.txt
+
+# HTTP / API 호출
+httpx>=0.27.0
+
+# 데이터베이스
+asyncpg>=0.30.0
+sqlalchemy[asyncio]>=2.0.0
+psycopg2-binary>=2.9.9
+
+# 웹 스크래핑 / RSS
+beautifulsoup4>=4.12.0
+lxml>=5.0.0
+feedparser>=6.0.0
+
+# AI 프로바이더
+openai>=1.50.0
+anthropic>=0.40.0
+
+# PDF 처리
+pdfplumber>=0.11.0
+
+# 설정 / 유틸리티
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+aiofiles>=24.0.0
+
+# 노트북
+jupyter>=1.0.0
+ipykernel>=6.0.0

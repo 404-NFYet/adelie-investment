@@ -9,21 +9,20 @@ import { useTheme } from '../contexts/ThemeContext';
 import { motion } from 'framer-motion';
 import AppHeader from '../components/layout/AppHeader';
 
-/* ── 인라인 피드백 컴포넌트 ── */
-function InlineFeedback() {
-  const [rating, setRating] = useState(0);
-  const [comment, setComment] = useState('');
+/* ── 문의사항 컴포넌트 ── */
+function ContactSection() {
+  const [message, setMessage] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async () => {
-    if (rating === 0) return;
+    if (!message.trim()) return;
     setSubmitting(true);
     try {
       await fetch('/api/v1/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ page: 'profile', rating, comment: comment || null }),
+        body: JSON.stringify({ page: 'contact', rating: null, comment: message }),
       });
       setSubmitted(true);
     } catch {}
@@ -34,31 +33,28 @@ function InlineFeedback() {
     return (
       <div className="text-center py-4">
         <img src="/images/penguin-3d.png" alt="Adelie" className="w-10 h-10 mx-auto mb-1" />
-        <p className="text-sm font-medium">감사합니다!</p>
+        <p className="text-sm font-medium">문의가 접수되었습니다!</p>
+        <p className="text-xs text-text-secondary mt-1">빠른 시일 내에 답변드리겠습니다.</p>
       </div>
     );
   }
 
   return (
     <>
-      <h2 className="text-lg font-bold mb-3">의견 보내기</h2>
-      <div className="flex gap-2 mb-3">
-        {[1, 2, 3, 4, 5].map(star => (
-          <button key={star} onClick={() => setRating(star)} className={`text-xl transition-transform ${star <= rating ? 'scale-110' : 'opacity-30'}`}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill={star <= rating ? '#FF6B00' : 'none'} stroke="#FF6B00" strokeWidth="1.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
-          </button>
-        ))}
-      </div>
+      <h2 className="text-lg font-bold mb-3">문의사항</h2>
+      <p className="text-sm text-text-secondary mb-4">
+        서비스 이용 중 궁금한 점이나 개선 사항이 있으시면 아래에 남겨주세요.
+      </p>
       <textarea
-        value={comment}
-        onChange={(e) => setComment(e.target.value)}
-        placeholder="더 나은 서비스를 위해 의견을 남겨주세요"
+        value={message}
+        onChange={(e) => setMessage(e.target.value)}
+        placeholder="문의 내용을 입력해주세요"
         className="w-full p-3 rounded-xl border border-border bg-surface text-sm resize-none mb-3"
-        rows={2}
+        rows={3}
       />
       <button
         onClick={handleSubmit}
-        disabled={rating === 0 || submitting}
+        disabled={!message.trim() || submitting}
         className="w-full py-2.5 rounded-xl font-semibold text-white bg-primary hover:bg-primary/90 disabled:opacity-40 transition-colors text-sm"
       >
         {submitting ? '전송 중...' : '보내기'}
@@ -78,9 +74,6 @@ export default function Profile() {
   const { user, settings, setDifficulty, logout } = useUser();
   const { isDarkMode, toggleTheme } = useTheme();
 
-  const isLoggedIn = user?.isAuthenticated;
-  const isGuest = user?.isGuest;
-
   return (
     <div className="min-h-screen bg-background pb-24">
       <AppHeader />
@@ -94,18 +87,14 @@ export default function Profile() {
           className="card"
         >
           <h2 className="text-lg font-bold mb-3">프로필</h2>
-          {isLoggedIn ? (
-            <div className="space-y-1">
-              {user.username && (
-                <p className="text-text-primary font-medium">{user.username}</p>
-              )}
-              {user.email && (
-                <p className="text-text-secondary text-sm">{user.email}</p>
-              )}
-            </div>
-          ) : (
-            <p className="text-text-secondary text-sm">게스트 모드</p>
-          )}
+          <div className="space-y-1">
+            {user?.username && (
+              <p className="text-text-primary font-medium">{user.username}</p>
+            )}
+            {user?.email && (
+              <p className="text-text-secondary text-sm">{user.email}</p>
+            )}
+          </div>
         </motion.div>
 
         {/* 난이도 설정 */}
@@ -165,55 +154,32 @@ export default function Profile() {
           </button>
         </motion.div>
 
-        {/* 계정 관련 버튼 */}
+        {/* 로그아웃 버튼 */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: 0.3 }}
           className="space-y-3"
         >
-          {isLoggedIn ? (
-            <button
-              onClick={() => {
-                logout();
-                navigate('/auth');
-              }}
-              className="btn-secondary w-full"
-            >
-              로그아웃
-            </button>
-          ) : (
-            <>
-              <button
-                onClick={() => navigate('/auth')}
-                className="btn-primary w-full"
-              >
-                계정 등록하기
-              </button>
-              {isGuest && (
-                <button
-                  onClick={() => {
-                    logout();
-                    localStorage.removeItem('userSettings');
-                    navigate('/onboarding', { replace: true });
-                  }}
-                  className="btn-secondary w-full text-sm"
-                >
-                  게스트 모드 나가기
-                </button>
-              )}
-            </>
-          )}
+          <button
+            onClick={() => {
+              logout();
+              navigate('/auth');
+            }}
+            className="btn-secondary w-full"
+          >
+            로그아웃
+          </button>
         </motion.div>
 
-        {/* 의견 보내기 */}
+        {/* 문의사항 */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: 0.35 }}
           className="card"
         >
-          <InlineFeedback />
+          <ContactSection />
         </motion.div>
 
         {/* 앱 정보 */}

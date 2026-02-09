@@ -39,6 +39,9 @@ export default defineConfig({
         ],
       },
       workbox: {
+        cleanupOutdatedCaches: true,
+        skipWaiting: true,
+        clientsClaim: true,
         globPatterns: ['**/*.{js,css,html,svg,woff2}'],
         globIgnores: ['**/images/penguin-3d.png', '**/images/icon-512.png', '**/favicon.ico', '**/images/icon-192.png'],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB

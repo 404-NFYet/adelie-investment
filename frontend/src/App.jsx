@@ -32,8 +32,9 @@ const Profile = lazy(() => import('./pages/Profile'));
 const TutorChat = lazy(() => import('./pages/TutorChat'));
 
 function ProtectedRoute({ children }) {
-  const { user, settings } = useUser();
-  if (!user && !settings.hasCompletedOnboarding) return <Navigate to="/onboarding" replace />;
+  const { user, isLoading } = useUser();
+  if (isLoading) return <PageLoader />;
+  if (!user?.isAuthenticated) return <Navigate to="/auth" replace />;
   return children;
 }
 

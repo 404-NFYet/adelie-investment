@@ -8,8 +8,12 @@ services:
       dockerfile: Dockerfile.pipeline
     volumes:
       - ./pipeline:/app/pipeline
+      - ./prompts:/app/prompts
+      - ./collectors:/app/collectors
       - ./naver_crawler:/app/naver_crawler
+      - ./notebooks:/app/notebooks
       - ./data:/app/data
+      - ./run.py:/app/run.py
     env_file:
       - .env
     environment:
