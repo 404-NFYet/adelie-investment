@@ -1,7 +1,7 @@
-"""통합 데이터 파이프라인: Phase 1-4 연속 실행.
+"""통합 데이터 파이프라인: Phase 1-4 유틸리티 함수.
 
-멀티데이 트렌드 감지 → 섹터 클러스터링 → RSS 뉴스 매칭 → 테마 키워드 생성을
-하나의 파이프라인으로 실행하여 데이터 일관성 보장.
+멀티데이 트렌드 감지 → 섹터 클러스터링 → 테마 키워드 생성에 필요한
+핵심 함수들을 제공. 실행은 keyword_pipeline_graph.py (LangGraph)에서 수행.
 
 예외 처리:
 - 휴일 자동 감지 및 fallback
@@ -16,11 +16,8 @@ import sys
 import time
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
-from difflib import SequenceMatcher
-from email.utils import parsedate_to_datetime
 from pathlib import Path
 
-import httpx
 import pandas as pd
 from pykrx import stock as pykrx_stock
 
@@ -70,10 +67,6 @@ def retry_with_backoff(max_attempts=3, base_delay=2):
 # 상수 및 설정
 # ============================================================
 
-RSS_FEEDS = [
-    "https://www.hankyung.com/feed/economy",
-]
-
 _SECTOR_MIRRORING_HINTS = {
     "반도체": "2018년 메모리 다운사이클: 삼성전자·SK하이닉스 주가 40%+ 하락 후 2019년 반등",
     "2차전지": "2021년 배터리주 급등락: LG에너지솔루션 IPO 전후 에코프로·엘앤에프 300%+ 상승 후 2022년 50% 조정",
@@ -86,113 +79,6 @@ _SECTOR_MIRRORING_HINTS = {
     "기계·장비": "2021년 두산중공업·HD현대인프라코어 수주 증가: 풍력·건설기계 호황",
     "화학": "2021년 LG화학·SKC 배터리 소재 호황: 양극재·음극재 가격 2배, 에코프로비엠 급등",
 }
-
-
-# ============================================================
-# RSSService (임베드)
-# ============================================================
-
-class RSSService:
-    """RSS 피드 수집 서비스."""
-
-    def __init__(self, feeds: list[str], timeout_seconds: int = 15):
-        self.feeds = feeds
-        self.timeout_seconds = timeout_seconds
-
-    def fetch_top_news_structured(self, retry_48h: bool = False) -> list[dict]:
-        """구조화된 뉴스 리스트 반환."""
-        now = datetime.now(timezone.utc)
-        window = timedelta(hours=48 if retry_48h else 24)
-        cutoff = now - window
-        news_items = []
-
-        with httpx.Client(timeout=self.timeout_seconds, follow_redirects=True) as client:
-            for url in self.feeds:
-                try:
-                    response = client.get(url)
-                    if response.status_code >= 400:
-                        continue
-                    xml = response.text
-                    source = self._extract_source(url)
-                    self._extract_items(xml, cutoff, news_items, source)
-                except Exception:
-                    pass
-
-        if len(news_items) < 3 and not retry_48h:
-            return self.fetch_top_news_structured(retry_48h=True)
-
-        return news_items[:50]
-
-    def _extract_items(self, xml: str, cutoff: datetime, collector: list, source: str):
-        """RSS 아이템 추출."""
-        pattern = re.compile(
-            r"<item>[\s\S]*?<title>(.*?)</title>"
-            r"[\s\S]*?<link>(.*?)</link>"
-            r"(?:[\s\S]*?<description>(.*?)</description>)?"
-            r"[\s\S]*?(?:<pubDate>(.*?)</pubDate>)?[\s\S]*?</item>",
-            re.IGNORECASE,
-        )
-
-        for match in pattern.finditer(xml):
-            if len(collector) >= 20:
-                break
-            title = self._clean(match.group(1))
-            url = self._clean(match.group(2))
-            desc = self._clean(match.group(3)) if match.group(3) else ""
-            date_str = match.group(4)
-
-            if not title or not url:
-                continue
-            if not self._is_recent(date_str, cutoff):
-                continue
-
-            collector.append({
-                "title": title,
-                "url": url,
-                "description": desc[:200],
-                "published_at": self._parse_date(date_str),
-                "source": source,
-            })
-
-    @staticmethod
-    def _clean(raw: str) -> str:
-        """HTML 태그 제거."""
-        text = re.sub(r"<!\[CDATA\[(.*?)\]\]>", r"\1", raw or "")
-        text = re.sub(r"<[^>]*>", "", text)
-        return re.sub(r"\s+", " ", text).strip()
-
-    @staticmethod
-    def _extract_source(url: str) -> str:
-        """URL에서 출처 추출."""
-        if "hankyung.com" in url:
-            return "한국경제"
-        return "기타"
-
-    @staticmethod
-    def _parse_date(date_str: str | None) -> str:
-        """날짜 문자열을 ISO 형식으로 변환."""
-        if not date_str:
-            return datetime.now(timezone.utc).isoformat()
-        try:
-            dt = parsedate_to_datetime(date_str.strip())
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            return dt.isoformat()
-        except:
-            return datetime.now(timezone.utc).isoformat()
-
-    @staticmethod
-    def _is_recent(date_str: str | None, cutoff: datetime) -> bool:
-        """최근 뉴스인지 확인."""
-        if not date_str:
-            return True
-        try:
-            dt = parsedate_to_datetime(date_str.strip())
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            return dt >= cutoff
-        except:
-            return True
 
 
 # ============================================================
@@ -583,87 +469,6 @@ def select_top_themes(themes, target=5):
 # Phase 3: RSS 뉴스 매칭
 # ============================================================
 
-def preprocess_news(news_list):
-    """뉴스 전처리: 중복 제거."""
-    if not news_list:
-        return []
-
-    unique = []
-    seen = []
-
-    for news in news_list:
-        title = news["title"]
-        is_dup = False
-        for seen_title in seen:
-            if SequenceMatcher(None, title, seen_title).ratio() >= 0.9:
-                is_dup = True
-                break
-        if not is_dup:
-            unique.append(news)
-            seen.append(title)
-
-    unique.sort(key=lambda x: x["published_at"], reverse=True)
-    return unique
-
-
-@retry_with_backoff(max_attempts=3, base_delay=2)
-def match_news_to_stocks_llm(stocks, news, api_key):
-    """LLM 뉴스-종목 매칭 (재시도 포함)."""
-    if not news or not stocks:
-        return {}
-
-    from openai import OpenAI
-
-    client = OpenAI(api_key=api_key)
-    stock_map = {s["stock_code"]: s.get("stock_name", s["stock_code"]) for s in stocks}
-    result_map = {}
-
-    # 배치 처리
-    batch_size = 20
-    for i in range(0, len(news), batch_size):
-        batch = news[i : i + batch_size]
-        news_str = "\n".join([f"{idx}. {n['title']}" for idx, n in enumerate(batch, 1)])
-        stock_str = "\n".join([f"- {name} ({code})" for code, name in stock_map.items()])
-
-        prompt = f"""다음 뉴스들이 어떤 종목에 관한 것인지 판단하세요.
-
-뉴스:
-{news_str}
-
-후보 종목:
-{stock_str}
-
-응답 형식 (JSON):
-{{"matches": [{{"news_index": 1, "stock_code": "005930"}}, {{"news_index": 2, "stock_code": "NONE"}}, ...]}}
-"""
-
-        try:
-            resp = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"},
-                temperature=0,
-            )
-            data = json.loads(resp.choices[0].message.content)
-
-            for match in data.get("matches", []):
-                idx = match.get("news_index", 0) - 1
-                code = match.get("stock_code", "NONE")
-                if 0 <= idx < len(batch) and code != "NONE" and code in stock_map:
-                    if code not in result_map:
-                        result_map[code] = {
-                            "title": batch[idx]["title"],
-                            "url": batch[idx]["url"],
-                            "published_at": batch[idx]["published_at"],
-                            "source": batch[idx]["source"],
-                        }
-        except Exception as e:
-            print(f"  ⚠️  배치 {i // batch_size + 1} 매칭 실패: {e}")
-            # 배치 실패는 전체 실패로 이어지지 않음
-
-    return result_map
-
-
 # ============================================================
 # Phase 4: 테마 키워드 생성
 # ============================================================
@@ -761,163 +566,6 @@ def calculate_quality_score(kw):
     if re.search(r"20\d{2}", kw.get("description", "")):
         score += 10
     return max(0, min(100, score))
-
-
-# ============================================================
-# 통합 파이프라인
-# ============================================================
-
-async def run_integrated_pipeline():
-    """Phase 1-4 통합 실행 (예외 처리 포함)."""
-    print("=" * 70)
-    print("🚀 통합 데이터 파이프라인 시작")
-    print("=" * 70)
-
-    openai_key = os.getenv("OPENAI_API_KEY")
-    if not openai_key:
-        print("❌ OPENAI_API_KEY 없음")
-        return False
-
-    try:
-        # Phase 1: 멀티데이 트렌드
-        print("\n[Phase 1] 멀티데이 트렌드 감지")
-        try:
-            end_date_str, end_date_obj = get_latest_trading_date()
-            print(f"  최근 영업일: {end_date_str}")
-        except Exception as e:
-            print(f"❌ 영업일 확인 실패: {e}")
-            return False
-
-        try:
-            df_all = fetch_multi_day_data(end_date_str, days=5)
-            print(f"  5일 데이터 수집 완료: {len(df_all)}건")
-        except Exception as e:
-            print(f"❌ 시장 데이터 수집 실패: {e}")
-            return False
-
-        trending = calculate_trend_metrics(df_all)
-        print(f"  트렌드 감지: {len(trending)}개 종목")
-
-        if len(trending) < 5:
-            print(f"⚠️  트렌드 종목 부족 ({len(trending)}개), 최소 5개 필요")
-            return False
-
-        selected_stocks = select_top_trending(trending, target=15)
-        print(f"  상위 {len(selected_stocks)}개 선택 완료")
-
-        # 종목명 추가
-        for s in selected_stocks:
-            try:
-                s["stock_name"] = pykrx_stock.get_market_ticker_name(s["stock_code"])
-            except:
-                s["stock_name"] = s["stock_code"]
-
-        # Phase 2: 섹터 클러스터링
-        print("\n[Phase 2] 섹터 클러스터링")
-        try:
-            selected_stocks = await enrich_with_sectors(selected_stocks)
-            print(f"  섹터 정보 매핑 완료")
-        except Exception as e:
-            print(f"⚠️  섹터 매핑 실패 (계속 진행): {e}")
-            # 섹터 정보 없어도 계속 진행
-
-        themes = cluster_by_sector(selected_stocks)
-        print(f"  생성된 테마: {len(themes)}개")
-
-        selected_themes = select_top_themes(themes, target=5)
-        print(f"  상위 {len(selected_themes)}개 테마 선택 완료")
-
-        # Phase 3: RSS 뉴스 매칭
-        print("\n[Phase 3] RSS 뉴스 매칭")
-        news_map = {}
-        try:
-            rss = RSSService(RSS_FEEDS)
-            news = rss.fetch_top_news_structured()
-            print(f"  RSS 뉴스 수집: {len(news)}개")
-
-            if news:
-                news = preprocess_news(news)
-                print(f"  전처리 완료: {len(news)}개")
-
-                news_map = match_news_to_stocks_llm(selected_stocks, news, openai_key)
-                print(f"  뉴스-종목 매칭: {len(news_map)}개")
-            else:
-                print("  ⚠️  뉴스 없음 (계속 진행)")
-        except Exception as e:
-            print(f"⚠️  RSS 뉴스 매칭 실패 (계속 진행): {e}")
-            # 뉴스 매칭 실패해도 계속 진행
-
-        # Phase 4: 키워드 생성
-        print("\n[Phase 4] 테마 키워드 생성")
-        keywords = []
-        for theme in selected_themes:
-            try:
-                kw = generate_keyword_llm(theme, openai_key)
-                kw["quality_score"] = calculate_quality_score(kw)
-                keywords.append(kw)
-            except Exception as e:
-                print(f"  ⚠️  테마 키워드 생성 실패: {e}")
-                # 실패한 테마는 건너뜀
-
-        if not keywords:
-            print("❌ 키워드 생성 실패")
-            return False
-
-        print(f"  키워드 생성 완료: {len(keywords)}개")
-
-        keywords_sorted = sorted(keywords, key=lambda k: k["quality_score"], reverse=True)
-        final_keywords = keywords_sorted[:3]
-
-        # 최소 3개 보장
-        if len(final_keywords) < 3:
-            print(f"⚠️  키워드 {len(final_keywords)}개만 생성됨, 템플릿 추가")
-            # 거래량 TOP 개별 종목으로 보충
-            for stock in sorted(selected_stocks, key=lambda s: s["volume"], reverse=True):
-                if len(final_keywords) >= 3:
-                    break
-                fallback_kw = {
-                    "title": f"{stock['stock_name']} 거래량 급증",
-                    "description": f"{stock['trend_days']}일 트렌드, {stock['change_rate']:+.1f}%",
-                    "sector": stock.get("sector", "기타"),
-                    "stocks": [stock["stock_code"]],
-                    "trend_days": stock["trend_days"],
-                    "trend_type": stock["trend_type"],
-                    "mirroring_hint": "",
-                    "quality_score": 50,
-                }
-                final_keywords.append(fallback_kw)
-
-        print(f"  최종 선택: {len(final_keywords)}개 키워드")
-
-        # DB 저장
-        print("\n[저장] DB에 저장 중...")
-        try:
-            await save_to_db(end_date_obj.date(), selected_stocks, news_map, final_keywords)
-        except Exception as e:
-            print(f"❌ DB 저장 실패: {e}")
-            return False
-
-        # Phase 5: Historical Cases 자동 생성
-        print("\n[Phase 5] Historical Cases 생성")
-        try:
-            from scripts.generate_cases import main as generate_cases_main
-            await generate_cases_main()
-            print("  ✅ Historical cases 생성 완료")
-        except Exception as e:
-            print(f"  ⚠️  Historical cases 생성 실패: {e}")
-            print("  (키워드는 정상 저장되었으나, 과거 사례 매칭 미완료)")
-
-        print("\n" + "=" * 70)
-        print("✅ 통합 파이프라인 완료!")
-        print("=" * 70)
-        return True
-
-    except Exception as e:
-        print(f"\n❌ 파이프라인 치명적 오류: {e}")
-        import traceback
-
-        traceback.print_exc()
-        return False
 
 
 async def save_to_db(date, stocks, news_map, keywords):
@@ -1021,8 +669,9 @@ async def save_to_db(date, stocks, news_map, keywords):
         if catalyst_info:
             try:
                 dt = datetime.fromisoformat(catalyst_info["published_at"])
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
+                # asyncpg: timestamp without timezone → naive datetime 사용
+                if dt.tzinfo is not None:
+                    dt = dt.replace(tzinfo=None)
                 catalyst_dt = dt
             except:
                 pass
@@ -1034,7 +683,7 @@ async def save_to_db(date, stocks, news_map, keywords):
             s["change_rate"],
             s["volume"],
             s["trend_type"],
-            datetime.now(),
+            datetime.utcnow(),
             s["trend_days"],
             s["trend_type"],
             catalyst_info["title"] if catalyst_info else None,
@@ -1056,4 +705,8 @@ async def save_to_db(date, stocks, news_map, keywords):
 
 
 if __name__ == "__main__":
-    asyncio.run(run_integrated_pipeline())
+    # LangGraph 파이프라인 사용 (keyword_pipeline_graph.py)
+    from scripts.keyword_pipeline_graph import run_keyword_pipeline
+
+    success = run_keyword_pipeline()
+    sys.exit(0 if success else 1)

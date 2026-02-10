@@ -7,6 +7,11 @@ spring:
     username: ${DB_USER:narative}
     password: ${DB_PASSWORD:}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
   
   jpa:
     hibernate:
@@ -30,6 +35,16 @@ jwt:
   secret: ${JWT_SECRET:your-super-secret-jwt-key-for-narrative-investment-2026}
   expiration: 86400000  # 24 hours in milliseconds
   refresh-expiration: 604800000  # 7 days in milliseconds
+
+# 회원가입 차단 설정
+registration:
+  blocked-domains:
+    - tempmail.com
+    - throwaway.email
+    - guerrillamail.com
+    - mailinator.com
+    - yopmail.com
+  blocked-username-pattern: ".*(admin|test|root|관리자|운영자|시발|씨발|개새|병신).*"
 
 # Logging
 logging:

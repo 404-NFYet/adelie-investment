@@ -19,7 +19,6 @@ from app.models.tutor import TutorSession, TutorMessage
 from app.models.glossary import Glossary
 from app.models.historical_case import HistoricalCase
 from app.models.report import BrokerReport
-from app.models.company import CompanyRelation
 from app.schemas.tutor import TutorChatRequest
 from app.services import get_redis_cache
 from app.services.code_executor import get_executor
@@ -171,22 +170,6 @@ async def _collect_stock_context(
                 "content": "pykrx 실시간 조회",
                 "url": f"https://finance.naver.com/item/main.nhn?code={code}",
             })
-
-    # 기업 관계 검색 (온톨로지)
-    for _, code in detected_stocks:
-        try:
-            rel_result = await db.execute(
-                select(CompanyRelation).where(CompanyRelation.source_stock_code == code).limit(3)
-            )
-            for rel in rel_result.scalars():
-                db_context += f"\n[기업관계] {rel.source_stock_code} → {rel.target_stock_code} ({rel.relation_type})"
-                sources.append({
-                    "type": "ontology",
-                    "title": f"{rel.source_stock_code} → {rel.target_stock_code}",
-                    "content": f"{rel.relation_type}: {rel.relation_detail or ''}",
-                })
-        except Exception:
-            pass
 
     # 재무 지표
     for _, code in detected_stocks[:2]:

@@ -121,17 +121,24 @@ class MultiProviderClient:
         """OpenAI 호환 API 호출 (OpenAI, Perplexity)."""
         client = self.providers[provider]
 
+        # gpt-5 계열: max_completion_tokens만 지원, temperature는 기본값(1)만 허용
+        is_gpt5 = provider == "openai" and "gpt-5" in model
+
         call_kwargs: dict[str, Any] = {
             "model": model,
             "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
         }
 
+        if is_gpt5:
+            call_kwargs["max_completion_tokens"] = max_tokens
+            # gpt-5는 temperature 커스텀 불가 → 파라미터 생략 (기본값 1 적용)
+        else:
+            call_kwargs["max_tokens"] = max_tokens
+            call_kwargs["temperature"] = temperature
+
         # GPT-5 thinking 모드
-        if thinking and "gpt-5" in model:
+        if thinking and is_gpt5:
             call_kwargs["reasoning_effort"] = thinking_effort
-            call_kwargs.pop("temperature", None)  # thinking 모드에서 temperature 무시
 
         if response_format:
             call_kwargs["response_format"] = response_format

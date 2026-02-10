@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     # API Keys (반드시 .env에서 설정 필요)
     OPENAI_API_KEY: str = ""
     PERPLEXITY_API_KEY: str = ""
+    ANTHROPIC_API_KEY: str = ""
+
+    # Pipeline 설정
+    TARGET_SCENARIO_COUNT: int = 3
 
     # CORS
     CORS_ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:5173"

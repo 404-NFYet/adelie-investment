@@ -60,7 +60,7 @@ const VALUE_PROPS = [
 ];
 
 export default function Onboarding() {
-  const { settings, setDifficulty, completeOnboarding, loginAsGuest } = useUser();
+  const { settings, setDifficulty, completeOnboarding } = useUser();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -72,15 +72,12 @@ export default function Onboarding() {
   const handleComplete = useCallback(() => {
     setDifficulty(DIFFICULTY_LEVELS.BEGINNER);
     completeOnboarding();
-    loginAsGuest();
-    navigate('/', { replace: true });
-  }, [setDifficulty, completeOnboarding, loginAsGuest, navigate]);
+    navigate('/auth', { replace: true });
+  }, [setDifficulty, completeOnboarding, navigate]);
 
   const handleSkip = () => {
-    setDifficulty(DIFFICULTY_LEVELS.BEGINNER);
     completeOnboarding();
-    loginAsGuest();
-    navigate('/', { replace: true });
+    navigate('/auth', { replace: true });
   };
 
   return (

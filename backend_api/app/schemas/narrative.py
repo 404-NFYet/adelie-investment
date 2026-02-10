@@ -35,6 +35,25 @@ class ComparisonPoint(BaseModel):
     similarity: str  # 유사, 상이, 부분 유사
 
 
+class QuizOption(BaseModel):
+    """퀴즈 선택지."""
+
+    id: str
+    label: str
+    explanation: str = ""
+
+
+class QuizData(BaseModel):
+    """퀴즈 데이터."""
+
+    context: str = ""
+    question: str = ""
+    options: list[QuizOption] = []
+    correct_answer: str = "up"  # "up" | "down" | "sideways"
+    actual_result: str = ""
+    lesson: str = ""
+
+
 class NarrativeSection(BaseModel):
     """내러티브 한 섹션."""
 
@@ -42,6 +61,20 @@ class NarrativeSection(BaseModel):
     content: str = ""
     chart: Optional[Any] = None  # ChartData 또는 Plotly {data, layout} dict
     comparison_points: Optional[list[ComparisonPoint]] = None
+    quiz: Optional[QuizData] = None  # simulation 섹션 전용
+    sources: Optional[list[dict]] = None  # Perplexity 출처 등
+
+
+class NarrativeSteps(BaseModel):
+    """7단계 내러티브 타입화."""
+
+    background: NarrativeSection = NarrativeSection()
+    mirroring: NarrativeSection = NarrativeSection()
+    simulation: NarrativeSection = NarrativeSection()
+    result: NarrativeSection = NarrativeSection()
+    difference: NarrativeSection = NarrativeSection()
+    devils_advocate: NarrativeSection = NarrativeSection()
+    action: NarrativeSection = NarrativeSection()
 
 
 class NarrativeResponse(BaseModel):
@@ -49,7 +82,7 @@ class NarrativeResponse(BaseModel):
 
     case_id: int
     keyword: str
-    steps: dict  # keys: background, mirroring, difference, devils_advocate, simulation, result, action
+    steps: dict[str, Any]  # NarrativeSteps 호환, dict로 유연하게 (기존 호환)
     related_companies: list[dict] = []
     sync_rate: int = 0
     market_data: Optional[dict] = None

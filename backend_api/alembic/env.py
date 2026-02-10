@@ -27,7 +27,8 @@ from app.models import (
     LearningProgress,
     BrokerReport,
     UserPortfolio, PortfolioHolding, SimulationTrade,
-    CompanyRelation,
+    BriefingReward, DwellReward,
+    DailyNarrative, NarrativeScenario,
 )
 
 # this is the Alembic Config object

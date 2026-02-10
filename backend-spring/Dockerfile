@@ -24,7 +24,7 @@ WORKDIR /app
 COPY --from=builder /app/build/libs/*.jar app.jar
 
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD curl -f http://localhost:8083/api/health || exit 1
+    CMD curl -f http://localhost:8080/api/health || exit 1
 
-EXPOSE 8083
-ENTRYPOINT ["java", "-Xmx512m", "-jar", "app.jar"]
+EXPOSE 8080
+ENTRYPOINT ["java", "-Xmx2g", "-jar", "app.jar"]

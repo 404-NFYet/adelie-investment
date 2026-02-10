@@ -3,25 +3,18 @@
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Header
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import get_current_user
 from app.core.database import get_db
 from app.services.kis_service import get_kis_service
 from app.services.stock_price_service import get_current_price
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/trading", tags=["trading"])
-
-
-def _get_user_id(x_user_id: Optional[str] = Header(None, alias="X-User-Id")) -> int:
-    """요청 헤더에서 user_id 추출. 없으면 데모용 기본값 1."""
-    try:
-        return int(x_user_id) if x_user_id else 1
-    except (ValueError, TypeError):
-        return 1
 
 
 class OrderRequest(BaseModel):
@@ -31,7 +24,6 @@ class OrderRequest(BaseModel):
     quantity: int = Field(..., ge=1)
     order_kind: str = Field(default="market", description="market or limit")
     target_price: Optional[int] = None
-    user_id: Optional[int] = None
 
 
 class WatchlistAdd(BaseModel):
@@ -70,9 +62,13 @@ async def get_ranking(type: str = Query(default="volume")):
 
 
 @router.post("/order")
-async def execute_order(order: OrderRequest, db: AsyncSession = Depends(get_db)):
-    """자유 매매 주문."""
-    user_id = order.user_id or 1
+async def execute_order(
+    order: OrderRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """자유 매매 주문. JWT 인증 필수."""
+    user_id = current_user["id"]
 
     if order.order_kind == "limit" and order.target_price:
         # 지정가 주문
@@ -119,10 +115,11 @@ async def execute_order(order: OrderRequest, db: AsyncSession = Depends(get_db))
 @router.get("/orders")
 async def get_pending_orders(
     status: str = "pending",
-    user_id: int = Query(default=1),
     db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
-    """지정가 주문 목록."""
+    """지정가 주문 목록. JWT 인증 필수."""
+    user_id = current_user["id"]
     try:
         result = await db.execute(text(
             "SELECT * FROM limit_orders WHERE user_id = :uid AND status = :s ORDER BY created_at DESC"
@@ -133,18 +130,28 @@ async def get_pending_orders(
 
 
 @router.delete("/orders/{order_id}")
-async def cancel_order(order_id: int, db: AsyncSession = Depends(get_db)):
-    """지정가 주문 취소."""
+async def cancel_order(
+    order_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """지정가 주문 취소. JWT 인증 필수 (본인 주문만 취소 가능)."""
+    user_id = current_user["id"]
     await db.execute(text(
-        "UPDATE limit_orders SET status='cancelled', cancelled_at=NOW() WHERE id=:id AND status='pending'"
-    ), {"id": order_id})
+        "UPDATE limit_orders SET status='cancelled', cancelled_at=NOW() "
+        "WHERE id=:id AND user_id=:uid AND status='pending'"
+    ), {"id": order_id, "uid": user_id})
     await db.commit()
     return {"status": "cancelled"}
 
 
 @router.get("/watchlist")
-async def get_watchlist(user_id: int = Query(default=1), db: AsyncSession = Depends(get_db)):
-    """관심종목 목록."""
+async def get_watchlist(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """관심종목 목록. JWT 인증 필수."""
+    user_id = current_user["id"]
     try:
         await db.execute(text("""
             CREATE TABLE IF NOT EXISTS watchlists (
@@ -163,10 +170,11 @@ async def get_watchlist(user_id: int = Query(default=1), db: AsyncSession = Depe
 @router.post("/watchlist")
 async def add_to_watchlist(
     item: WatchlistAdd,
-    user_id: int = Query(default=1),
     db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
-    """관심종목 추가."""
+    """관심종목 추가. JWT 인증 필수."""
+    user_id = current_user["id"]
     await db.execute(text("""
         CREATE TABLE IF NOT EXISTS watchlists (
             id SERIAL PRIMARY KEY, user_id INTEGER,
@@ -184,10 +192,11 @@ async def add_to_watchlist(
 @router.delete("/watchlist/{stock_code}")
 async def remove_from_watchlist(
     stock_code: str,
-    user_id: int = Query(default=1),
     db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
-    """관심종목 삭제."""
+    """관심종목 삭제. JWT 인증 필수."""
+    user_id = current_user["id"]
     await db.execute(text(
         "DELETE FROM watchlists WHERE user_id = :uid AND stock_code = :sc"
     ), {"uid": user_id, "sc": stock_code})
