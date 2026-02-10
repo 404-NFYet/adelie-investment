@@ -9,7 +9,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 revision = '20260209_narrative'
-down_revision = None
+down_revision = 'bf2bf190408c'
 branch_labels = None
 depends_on = None
 
@@ -45,14 +45,23 @@ def upgrade() -> None:
     )
     op.create_index('ix_narrative_scenarios_narrative_id', 'narrative_scenarios', ['narrative_id'])
     op.create_index('ix_narrative_scenarios_sort_order', 'narrative_scenarios', ['sort_order'])
-    
-    op.add_column('briefing_rewards', 
-        sa.Column('quiz_correct', sa.Boolean(), nullable=True, comment='퀴즈 정답 여부')
-    )
+
+    # briefing_rewards 테이블이 있을 때만 컬럼 추가 (테이블 없으면 건너뜀)
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    if 'briefing_rewards' in inspector.get_table_names():
+        op.add_column('briefing_rewards',
+            sa.Column('quiz_correct', sa.Boolean(), nullable=True, comment='퀴즈 정답 여부')
+        )
 
 
 def downgrade() -> None:
-    op.drop_column('briefing_rewards', 'quiz_correct')
+    # briefing_rewards 테이블이 있을 때만 컬럼 삭제
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    if 'briefing_rewards' in inspector.get_table_names():
+        op.drop_column('briefing_rewards', 'quiz_correct')
+
     op.drop_index('ix_narrative_scenarios_sort_order', table_name='narrative_scenarios')
     op.drop_index('ix_narrative_scenarios_narrative_id', table_name='narrative_scenarios')
     op.drop_table('narrative_scenarios')

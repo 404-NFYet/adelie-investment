@@ -110,11 +110,6 @@ export function UserProvider({ children }) {
     }
   };
 
-  const loginAsGuest = () => {
-    setUser({ isAuthenticated: false, isGuest: true });
-    setSettings(prev => ({ ...prev, hasCompletedOnboarding: true }));
-  };
-
   const logout = () => {
     setUser(null);
     localStorage.removeItem('token');
@@ -134,7 +129,6 @@ export function UserProvider({ children }) {
         removeBookmark,
         addToHistory,
         login,
-        loginAsGuest,
         logout,
       }}
     >

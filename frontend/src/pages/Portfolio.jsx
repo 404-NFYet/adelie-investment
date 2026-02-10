@@ -7,7 +7,6 @@ import AppHeader from '../components/layout/AppHeader';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import { portfolioApi } from '../api';
 import { useUser } from '../contexts/UserContext';
-import AuthPrompt from '../components/common/AuthPrompt';
 import TradeModal from '../components/domain/TradeModal';
 import StockDetail from '../components/trading/StockDetail';
 import StockSearch from '../components/trading/StockSearch';
@@ -79,12 +78,11 @@ function TradeItem({ trade }) {
 /* ── 메인 컴포넌트 ── */
 export default function Portfolio() {
   const { user, isLoading: isUserLoading } = useUser();
-  const { portfolio, isLoading, fetchPortfolio, isGuest } = usePortfolio();
+  const { portfolio, isLoading, fetchPortfolio } = usePortfolio();
   const [activeTab, setActiveTab] = useState('holdings');
   const [trades, setTrades] = useState([]);
   const [rewards, setRewards] = useState([]);
   const [ranking, setRanking] = useState([]);
-  const [showAuthPrompt, setShowAuthPrompt] = useState(false);
   const [stockDetail, setStockDetail] = useState({ isOpen: false, stock: null });
   const [tradeModal, setTradeModal] = useState({ isOpen: false, stock: null, type: 'buy' });
 
@@ -124,34 +122,7 @@ export default function Portfolio() {
     setTradeModal({ isOpen: true, stock, type });
   };
 
-  // 유저 로딩 중이면 로딩 표시
-  if (isUserLoading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-pulse text-text-secondary">로딩 중...</div>
-      </div>
-    );
-  }
-
-  // 게스트이면 인증 유도
-  if (isGuest || !userId) {
-    return (
-      <div className="min-h-screen bg-background pb-24">
-        <AppHeader title="포트폴리오" />
-        <main className="container py-6">
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="card text-center py-12">
-            <img src="/images/penguin-3d.png" alt="Adelie" className="w-16 h-16 mx-auto mb-4" />
-            <h3 className="font-bold text-lg mb-2">포트폴리오를 시작해볼까요?</h3>
-            <p className="text-sm text-text-secondary mb-6">회원가입하면 100만원의 학습 자금으로<br/>실전 연습을 시작할 수 있어요!</p>
-            <button onClick={() => setShowAuthPrompt(true)} className="btn-primary px-8 py-3 rounded-xl font-semibold">시작하기</button>
-          </motion.div>
-        </main>
-        <AuthPrompt isOpen={showAuthPrompt} onClose={() => setShowAuthPrompt(false)} />
-      </div>
-    );
-  }
-
-  if (isLoading || !portfolio) {
+  if (isUserLoading || isLoading || !portfolio) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="animate-pulse text-text-secondary">로딩 중...</div>

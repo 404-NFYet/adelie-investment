@@ -1,7 +1,9 @@
 """AI Tutor API routes with Redis caching for term explanations."""
 
+import asyncio
 import json
 import logging
+import time
 import uuid
 from datetime import datetime
 from typing import AsyncGenerator, Optional
@@ -150,6 +152,7 @@ async def explain_term(
 async def generate_tutor_response(
     request: TutorChatRequest,
     db: AsyncSession,
+    http_request: Request,
 ) -> AsyncGenerator[str, None]:
     """Generate streaming response for AI tutor."""
     
@@ -266,8 +269,22 @@ async def generate_tutor_response(
         
         total_tokens = 0
         full_response = ""
+        stream_start = time.monotonic()
+        chunk_count = 0
         
         async for chunk in response:
+            chunk_count += 1
+
+            # 매 10번째 청크마다 연결 상태 및 타임아웃 확인
+            if chunk_count % 10 == 0:
+                if time.monotonic() - stream_start > 300:
+                    logger.warning("SSE 스트리밍 타임아웃 (300초 초과)")
+                    yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'Stream timeout'})}\n\n"
+                    break
+                if await http_request.is_disconnected():
+                    logger.info("클라이언트 연결 해제 감지, 스트리밍 중단")
+                    break
+
             if chunk.choices and chunk.choices[0].delta.content:
                 content = chunk.choices[0].delta.content
                 full_response += content
@@ -326,33 +343,39 @@ async def generate_tutor_response(
 
         if should_viz and full_response:
             try:
-                viz_prompt = f"다음 내용을 Plotly 차트로 표현하세요. 반드시 HTML만 반환하세요 (```html 없이):\n{full_response[:500]}"
+                viz_prompt = (
+                    "다음 내용을 Plotly.js 차트 JSON으로 변환하세요.\n"
+                    "반드시 아래 형식의 JSON만 반환하세요 (마크다운 코드블록 없이):\n"
+                    '{"data": [트레이스 객체들], "layout": {레이아웃 옵션}}\n\n'
+                    f"내용:\n{full_response[:500]}"
+                )
                 viz_response = await client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=[
                         {"role": "system", "content": (
                             "당신은 Plotly.js 차트 전문가입니다. "
-                            "주어진 내용을 시각화하는 완전한 HTML을 생성하세요. "
-                            "HTML에 <script src='https://cdn.plot.ly/plotly-2.35.2.min.js'></script>를 포함하세요. "
-                            "디자인: 배경 투명, 한글 폰트, 색상 #FF6B00 주황 기반. "
-                            "오직 HTML 코드만 반환하세요."
+                            "주어진 내용을 시각화하는 Plotly JSON config를 생성하세요. "
+                            '반드시 {"data": [...], "layout": {...}} 형식의 JSON만 반환하세요. '
+                            "디자인 규칙: 주요 색상 #FF6B00(주황), 보조 색상 #FF8C33, "
+                            "배경 투명(transparent), 한글 레이블 사용. "
+                            "마크다운 코드블록(```)으로 감싸지 마세요. 오직 JSON만 반환하세요."
                         )},
                         {"role": "user", "content": viz_prompt},
                     ],
                     max_tokens=2000,
                 )
-                html_content = viz_response.choices[0].message.content
-                # ```html 코드 블록 제거 (LLM이 감쌀 수 있음)
-                if html_content.startswith("```"):
-                    html_content = html_content.split("```", 2)[1]
-                    if html_content.startswith("html"):
-                        html_content = html_content[4:]
-                    if "```" in html_content:
-                        html_content = html_content.rsplit("```", 1)[0]
-                    html_content = html_content.strip()
-                # HTML 태그가 포함되어 있으면 시각화 이벤트 전송
-                if "<" in html_content and "plotly" in html_content.lower():
-                    yield f"event: visualization\ndata: {json.dumps({'type': 'visualization', 'format': 'html', 'content': html_content})}\n\n"
+                json_content = viz_response.choices[0].message.content.strip()
+                # ```json 코드 블록 제거 (LLM이 감쌀 수 있음)
+                if json_content.startswith("```"):
+                    json_content = json_content.split("```", 2)[1]
+                    if json_content.startswith("json"):
+                        json_content = json_content[4:]
+                    if "```" in json_content:
+                        json_content = json_content.rsplit("```", 1)[0]
+                    json_content = json_content.strip()
+                chart_data = json.loads(json_content)
+                if "data" in chart_data and isinstance(chart_data["data"], list):
+                    yield f"event: visualization\ndata: {json.dumps({'type': 'visualization', 'format': 'json', 'chartData': chart_data})}\n\n"
             except Exception as viz_err:
                 logger.warning(f"시각화 생성 실패: {viz_err}")
 
@@ -362,8 +385,18 @@ async def generate_tutor_response(
             done_data['sources'] = sources
         yield f"event: done\ndata: {json.dumps(done_data)}\n\n"
         
+    except asyncio.TimeoutError:
+        logger.warning("OpenAI API 호출 타임아웃")
+        yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'AI 응답 시간 초과'})}\n\n"
     except Exception as e:
         yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+    finally:
+        # DB 세션 및 리소스 정리
+        try:
+            await db.close()
+        except Exception:
+            pass
+        logger.debug("SSE 스트리밍 리소스 정리 완료 (session=%s)", session_id)
 
 
 @router.post("/chat")
@@ -375,7 +408,7 @@ async def tutor_chat(
 ) -> StreamingResponse:
     """AI Tutor chat endpoint with SSE streaming."""
     return StreamingResponse(
-        generate_tutor_response(chat_request, db),
+        generate_tutor_response(chat_request, db, request),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

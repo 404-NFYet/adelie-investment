@@ -1,102 +1,66 @@
-"""Narrative Briefings API - 내러티브 브리핑 조회."""
-from datetime import date
-from typing import List, Optional
-from uuid import UUID
-
+"""브리핑 API 라우트 - /api/v1/briefings/*"""
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from datetime import date, timedelta
 
 from app.core.database import get_db
 from app.models.narrative import DailyNarrative, NarrativeScenario
 
-router = APIRouter(prefix="/briefings", tags=["Briefings"])
+router = APIRouter(prefix="/briefings", tags=["briefings"])
 
 
 @router.get("/latest")
 async def get_latest_briefing(db: AsyncSession = Depends(get_db)):
-    """최신 내러티브 브리핑 조회."""
-    stmt = (
+    """최신 브리핑 조회"""
+    result = await db.execute(
         select(DailyNarrative)
         .options(selectinload(DailyNarrative.scenarios))
         .order_by(desc(DailyNarrative.date))
         .limit(1)
     )
-    result = await db.execute(stmt)
     narrative = result.scalar_one_or_none()
-    
     if not narrative:
-        raise HTTPException(status_code=404, detail="No briefing found")
-    
-    return {
-        "id": str(narrative.id),
-        "date": narrative.date.isoformat(),
-        "main_keywords": narrative.main_keywords or [],
-        "glossary": narrative.glossary or {},
-        "scenarios": [
-            {
-                "id": str(s.id),
-                "title": s.title,
-                "summary": s.summary,
-                "sources": s.sources,
-                "related_companies": s.related_companies,
-                "mirroring_data": s.mirroring_data,
-                "narrative_sections": s.narrative_sections,
-                "sort_order": s.sort_order,
-            }
-            for s in sorted(narrative.scenarios, key=lambda x: x.sort_order)
-        ],
-    }
+        raise HTTPException(404, "No briefings available")
+    return _serialize_narrative(narrative)
 
 
 @router.get("/list")
 async def list_briefings(
-    limit: int = Query(10, ge=1, le=50),
-    offset: int = Query(0, ge=0),
+    page: int = Query(1, ge=1),
+    size: int = Query(10, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
 ):
-    """브리핑 목록 조회."""
-    stmt = (
+    """브리핑 목록 조회 (페이지네이션)"""
+    offset = (page - 1) * size
+    result = await db.execute(
         select(DailyNarrative)
+        .options(selectinload(DailyNarrative.scenarios))
         .order_by(desc(DailyNarrative.date))
         .offset(offset)
-        .limit(limit)
+        .limit(size)
     )
-    result = await db.execute(stmt)
     narratives = result.scalars().all()
-    
-    return {
-        "items": [
-            {
-                "id": str(n.id),
-                "date": n.date.isoformat(),
-                "main_keywords": n.main_keywords or [],
-            }
-            for n in narratives
-        ],
-        "limit": limit,
-        "offset": offset,
-    }
+    return [_serialize_narrative(n) for n in narratives]
 
 
 @router.get("/{briefing_id}")
-async def get_briefing_by_id(
-    briefing_id: UUID,
-    db: AsyncSession = Depends(get_db),
-):
-    """ID로 브리핑 조회."""
-    stmt = (
+async def get_briefing(briefing_id: str, db: AsyncSession = Depends(get_db)):
+    """특정 브리핑 조회"""
+    result = await db.execute(
         select(DailyNarrative)
         .options(selectinload(DailyNarrative.scenarios))
         .where(DailyNarrative.id == briefing_id)
     )
-    result = await db.execute(stmt)
     narrative = result.scalar_one_or_none()
-    
     if not narrative:
-        raise HTTPException(status_code=404, detail="Briefing not found")
-    
+        raise HTTPException(404, "Briefing not found")
+    return _serialize_narrative(narrative)
+
+
+def _serialize_narrative(narrative):
+    """내러티브 직렬화 헬퍼"""
     return {
         "id": str(narrative.id),
         "date": narrative.date.isoformat(),
@@ -107,13 +71,13 @@ async def get_briefing_by_id(
                 "id": str(s.id),
                 "title": s.title,
                 "summary": s.summary,
-                "sources": s.sources,
-                "related_companies": s.related_companies,
-                "mirroring_data": s.mirroring_data,
-                "narrative_sections": s.narrative_sections,
+                "sources": s.sources or [],
+                "related_companies": s.related_companies or [],
+                "mirroring_data": s.mirroring_data or {},
+                "narrative_sections": s.narrative_sections or {},
                 "sort_order": s.sort_order,
             }
             for s in sorted(narrative.scenarios, key=lambda x: x.sort_order)
         ],
+        "created_at": narrative.created_at.isoformat() if narrative.created_at else None,
     }
-

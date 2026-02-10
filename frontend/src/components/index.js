@@ -4,7 +4,6 @@
 export { default as TutorModal } from './tutor/TutorModal';
 export { default as TutorPanel } from './tutor/TutorPanel';
 export { default as KeywordCard } from './domain/KeywordCard';
-export { default as SyncRate } from './domain/SyncRate';
 export { default as CompanyCard } from './domain/CompanyCard';
 export { default as HighlightedText } from './domain/HighlightedText';
 export { default as ThinkingPoint } from './domain/ThinkingPoint';

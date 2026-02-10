@@ -56,7 +56,7 @@ build-frontend:
 
 build-api:
 	@echo "🔨 Building backend-api..."
-	docker build -t $(REGISTRY)/adelie-backend-api:$(TAG) ./backend_api
+	docker build -f backend_api/Dockerfile -t $(REGISTRY)/adelie-backend-api:$(TAG) .
 
 build-spring:
 	@echo "🔨 Building backend-spring..."

@@ -4,7 +4,6 @@
  */
 
 export { default as PlotlyChart } from './PlotlyChart';
-export { default as SimilarityChart } from './SimilarityChart';
 export { default as ChartContainer } from './ChartContainer';
 export { default as StepPlaceholder } from './StepPlaceholder';
 
@@ -31,6 +30,6 @@ export function getChartType(chartData) {
  */
 export function renderChart(chartData, stepKey, color) {
   // 이 함수는 JSX를 반환하지 않음 - 컴포넌트를 직접 사용하세요
-  // PlotlyChart, SimilarityChart, ChartContainer 참조
+  // PlotlyChart, ChartContainer 참조
   return { chartData, stepKey, color, type: getChartType(chartData) };
 }

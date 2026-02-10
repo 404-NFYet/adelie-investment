@@ -251,7 +251,7 @@ class PipelineRunner:
     def save_briefing_to_db(self) -> dict:
         """브리핑 데이터를 PostgreSQL에 저장"""
         print("\n" + "-" * 40)
-        print("💾 Phase 5: Save Briefing to Database")
+        print("💾 Phase 4: Save Briefing to Database")
         print("-" * 40)
         
         result = {

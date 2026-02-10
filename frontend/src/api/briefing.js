@@ -1,6 +1,8 @@
-import { API_BASE_URL } from './client';
+/**
+ * briefing.js - 브리핑 API (client 래퍼 사용, 인증 헤더 자동 포함)
+ */
+import { fetchJson, postJson } from './client';
 
-export const briefingApi = {
-  getToday: (date) =>
-    fetch(`${API_BASE_URL}/api/v1/briefing/today${date ? `?date=${date}` : ''}`).then(r => r.json()),
-};
+export const getLatestBriefing = () => fetchJson('/api/v1/briefings/latest');
+export const listBriefings = (page = 1, size = 10) => fetchJson(`/api/v1/briefings/list?page=${page}&size=${size}`);
+export const getBriefing = (id) => fetchJson(`/api/v1/briefings/${id}`);

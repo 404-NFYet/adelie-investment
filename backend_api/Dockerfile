@@ -10,15 +10,16 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Python 의존성 설치 (캐시 최적화)
-COPY requirements.txt .
+COPY backend_api/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 소스 복사
-COPY . .
+COPY backend_api/ ./
+COPY scripts/ ./scripts/
 
 # 헬스체크
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
     CMD curl -f http://localhost:8082/api/v1/health || exit 1
 
 EXPOSE 8082
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8082", "--workers", "4"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port 8082 --workers ${WEB_CONCURRENCY:-4}"]

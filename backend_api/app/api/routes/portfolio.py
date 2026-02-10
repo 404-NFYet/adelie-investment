@@ -2,12 +2,15 @@
 
 import logging
 from datetime import datetime, timedelta
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
+from app.core.auth import get_current_user, get_current_user_optional
 from app.core.database import get_db
 from app.models.portfolio import SimulationTrade
 from app.models.reward import BriefingReward, DwellReward
@@ -48,19 +51,22 @@ router = APIRouter(prefix="/portfolio", tags=["Portfolio"])
 
 @router.get("/leaderboard/ranking", response_model=LeaderboardResponse)
 async def get_leaderboard(
-    current_user_id: int = Query(0, alias="user_id"),
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
+    current_user: Optional[dict] = Depends(get_current_user_optional),
 ):
-    """수익률 리더보드 조회."""
-    # 모든 포트폴리오 조회
+    """수익률 리더보드 조회. 인증 시 본인 랭킹 하이라이트."""
+    current_user_id = current_user["id"] if current_user else 0
+
+    # 모든 포트폴리오 조회 (holdings eager loading)
     stmt = (
         select(UserPortfolio, User.username)
         .join(User, User.id == UserPortfolio.user_id)
+        .options(selectinload(UserPortfolio.holdings))
         .order_by(UserPortfolio.user_id)
     )
     result = await db.execute(stmt)
-    rows = result.all()
+    rows = result.unique().all()
 
     entries = []
     for portfolio, username in rows:
@@ -121,8 +127,13 @@ async def get_leaderboard(
 
 
 @router.get("/{user_id}", response_model=PortfolioResponse)
-async def get_portfolio(user_id: int, db: AsyncSession = Depends(get_db)):
-    """포트폴리오 전체 조회 (실시간 평가액 포함)."""
+async def get_portfolio(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """포트폴리오 전체 조회 (실시간 평가액 포함). JWT 인증 필수."""
+    user_id = current_user["id"]  # 경로 파라미터 무시, JWT 기준
     portfolio = await get_or_create_portfolio(db, user_id)
 
     holdings_response = []
@@ -167,8 +178,13 @@ async def get_portfolio(user_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/{user_id}/summary", response_model=PortfolioSummary)
-async def get_portfolio_summary(user_id: int, db: AsyncSession = Depends(get_db)):
-    """경량 포트폴리오 요약 (BottomNav 뱃지용)."""
+async def get_portfolio_summary(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """경량 포트폴리오 요약 (BottomNav 뱃지용). JWT 인증 필수."""
+    user_id = current_user["id"]
     portfolio = await get_or_create_portfolio(db, user_id)
     total_holdings = 0
     for h in portfolio.holdings:
@@ -192,9 +208,13 @@ async def get_portfolio_summary(user_id: int, db: AsyncSession = Depends(get_db)
 
 @router.post("/{user_id}/trade", response_model=TradeResponse)
 async def create_trade(
-    user_id: int, req: TradeRequest, db: AsyncSession = Depends(get_db)
+    user_id: int,
+    req: TradeRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
-    """매수/매도 실행."""
+    """매수/매도 실행. JWT 인증 필수."""
+    user_id = current_user["id"]
     portfolio = await get_or_create_portfolio(db, user_id)
     try:
         trade = await execute_trade(
@@ -228,8 +248,10 @@ async def get_trade_history(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
-    """거래 내역 조회."""
+    """거래 내역 조회. JWT 인증 필수."""
+    user_id = current_user["id"]
     portfolio = await get_or_create_portfolio(db, user_id)
     stmt = (
         select(SimulationTrade)
@@ -287,9 +309,13 @@ async def get_batch_stock_prices(stock_codes: list[str]):
 
 @router.post("/{user_id}/reward", response_model=RewardResponse)
 async def claim_briefing_reward(
-    user_id: int, req: BriefingCompleteRequest, db: AsyncSession = Depends(get_db)
+    user_id: int,
+    req: BriefingCompleteRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
-    """브리핑 완료 보상 청구."""
+    """브리핑 완료 보상 청구. JWT 인증 필수."""
+    user_id = current_user["id"]
     try:
         reward = await complete_briefing_reward(db, user_id, req.case_id)
     except ValueError as e:
@@ -314,8 +340,13 @@ async def claim_briefing_reward(
 
 
 @router.get("/{user_id}/rewards", response_model=RewardsListResponse)
-async def get_rewards(user_id: int, db: AsyncSession = Depends(get_db)):
-    """보상 목록 조회 (만기 도래 시 자동 체크)."""
+async def get_rewards(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """보상 목록 조회 (만기 도래 시 자동 체크). JWT 인증 필수."""
+    user_id = current_user["id"]
     stmt = (
         select(BriefingReward)
         .where(BriefingReward.user_id == user_id)
@@ -353,9 +384,13 @@ class DwellRewardRequest(BaseModel):
 
 @router.post("/{user_id}/dwell-reward")
 async def claim_dwell_reward(
-    user_id: int, req: DwellRewardRequest, db: AsyncSession = Depends(get_db)
+    user_id: int,
+    req: DwellRewardRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
-    """체류 시간 보상 청구. 3분 이상 학습 시 5만원 지급. 페이지당 1일 1회."""
+    """체류 시간 보상 청구. 3분 이상 학습 시 5만원 지급. 페이지당 1일 1회. JWT 인증 필수."""
+    user_id = current_user["id"]
     if req.dwell_seconds < DWELL_MIN_SECONDS:
         raise HTTPException(status_code=400, detail="체류 시간이 부족합니다 (최소 3분)")
 

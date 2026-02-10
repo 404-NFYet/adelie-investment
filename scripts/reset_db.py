@@ -1,210 +1,183 @@
-#!/usr/bin/env python3
 """
-Adelie Investment - DB 초기화 스크립트
+DB 초기화 스크립트 - Phase 1-3
 
-기존 컨텐츠 데이터를 삭제하고 모든 유저의 포트폴리오를 100만원으로 리셋합니다.
+기존 컨텐츠 데이터를 TRUNCATE하고,
+모든 유저의 포트폴리오를 100만원 기본값으로 초기화합니다.
 
 사용법:
-    python scripts/reset_db.py                    # 기본 실행 (확인 필요)
-    python scripts/reset_db.py --force            # 확인 없이 즉시 실행
-    python scripts/reset_db.py --dry-run          # 실행 없이 SQL만 출력
+    python scripts/reset_db.py              # 실행 (확인 프롬프트 포함)
+    python scripts/reset_db.py --force      # 확인 없이 강제 실행
+    python scripts/reset_db.py --dry-run    # 실행 없이 미리보기
 """
 
-import argparse
 import asyncio
-import os
+import argparse
 import sys
 from pathlib import Path
 
-# 프로젝트 루트 경로 추가
+# 프로젝트 루트 경로 설정
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
-
-from dotenv import load_dotenv
-load_dotenv(PROJECT_ROOT / ".env")
+sys.path.insert(0, str(PROJECT_ROOT / "backend_api"))
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine
+from app.core.database import engine
 
 
-# 초기화할 테이블 목록 (컨텐츠 관련)
+# TRUNCATE 대상 테이블 (순서 중요: FK 의존성 고려)
 CONTENT_TABLES = [
-    # 브리핑 관련
-    "briefing_stocks",
-    "daily_briefings",
-    
-    # 역사적 사례 관련
-    "case_stock_relations",
-    "case_matches",
-    "historical_cases",
-    
-    # 리포트 관련
-    "broker_reports",
-    
-    # 보상 관련
+    "tutor_messages",       # FK -> tutor_sessions
+    "tutor_sessions",
+    "notifications",
     "briefing_rewards",
     "dwell_rewards",
-    
-    # 튜터 세션
-    "tutor_messages",
-    "tutor_sessions",
-    
-    # 알림
-    "notifications",
-    
-    # (새 테이블이 추가되면 여기에 추가)
-    # "narrative_scenarios",
-    # "daily_narratives",
+    "case_stock_relations", # FK -> historical_cases
+    "case_matches",         # FK -> historical_cases
+    "historical_cases",
+    "briefing_stocks",      # FK -> daily_briefings
+    "daily_briefings",
+    "broker_reports",
+    "company_relations",    # Neo4j 캐시 테이블 (DROP 예정)
+    "learning_progress",
 ]
 
-# 모의투자 테이블 (거래 기록 삭제)
+# 모의투자 테이블
 TRADING_TABLES = [
-    "simulation_trades",
-    "portfolio_holdings",
+    "simulation_trades",    # FK -> user_portfolios
+    "portfolio_holdings",   # FK -> user_portfolios
 ]
 
-# 기본 포트폴리오 금액 (100만원)
-DEFAULT_CASH = 1_000_000
+# 초기 자금 (100만원)
+INITIAL_CASH = 1_000_000
 
 
 async def reset_database(dry_run: bool = False):
-    """
-    데이터베이스 초기화 실행
-    
-    Args:
-        dry_run: True면 SQL만 출력하고 실행하지 않음
-    """
-    database_url = os.getenv("DATABASE_URL", "")
-    if not database_url:
-        print("❌ DATABASE_URL 환경변수가 설정되지 않았습니다.")
-        sys.exit(1)
-    
-    # asyncpg 드라이버 확인
-    if "+asyncpg" not in database_url:
-        database_url = database_url.replace("postgresql://", "postgresql+asyncpg://")
-    
-    engine = create_async_engine(database_url, echo=dry_run)
-    
-    print("=" * 60)
-    print("🔄 Adelie Investment DB 초기화")
-    print("=" * 60)
-    
-    if dry_run:
-        print("ℹ️  DRY RUN 모드 - 실제 실행되지 않습니다")
-        print()
+    """DB 초기화 실행"""
     
     async with engine.begin() as conn:
-        # Step 1: 컨텐츠 테이블 TRUNCATE
-        print("\n📦 Step 1: 컨텐츠 데이터 삭제")
-        print("-" * 40)
+        # 1. 현재 상태 확인
+        print("\n" + "=" * 50)
+        print("📊 현재 DB 상태")
+        print("=" * 50)
+        
+        for table in CONTENT_TABLES + TRADING_TABLES:
+            try:
+                result = await conn.execute(text(f"SELECT COUNT(*) FROM {table}"))
+                count = result.scalar()
+                print(f"  {table}: {count:,}건")
+            except Exception:
+                print(f"  {table}: (테이블 없음)")
+        
+        # 유저/포트폴리오 상태
+        try:
+            result = await conn.execute(text("SELECT COUNT(*) FROM users"))
+            user_count = result.scalar()
+            print(f"\n  👤 전체 유저 수: {user_count}명")
+            
+            result = await conn.execute(text(
+                "SELECT COUNT(*), AVG(current_cash), MIN(current_cash), MAX(current_cash) "
+                "FROM user_portfolios"
+            ))
+            row = result.one()
+            print(f"  💰 포트폴리오 수: {row[0]}개")
+            if row[1]:
+                print(f"     평균 잔고: {row[1]:,.0f}원")
+                print(f"     최소 잔고: {row[2]:,.0f}원")
+                print(f"     최대 잔고: {row[3]:,.0f}원")
+        except Exception as e:
+            print(f"  ⚠️ 유저/포트폴리오 조회 실패: {e}")
+        
+        if dry_run:
+            print("\n🔍 [DRY RUN] 실제 실행하지 않습니다.")
+            return
+        
+        # 2. 컨텐츠 데이터 TRUNCATE
+        print("\n" + "=" * 50)
+        print("🗑️ 컨텐츠 데이터 TRUNCATE")
+        print("=" * 50)
         
         for table in CONTENT_TABLES:
-            sql = f"TRUNCATE TABLE {table} CASCADE"
-            print(f"  🗑️  {table}")
-            
-            if not dry_run:
-                try:
-                    await conn.execute(text(sql))
-                except Exception as e:
-                    print(f"    ⚠️  스킵됨 (테이블 없음 또는 오류): {e}")
+            try:
+                await conn.execute(text(f"TRUNCATE TABLE {table} CASCADE"))
+                print(f"  ✅ {table} TRUNCATED")
+            except Exception as e:
+                print(f"  ⚠️ {table}: {e}")
         
-        # Step 2: 모의투자 거래 기록 삭제
-        print("\n📦 Step 2: 모의투자 거래 기록 삭제")
-        print("-" * 40)
+        # 3. 모의투자 데이터 TRUNCATE
+        print("\n" + "=" * 50)
+        print("🗑️ 모의투자 데이터 TRUNCATE")
+        print("=" * 50)
         
         for table in TRADING_TABLES:
-            sql = f"TRUNCATE TABLE {table} CASCADE"
-            print(f"  🗑️  {table}")
-            
-            if not dry_run:
-                try:
-                    await conn.execute(text(sql))
-                except Exception as e:
-                    print(f"    ⚠️  스킵됨 (테이블 없음 또는 오류): {e}")
-        
-        # Step 3: 모든 유저 포트폴리오를 100만원으로 리셋
-        print("\n💰 Step 3: 포트폴리오 100만원 리셋")
-        print("-" * 40)
-        
-        reset_sql = text("""
-            UPDATE user_portfolios 
-            SET current_cash = :cash,
-                initial_cash = :cash,
-                total_realized_profit = 0,
-                updated_at = NOW()
-        """)
-        
-        print(f"  💵 모든 유저의 current_cash, initial_cash = {DEFAULT_CASH:,}원")
-        print(f"  💵 total_realized_profit = 0")
-        
-        if not dry_run:
             try:
-                result = await conn.execute(reset_sql, {"cash": DEFAULT_CASH})
-                print(f"  ✅ {result.rowcount}개 포트폴리오 리셋 완료")
+                await conn.execute(text(f"TRUNCATE TABLE {table} CASCADE"))
+                print(f"  ✅ {table} TRUNCATED")
             except Exception as e:
-                print(f"    ⚠️  오류: {e}")
+                print(f"  ⚠️ {table}: {e}")
         
-        # Step 4: 통계 출력
-        if not dry_run:
-            print("\n📊 Step 4: 최종 상태 확인")
-            print("-" * 40)
-            
-            # 포트폴리오 수 확인
-            count_result = await conn.execute(text("SELECT COUNT(*) FROM user_portfolios"))
-            portfolio_count = count_result.scalar()
-            print(f"  📈 총 포트폴리오 수: {portfolio_count}")
-            
-            # 샘플 확인
-            sample_result = await conn.execute(text("""
-                SELECT p.id, u.username, p.current_cash, p.initial_cash
-                FROM user_portfolios p
-                JOIN users u ON p.user_id = u.id
-                LIMIT 3
-            """))
-            
-            print(f"  📋 샘플 포트폴리오:")
-            for row in sample_result:
-                print(f"      - {row.username}: {row.current_cash:,}원")
-    
-    await engine.dispose()
-    
-    print("\n" + "=" * 60)
-    if dry_run:
-        print("✅ DRY RUN 완료 - 실제 변경 없음")
-    else:
+        # 4. 포트폴리오 100만원 초기화
+        print("\n" + "=" * 50)
+        print(f"💰 포트폴리오 초기화 ({INITIAL_CASH:,}원)")
+        print("=" * 50)
+        
+        try:
+            result = await conn.execute(text(
+                f"UPDATE user_portfolios "
+                f"SET current_cash = {INITIAL_CASH}, "
+                f"    initial_cash = {INITIAL_CASH}, "
+                f"    total_profit = 0, "
+                f"    total_profit_rate = 0, "
+                f"    updated_at = NOW()"
+            ))
+            print(f"  ✅ {result.rowcount}개 포트폴리오 초기화 완료")
+        except Exception as e:
+            print(f"  ⚠️ 포트폴리오 초기화 실패: {e}")
+        
+        # 5. 최종 확인
+        print("\n" + "=" * 50)
         print("✅ DB 초기화 완료")
-    print("=" * 60)
+        print("=" * 50)
+        
+        # 초기화 후 상태
+        for table in CONTENT_TABLES + TRADING_TABLES:
+            try:
+                result = await conn.execute(text(f"SELECT COUNT(*) FROM {table}"))
+                count = result.scalar()
+                if count > 0:
+                    print(f"  ⚠️ {table}: {count:,}건 남아있음")
+            except Exception:
+                pass
+        
+        try:
+            result = await conn.execute(text(
+                "SELECT COUNT(*), AVG(current_cash) FROM user_portfolios"
+            ))
+            row = result.one()
+            print(f"\n  💰 포트폴리오 {row[0]}개: 평균 잔고 {row[1]:,.0f}원")
+        except Exception:
+            pass
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Adelie Investment DB 초기화 스크립트",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    
-    parser.add_argument(
-        "--force", "-f",
-        action="store_true",
-        help="확인 없이 즉시 실행"
-    )
-    parser.add_argument(
-        "--dry-run", "-d",
-        action="store_true",
-        help="실행 없이 SQL만 출력"
-    )
-    
+    parser = argparse.ArgumentParser(description="DB 초기화 스크립트")
+    parser.add_argument("--force", action="store_true", help="확인 없이 강제 실행")
+    parser.add_argument("--dry-run", action="store_true", help="실행 없이 미리보기")
     args = parser.parse_args()
     
-    if not args.force and not args.dry_run:
-        print("⚠️  경고: 이 스크립트는 모든 컨텐츠 데이터와 거래 기록을 삭제합니다!")
-        print("⚠️  모든 유저의 포트폴리오가 100만원으로 초기화됩니다!")
-        print()
-        confirm = input("계속하시겠습니까? (yes/no): ")
-        if confirm.lower() not in ("yes", "y"):
-            print("취소되었습니다.")
-            sys.exit(0)
+    if args.dry_run:
+        print("🔍 DRY RUN 모드 - 현재 상태만 확인합니다.")
+        asyncio.run(reset_database(dry_run=True))
+        return
     
-    asyncio.run(reset_database(dry_run=args.dry_run))
+    if not args.force:
+        print("⚠️  경고: 이 스크립트는 모든 컨텐츠 데이터를 삭제하고")
+        print("         모든 포트폴리오를 100만원으로 초기화합니다.")
+        print("         사용자 계정(users, user_settings)은 유지됩니다.")
+        confirm = input("\n정말 실행하시겠습니까? (yes/no): ")
+        if confirm.lower() != "yes":
+            print("취소되었습니다.")
+            return
+    
+    asyncio.run(reset_database(dry_run=False))
 
 
 if __name__ == "__main__":

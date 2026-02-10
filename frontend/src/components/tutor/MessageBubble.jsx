@@ -2,23 +2,31 @@
  * MessageBubble - 채팅 메시지 렌더링 컴포넌트
  * Message, SourceBadge, VisualizationMessage, TypingIndicator 포함
  */
-import { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import PenguinLoading from '../common/PenguinLoading';
 
-// 출처 분류 체계 (온톨로지 기반)
+// react-plotly.js 동적 로딩 (plotly.js-basic-dist-min으로 번들 최소화)
+const Plot = React.lazy(() =>
+  Promise.all([
+    import('react-plotly.js/factory'),
+    import('plotly.js-basic-dist-min'),
+  ]).then(([{ default: createPlotlyComponent }, Plotly]) => ({
+    default: createPlotlyComponent(Plotly.default || Plotly),
+  }))
+);
+
+// 출처 분류 체계
 const SOURCE_LABELS = {
   glossary:    { icon: '\uD83D\uDCD6', label: '자체 용어집',    desc: '투자 용어 사전 (DB)' },
-  ontology:    { icon: '\uD83D\uDD17', label: '온톨로지',       desc: 'Neo4j 기업 관계 그래프' },
   case:        { icon: '\uD83D\uDCCB', label: '역사적 사례',    desc: 'DB 저장 과거 사례 분석' },
   report:      { icon: '\uD83D\uDCC4', label: '증권사 리포트',  desc: '네이버 금융 크롤링' },
   dart:        { icon: '\uD83C\uDFDB\uFE0F', label: 'DART 공시', desc: '금융감독원 전자공시' },
   news:        { icon: '\uD83D\uDCF0', label: '뉴스 기사',      desc: '언론 보도 링크' },
   stock_price: { icon: '\uD83D\uDCC8', label: '실시간 시세',    desc: 'pykrx 주가 조회' },
   financial:   { icon: '\uD83D\uDCB9', label: '재무제표',       desc: 'FinanceDataReader' },
-  company:     { icon: '\uD83C\uDFE2', label: '기업 관계',      desc: 'Neo4j 공급망/경쟁사' },
   web:         { icon: '\uD83C\uDF10', label: '웹 검색',        desc: 'Perplexity 검색' },
 };
 
@@ -68,46 +76,62 @@ function SourceBadge({ sources }) {
   );
 }
 
-// iframe srcDoc에 responsive wrapper 주입
-const wrapResponsiveHtml = (html) => `<!DOCTYPE html>
-<html>
-<head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { overflow: hidden; max-width: 480px; width: 100%; }
-    .plotly-graph-div, .js-plotly-plot { width: 100% !important; max-width: 480px !important; }
-    .plot-container { width: 100% !important; max-width: 480px !important; }
-    .svg-container { width: 100% !important; max-width: 480px !important; }
-    table { max-width: 100%; overflow-x: auto; display: block; }
-    img { max-width: 100%; height: auto; }
-  </style>
-</head>
-<body>${html}</body>
-</html>`;
+/**
+ * 레거시 HTML에서 Plotly data/layout 추출 (하위 호환용)
+ * Plotly.newPlot('id', data, layout) 또는 var data/layout 패턴 매칭
+ */
+function extractPlotlyDataFromHtml(html) {
+  try {
+    // 패턴 1: Plotly.newPlot('id', [...], {...})
+    const plotCallMatch = html.match(
+      /Plotly\.(?:newPlot|react)\s*\(\s*['"][^'"]*['"]\s*,\s*([\s\S]+?)\s*,\s*(\{[\s\S]+?\})\s*[,)]/
+    );
+    if (plotCallMatch) {
+      // eslint-disable-next-line no-new-func
+      const data = new Function(`return ${plotCallMatch[1]}`)();
+      // eslint-disable-next-line no-new-func
+      const layout = new Function(`return ${plotCallMatch[2]}`)();
+      if (Array.isArray(data)) return { data, layout: layout || {} };
+    }
+    // 패턴 2: var data = [...]; var layout = {...};
+    const dataMatch = html.match(/(?:var|let|const)\s+data\s*=\s*([\s\S]+?);\s*(?:var|let|const)\s+layout/);
+    const layoutMatch = html.match(/(?:var|let|const)\s+layout\s*=\s*([\s\S]+?);\s*(?:Plotly|<\/script)/);
+    if (dataMatch && layoutMatch) {
+      // eslint-disable-next-line no-new-func
+      const data = new Function(`return ${dataMatch[1].trim()}`)();
+      // eslint-disable-next-line no-new-func
+      const layout = new Function(`return ${layoutMatch[1].trim()}`)();
+      if (Array.isArray(data)) return { data, layout: layout || {} };
+    }
+  } catch (e) {
+    console.warn('Plotly HTML 파싱 실패:', e);
+  }
+  return null;
+}
 
 function VisualizationMessage({ message }) {
   const [expanded, setExpanded] = useState(false);
-  const [iframeLoaded, setIframeLoaded] = useState(false);
-  const [timedOut, setTimedOut] = useState(false);
-  const timerRef = useRef(null);
-  const hasContent = message.format === 'html' && message.content;
 
-  // 10초 타임아웃
-  useEffect(() => {
-    if (hasContent && !iframeLoaded) {
-      timerRef.current = setTimeout(() => setTimedOut(true), 10_000);
-    }
-    return () => clearTimeout(timerRef.current);
-  }, [hasContent, iframeLoaded]);
+  // 차트 데이터 결정: JSON(chartData) 우선 → 레거시 HTML 폴백
+  let chartData = null;
+  if (message.chartData && message.chartData.data) {
+    chartData = message.chartData;
+  } else if (message.format === 'html' && message.content) {
+    chartData = extractPlotlyDataFromHtml(message.content);
+  }
 
-  const handleLoad = () => {
-    setIframeLoaded(true);
-    setTimedOut(false);
-    clearTimeout(timerRef.current);
+  const hasChart = chartData && Array.isArray(chartData.data) && chartData.data.length > 0;
+
+  // 모바일 최적화 레이아웃 (max-width 480px)
+  const layout = {
+    autosize: true,
+    margin: { l: 40, r: 20, t: 40, b: 40 },
+    paper_bgcolor: 'transparent',
+    plot_bgcolor: 'transparent',
+    font: { family: 'Pretendard, -apple-system, sans-serif', size: 11 },
+    ...(chartData?.layout || {}),
+    height: expanded ? 440 : 280,
   };
-
-  const responsiveContent = hasContent ? wrapResponsiveHtml(message.content) : '';
 
   return (
     <motion.div className="mb-4" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
@@ -117,37 +141,24 @@ function VisualizationMessage({ message }) {
         {message.executionTime && <span className="text-[10px] text-text-secondary ml-auto">{message.executionTime}ms</span>}
       </div>
       <div className={`rounded-2xl border border-border overflow-hidden bg-white transition-all max-w-[480px] ${expanded ? 'h-[480px]' : 'h-[320px]'}`}>
-        {hasContent ? (
-          timedOut && !iframeLoaded ? (
-            <div className="flex flex-col items-center justify-center h-full gap-2">
-              <p className="text-sm text-text-secondary">차트 로딩에 실패했습니다</p>
-              <button
-                onClick={() => { setTimedOut(false); setIframeLoaded(false); }}
-                className="text-xs text-primary font-medium hover:underline"
-              >
-                다시 시도
-              </button>
-            </div>
-          ) : (
-            <>
-              {!iframeLoaded && (
-                <div className="flex items-center justify-center h-full text-sm text-text-secondary animate-pulse">차트 로딩 중...</div>
-              )}
-              <iframe
-                srcDoc={responsiveContent}
-                className={`w-full h-full border-0 ${iframeLoaded ? '' : 'hidden'}`}
-                sandbox="allow-scripts allow-same-origin"
-                title="차트"
-                onLoad={handleLoad}
-              />
-            </>
-          )
+        {hasChart ? (
+          <React.Suspense fallback={<div className="flex items-center justify-center h-full text-sm text-text-secondary animate-pulse">차트 로딩 중...</div>}>
+            <Plot
+              data={chartData.data}
+              layout={layout}
+              config={{ responsive: true, displayModeBar: false }}
+              style={{ width: '100%', height: '100%' }}
+              useResizeHandler
+            />
+          </React.Suspense>
         ) : (
           <div className="flex items-center justify-center h-full text-sm text-text-secondary">차트를 생성할 수 없습니다</div>
         )}
       </div>
-      {hasContent && iframeLoaded && (
-        <button onClick={() => setExpanded(!expanded)} className="text-xs text-text-secondary hover:text-primary transition-colors mt-1">{expanded ? '축소' : '확대'}</button>
+      {hasChart && (
+        <button onClick={() => setExpanded(!expanded)} className="text-xs text-text-secondary hover:text-primary transition-colors mt-1">
+          {expanded ? '축소' : '확대'}
+        </button>
       )}
     </motion.div>
   );

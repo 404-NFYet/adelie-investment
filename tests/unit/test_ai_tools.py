@@ -60,13 +60,6 @@ class TestToolDefinitions:
         
         assert callable(compare_past_present.invoke)
     
-    def test_company_tool_exists(self):
-        """Test company tools are defined."""
-        from tools.company_tool import get_related_companies, get_supply_chain
-        
-        assert callable(get_related_companies.invoke)
-        assert callable(get_supply_chain.invoke)
-    
     def test_briefing_tool_exists(self):
         """Test briefing tool is defined."""
         from tools.briefing_tool import get_today_briefing

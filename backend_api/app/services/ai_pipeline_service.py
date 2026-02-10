@@ -424,7 +424,7 @@ class AIPipelineService:
             "max_tokens": max_tokens,
         }
         if search_domain_filter:
-            payload["search_domain_filter"] = search_domain_filter
+            payload["web_search_options"] = {"search_domain_filter": search_domain_filter}
         headers = {
             "Authorization": f"Bearer {self.perplexity_key}",
             "Content-Type": "application/json",

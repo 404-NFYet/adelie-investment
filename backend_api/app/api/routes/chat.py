@@ -1,12 +1,9 @@
-"""Chat API - 용어 설명 등."""
+"""용어 설명 API - /api/v1/chat/*"""
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.auth import get_current_user
 
-from app.core.database import get_db
-from app.services.ai_pipeline_service import get_ai_pipeline_service
-
-router = APIRouter(prefix="/chat", tags=["Chat"])
+router = APIRouter(prefix="/chat", tags=["chat"])
 
 
 class ExplainRequest(BaseModel):
@@ -20,25 +17,24 @@ class ExplainResponse(BaseModel):
 
 
 @router.post("/explain", response_model=ExplainResponse)
-async def explain_term(request: ExplainRequest, db: AsyncSession = Depends(get_db)):
-    """용어 설명 API - 선택한 용어를 쉽게 설명합니다."""
-    ai_service = get_ai_pipeline_service()
-    
-    prompt = f"""당신은 금융 교육 전문가입니다. 
-다음 금융 용어를 초보자가 이해할 수 있도록 쉽게 설명해주세요.
-일상적인 비유를 사용하고, 2-3문장으로 간결하게 답변하세요.
+async def explain_term(req: ExplainRequest, current_user=Depends(get_current_user)):
+    """용어 설명 API (OpenAI gpt-5-mini)"""
+    from app.services.ai_pipeline_service import AIPipelineService, extract_openai_content
 
-용어: {request.term}
-맥락: {request.context if request.context else "일반적인 금융 맥락"}
-"""
-    
-    try:
-        explanation = await ai_service.call_openai(
-            messages=[{"role": "user", "content": prompt}],
-            temp=0.5,
-            max_t=500,
-        )
-        return ExplainResponse(term=request.term, explanation=explanation)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to explain term: {str(e)}")
+    svc = AIPipelineService()
 
+    messages = [
+        {
+            "role": "system",
+            "content": "당신은 한국 주식시장 용어를 초보자에게 쉽게 설명해주는 전문가입니다. 한국어로 300자 이내로 설명하세요.",
+        },
+        {
+            "role": "user",
+            "content": f"'{req.term}' 용어를 설명해주세요."
+            + (f" 맥락: {req.context}" if req.context else ""),
+        },
+    ]
+
+    result = await svc.call_openai(messages, model="gpt-5-mini", max_tokens=500)
+    explanation = extract_openai_content(result, fallback=f"{req.term}에 대한 설명을 생성하지 못했습니다.")
+    return ExplainResponse(term=req.term, explanation=explanation)

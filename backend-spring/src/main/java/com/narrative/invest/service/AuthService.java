@@ -6,7 +6,7 @@ import com.narrative.invest.dto.auth.RegisterRequest;
 import com.narrative.invest.model.User;
 import com.narrative.invest.repository.UserRepository;
 import com.narrative.invest.security.JwtService;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -17,6 +17,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+import java.util.regex.Pattern;
+
 @Service
 public class AuthService implements UserDetailsService {
 
@@ -25,16 +28,28 @@ public class AuthService implements UserDetailsService {
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
 
+    // 차단할 이메일 도메인 (application.yml에서 주입)
+    private final List<String> blockedDomains;
+
+    // 차단할 사용자명 패턴 (application.yml에서 주입)
+    private final Pattern blockedUsernamePattern;
+
     public AuthService(
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
             JwtService jwtService,
-            @Lazy AuthenticationManager authenticationManager
+            @Lazy AuthenticationManager authenticationManager,
+            @Value("${registration.blocked-domains:tempmail.com,throwaway.email,guerrillamail.com,mailinator.com,yopmail.com}")
+            List<String> blockedDomains,
+            @Value("${registration.blocked-username-pattern:.*(admin|test|root|관리자|운영자|시발|씨발|개새|병신).*}")
+            String blockedUsernamePatternStr
     ) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.authenticationManager = authenticationManager;
+        this.blockedDomains = blockedDomains;
+        this.blockedUsernamePattern = Pattern.compile(blockedUsernamePatternStr, Pattern.CASE_INSENSITIVE);
     }
 
     @Override
@@ -45,6 +60,9 @@ public class AuthService implements UserDetailsService {
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
+        // 이메일 도메인 차단 검증
+        validateEmailDomain(request.getEmail());
+
         // Check if user already exists
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new IllegalArgumentException("이미 등록된 이메일입니다.");
@@ -55,6 +73,9 @@ public class AuthService implements UserDetailsService {
         if (username == null || username.isEmpty()) {
             username = request.getEmail().split("@")[0];
         }
+
+        // 사용자명 부적절 패턴 차단 검증
+        validateUsername(username);
 
         // Create new user
         User user = User.builder()
@@ -126,6 +147,35 @@ public class AuthService implements UserDetailsService {
         userRepository.findByEmail(email).ifPresent(user -> {
             // Could implement token blacklisting here if needed
         });
+    }
+
+    /**
+     * 이메일 도메인 차단 검증.
+     * 일회용 이메일 서비스 등 차단 대상 도메인 사용 시 예외 발생.
+     */
+    private void validateEmailDomain(String email) {
+        if (email == null || !email.contains("@")) {
+            throw new IllegalArgumentException("유효하지 않은 이메일 형식입니다.");
+        }
+        String domain = email.substring(email.indexOf("@") + 1).toLowerCase();
+        for (String blocked : blockedDomains) {
+            if (domain.equalsIgnoreCase(blocked.trim())) {
+                throw new IllegalArgumentException("허용되지 않는 이메일 도메인입니다: " + domain);
+            }
+        }
+    }
+
+    /**
+     * 사용자명 부적절 패턴 차단 검증.
+     * 관리자 사칭, 비속어 등 부적절한 사용자명 사용 시 예외 발생.
+     */
+    private void validateUsername(String username) {
+        if (username == null || username.isBlank()) {
+            throw new IllegalArgumentException("사용자명은 비어있을 수 없습니다.");
+        }
+        if (blockedUsernamePattern.matcher(username).matches()) {
+            throw new IllegalArgumentException("사용할 수 없는 사용자명입니다.");
+        }
     }
 
     private AuthResponse buildAuthResponse(User user, String accessToken, String refreshToken) {

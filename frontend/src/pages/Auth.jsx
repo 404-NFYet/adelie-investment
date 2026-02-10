@@ -16,7 +16,7 @@ export default function Auth() {
   const [username, setUsername] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login, loginAsGuest, settings, setDifficulty } = useUser();
+  const { login, settings, setDifficulty } = useUser();
   const [selectedDifficulty, setSelectedDifficulty] = useState(settings.difficulty || 'beginner');
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
@@ -62,11 +62,6 @@ export default function Auth() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleGuest = () => {
-    loginAsGuest();
-    navigate('/');
   };
 
   return (
@@ -266,20 +261,6 @@ export default function Auth() {
           </AnimatePresence>
         </motion.div>
 
-        {/* Guest Link */}
-        <motion.div
-          className="text-center mt-6"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.3 }}
-        >
-          <button
-            onClick={handleGuest}
-            className="text-text-secondary hover:text-primary text-sm transition-colors"
-          >
-            게스트로 시작하기 →
-          </button>
-        </motion.div>
       </div>
     </div>
   );
