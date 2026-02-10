@@ -186,9 +186,10 @@ async def get_comparison(
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
     
-    # keywords JSONB에서 comparison 데이터 추출
+    # keywords JSONB에서 comparison 데이터 및 key_insight 추출
     kw_data = case.keywords if isinstance(case.keywords, dict) else {} if not case.keywords else case.keywords
     comparison_data = kw_data.get("comparison", {})
+    key_insight = kw_data.get("key_insight", "")
     
     # comparison.points가 있으면 실 데이터 사용, 없으면 기본값
     raw_points = comparison_data.get("points", [])
@@ -235,6 +236,7 @@ async def get_comparison(
         analysis=comparison_data.get("analysis", []),
         poll_question=comparison_data.get("poll_question", ""),
         summary=case.summary or "",
+        key_insight=key_insight or None,  # 핵심 인사이트
     )
 
 
@@ -245,8 +247,6 @@ async def get_related_companies(
 ) -> CompanyGraphResponse:
     """
     Get related companies for a historical case.
-    
-    Uses Neo4j graph database for supply chain relationships.
     """
     # Get case from database
     result = await db.execute(

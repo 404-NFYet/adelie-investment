@@ -56,7 +56,7 @@ class ComparisonPoint(BaseModel):
 
 class ComparisonResponse(BaseModel):
     """Past-present comparison response."""
-    
+
     case_id: int
     past_event: dict
     current_situation: dict
@@ -69,6 +69,7 @@ class ComparisonResponse(BaseModel):
     analysis: list[str] = []
     poll_question: str = ""
     summary: str = ""
+    key_insight: Optional[str] = None  # 핵심 인사이트 (keywords.key_insight에서 추출)
 
 
 class RelatedCompany(BaseModel):
