@@ -35,7 +35,7 @@ def split_paragraphs(content: str) -> list[str]:
 
 # --- 7단계 통합 빌더 ---
 
-STEP_KEYS = ["background", "mirroring", "difference", "devils_advocate", "simulation", "result", "action"]
+STEP_KEYS = ["background", "mirroring", "simulation", "result", "difference", "devils_advocate", "action"]
 
 
 def build_all_steps(
@@ -56,8 +56,25 @@ def build_all_steps(
 
 def _is_valid_narrative(narrative_data: dict) -> bool:
     """LLM narrative 데이터가 7단계 구조인지 확인."""
-    required = ["background", "mirroring", "difference", "devils_advocate"]
-    return all(key in narrative_data for key in required)
+    required = STEP_KEYS  # 7개 전체
+    if not all(key in narrative_data for key in required):
+        return False
+
+    # 각 섹션의 content가 최소 길이 이상인지 확인
+    for key in required:
+        section = narrative_data.get(key, {})
+        if not isinstance(section, dict):
+            return False
+        content = str(section.get("content", ""))
+        if len(content.strip()) < 10:
+            return False
+
+    # simulation에 quiz 존재 여부 확인
+    sim = narrative_data.get("simulation", {})
+    if isinstance(sim, dict) and "quiz" not in sim:
+        return False
+
+    return True
 
 
 def _build_from_llm(narrative_data: dict, case_stocks: list[CaseStockRelation], comparison: dict) -> dict:
@@ -67,11 +84,18 @@ def _build_from_llm(narrative_data: dict, case_stocks: list[CaseStockRelation], 
         section = narrative_data.get(key, {})
         if isinstance(section, str):
             section = {"content": section, "bullets": []}
-        steps[key] = {
+        step_data = {
             "bullets": section.get("bullets", []),
             "content": section.get("content", ""),
             "chart": section.get("chart"),
         }
+        # sources/citations 전달 (Perplexity 출처)
+        if section.get("sources"):
+            step_data["sources"] = section["sources"]
+        # simulation 스텝의 quiz 데이터 전달
+        if key == "simulation" and "quiz" in section:
+            step_data["quiz"] = section["quiz"]
+        steps[key] = step_data
     return steps
 
 
@@ -165,34 +189,44 @@ def build_difference(comparison: dict, paragraphs: list[str]) -> dict:
 
 def build_devils_advocate(comparison: dict, paragraphs: list[str]) -> dict:
     """devils_advocate 섹션: 반대 시나리오."""
-    bullets = ["예상과 다를 수 있는 시나리오입니다.", "시장은 항상 불확실합니다.", "리스크 관리가 핵심입니다."]
-    content = highlight_terms(paragraphs[2]) if len(paragraphs) > 2 else "반대 시나리오를 고려해보세요."
+    title = comparison.get("title", "이 테마")
+    bullets = [
+        f"{title}의 예상과 다른 전개가 나올 수 있어요.",
+        f"외부 변수(금리, 환율, 규제)가 {title} 흐름을 바꿀 수 있어요.",
+        f"단기 모멘텀에 과도하게 베팅하면 손실 위험이 있어요.",
+    ]
+    content = highlight_terms(paragraphs[2]) if len(paragraphs) > 2 else f"{title} 관련 반대 시나리오도 꼭 체크해야 해요."
     return NarrativeSection(bullets=bullets, content=content, chart=None).model_dump()
 
 
 def build_simulation(comparison: dict, paragraphs: list[str]) -> dict:
     """simulation 섹션: 과거 사례 시뮬레이션."""
-    bullets = ["과거 사례를 기반으로 시뮬레이션합니다."]
-    content = highlight_terms(paragraphs[3]) if len(paragraphs) > 3 else "과거 사례를 기반으로 모의 투자를 진행합니다."
+    title = comparison.get("title", "이 테마")
+    past = comparison.get("past_metric", {})
+    year = past.get("year", "과거")
+    bullets = [f"{title}의 {year} 사례를 기반으로 1,000만원 투자 시뮬레이션을 진행했어요."]
+    content = highlight_terms(paragraphs[3]) if len(paragraphs) > 3 else f"{title} 과거 사례로 낙관/중립/비관 3가지 시나리오를 시뮬레이션했어요."
     return NarrativeSection(bullets=bullets, content=content, chart=None).model_dump()
 
 
 def build_result(comparison: dict, paragraphs: list[str]) -> dict:
     """result 섹션: 시뮬레이션 결과."""
-    bullets = ["시뮬레이션 결과를 확인하세요."]
+    title = comparison.get("title", "이 테마")
+    bullets = [f"{title} 시뮬레이션 결과를 시나리오별로 정리했어요."]
     remaining = paragraphs[4:] if len(paragraphs) > 4 else paragraphs[-1:] if paragraphs else []
-    content = highlight_terms("\n\n".join(remaining)) if remaining else "결과를 분석합니다."
+    content = highlight_terms("\n\n".join(remaining)) if remaining else f"{title} 투자 시뮬레이션에서 낙관 시나리오의 수익률이 가장 높았어요."
     return NarrativeSection(bullets=bullets, content=content, chart=None).model_dump()
 
 
 def build_action(case_stocks: list[CaseStockRelation], comparison: dict) -> dict:
     """action 섹션: 투자 액션 요약."""
+    title = comparison.get("title", "이 테마")
     bullets = [f"[{rel.relation_type or '관련'}] {rel.stock_name} — {rel.impact_description or ''}" for rel in case_stocks[:3]]
     if comparison.get("poll_question"):
         bullets.append(comparison["poll_question"])
 
     return NarrativeSection(
-        bullets=bullets if bullets else ["관련 기업 정보를 확인하세요."],
-        content="분석을 바탕으로 관련 기업들의 현재 포지션을 확인하고, 투자 의사결정에 참고하세요.",
+        bullets=bullets if bullets else [f"{title} 관련 종목들의 포지션을 확인해보세요."],
+        content=f"{title} 분석을 바탕으로 관련 종목들의 비중을 조절하고, 리스크 관리 포인트를 체크하세요.",
         chart=None,
     ).model_dump()
