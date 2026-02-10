@@ -18,5 +18,11 @@ temperature: 0.7
 각 주제 JSON 배열 필드:
 - category, domain, keyword, title, context, mirroringHint
 
+mirroringHint 규칙 (필수):
+- 반드시 "특정 종목명 + 연도 + 주가 변동폭" 포함 (예: "삼성전자, 2018년 메모리 다운사이클로 주가 40% 하락")
+- BAD 예시: "과거 금융 사례", "글로벌 경기 침체", "AI 투자 열풍" (너무 추상적)
+- GOOD 예시: "SK하이닉스, 2022년 반도체 재고 조정으로 주가 52% 하락 후 2023년 AI 수혜로 100% 반등"
+- GOOD 예시: "현대차, 2020년 전기차 전략 발표 후 주가 2배 상승, 아이오닉5 출시가 전환점"
+
 RSS Text:
 {{rss_text}}
