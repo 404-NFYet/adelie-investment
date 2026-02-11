@@ -58,6 +58,11 @@ public class User implements UserDetails {
         updatedAt = LocalDateTime.now();
     }
 
+    // username 필드 접근 (getUsername()이 UserDetails 구현으로 email을 반환하므로)
+    public String getDisplayName() {
+        return username;
+    }
+
     // UserDetails implementation
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {

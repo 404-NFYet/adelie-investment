@@ -104,6 +104,17 @@ deploy-down:
 deploy-logs:
 	docker compose -f docker-compose.prod.yml logs -f --tail=100
 
+# --- Deploy-test (10.10.10.20): git pull → 빌드 → 재시작 ---
+deploy-test:
+	ssh deploy-test 'cd ~/adelie-investment && git pull origin develop && \
+		docker compose -f docker-compose.prod.yml build && \
+		docker compose -f docker-compose.prod.yml up -d'
+
+deploy-test-service:
+	ssh deploy-test 'cd ~/adelie-investment && git pull origin develop && \
+		docker compose -f docker-compose.prod.yml build $(SVC) && \
+		docker compose -f docker-compose.prod.yml up -d $(SVC)'
+
 # --- 테스트 ---
 test: test-backend
 

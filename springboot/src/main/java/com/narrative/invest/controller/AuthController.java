@@ -3,6 +3,7 @@ package com.narrative.invest.controller;
 import com.narrative.invest.dto.auth.AuthResponse;
 import com.narrative.invest.dto.auth.LoginRequest;
 import com.narrative.invest.dto.auth.RegisterRequest;
+import com.narrative.invest.model.User;
 import com.narrative.invest.service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -52,8 +53,12 @@ public class AuthController {
         if (userDetails == null) {
             return ResponseEntity.status(401).build();
         }
+        User user = (User) userDetails;
         return ResponseEntity.ok(Map.of(
-                "email", userDetails.getUsername(),
+                "id", user.getId(),
+                "email", user.getEmail(),
+                "username", user.getDisplayName(),
+                "difficultyLevel", user.getDifficultyLevel(),
                 "authenticated", true
         ));
     }

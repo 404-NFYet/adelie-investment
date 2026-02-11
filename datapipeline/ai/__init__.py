@@ -7,7 +7,6 @@ OpenRouterClient 대신 MultiProviderClient를 사용한다.
 from .types import KeywordPlan, ScenarioResult, BriefingResult
 from .ai_service import PipelineAIService
 from .diversity import pick_diverse_keyword_plans
-from .generator import BriefingGenerator
 
 __all__ = [
     "KeywordPlan",
@@ -15,5 +14,4 @@ __all__ = [
     "BriefingResult",
     "PipelineAIService",
     "pick_diverse_keyword_plans",
-    "BriefingGenerator",
 ]

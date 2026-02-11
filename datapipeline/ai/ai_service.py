@@ -14,7 +14,7 @@ import re
 from typing import Any
 
 from ..prompts import load_prompt
-from ..services.multi_provider_client import MultiProviderClient, get_multi_provider_client
+from .multi_provider_client import MultiProviderClient, get_multi_provider_client
 from .types import KeywordPlan
 
 LOGGER = logging.getLogger(__name__)
