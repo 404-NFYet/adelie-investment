@@ -1,4 +1,4 @@
-"""내러티브 스토리 API 라우트 (7단계).
+"""내러티브 스토리 API 라우트 (6페이지 골든케이스).
 
 빌더 로직은 app.services.narrative_builder로 분리됨.
 이 파일은 DB 쿼리 + 빌더 호출 + 응답 조립만 담당.
@@ -76,7 +76,7 @@ async def _fetch_market_history(db: AsyncSession, days: int = 5) -> list[dict]:
 
 @router.get("/{case_id}", response_model=NarrativeResponse)
 async def get_narrative(case_id: int, db: AsyncSession = Depends(get_db)) -> NarrativeResponse:
-    """사례 기반 내러티브 스토리를 7단계로 반환."""
+    """사례 기반 내러티브 스토리를 6페이지 골든케이스로 반환."""
     case = await _fetch_case(db, case_id)
     case_stocks = await _fetch_case_stocks(db, case_id)
     briefing = await _fetch_latest_briefing(db)
@@ -92,6 +92,15 @@ async def get_narrative(case_id: int, db: AsyncSession = Depends(get_db)) -> Nar
     keyword = keyword_list[0] if keyword_list else case.title
     sync_rate: int = comparison.get("sync_rate", 0)
 
+    # 6페이지 골든케이스 메타데이터
+    theme: str = kw_data.get("theme", "")
+    one_liner: str = kw_data.get("one_liner", "")
+    generated_at: Optional[str] = kw_data.get("generated_at")
+    concept_raw = kw_data.get("concept")
+    historical_case_raw = kw_data.get("historical_case")
+    sources_raw: list = kw_data.get("sources", [])
+    hallucination_checklist_raw: list = kw_data.get("hallucination_checklist", [])
+
     paragraphs = split_paragraphs(case.full_content or case.summary or "")
     briefing_stocks: list[BriefingStock] = list(briefing.stocks) if briefing else []
 
@@ -105,7 +114,7 @@ async def get_narrative(case_id: int, db: AsyncSession = Depends(get_db)) -> Nar
         case_stocks=case_stocks,
     )
 
-    # 키워드 소스에서 citations 추출하여 background/action 스텝에 주입
+    # 키워드 소스에서 citations 추출하여 background/summary 스텝에 주입
     if briefing and briefing.top_keywords:
         all_citations = []
         for kw in briefing.top_keywords.get("keywords", []):
@@ -125,14 +134,14 @@ async def get_narrative(case_id: int, db: AsyncSession = Depends(get_db)) -> Nar
                 seen_urls.add(c["url"])
                 unique_citations.append(c)
 
-        # background 스텝에 출처 추가 (있으면)
+        # background 스텝에 출처 추가
         if unique_citations and "background" in steps:
             existing = steps["background"].get("sources") or []
             steps["background"]["sources"] = existing + unique_citations[:3]
-        # action 스텝에도 출처 추가
-        if unique_citations and "action" in steps:
-            existing = steps["action"].get("sources") or []
-            steps["action"]["sources"] = existing + unique_citations[:5]
+        # summary 스텝에 출처 추가
+        if unique_citations and "summary" in steps:
+            existing = steps["summary"].get("sources") or []
+            steps["summary"]["sources"] = existing + unique_citations[:5]
 
     related_companies = [
         {"stock_code": r.stock_code, "stock_name": r.stock_name, "relation_type": r.relation_type or "related", "impact_description": r.impact_description or ""}
@@ -144,6 +153,18 @@ async def get_narrative(case_id: int, db: AsyncSession = Depends(get_db)) -> Nar
         market_data = {"briefing_date": str(briefing.briefing_date), "market_summary": briefing.market_summary, "top_keywords": briefing.top_keywords}
 
     return NarrativeResponse(
-        case_id=case.id, keyword=keyword, steps=steps, related_companies=related_companies,
-        sync_rate=sync_rate, market_data=market_data, market_history=market_history or None,
+        case_id=case.id,
+        keyword=keyword,
+        theme=theme,
+        one_liner=one_liner,
+        generated_at=generated_at,
+        steps=steps,
+        concept=concept_raw,
+        historical_case=historical_case_raw,
+        sources=sources_raw,
+        hallucination_checklist=hallucination_checklist_raw,
+        related_companies=related_companies,
+        sync_rate=sync_rate,
+        market_data=market_data,
+        market_history=market_history or None,
     )

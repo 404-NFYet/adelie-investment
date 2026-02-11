@@ -34,3 +34,15 @@ KOREAN_FINANCIAL_DOMAINS = [
     "etnews.com",
     "thebell.co.kr",
 ]
+
+# ── 6페이지 골든케이스 ──
+PAGE_KEYS = ["background", "concept_explain", "history", "application", "caution", "summary"]
+PAGE_TITLES = {
+    "background": "현재 배경",
+    "concept_explain": "금융 개념 설명",
+    "history": "과거 비슷한 사례",
+    "application": "현재 상황에 적용",
+    "caution": "주의해야 할 점",
+    "summary": "최종 정리",
+}
+GOLDEN_COLORS = ["#FF6B35", "#004E89", "#1A936F", "#C5D86D", "#8B95A1", "#FF6B00"]

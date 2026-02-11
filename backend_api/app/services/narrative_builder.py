@@ -1,6 +1,6 @@
-"""내러티브 섹션 빌더 서비스.
+"""내러티브 섹션 빌더 서비스 (6페이지 골든케이스).
 
-7개 스텝(background, mirroring, difference, devils_advocate, simulation, result, action)의
+6개 페이지(background, concept_explain, history, application, caution, summary)의
 콘텐츠를 구성하는 빌더 함수를 제공한다.
 
 LLM이 생성한 narrative 데이터가 있으면 그대로 사용하고,
@@ -18,6 +18,8 @@ from app.schemas.narrative import ChartData, ChartDataPoint, NarrativeSection
 
 _TERM_PATTERN = re.compile(r"\[\[(.+?)\]\]")
 
+PAGE_KEYS = ["background", "concept_explain", "history", "application", "caution", "summary"]
+
 
 def highlight_terms(content: str) -> str:
     """[[term]] 패턴을 <mark>term</mark> 으로 치환."""
@@ -33,9 +35,7 @@ def split_paragraphs(content: str) -> list[str]:
     return [p.strip() for p in content.split("\n\n") if p.strip()]
 
 
-# --- 7단계 통합 빌더 ---
-
-STEP_KEYS = ["background", "mirroring", "simulation", "result", "difference", "devils_advocate", "action"]
+# --- 6페이지 통합 빌더 ---
 
 
 def build_all_steps(
@@ -46,22 +46,20 @@ def build_all_steps(
     briefing_stocks: list[BriefingStock],
     case_stocks: list[CaseStockRelation],
 ) -> dict:
-    """7단계 steps를 빌드. LLM narrative가 있으면 우선 사용, 없으면 fallback."""
+    """6페이지 steps를 빌드. LLM narrative가 있으면 우선 사용, 없으면 fallback."""
     if narrative_data and _is_valid_narrative(narrative_data):
-        return _build_from_llm(narrative_data, case_stocks, comparison)
+        return _build_from_llm(narrative_data)
 
-    # fallback: 기존 빌더 로직
+    # fallback: 기본 빌더 로직
     return _build_fallback(comparison, paragraphs, briefing, briefing_stocks, case_stocks)
 
 
 def _is_valid_narrative(narrative_data: dict) -> bool:
-    """LLM narrative 데이터가 7단계 구조인지 확인."""
-    required = STEP_KEYS  # 7개 전체
-    if not all(key in narrative_data for key in required):
+    """LLM narrative 데이터가 6페이지 구조인지 확인."""
+    if not all(key in narrative_data for key in PAGE_KEYS):
         return False
 
-    # 각 섹션의 content가 최소 길이 이상인지 확인
-    for key in required:
+    for key in PAGE_KEYS:
         section = narrative_data.get(key, {})
         if not isinstance(section, dict):
             return False
@@ -69,18 +67,13 @@ def _is_valid_narrative(narrative_data: dict) -> bool:
         if len(content.strip()) < 10:
             return False
 
-    # simulation에 quiz 존재 여부 확인
-    sim = narrative_data.get("simulation", {})
-    if isinstance(sim, dict) and "quiz" not in sim:
-        return False
-
     return True
 
 
-def _build_from_llm(narrative_data: dict, case_stocks: list[CaseStockRelation], comparison: dict) -> dict:
-    """LLM이 생성한 7단계 narrative 데이터를 그대로 반환."""
+def _build_from_llm(narrative_data: dict) -> dict:
+    """LLM이 생성한 6페이지 narrative 데이터를 그대로 반환."""
     steps = {}
-    for key in STEP_KEYS:
+    for key in PAGE_KEYS:
         section = narrative_data.get(key, {})
         if isinstance(section, str):
             section = {"content": section, "bullets": []}
@@ -88,13 +81,11 @@ def _build_from_llm(narrative_data: dict, case_stocks: list[CaseStockRelation], 
             "bullets": section.get("bullets", []),
             "content": section.get("content", ""),
             "chart": section.get("chart"),
+            "glossary": section.get("glossary", []),
         }
         # sources/citations 전달 (Perplexity 출처)
         if section.get("sources"):
             step_data["sources"] = section["sources"]
-        # simulation 스텝의 quiz 데이터 전달
-        if key == "simulation" and "quiz" in section:
-            step_data["quiz"] = section["quiz"]
         steps[key] = step_data
     return steps
 
@@ -106,21 +97,21 @@ def _build_fallback(
     briefing_stocks: list[BriefingStock],
     case_stocks: list[CaseStockRelation],
 ) -> dict:
-    """기존 6단계 빌더를 7단계에 맞게 매핑."""
+    """6페이지 fallback 빌더."""
+    title = comparison.get("title", "이 테마")
     return {
-        "background": build_background(briefing, briefing_stocks),
-        "mirroring": build_mirroring(comparison, paragraphs),
-        "difference": build_difference(comparison, paragraphs),
-        "devils_advocate": build_devils_advocate(comparison, paragraphs),
-        "simulation": build_simulation(comparison, paragraphs),
-        "result": build_result(comparison, paragraphs),
-        "action": build_action(case_stocks, comparison),
+        "background": _build_background(briefing, briefing_stocks),
+        "concept_explain": _build_concept_explain(comparison),
+        "history": _build_history(comparison, paragraphs),
+        "application": _build_application(comparison, paragraphs),
+        "caution": _build_caution(comparison, paragraphs),
+        "summary": _build_summary(comparison, case_stocks),
     }
 
 
 # --- 개별 섹션 빌더 (fallback용) ---
 
-def build_background(briefing: Optional[DailyBriefing], briefing_stocks: list[BriefingStock]) -> dict:
+def _build_background(briefing: Optional[DailyBriefing], briefing_stocks: list[BriefingStock]) -> dict:
     """background 섹션: 오늘의 시장 브리핑 요약."""
     bullets = []
     if briefing and briefing.top_keywords:
@@ -139,8 +130,20 @@ def build_background(briefing: Optional[DailyBriefing], briefing_stocks: list[Br
     return NarrativeSection(bullets=bullets, content=content, chart=chart).model_dump()
 
 
-def build_mirroring(comparison: dict, paragraphs: list[str]) -> dict:
-    """mirroring 섹션: 과거-현재 대비."""
+def _build_concept_explain(comparison: dict) -> dict:
+    """concept_explain 섹션: 금융 개념 설명 (fallback)."""
+    title = comparison.get("title", "이 테마")
+    return NarrativeSection(
+        bullets=[
+            f"{title}의 핵심 금융 개념을 설명해요.",
+            "초보 투자자도 이해할 수 있도록 쉽게 풀어볼게요.",
+        ],
+        content=f"{title} 관련 금융 개념의 상세 설명을 준비 중이에요.",
+    ).model_dump()
+
+
+def _build_history(comparison: dict, paragraphs: list[str]) -> dict:
+    """history 섹션: 과거 비슷한 사례."""
     past_metric = comparison.get("past_metric", {})
     present_metric = comparison.get("present_metric", {})
 
@@ -179,10 +182,10 @@ def build_mirroring(comparison: dict, paragraphs: list[str]) -> dict:
     return NarrativeSection(bullets=bullets, content=content, chart=chart).model_dump()
 
 
-def build_difference(comparison: dict, paragraphs: list[str]) -> dict:
-    """difference 섹션: 과거와 현재의 차이."""
+def _build_application(comparison: dict, paragraphs: list[str]) -> dict:
+    """application 섹션: 현재 상황에 적용."""
     analysis = comparison.get("analysis", [])
-    bullets = analysis[:3] if analysis else ["과거와 현재의 차이를 분석합니다."]
+    bullets = analysis[:3] if analysis else ["과거 사례를 현재에 적용해 볼게요."]
     content = highlight_terms(paragraphs[1]) if len(paragraphs) > 1 else ""
     chart = ChartData(
         title="과거 vs 현재 비교",
@@ -195,15 +198,15 @@ def build_difference(comparison: dict, paragraphs: list[str]) -> dict:
     return NarrativeSection(bullets=bullets, content=content, chart=chart).model_dump()
 
 
-def build_devils_advocate(comparison: dict, paragraphs: list[str]) -> dict:
-    """devils_advocate 섹션: 반대 시나리오."""
+def _build_caution(comparison: dict, paragraphs: list[str]) -> dict:
+    """caution 섹션: 주의해야 할 점."""
     title = comparison.get("title", "이 테마")
     bullets = [
         f"{title}의 예상과 다른 전개가 나올 수 있어요.",
         f"외부 변수(금리, 환율, 규제)가 {title} 흐름을 바꿀 수 있어요.",
         f"단기 모멘텀에 과도하게 베팅하면 손실 위험이 있어요.",
     ]
-    content = highlight_terms(paragraphs[2]) if len(paragraphs) > 2 else f"{title} 관련 반대 시나리오도 꼭 체크해야 해요."
+    content = highlight_terms(paragraphs[2]) if len(paragraphs) > 2 else f"{title} 관련 주의사항을 꼭 체크해야 해요."
     chart = ChartData(
         title="리스크 시나리오별 예상 손실",
         data=[{"x": ["금리 급등", "규제 강화", "글로벌 침체"], "y": [-15, -20, -30], "type": "bar",
@@ -213,55 +216,17 @@ def build_devils_advocate(comparison: dict, paragraphs: list[str]) -> dict:
     return NarrativeSection(bullets=bullets, content=content, chart=chart).model_dump()
 
 
-def build_simulation(comparison: dict, paragraphs: list[str]) -> dict:
-    """simulation 섹션: 과거 사례 시뮬레이션."""
+def _build_summary(comparison: dict, case_stocks: list[CaseStockRelation]) -> dict:
+    """summary 섹션: 최종 정리."""
     title = comparison.get("title", "이 테마")
-    past = comparison.get("past_metric", {})
-    year = past.get("year", "과거")
-    bullets = [f"{title}의 {year} 사례를 기반으로 1,000만원 투자 시뮬레이션을 진행했어요."]
-    content = highlight_terms(paragraphs[3]) if len(paragraphs) > 3 else f"{title} 과거 사례로 낙관/중립/비관 3가지 시나리오를 시뮬레이션했어요."
-    chart = ChartData(
-        title="1,000만원 투자 시뮬레이션",
-        data=[
-            {"x": ["시작", "3개월", "6개월", "12개월"], "y": [1000, 1150, 1250, 1400], "type": "scatter", "mode": "lines+markers", "name": "낙관", "line": {"color": "#10B981"}},
-            {"x": ["시작", "3개월", "6개월", "12개월"], "y": [1000, 1020, 1050, 1080], "type": "scatter", "mode": "lines+markers", "name": "중립", "line": {"color": "#3B82F6"}},
-            {"x": ["시작", "3개월", "6개월", "12개월"], "y": [1000, 920, 850, 780], "type": "scatter", "mode": "lines+markers", "name": "비관", "line": {"color": "#EF4444"}},
-        ],
-        layout={"showlegend": True, "yaxis": {"title": "만원"}},
-    )
-    return NarrativeSection(bullets=bullets, content=content, chart=chart).model_dump()
+    bullets = [
+        f"{title} 분석 핵심 포인트를 정리했어요.",
+    ]
+    if case_stocks:
+        stock_names = [r.stock_name for r in case_stocks[:3]]
+        bullets.append(f"관련 종목: {', '.join(stock_names)}")
 
-
-def build_result(comparison: dict, paragraphs: list[str]) -> dict:
-    """result 섹션: 시뮬레이션 결과."""
-    title = comparison.get("title", "이 테마")
-    bullets = [f"{title} 시뮬레이션 결과를 시나리오별로 정리했어요."]
-    remaining = paragraphs[4:] if len(paragraphs) > 4 else paragraphs[-1:] if paragraphs else []
-    content = highlight_terms("\n\n".join(remaining)) if remaining else f"{title} 투자 시뮬레이션에서 낙관 시나리오의 수익률이 가장 높았어요."
-    chart = ChartData(
-        title="시나리오별 최종 수익률",
-        data=[{"x": ["낙관", "중립", "비관"], "y": [40, 8, -22], "type": "bar",
-               "marker": {"color": ["#10B981", "#3B82F6", "#EF4444"]}}],
-        layout={"yaxis": {"title": "수익률 (%)"}},
-    )
-    return NarrativeSection(bullets=bullets, content=content, chart=chart).model_dump()
-
-
-def build_action(case_stocks: list[CaseStockRelation], comparison: dict) -> dict:
-    """action 섹션: 투자 액션 요약."""
-    title = comparison.get("title", "이 테마")
-    bullets = [f"[{rel.relation_type or '관련'}] {rel.stock_name} — {rel.impact_description or ''}" for rel in case_stocks[:3]]
-    if comparison.get("poll_question"):
-        bullets.append(comparison["poll_question"])
-
-    chart = ChartData(
-        title="추천 포트폴리오 구성",
-        data=[{"labels": ["핵심 종목", "관련 종목", "안전자산", "현금"], "values": [40, 25, 20, 15],
-               "type": "pie", "marker": {"colors": ["#FF6B00", "#3B82F6", "#10B981", "#8B95A1"]}}],
-        layout={},
-    )
     return NarrativeSection(
-        bullets=bullets if bullets else [f"{title} 관련 종목들의 포지션을 확인해보세요."],
-        content=f"{title} 분석을 바탕으로 관련 종목들의 비중을 조절하고, 리스크 관리 포인트를 체크하세요.",
-        chart=chart,
+        bullets=bullets,
+        content=f"{title} 분석을 바탕으로 핵심 포인트를 정리하고, 리스크 관리 포인트를 체크하세요.",
     ).model_dump()
