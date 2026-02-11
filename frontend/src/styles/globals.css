@@ -332,23 +332,7 @@
   line-height: 1.2;
 }
 
-/* 2. 제목 + 품질 점수 */
-.card-title-section {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 0.5rem;
-}
-
-.quality-score {
-  font-size: 0.875rem;
-  color: #FFB800;
-  font-weight: 600;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-/* 3. 카탈리스트 뉴스 박스 */
+/* 2. 카탈리스트 뉴스 박스 */
 .catalyst-box {
   display: flex;
   gap: 0.5rem;
@@ -440,7 +424,7 @@
   align-items: center;
   gap: 0.25rem;
   padding: 0.25rem 0.5rem;
-  background: var(--color-background-secondary);
+  background: var(--color-surface);
   border-radius: 4px;
   font-size: 0.75rem;
   line-height: 1.2;
@@ -459,6 +443,16 @@
   color: var(--color-text-secondary);
   font-size: 0.75rem;
   align-self: center;
+}
+
+/* 6. 오프라인 배너 */
+.offline-banner {
+  background: var(--color-warning-light);
+  color: var(--color-text-primary);
+  text-align: center;
+  padding: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 500;
 }
 
 /* 다크모드 대응 (CSS 변수 기반이므로 자동 적용) */

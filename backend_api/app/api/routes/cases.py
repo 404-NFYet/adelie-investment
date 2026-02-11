@@ -189,7 +189,12 @@ async def get_comparison(
     # keywords JSONB에서 comparison 데이터 및 key_insight 추출
     kw_data = case.keywords if isinstance(case.keywords, dict) else {} if not case.keywords else case.keywords
     comparison_data = kw_data.get("comparison", {})
-    key_insight = kw_data.get("key_insight", "")
+    # key_insight: dict (신규) 또는 str (하위호환) 처리
+    raw_key_insight = kw_data.get("key_insight", "")
+    if isinstance(raw_key_insight, str):
+        key_insight = {"summary": raw_key_insight, "term_definitions": []}
+    else:
+        key_insight = raw_key_insight
     
     # comparison.points가 있으면 실 데이터 사용, 없으면 기본값
     raw_points = comparison_data.get("points", [])

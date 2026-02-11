@@ -24,18 +24,6 @@
 
 import HighlightedText from './HighlightedText';
 
-const CATEGORY_BADGE = {
-  '급등주': 'badge-error',
-  '급락주': 'badge-info',
-  '거래량': 'badge-warning',
-  '투자전략': 'badge-success',
-  '가치투자': 'badge-success',
-};
-
-function getBadgeClass(category) {
-  return CATEGORY_BADGE[category] || 'badge-primary';
-}
-
 function getTrendTypeLabel(trendType) {
   const labels = {
     consecutive_rise: '상승',
@@ -76,7 +64,7 @@ export default function KeywordCard({
         {sector && <span className="sector-tag">#{sector}</span>}
         {trend_days > 0 && trend_type && (
           <span className="trend-badge">
-            🔥 {trend_days}일 연속 {getTrendTypeLabel(trend_type)}
+            {trend_days}일 연속 {getTrendTypeLabel(trend_type)}
           </span>
         )}
       </div>
@@ -92,9 +80,9 @@ export default function KeywordCard({
       </p>
 
       {/* 4. 카탈리스트 뉴스 (있으면) */}
-      {catalyst && (
+      {catalyst && typeof catalyst === 'string' && !catalyst.trimStart().startsWith('[') && !catalyst.trimStart().startsWith('{') && (
         <div className="catalyst-box">
-          <span className="catalyst-icon">📰</span>
+          <span className="catalyst-icon"></span>
           <div className="flex-1">
             <p className="catalyst-title">{catalyst}</p>
             <div className="flex items-center gap-2 mt-1">
@@ -120,7 +108,7 @@ export default function KeywordCard({
       {/* 5. 과거 사례 힌트 */}
       {mirroring_hint && (
         <div className="mirroring-hint">
-          <span className="hint-icon">🔍</span>
+          <span className="hint-icon"></span>
           <p>
             <strong>과거 사례:</strong> {mirroring_hint}
             {event_year && sync_rate && (

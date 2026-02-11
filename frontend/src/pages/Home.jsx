@@ -9,6 +9,7 @@ import { KeywordCard, PenguinMascot } from '../components';
 import AppHeader from '../components/layout/AppHeader';
 import { keywordsApi } from '../api';
 import useCountUp from '../hooks/useCountUp';
+import useOnlineStatus from '../hooks/useOnlineStatus';
 
 export default function Home() {
   const navigate = useNavigate();
@@ -18,6 +19,7 @@ export default function Home() {
   const [error, setError] = useState(null);
 
   const animatedCount = useCountUp(keywords.length, 600);
+  const isOnline = useOnlineStatus();
 
   useEffect(() => {
     const fetchKeywords = async () => {
@@ -47,6 +49,13 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background pb-24">
+      {/* 오프라인 배너 */}
+      {!isOnline && (
+        <div className="offline-banner">
+          오프라인 모드 — 마지막으로 저장된 데이터를 표시 중
+        </div>
+      )}
+
       {/* Header */}
       <AppHeader />
 
@@ -111,20 +120,24 @@ export default function Home() {
                   selected={selectedId === keyword.id}
                   onClick={() => setSelectedId(keyword.id)}
                 />
+                {/* 선택된 카드 바로 밑에 START BRIEFING 버튼 */}
+                {selectedId === keyword.id && (
+                  <motion.div
+                    className="flex justify-center mt-3"
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    transition={{ duration: 0.25 }}
+                  >
+                    <button
+                      className="btn-primary w-full max-w-xs"
+                      onClick={() => handleKeywordSelect(keyword)}
+                    >
+                      START BRIEFING →
+                    </button>
+                  </motion.div>
+                )}
               </motion.div>
             ))}
-          </div>
-        )}
-
-        {/* START BRIEFING 버튼 */}
-        {selectedId && (
-          <div className="flex justify-center mt-6 mb-4">
-            <button
-              className="btn-primary w-full max-w-xs"
-              onClick={() => handleKeywordSelect(keywords.find(k => k.id === selectedId))}
-            >
-              START BRIEFING →
-            </button>
           </div>
         )}
       </main>

@@ -444,23 +444,42 @@ def cluster_by_sector(stocks):
 
 
 def select_top_themes(themes, target=5):
-    """다양성 고려 상위 테마 선택."""
+    """다양성 고려 상위 테마 선택 (상승/하락 균형 포함)."""
+    RISING = {"consecutive_rise", "majority_rise", "volume_surge"}
+    FALLING = {"consecutive_fall", "majority_fall"}
+
     sector_themes = [t for t in themes if t["type"] == "sector_theme"]
     individual = [t for t in themes if t["type"] == "individual_stock"]
 
     selected = []
     used_sectors = set()
 
-    # 섹터 테마 우선
-    for t in sorted(sector_themes, key=lambda x: (x["stock_count"], abs(x["avg_change_rate"])), reverse=True):
-        if t["sector"] not in used_sectors and len(selected) < target:
+    # 상승 섹터 테마 우선 (1자리 하락용 예약)
+    rising_themes = [t for t in sector_themes if any(
+        s.get("trend_type", "") in RISING for s in t.get("stocks", [])
+    )]
+    for t in sorted(rising_themes, key=lambda x: (x["stock_count"], abs(x["avg_change_rate"])), reverse=True):
+        if t["sector"] not in used_sectors and len(selected) < target - 1:
             selected.append(t)
             used_sectors.add(t["sector"])
 
-    # 부족하면 개별 종목
-    for t in sorted(individual, key=lambda x: abs(x["avg_change_rate"]), reverse=True):
+    # 하락 테마 최소 1개 확보
+    falling_themes = [t for t in sector_themes + individual if any(
+        s.get("trend_type", "") in FALLING for s in t.get("stocks", [])
+    )]
+    falling_themes.sort(key=lambda x: abs(x["avg_change_rate"]), reverse=True)
+    for t in falling_themes:
         if len(selected) < target:
             selected.append(t)
+            used_sectors.add(t.get("sector", ""))
+            break
+
+    # 나머지 채우기
+    all_remaining = [t for t in sector_themes + individual if t not in selected]
+    for t in sorted(all_remaining, key=lambda x: (x.get("stock_count", 0), abs(x["avg_change_rate"])), reverse=True):
+        if len(selected) >= target:
+            break
+        selected.append(t)
 
     return selected[:target]
 
@@ -587,6 +606,14 @@ async def save_to_db(date, stocks, news_map, keywords):
     except:
         market_summary = "시장 지수 조회 중"
 
+    _TREND_TYPE_LABELS = {
+        "consecutive_rise": "연속 상승",
+        "consecutive_fall": "연속 하락",
+        "majority_rise": "상승 우세",
+        "majority_fall": "하락 우세",
+        "volume_surge": "거래량 급증",
+    }
+
     # top_keywords 구조 생성
     top_keywords = {"keywords": []}
     for kw in keywords:
@@ -609,12 +636,14 @@ async def save_to_db(date, stocks, news_map, keywords):
             "trend_days": kw.get("trend_days", 0),  # 직접 필드 추가
             "trend_type": kw.get("trend_type", ""),  # 직접 필드 추가
             "mirroring_hint": kw.get("mirroring_hint", ""),  # 직접 필드 추가
-            "catalyst": catalyst["title"] if catalyst else None,  # 카탈리스트 추가
+            "catalyst": catalyst["title"] if catalyst else None,
+            "catalyst_url": catalyst["url"] if catalyst else None,
+            "catalyst_source": catalyst["source"] if catalyst else None,
             "stocks": [
                 {
                     "stock_code": code,
                     "stock_name": stock_names.get(code, code),
-                    "reason": f"{kw.get('trend_type', '')}, {kw.get('trend_days', 0)}일 트렌드",
+                    "reason": f"{_TREND_TYPE_LABELS.get(kw.get('trend_type', ''), '변동')} {kw.get('trend_days', 0)}일",
                 }
                 for code in stock_codes
             ],

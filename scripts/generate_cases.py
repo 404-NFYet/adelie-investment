@@ -82,15 +82,10 @@ def validate_narrative(narrative: dict) -> list[str]:
             issues.append(f"{key}: dict가 아님")
             continue
 
-        # content 최소 길이
+        # content 최소 길이 (구조적 다문단 콘텐츠)
         content = section.get("content", "")
-        if len(str(content)) < 20:
-            issues.append(f"{key}: content 20자 미만")
-
-        # bullets 존재
-        bullets = section.get("bullets", [])
-        if not isinstance(bullets, list) or len(bullets) < 1:
-            issues.append(f"{key}: bullets 부족")
+        if len(str(content)) < 100:
+            issues.append(f"{key}: content 100자 미만")
 
         # chart 검증 (다양한 차트 유형 지원)
         chart = section.get("chart", {})
@@ -121,13 +116,6 @@ def validate_narrative(narrative: dict) -> list[str]:
                             issues.append(f"{key}: chart x/y 길이 불일치")
                         elif not all(isinstance(v, (int, float)) for v in y_vals):
                             issues.append(f"{key}: chart y값에 비숫자 포함")
-
-    # devils_advocate bullets 3개 필수
-    da = narrative.get("devils_advocate", {})
-    if isinstance(da, dict):
-        da_bullets = da.get("bullets", [])
-        if len(da_bullets) < 3:
-            issues.append("devils_advocate: bullets 3개 미만")
 
     # simulation quiz 필수
     sim = narrative.get("simulation", {})
@@ -238,11 +226,14 @@ def generate_historical_case(keyword_title: str, category: str, stocks: list[str
 - pie 차트는 "labels"와 "values" 사용, 나머지는 "x"와 "y" 사용
 
 콘텐츠 규칙:
-- 각 섹션 content는 2~3문장, 핵심 용어를 <mark class="term">단어</mark>로 감싸기 (섹션당 1~2개)
+- 각 섹션 content는 마크다운 형식으로 구조화:
+  - 2~3개 소제목(### 사용)으로 구분
+  - 각 소제목 아래 1~2문단 (문단당 2~4문장)
+  - 소제목은 한국어로, 해당 섹션의 핵심 내용을 요약
+  - 용어 마킹(<mark> 태그)은 하지 마세요 (후처리에서 별도 처리)
+- chart.layout.title에 반드시 한국어 차트 제목 포함 (8~20자)
 - 구체성 필수: mirroring에 "종목명 + 연도 + 주가 변동폭" 포함
 - background content 필수 포함: (1) 트리거 이벤트, (2) 관련 수치/데이터, (3) 시장 주목 이유
-- bullets 포맷: 종목명 포함 시 "종목명 (코드)" 형식, 빈 괄호 () 금지
-- devils_advocate의 bullets는 반드시 3개 (반대 포인트)
 - simulation에는 반드시 "quiz" 객체 포함 (아래 형식 엄수)
 - 실제 역사적 사건 기반, 2000-2023년 사이
 
@@ -270,17 +261,17 @@ simulation.quiz 형식 (필수):
     "past_label": "과거 라벨",
     "present_label": "현재 라벨",
     "narrative": {{
-        "background": {{"bullets": ["포인트1", "포인트2"], "content": "현재 배경 설명", "chart": {{"data": [카탈로그에서 적합한 차트 유형 선택], "layout": {{"title": "한국어 제목", "xaxis": {{"title": ""}}, "yaxis": {{"title": ""}}}}}}}},
-        "mirroring": {{"bullets": [], "content": "과거 유사 사례 설명", "chart": {{"data": [{{"x": [], "y": [], "type": "scatter", "name": "과거"}}, {{"x": [], "y": [], "type": "scatter", "name": "현재"}}], "layout": {{"title": "", "showlegend": true}}}}}},
-        "simulation": {{"bullets": [], "content": "시뮬레이션 설명", "chart": {{"data": [{{"x": ["시작","3개월","6개월","12개월"], "y": [], "type": "scatter", "name": "낙관"}}, {{"x": [...], "y": [], "type": "scatter", "name": "중립"}}, {{"x": [...], "y": [], "type": "scatter", "name": "비관"}}], "layout": {{"title": "1,000만원 투자 시뮬레이션", "showlegend": true}}}}, "quiz": {{...}}}},
-        "result": {{"bullets": [], "content": "결과 설명", "chart": {{"data": [카탈로그에서 선택], "layout": {{"title": "시나리오별 수익률"}}}}}},
-        "difference": {{"bullets": [], "content": "과거와 현재 차이 설명", "chart": {{"data": [카탈로그에서 선택], "layout": {{"title": "", "barmode": "group"}}}}}},
-        "devils_advocate": {{"bullets": ["반대포인트1", "반대포인트2", "반대포인트3"], "content": "반대 시나리오 설명", "chart": {{"data": [카탈로그에서 선택], "layout": {{"title": ""}}}}}},
-        "action": {{"bullets": [], "content": "투자 전략 설명", "chart": {{"data": [{{"labels": ["항목1","항목2","항목3","항목4"], "values": [비중1,비중2,비중3,비중4], "type": "pie"}}], "layout": {{"title": "추천 포트폴리오 구성"}}}}}}
+        "background": {{"content": "### 소제목1\n내용 문단...\n\n### 소제목2\n내용 문단...", "chart": {{"data": [카탈로그에서 적합한 차트 유형 선택], "layout": {{"title": "한국어 제목", "xaxis": {{"title": ""}}, "yaxis": {{"title": ""}}}}}}}},
+        "mirroring": {{"content": "### 소제목\n마크다운 구조 콘텐츠...", "chart": {{"data": [{{"x": [], "y": [], "type": "scatter", "name": "과거"}}, {{"x": [], "y": [], "type": "scatter", "name": "현재"}}], "layout": {{"title": "한국어 제목", "showlegend": true}}}}}},
+        "simulation": {{"content": "### 소제목\n마크다운 구조 콘텐츠...", "chart": {{"data": [{{"x": ["시작","3개월","6개월","12개월"], "y": [], "type": "scatter", "name": "낙관"}}, {{"x": [...], "y": [], "type": "scatter", "name": "중립"}}, {{"x": [...], "y": [], "type": "scatter", "name": "비관"}}], "layout": {{"title": "1,000만원 투자 시뮬레이션", "showlegend": true}}}}, "quiz": {{...}}}},
+        "result": {{"content": "### 소제목\n마크다운 구조 콘텐츠...", "chart": {{"data": [카탈로그에서 선택], "layout": {{"title": "시나리오별 수익률"}}}}}},
+        "difference": {{"content": "### 소제목\n마크다운 구조 콘텐츠...", "chart": {{"data": [카탈로그에서 선택], "layout": {{"title": "한국어 제목", "barmode": "group"}}}}}},
+        "devils_advocate": {{"content": "### 소제목\n마크다운 구조 콘텐츠...", "chart": {{"data": [카탈로그에서 선택], "layout": {{"title": "한국어 제목"}}}}}},
+        "action": {{"content": "### 소제목\n마크다운 구조 콘텐츠...", "chart": {{"data": [{{"labels": ["항목1","항목2","항목3","항목4"], "values": [비중1,비중2,비중3,비중4], "type": "pie"}}], "layout": {{"title": "추천 포트폴리오 구성"}}}}}}
     }},
     "past_metric": {{"value": 숫자, "company": "종목명", "metric_name": "지표명"}},
     "present_metric": {{"value": 숫자, "metric_name": "지표명"}},
-    "key_insight": "핵심 인사이트",
+    "key_insight": "7단계 전체 스토리를 3~5문장으로 요약. background부터 action까지 핵심 흐름 서술.",
     "glossary_terms": ["용어1", "용어2"]
 }}
 
@@ -293,7 +284,7 @@ JSON만 출력하세요."""
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.7,
-                max_tokens=4000,
+                max_tokens=8000,
             )
             content = response.choices[0].message.content.strip()
 
@@ -318,7 +309,6 @@ JSON만 출력하세요."""
                 if issues:
                     logger.warning(f"  [검증 실패 attempt={attempt}] {issues}")
                     if attempt < MAX_RETRIES:
-                        # 재시도 시 문제점을 프롬프트에 피드백하지 않고 다시 시도
                         last_error = RuntimeError(f"검증 실패: {issues}")
                         continue
                     else:
@@ -334,11 +324,123 @@ JSON만 출력하세요."""
         except json.JSONDecodeError as e:
             last_error = e
             logger.warning(f"  [RETRY {attempt}/{MAX_RETRIES}] JSON 파싱 실패: {e}")
+            # 재시도 시 에러 피드백 프롬프트 추가
+            if attempt < MAX_RETRIES:
+                prompt = prompt + f"\n\n[이전 시도에서 JSON 파싱 오류 발생: {e}. 올바른 JSON만 출력해주세요.]"
         except Exception as e:
             last_error = e
             logger.warning(f"  [RETRY {attempt}/{MAX_RETRIES}] {e}")
 
     raise RuntimeError(f"LLM 생성 {MAX_RETRIES}회 실패: {last_error}")
+
+
+def apply_term_marking(case_data: dict) -> dict:
+    """후처리: 전체 콘텐츠 분석 → 핵심 용어/구문에 <mark class='term'> 태그 적용.
+
+    1단계: 모든 섹션의 content를 하나로 합침
+    2단계: LLM에게 용어/구문 목록 + 정의를 추출
+    3단계: 원래 content에 <mark class='term'> 태그 적용
+    4단계: key_insight를 dict로 래핑 + term_definitions 추가
+    """
+    narrative = case_data.get("narrative", {})
+    if not isinstance(narrative, dict):
+        return case_data
+
+    # 1. 전체 콘텐츠 수집
+    all_content = {}
+    for key in REQUIRED_SECTIONS:
+        section = narrative.get(key, {})
+        if isinstance(section, dict):
+            all_content[key] = section.get("content", "")
+
+    full_text = "\n\n".join(f"[{k}]\n{v}" for k, v in all_content.items() if v)
+    if len(full_text) < 200:
+        logger.warning("  용어 마킹: 콘텐츠 부족으로 건너뜀")
+        # key_insight dict 래핑만 수행
+        raw = case_data.get("key_insight", "")
+        if isinstance(raw, str):
+            case_data["key_insight"] = {"summary": raw, "term_definitions": []}
+        return case_data
+
+    # 2. LLM 호출: 용어/구문 추출
+    marking_prompt = f"""다음은 금융 교육 콘텐츠의 7개 섹션입니다.
+
+{full_text}
+
+위 텍스트에서 다음 유형의 용어와 구문을 추출하세요:
+1. 핵심 금융 용어 (예: PER, 금리, 변동성, 포트폴리오)
+2. 의미있는 금융 구문/절 (예: '변동성이 크게 확대된다', '시장 유동성이 풍부해진', '금리 인하 기대감')
+3. 이해가 필요한 핵심 개념 (예: '섹터 로테이션', '캐리 트레이드')
+
+규칙:
+- 총 15~25개 추출
+- 각 섹션당 2~4개가 되도록 분배
+- 구문은 3~15단어 이내 자연스러운 절 단위
+- 각 용어/구문에 초보자용 간단 정의(1문장) 포함
+- sections 필드에 해당 용어가 등장하는 섹션 키 목록 포함
+
+JSON 배열로만 응답:
+[{{"text": "용어 또는 구문", "definition": "간단한 정의", "sections": ["background", "mirroring"]}}]
+JSON만 출력하세요."""
+
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": marking_prompt}],
+        temperature=0.3,
+        max_tokens=2000,
+    )
+    raw_content = response.choices[0].message.content.strip()
+
+    # JSON 파싱
+    if raw_content.startswith("```"):
+        raw_content = raw_content.split("```")[1]
+        if raw_content.startswith("json"):
+            raw_content = raw_content[4:]
+        raw_content = raw_content.strip()
+
+    terms = json.loads(raw_content)
+    if not isinstance(terms, list):
+        logger.warning("  용어 마킹: LLM 응답이 배열이 아님")
+        terms = []
+
+    logger.info(f"  용어 마킹: {len(terms)}개 추출")
+
+    # 3. content에 <mark class='term'>...</mark> 태그 적용 (각 섹션 첫 등장만)
+    for item in terms:
+        text = item.get("text", "")
+        if not text or len(text) < 2:
+            continue
+        for section_key in item.get("sections", []):
+            section = narrative.get(section_key, {})
+            if not isinstance(section, dict):
+                continue
+            content = section.get("content", "")
+            marked = f"<mark class='term'>{text}</mark>"
+            # 이미 마킹되어 있지 않은 경우에만 첫 등장 마킹
+            if text in content and marked not in content:
+                content = content.replace(text, marked, 1)
+                section["content"] = content
+
+    # 4. key_insight를 dict로 래핑 + term_definitions 추가
+    raw_insight = case_data.get("key_insight", "")
+    if isinstance(raw_insight, str):
+        key_insight = {"summary": raw_insight, "term_definitions": []}
+    else:
+        key_insight = raw_insight
+
+    # term_definitions에 추출된 용어 추가
+    existing_terms = {td.get("term", "") for td in key_insight.get("term_definitions", [])}
+    for item in terms:
+        term_text = item.get("text", "")
+        definition = item.get("definition", "")
+        if term_text and term_text not in existing_terms:
+            key_insight.setdefault("term_definitions", []).append({
+                "term": term_text,
+                "definition": definition,
+            })
+
+    case_data["key_insight"] = key_insight
+    return case_data
 
 
 def _log_quality_metrics(narrative: dict, keyword: str) -> None:
@@ -397,9 +499,11 @@ def _log_quality_metrics(narrative: dict, keyword: str) -> None:
 async def main():
     import asyncpg
 
-    db_url = os.getenv("DATABASE_URL", "").replace("+asyncpg", "")
+    db_url = os.getenv("DATABASE_URL", "")
     if not db_url:
-        db_url = "postgresql://narative:password@postgres:5432/narrative_invest"
+        logger.error("DATABASE_URL 환경변수가 설정되지 않았습니다.")
+        raise SystemExit(1)
+    db_url = db_url.replace("+asyncpg", "")
 
     print(f"=== Historical Cases 생성 시작 ===")
     print(f"DB: {db_url}")
@@ -412,14 +516,15 @@ async def main():
     existing_relations = await conn.fetchval("SELECT COUNT(*) FROM case_stock_relations")
     print(f"기존 데이터 - cases: {existing_cases}, matches: {existing_matches}, relations: {existing_relations}")
 
-    # 기존 데이터 삭제 (새로 생성)
-    if existing_relations > 0:
-        await conn.execute("DELETE FROM case_stock_relations")
-    if existing_matches > 0:
-        await conn.execute("DELETE FROM case_matches")
-    if existing_cases > 0:
-        await conn.execute("DELETE FROM historical_cases")
-    print("기존 데이터 삭제 완료")
+    # 기존 데이터 삭제 (트랜잭션으로 원자적 처리)
+    async with conn.transaction():
+        if existing_relations > 0:
+            await conn.execute("DELETE FROM case_stock_relations")
+        if existing_matches > 0:
+            await conn.execute("DELETE FROM case_matches")
+        if existing_cases > 0:
+            await conn.execute("DELETE FROM historical_cases")
+    logger.info("기존 데이터 삭제 완료")
 
     # 2. 최신 briefing에서 키워드 가져오기
     row = await conn.fetchrow("""
@@ -449,7 +554,16 @@ async def main():
         await conn.close()
         raise SystemExit(1)
 
+    # 종목명 캐시 빌드 (pykrx 중복 호출 방지)
+    stock_name_cache = {}
+    for kw in keywords:
+        for s in kw.get("stocks", []):
+            if isinstance(s, dict) and s.get("stock_code") and s.get("stock_name"):
+                stock_name_cache[s["stock_code"]] = s["stock_name"]
+
     # 4. 각 키워드에 대해 historical_case 생성
+    import time as _time
+    pipeline_start = _time.time()
     failed = []
     for i, kw in enumerate(keywords):
         kw_title = kw.get("title", "")
@@ -457,10 +571,13 @@ async def main():
         kw_stocks = kw.get("stocks", [])
 
         if not kw_title:
-            print(f"\n[{i+1}/{len(keywords)}] SKIP - 제목 없음")
+            logger.info(f"[{i+1}/{len(keywords)}] SKIP - 제목 없음")
             continue
 
-        print(f"\n[{i+1}/{len(keywords)}] {kw_title}")
+        elapsed = _time.time() - pipeline_start
+        avg_per_kw = elapsed / max(i, 1)
+        remaining = avg_per_kw * (len(keywords) - i - 1)
+        logger.info(f"[{i+1}/{len(keywords)}] {kw_title}" + (f" (예상 잔여: {remaining:.0f}초)" if i > 0 else ""))
 
         # stocks에서 코드 추출
         stock_codes = [
@@ -481,6 +598,16 @@ async def main():
             failed.append(kw_title)
             continue
 
+        # 후처리: 용어/구문 마킹 + key_insight dict 변환
+        try:
+            case_data = apply_term_marking(case_data)
+            logger.info("  용어 마킹 후처리 완료")
+        except Exception as e:
+            logger.warning(f"  용어 마킹 후처리 실패 (원본 사용): {e}")
+            raw = case_data.get("key_insight", "")
+            if isinstance(raw, str):
+                case_data["key_insight"] = {"summary": raw, "term_definitions": []}
+
         # historical_cases에 삽입 (7단계 narrative 포함)
         keywords_jsonb = json.dumps({
             "comparison": {
@@ -492,8 +619,14 @@ async def main():
             },
             "narrative": case_data.get("narrative", {}),
             "glossary_terms": case_data.get("glossary_terms", []),
-            "key_insight": case_data.get("key_insight", "")
+            "key_insight": case_data.get("key_insight", {"summary": "", "term_definitions": []})
         }, ensure_ascii=False)
+
+        # event_year 검증
+        event_year = case_data.get("event_year", 2000)
+        if not isinstance(event_year, int) or not (1900 <= event_year <= datetime.now().year):
+            logger.warning(f"  event_year 범위 초과: {event_year}, 기본값 2000 사용")
+            event_year = 2000
 
         case_id = await conn.fetchval("""
             INSERT INTO historical_cases
@@ -502,7 +635,7 @@ async def main():
             RETURNING id
         """,
             case_data.get("title", ""),
-            case_data.get("event_year", 2000),
+            event_year,
             case_data.get("summary", ""),
             case_data.get("full_content", ""),
             keywords_jsonb
@@ -521,22 +654,18 @@ async def main():
             stock_code,
             case_id,
             case_data.get("sync_rate", 70) / 100.0,  # 0-1 범위로 변환
-            case_data.get("key_insight", "유사한 시장 패턴")
+            (case_data.get("key_insight", {}).get("summary", "") if isinstance(case_data.get("key_insight"), dict) else case_data.get("key_insight", "")) or "유사한 시장 패턴"
         )
         print(f"  → case_matches: id={match_id}")
 
         # case_stock_relations에 삽입 (키워드 관련 종목들)
         for j, sc in enumerate(stock_codes):
             stock_code = sc
-            # stocks가 객체 배열이면 stock_name 직접 사용
+            # 종목명 조회 (캐시 우선, kw_stocks 폴백)
             if j < len(kw_stocks) and isinstance(kw_stocks[j], dict):
-                stock_name = kw_stocks[j].get("stock_name", f"종목 {stock_code}")
-            else:
-                from pykrx import stock as pykrx_stock
-                try:
-                    stock_name = pykrx_stock.get_market_ticker_name(stock_code) or f"종목 {stock_code}"
-                except Exception:
-                    stock_name = f"종목 {stock_code}"
+                stock_name = kw_stocks[j].get("stock_name", "")
+            if not stock_name:
+                stock_name = stock_name_cache.get(stock_code, f"종목 {stock_code}")
 
             relation_type = "main_subject" if j == 0 else "related"
             rel_id = await conn.fetchval("""
