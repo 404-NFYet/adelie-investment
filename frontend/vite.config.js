@@ -19,6 +19,17 @@ export default defineConfig({
         orientation: 'portrait',
         start_url: '/',
         scope: '/',
+        lang: 'ko',
+        id: '/',
+        categories: ['finance', 'education'],
+        shortcuts: [
+          {
+            name: '오늘의 키워드',
+            short_name: '키워드',
+            url: '/',
+            icons: [{ src: '/images/icon-192.png', sizes: '192x192' }],
+          },
+        ],
         icons: [
           {
             src: '/images/icon-192.png',
@@ -44,8 +55,40 @@ export default defineConfig({
         clientsClaim: true,
         globPatterns: ['**/*.{js,css,html,svg,woff2}'],
         globIgnores: ['**/images/penguin-3d.png', '**/images/icon-512.png', '**/favicon.ico', '**/images/icon-192.png'],
+        navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/api\//],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB
         runtimeCaching: [
+          // SSE 튜터 채팅 — 캐싱 불가
+          {
+            urlPattern: /^https?:\/\/.*\/api\/v1\/tutor\/.*/i,
+            handler: 'NetworkOnly',
+          },
+          // 키워드 — 하루 단위 갱신, 빠른 응답 우선
+          {
+            urlPattern: /^https?:\/\/.*\/api\/v1\/keywords\/.*/i,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'keywords-cache',
+              expiration: {
+                maxEntries: 30,
+                maxAgeSeconds: 60 * 60, // 1시간
+              },
+            },
+          },
+          // 역사적 사례/내러티브 — 변경 거의 없음
+          {
+            urlPattern: /^https?:\/\/.*\/api\/v1\/(cases|narrative)\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'cases-cache',
+              expiration: {
+                maxEntries: 100,
+                maxAgeSeconds: 24 * 60 * 60, // 24시간
+              },
+            },
+          },
+          // 나머지 API — 네트워크 우선, 5분 캐시
           {
             urlPattern: /^https?:\/\/.*\/api\/v1\/.*/i,
             handler: 'NetworkFirst',
@@ -53,7 +96,7 @@ export default defineConfig({
               cacheName: 'api-cache',
               expiration: {
                 maxEntries: 50,
-                maxAgeSeconds: 300,
+                maxAgeSeconds: 5 * 60, // 5분
               },
             },
           },

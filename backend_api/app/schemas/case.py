@@ -69,7 +69,7 @@ class ComparisonResponse(BaseModel):
     analysis: list[str] = []
     poll_question: str = ""
     summary: str = ""
-    key_insight: Optional[str] = None  # 핵심 인사이트 (keywords.key_insight에서 추출)
+    key_insight: Optional[dict] = None  # 핵심 인사이트 {summary, term_definitions[]}
 
 
 class RelatedCompany(BaseModel):

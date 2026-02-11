@@ -22,13 +22,13 @@ const Plot = React.lazy(() =>
 
 /* ── 7단계 스텝 정의 (순서 개편: 1,2,5,6,3,4,7) ── */
 const STEPS = [
-  { key: 'background',      title: '현재 배경',     subtitle: '지금 왜 이게 이슈인지',     color: '#FF6B00', icon: '📈' },
-  { key: 'mirroring',       title: '과거 유사 사례', subtitle: '과거에도 비슷한 일이',      color: '#8B95A1', icon: '🕐' },
-  { key: 'simulation',      title: '모의 투자',      subtitle: '과거 사례로 시뮬레이션',    color: '#8B5CF6', icon: '📊' },
-  { key: 'result',          title: '결과 보고',      subtitle: '시뮬레이션 결과는?',        color: '#10B981', icon: '📋' },
-  { key: 'difference',      title: '지금은 달라요',  subtitle: '과거와 현재의 핵심 차이',   color: '#3B82F6', icon: '🔍' },
-  { key: 'devils_advocate', title: '반대 시나리오',  subtitle: '다른 가능성도 봐야 해요',   color: '#EF4444', icon: '⚠️' },
-  { key: 'action',          title: '실전 액션',      subtitle: '자, 이제 시작해볼까요?',    color: '#FF6B00', icon: '🚀' },
+  { key: 'background',      title: '현재 배경',     subtitle: '지금 왜 이게 이슈인지',     color: '#FF6B00' },
+  { key: 'mirroring',       title: '과거 유사 사례', subtitle: '과거에도 비슷한 일이',      color: '#8B95A1' },
+  { key: 'simulation',      title: '모의 투자',      subtitle: '과거 사례로 시뮬레이션',    color: '#8B5CF6' },
+  { key: 'result',          title: '결과 보고',      subtitle: '시뮬레이션 결과는?',        color: '#10B981' },
+  { key: 'difference',      title: '지금은 달라요',  subtitle: '과거와 현재의 핵심 차이',   color: '#3B82F6' },
+  { key: 'devils_advocate', title: '반대 시나리오',  subtitle: '다른 가능성도 봐야 해요',   color: '#EF4444' },
+  { key: 'action',          title: '실전 액션',      subtitle: '자, 이제 시작해볼까요?',    color: '#FF6B00' },
 ];
 
 /* ── 슬라이드 애니메이션 variants ── */
@@ -111,51 +111,10 @@ function StepPlaceholder({ stepKey, color }) {
   );
 }
 
-/* ── Key Takeaways 카드 ── */
-function TakeawayCard({ bullets, stepConfig }) {
-  const isDevil = stepConfig.key === 'devils_advocate';
-  return (
-    <div className="bg-surface-elevated rounded-[24px] p-4 shadow-card">
-      <h4
-        className="text-[10px] font-bold tracking-widest mb-3 uppercase"
-        style={{ color: stepConfig.color }}
-      >
-        {isDevil ? 'Counter Arguments' : 'Key Takeaways'}
-      </h4>
-      <ul className="space-y-3">
-        {bullets.map((b, i) => (
-          <li key={i} className="flex items-start gap-3 text-sm leading-relaxed text-text-primary">
-            {isDevil ? (
-              <span className="w-5 h-5 rounded-md bg-red-50 text-red-500 text-[10px] font-bold flex items-center justify-center mt-0.5 flex-shrink-0">
-                {i + 1}
-              </span>
-            ) : (
-              <span
-                className="w-1.5 h-1.5 rounded-full mt-[7px] flex-shrink-0"
-                style={{ backgroundColor: stepConfig.color }}
-              />
-            )}
-            <div className="flex-1">
-              <ReactMarkdown
-                rehypePlugins={[rehypeRaw]}
-                components={{
-                  mark: ({ node, ...props }) => (
-                    <mark className="term font-bold text-primary bg-primary-light px-1 py-0.5 rounded cursor-pointer" {...props} />
-                  ),
-                }}
-              >
-                {cleanBullet(b)}
-              </ReactMarkdown>
-            </div>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
 /* ── Narrative 텍스트 카드 ── */
 function NarrativeCard({ content, stepConfig }) {
+  const sections = content.split(/(?=^### )/m).filter(Boolean);
+
   return (
     <div className="bg-surface-elevated rounded-[24px] p-4 shadow-card relative">
       <div
@@ -164,19 +123,30 @@ function NarrativeCard({ content, stepConfig }) {
       >
         {stepConfig.subtitle}
       </div>
-      <div className="text-sm leading-relaxed text-text-primary prose prose-sm max-w-none mt-1">
-        {content.split('\n\n').map((paragraph, pIdx) => (
-          <div key={pIdx} className={pIdx > 0 ? 'mt-3' : ''}>
-            <ReactMarkdown
-              rehypePlugins={[rehypeRaw]}
-              components={{
-                mark: ({ node, ...props }) => (
-                  <mark className="term font-bold text-primary bg-primary-light px-1 py-0.5 rounded cursor-pointer" {...props} />
-                ),
-              }}
-            >
-              {cleanBullet(paragraph)}
-            </ReactMarkdown>
+      <div className="mt-1">
+        {sections.map((section, idx) => (
+          <div
+            key={idx}
+            className={idx > 0 ? 'mt-4 pt-4 border-t border-border' : ''}
+          >
+            <div className="text-sm leading-relaxed text-text-primary prose prose-sm max-w-none">
+              <ReactMarkdown
+                rehypePlugins={[rehypeRaw]}
+                components={{
+                  mark: ({ node, ...props }) => (
+                    <mark className="term-highlight cursor-pointer" {...props} />
+                  ),
+                  h3: ({ node, ...props }) => (
+                    <h3 className="text-[13px] font-bold mb-2" style={{ color: stepConfig.color }} {...props} />
+                  ),
+                  p: ({ node, ...props }) => (
+                    <p className="mb-3 last:mb-0" {...props} />
+                  ),
+                }}
+              >
+                {section}
+              </ReactMarkdown>
+            </div>
           </div>
         ))}
       </div>
@@ -290,7 +260,7 @@ function QuizCard({ quiz, scenarioId, stepConfig, onQuizComplete }) {
           className={`mt-4 p-3 rounded-xl text-sm ${isCorrect ? 'bg-green-50 border border-green-200' : 'bg-orange-50 border border-orange-200'}`}
         >
           <p className="font-semibold mb-1">
-            {isCorrect ? '🎉 정답입니다!' : '💡 아쉽지만 오답이에요'}
+            {isCorrect ? '정답입니다!' : '아쉽지만 오답이에요'}
           </p>
           <p className="text-xs text-text-secondary mb-1">
             보상금: <span className="font-bold" style={{ color: stepConfig.color }}>+{formatKRW(rewardResult.reward_amount)}</span>
@@ -301,7 +271,7 @@ function QuizCard({ quiz, scenarioId, stepConfig, onQuizComplete }) {
             </p>
           )}
           {quiz.actual_result && (
-            <p className="text-xs text-text-secondary mt-1 leading-relaxed">📊 실제 결과: {quiz.actual_result}</p>
+            <p className="text-xs text-text-secondary mt-1 leading-relaxed">실제 결과: {quiz.actual_result}</p>
           )}
           {quiz.lesson && (
             <p className="text-xs text-text-secondary mt-1 leading-relaxed">💡 교훈: {quiz.lesson}</p>
@@ -332,26 +302,24 @@ function ActionStep({ companies, caseId, stepData, onSkip }) {
           <span className="text-[10px] font-bold tracking-widest text-primary mb-3 block">
             실전 전략
           </span>
-          <p className="text-sm leading-relaxed text-text-primary whitespace-pre-line">
-            {cleanBullet(stepData.content)}
-          </p>
-        </div>
-      )}
-
-      {/* bullets */}
-      {stepData?.bullets?.length > 0 && (
-        <div className="bg-surface-elevated rounded-[24px] p-4 shadow-card">
-          <h4 className="text-[10px] font-bold tracking-widest text-primary mb-3 uppercase">
-            Key Points
-          </h4>
-          <ul className="space-y-2">
-            {stepData.bullets.map((b, i) => (
-              <li key={i} className="flex items-start gap-3 text-sm leading-relaxed text-text-primary">
-                <span className="w-1.5 h-1.5 rounded-full mt-[7px] flex-shrink-0 bg-primary" />
-                <span>{cleanBullet(b)}</span>
-              </li>
-            ))}
-          </ul>
+          <div className="text-sm leading-relaxed text-text-primary prose prose-sm max-w-none">
+            <ReactMarkdown
+              rehypePlugins={[rehypeRaw]}
+              components={{
+                mark: ({ node, ...props }) => (
+                  <mark className="term-highlight cursor-pointer" {...props} />
+                ),
+                h3: ({ node, ...props }) => (
+                  <h3 className="text-[13px] font-bold mt-4 mb-2 first:mt-0 text-primary" {...props} />
+                ),
+                p: ({ node, ...props }) => (
+                  <p className="mb-3 last:mb-0" {...props} />
+                ),
+              }}
+            >
+              {stepData.content}
+            </ReactMarkdown>
+          </div>
         </div>
       )}
 
@@ -595,7 +563,7 @@ export default function Narrative() {
     const el = contentRef.current;
     if (!el) return;
     const handler = (e) => {
-      const term = e.target.closest('.term');
+      const term = e.target.closest('.term-highlight');
       if (term) {
         e.preventDefault();
         openTermSheet(term.textContent);
@@ -726,13 +694,14 @@ export default function Narrative() {
             ) : stepData ? (
               /* Steps 1-6: 분석 콘텐츠 */
               <>
-                {/* Key Takeaways / Counter Arguments */}
-                {stepData.bullets && stepData.bullets.length > 0 && (
-                  <TakeawayCard bullets={stepData.bullets} stepConfig={stepMeta} />
-                )}
-
-                {/* 차트 영역: Plotly data가 있으면 Plotly로, 없으면 Placeholder */}
+                {/* 차트 영역: 제목 + Plotly (또는 Placeholder) */}
                 <div className="rounded-[20px] border border-border overflow-hidden bg-white/70 shadow-sm">
+                  {/* 차트 제목 (layout.title) */}
+                  {stepData.chart?.layout?.title && (
+                    <div className="px-4 pt-3 pb-1">
+                      <h4 className="text-xs font-bold text-text-primary">{stepData.chart.layout.title}</h4>
+                    </div>
+                  )}
                   {stepData.chart?.data ? (() => {
                     const hasPie = stepData.chart.data.some(t => t.type === 'pie');
                     return (
@@ -741,9 +710,10 @@ export default function Narrative() {
                         data={stepData.chart.data}
                         layout={{
                           ...(stepData.chart.layout || {}),
+                          title: undefined,
                           autosize: true,
                           height: 240,
-                          margin: hasPie ? { l: 10, r: 10, t: 30, b: 10 } : { l: 40, r: 20, t: 20, b: 40 },
+                          margin: hasPie ? { l: 10, r: 10, t: 10, b: 10 } : { l: 40, r: 20, t: 10, b: 40 },
                           paper_bgcolor: 'transparent',
                           plot_bgcolor: 'transparent',
                           font: { family: 'IBM Plex Sans KR, sans-serif', size: 11 },

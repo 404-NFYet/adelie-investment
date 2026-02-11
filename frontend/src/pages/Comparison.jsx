@@ -54,8 +54,8 @@ export default function Comparison() {
           poll: {
             question: result.poll_question || 'What do you think?',
             options: [
-              { id: 'agree', label: '반복된다 📉' },
-              { id: 'disagree', label: '이번엔 다르다 📈' },
+              { id: 'agree', label: '반복된다' },
+              { id: 'disagree', label: '이번엔 다르다' },
             ],
           },
         });
