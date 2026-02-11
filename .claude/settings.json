@@ -1,0 +1,48 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git *)",
+      "Bash(gh *)",
+      "Bash(make *)",
+      "Bash(docker *)",
+      "Bash(docker compose *)",
+      "Bash(npm *)",
+      "Bash(npx *)",
+      "Bash(pytest *)",
+      "Bash(python3 *)",
+      "Bash(python -m *)",
+      "Bash(python -c *)",
+      "Bash(alembic *)",
+      "Bash(ruff *)",
+      "Bash(curl *)",
+      "Bash(ssh deploy-test *)",
+      "Bash(scp *)",
+      "Bash(TAG=* make *)",
+      "Bash(wc *)",
+      "Bash(du *)",
+      "Bash(file *)",
+      "Bash(sort *)",
+      "Bash(env *)",
+      "Bash(source *)",
+      "Bash(chmod *)",
+      "Bash(mkdir *)",
+      "Bash(test *)"
+    ],
+    "deny": [
+      "Bash(rm -rf /)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "FILE=$(cat | jq -r '.tool_input.file_path // empty'); if [[ \"$FILE\" == *.py ]]; then ruff check --fix --quiet \"$FILE\" 2>/dev/null; fi"
+          }
+        ]
+      }
+    ]
+  }
+}
