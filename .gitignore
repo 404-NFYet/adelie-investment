@@ -44,16 +44,17 @@ frontend/.vite/
 *.local
 
 # Backend (Python)
-backend_api/dist/
-ai_module/dist/
+fastapi/dist/
+datapipeline/output/
+datapipeline/cache/
 *.pyc
 .pytest_cache/
 .coverage
 htmlcov/
 
 # Backend (Java/Spring)
-backend-spring/target/
-backend-spring/build/
+springboot/target/
+springboot/build/
 *.jar
 *.war
 *.class
@@ -95,8 +96,6 @@ tests/viz_test_output/
 # ============================================
 # 데이터 파일 (민감 정보)
 # ============================================
-data_pipeline/output/
-data_pipeline/cache/
 *.pdf
 *.csv
 !docs/**/*.csv
@@ -150,7 +149,7 @@ CLAUDE.md
 *.bak
 *.backup
 .history/
-backend-spring/bin/
+springboot/bin/
 capture
 
 # 리팩토링 백업 (Neo4j/유사도 등 제거 코드)

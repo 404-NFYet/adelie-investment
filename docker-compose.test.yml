@@ -26,7 +26,9 @@ services:
 
   # --- Backend 테스트 ---
   test-backend:
-    build: ./backend_api
+    build:
+      context: .
+      dockerfile: fastapi/Dockerfile
     command: >
       sh -c "pip install pytest pytest-asyncio httpx -q &&
              pytest tests/ -v --tb=short --junitxml=/app/test-results/backend.xml"
@@ -37,6 +39,7 @@ services:
       PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-test}
       ENVIRONMENT: test
     volumes:
+      - ./tests:/app/tests
       - ./test-results:/app/test-results
     depends_on:
       postgres-test:
@@ -72,7 +75,9 @@ services:
       - e2e
 
   backend-api:
-    build: ./backend_api
+    build:
+      context: .
+      dockerfile: fastapi/Dockerfile
     environment:
       DATABASE_URL: postgresql+asyncpg://test:test@postgres-test:5432/test_narrative
       REDIS_URL: redis://redis-test:6379/0
@@ -83,7 +88,7 @@ services:
       - e2e
 
   backend-spring:
-    build: ./backend-spring
+    build: ./springboot
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-test:5432/test_narrative
       SPRING_DATASOURCE_USERNAME: test

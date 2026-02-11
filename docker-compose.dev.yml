@@ -20,7 +20,9 @@ services:
 
   # --- FastAPI Backend ---
   backend-api:
-    build: ./backend_api
+    build:
+      context: .
+      dockerfile: fastapi/Dockerfile
     ports:
       - "8082:8082"
     env_file: .env
@@ -31,23 +33,26 @@ services:
       REDIS_PORT: 6379
       MINIO_ENDPOINT: http://10.10.10.10:9000
     volumes:
-      - ./backend_api/app:/app/app  # 핫 리로드
-      - ./ai_module:/app/ai_module  # AI 모듈 공유
+      - ./fastapi/app:/app/app  # 핫 리로드
+      - ./chatbot:/app/chatbot  # 챗봇 모듈 공유
+      - ./datapipeline/scripts:/app/scripts  # 파이프라인 스크립트
+      - ./datapipeline/collectors:/app/collectors  # 데이터 수집기
+      - ./datapipeline/prompts:/app/datapipeline/prompts  # 파이프라인 프롬프트
     command: uvicorn app.main:app --host 0.0.0.0 --port 8082 --reload
     restart: unless-stopped
     develop:
       watch:
         - action: sync
-          path: ./backend_api/app
+          path: ./fastapi/app
           target: /app/app
         - action: rebuild
-          path: ./backend_api/requirements.txt
+          path: ./fastapi/requirements.txt
 
   # --- Spring Boot Backend ---
   backend-spring:
-    build: ./backend-spring
+    build: ./springboot
     ports:
-      - "8083:8083"
+      - "8083:8080"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://10.10.10.10:5432/narrative_invest
       SPRING_DATASOURCE_USERNAME: narative
@@ -57,7 +62,9 @@ services:
 
   # --- AI Pipeline (on-demand) ---
   ai-pipeline:
-    build: ./ai_module
+    build:
+      context: .
+      dockerfile: datapipeline/Dockerfile
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://narative:password@10.10.10.10:5432/narrative_invest

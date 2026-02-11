@@ -2,7 +2,8 @@
 import pytest
 import sys
 
-sys.path.insert(0, "/home/hj/2026/project/narrative-investment/ai-module")
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "chatbot"))
 
 
 class TestAgentPrompts:
