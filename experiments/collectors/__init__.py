@@ -1,1 +1,0 @@
-"""Data collectors - 데이터 수집 모듈."""

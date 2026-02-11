@@ -40,10 +40,24 @@ export default function Matching() {
           casesApi.getComparison(caseId),
           casesApi.getStory(caseId),
         ]);
-        const contentText = storyResult.content || storyResult.summary || '';
-        const sentences = contentText.split('. ').slice(0, 2);
-        const keyInsight = compResult.key_insight ||
-                           (sentences.join('. ') + (sentences.length > 0 ? '.' : ''));
+        // key_insight: dict {summary, term_definitions} 또는 string (하위호환)
+        const rawInsight = compResult.key_insight;
+        let keyInsightSummary = '';
+        let termDefinitions = [];
+
+        if (typeof rawInsight === 'object' && rawInsight !== null) {
+          keyInsightSummary = rawInsight.summary || '';
+          termDefinitions = rawInsight.term_definitions || [];
+        } else if (typeof rawInsight === 'string') {
+          keyInsightSummary = rawInsight;
+        }
+
+        if (!keyInsightSummary) {
+          const contentText = storyResult.content || storyResult.summary || '';
+          const sentences = contentText.split('. ').slice(0, 2);
+          keyInsightSummary = sentences.join('. ') + (sentences.length > 0 ? '.' : '');
+        }
+
         setData({
           past: {
             year: compResult.past_event?.year || 2000,
@@ -54,7 +68,8 @@ export default function Matching() {
             year: compResult.present_event?.year || new Date().getFullYear(),
             label: compResult.present_event?.label || keyword,
           },
-          keyInsight: keyInsight,
+          keyInsight: keyInsightSummary,
+          termDefinitions: termDefinitions,
         });
       } catch (err) {
         console.error('매칭 데이터 로딩 실패:', err);
