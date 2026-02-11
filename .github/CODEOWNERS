@@ -2,19 +2,22 @@
 /frontend/          @YJ99Son
 
 # Backend API (FastAPI)
-/backend_api/       @J2hoon10
+/fastapi/           @J2hoon10
 
-# AI Module
-/ai_module/         @J2hoon10 @ryejinn
-
-# Backend Spring
-/backend-spring/    @jjjh02
+# Chatbot (AI Tutor)
+/chatbot/           @J2hoon10 @ryejinn
 
 # Data Pipeline
-/data_pipeline/     @J2hoon10
+/datapipeline/      @J2hoon10
+
+# Backend Spring
+/springboot/        @jjjh02
+
+# Database (Alembic + scripts)
+/database/          @dorae222
 
 # Infrastructure
-/infra/             @dorae222
+/lxd/               @dorae222
 /.github/           @dorae222
 docker-compose.*    @dorae222
 Makefile            @dorae222
