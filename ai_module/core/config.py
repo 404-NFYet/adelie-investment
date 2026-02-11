@@ -42,12 +42,12 @@ class PerplexityConfig:
 
 @dataclass
 class LangSmithConfig:
-    """LangSmith 트레이싱 설정."""
-    
-    api_key: str = field(default_factory=lambda: os.getenv("LANGSMITH_API_KEY", ""))
-    project_name: str = field(default_factory=lambda: os.getenv("LANGSMITH_PROJECT", "narrative-investment"))
-    tracing_enabled: bool = field(default_factory=lambda: os.getenv("LANGSMITH_TRACING", "true").lower() == "true")
-    endpoint: str = field(default_factory=lambda: os.getenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com"))
+    """LangSmith 트레이싱 설정 (LANGCHAIN_* 환경변수 사용)."""
+
+    api_key: str = field(default_factory=lambda: os.getenv("LANGCHAIN_API_KEY", ""))
+    project_name: str = field(default_factory=lambda: os.getenv("LANGCHAIN_PROJECT", "adelie-pipeline"))
+    tracing_enabled: bool = field(default_factory=lambda: os.getenv("LANGCHAIN_TRACING_V2", "true").lower() == "true")
+    endpoint: str = field(default_factory=lambda: os.getenv("LANGCHAIN_ENDPOINT", "https://api.smith.langchain.com"))
 
 
 @dataclass

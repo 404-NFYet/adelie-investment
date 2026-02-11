@@ -40,6 +40,7 @@ from scripts.pipeline_config import (
     KOREAN_FINANCIAL_DOMAINS,
     MACRO_CONTEXT_BONUS,
     MAX_RETRIES,
+    MIN_TRADE_VALUE,
     MIN_TRENDING,
     RETRY_BASE_DELAY,
     SECTOR_ANALYSIS_BONUS,
@@ -148,8 +149,8 @@ def collect_market_data_node(state: KeywordPipelineState) -> dict:
         end_date_str, end_date_obj = get_latest_trading_date()
         logger.info(f"  최근 영업일: {end_date_str}")
 
-        df_all = fetch_multi_day_data(end_date_str, days=5)
-        logger.info(f"  5일 데이터 수집: {len(df_all)}건")
+        df_all = fetch_multi_day_data(end_date_str, days=5, min_trade_value=MIN_TRADE_VALUE)
+        logger.info(f"  5일 데이터 수집: {len(df_all)}건 (거래대금 >= {MIN_TRADE_VALUE:,}원)")
 
         return {
             "end_date_str": end_date_str,

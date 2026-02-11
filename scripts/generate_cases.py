@@ -4,6 +4,7 @@ Historical Cases 생성 스크립트 (6페이지 골든케이스)
 - pykrx 실시간 주가 데이터 주입으로 구체성 향상
 - 페이지별 glossary + sources + hallucination_checklist 포함
 - historical_cases, case_matches, case_stock_relations 테이블에 삽입
+- LangSmith @traceable 트레이싱 연동
 """
 import asyncio
 import json
@@ -11,15 +12,45 @@ import logging
 import os
 import re
 from datetime import datetime, timedelta
+from pathlib import Path
+
 from openai import OpenAI
 
-from pipeline_config import PAGE_KEYS, MAX_RETRIES
+from pipeline_config import (
+    PAGE_KEYS,
+    MAX_RETRIES,
+    MIN_CONTENT_LENGTH,
+    MIN_BULLETS,
+    MIN_GLOSSARY,
+    MIN_UNIQUE_CHART_TYPES,
+)
+
+# LangSmith traceable (없으면 no-op)
+try:
+    from langsmith import traceable
+except ImportError:
+    def traceable(**kwargs):
+        def decorator(func):
+            return func
+        return decorator
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
 # OpenAI Client
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# 프롬프트 파일 경로
+PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
+
+
+def _load_prompt(name: str) -> str:
+    """프롬프트 파일 로드."""
+    path = PROMPTS_DIR / name
+    if path.exists():
+        return path.read_text(encoding="utf-8")
+    logger.warning(f"프롬프트 파일 없음: {path}, 인라인 fallback 사용")
+    return ""
 
 
 def strip_marks(text: str) -> str:
@@ -53,9 +84,11 @@ def fetch_stock_data(stock_codes: list[str]) -> str:
             high = int(df["고가"].max())
             low = int(df["저가"].min())
             avg_vol = int(df["거래량"].mean())
+            avg_trade_val = int(df["거래대금"].mean()) if "거래대금" in df.columns else 0
             lines.append(
                 f"- {name}({code}): 현재가 {current:,}원, 90일 등락률 {change_pct:+}%, "
                 f"90일 고가 {high:,}원, 저가 {low:,}원, 평균거래량 {avg_vol:,}주"
+                + (f", 평균거래대금 {avg_trade_val:,}원" if avg_trade_val else "")
             )
         except Exception as e:
             logger.warning(f"  pykrx 조회 실패 ({code}): {e}")
@@ -65,10 +98,10 @@ def fetch_stock_data(stock_codes: list[str]) -> str:
 
 
 def validate_narrative(narrative: dict) -> list[str]:
-    """6페이지 골든케이스 구조 검증. 문제점 리스트 반환 (빈 리스트=정상)."""
+    """6페이지 골든케이스 구조 검증 (강화 버전). 문제점 리스트 반환."""
     issues = []
+    chart_types_seen = []
 
-    # 6개 섹션 존재 확인
     for key in PAGE_KEYS:
         if key not in narrative:
             issues.append(f"섹션 누락: {key}")
@@ -78,20 +111,27 @@ def validate_narrative(narrative: dict) -> list[str]:
             issues.append(f"{key}: dict가 아님")
             continue
 
-        # content 최소 길이
-        content = section.get("content", "")
-        if len(str(content)) < 50:
-            issues.append(f"{key}: content 50자 미만")
+        # content 최소 길이 (강화: 50 → MIN_CONTENT_LENGTH)
+        content = str(section.get("content", ""))
+        if len(content) < MIN_CONTENT_LENGTH:
+            issues.append(f"{key}: content {len(content)}자 ({MIN_CONTENT_LENGTH}자 미만)")
 
-        # bullets 검증
+        # 해요체 검증 (경고만, 실패는 아님)
+        formal_patterns = re.findall(r"(?:합니다|입니다|했습니다|됩니다|있습니다)", content)
+        if formal_patterns:
+            logger.warning(f"  [해요체 위반] {key}: {formal_patterns[:3]}")
+
+        # bullets 검증 (강화: 2 → MIN_BULLETS)
         bullets = section.get("bullets", [])
-        if not isinstance(bullets, list) or len(bullets) < 2:
-            issues.append(f"{key}: bullets 2개 미만")
+        if not isinstance(bullets, list) or len(bullets) < MIN_BULLETS:
+            issues.append(f"{key}: bullets {len(bullets) if isinstance(bullets, list) else 0}개 ({MIN_BULLETS}개 미만)")
 
-        # glossary 검증
+        # glossary 검증 (강화: 존재만 → MIN_GLOSSARY 이상)
         glossary = section.get("glossary", [])
         if not isinstance(glossary, list):
             issues.append(f"{key}: glossary가 list가 아님")
+        elif len(glossary) < MIN_GLOSSARY:
+            issues.append(f"{key}: glossary {len(glossary)}개 ({MIN_GLOSSARY}개 미만)")
 
         # chart 검증 (null 허용 - caution 등)
         chart = section.get("chart")
@@ -101,6 +141,8 @@ def validate_narrative(narrative: dict) -> list[str]:
                 trace = data[0]
                 if isinstance(trace, dict):
                     trace_type = trace.get("type", "scatter")
+                    chart_types_seen.append(trace_type)
+
                     if trace_type == "pie":
                         labels = trace.get("labels", [])
                         values = trace.get("values", [])
@@ -123,9 +165,15 @@ def validate_narrative(narrative: dict) -> list[str]:
                         elif not all(isinstance(v, (int, float)) for v in y_vals):
                             issues.append(f"{key}: chart y값에 비숫자 포함")
 
+    # 차트 유형 다양성 체크 (강화)
+    unique_chart_types = set(chart_types_seen)
+    if len(chart_types_seen) >= 3 and len(unique_chart_types) < MIN_UNIQUE_CHART_TYPES:
+        issues.append(f"차트 유형 다양성 부족: {len(unique_chart_types)}종류 ({MIN_UNIQUE_CHART_TYPES}종류 미만) - {chart_types_seen}")
+
     return issues
 
 
+@traceable(name="generate_historical_case", run_type="llm")
 def generate_historical_case(keyword_title: str, category: str, stocks: list[str], stock_data: str = "") -> dict:
     """LLM으로 역사적 유사 사례 + 6페이지 골든케이스 내러티브 생성."""
     clean_title = strip_marks(keyword_title)
@@ -136,141 +184,30 @@ def generate_historical_case(keyword_title: str, category: str, stocks: list[str
 실시간 종목 데이터 (pykrx 90일):
 {stock_data}
 위 수치를 활용하여 구체적인 내러티브를 작성하세요. 추상적 매크로 주제 대신 해당 종목/섹터의 구체적 이벤트 중심으로 작성하세요.
+차트에는 반드시 위 실제 데이터를 반영하세요.
 """
 
-    prompt = f"""당신은 친근한 금융 학습 메이트 '아델리'입니다. 2030세대를 위한 금융 교육 콘텐츠를 만듭니다.
-현재 키워드: "{clean_title}" (카테고리: {category})
-관련 종목 코드: {stocks}
-{stock_data_section}
-
-=== 과제 ===
-이 키워드와 유사한 과거 한국 주식 시장의 역사적 사례를 선정하고, 6페이지 브리핑 콘텐츠를 생성하세요.
-
-=== 6페이지 구조 ===
-1. background (현재 배경) — 독자의 주의를 환기하고, 왜 지금 읽어야 하는지 설득
-2. concept_explain (금융 개념 설명) — 이 시나리오의 핵심 금융 개념 1개를 초보자용으로 설명
-3. history (과거 비슷한 사례) — 과거 유사 사례를 비교하여 패턴 학습
-4. application (현재 상황에 적용) — 과거 교훈을 현재 상황에 3가지 포인트로 적용
-5. caution (주의해야 할 점) — 반대 시나리오 3가지를 제시하여 균형 잡힌 시각 부여
-6. summary (최종 정리) — 요약 + 독자가 실제로 써먹을 수 있는 관찰 지표 3가지
-
-=== 차트 유형 카탈로그 (Plotly 기반) ===
-데이터 특성에 맞는 차트를 선택하세요:
-- 시계열 추세 → scatter (mode:"lines+markers") 또는 fill:"tozeroy" (area)
-- 두 시계열 비교 → multi-trace scatter
-- 항목별 수치 비교 → bar (vertical)
-- 순위/랭킹/중요도 → bar (orientation:"h")
-- 과거 vs 현재 비교 → grouped bar (barmode:"group", 2 traces)
-- 비율/구성 → pie (labels:[], values:[])
-- chart가 불필요한 페이지(텍스트 설명이 더 적절) → "chart": null
-
-차트 규칙:
-- 실제 데이터 기반: pykrx 종목 데이터가 제공되면 실제 수치를 반영
-- 맥락적 수치: 해당 케이스의 맥락에 맞는 단위 사용 (원, 조원, %, 달러 등)
-- y축 단위 필수: layout.yaxis.title에 단위 명시
-- chart.layout.title에 한국어 차트 제목 포함 (8~20자)
-- 컬러 팔레트: ["#FF6B35", "#004E89", "#1A936F", "#C5D86D", "#8B95A1"]
-- 모바일: 최대 4개 시리즈, 폰트 12px 이상, 범례는 하단
-- 6페이지에서 최소 3가지 이상 다른 차트 유형 사용
-- caution 페이지는 chart: null 가능 (텍스트 중심)
-
-=== 콘텐츠 규칙 ===
-- 해요체 필수: "~했어요", "~이에요", "~할까요?" (절대 "~합니다", "~입니다" 사용 금지)
-- 각 페이지 content: 150~300자 (짧고 임팩트 있게)
-- 첫 문장은 반드시 훅 (관심을 끄는 팩트 또는 질문)
-- bullets: 2~3개 (핵심 포인트만)
-- 투자 조언 금지: "매수", "매도", "추천" 등 사용 금지 → "점검이 필요해요", "주목할 지표예요" 등으로 대체
-- 용어 마킹(<mark> 태그) 하지 마세요 (후처리에서 별도 처리)
-- 실제 역사적 사건 기반, 2000~2025년 사이
-
-=== 페이지별 glossary 규칙 ===
-- 각 페이지에 해당 내용에서 등장하는 용어 1~3개 설명
-- 해요체 정의 (초보자용)
-- domain 태그: 금융, 경제, 산업, 국제, 기술 등
-
-=== JSON 출력 형식 ===
-{{
-    "title": "과거 사례 제목",
-    "event_year": 연도(숫자),
-    "summary": "2-3문장 요약",
-    "full_content": "3-5문단 상세 스토리텔링",
-    "theme": "현재 시나리오 전체 제목 (한국어)",
-    "one_liner": "1줄 요약 (해요체, 관심을 끄는 훅)",
-    "concept": {{
-        "name": "핵심 금융 개념명",
-        "definition": "초보자용 정의 (해요체)",
-        "relevance": "이 시나리오에서 왜 중요한지 (해요체)"
-    }},
-    "historical_case": {{
-        "period": "2022-2024",
-        "title": "과거 사례 제목",
-        "summary": "3-5문장 요약 (해요체)",
-        "outcome": "1-2문장 결과 (해요체)",
-        "lesson": "1-2문장 교훈 (해요체)"
-    }},
-    "sync_rate": 유사도(60-90),
-    "past_label": "과거 라벨",
-    "present_label": "현재 라벨",
-    "narrative": {{
-        "background": {{
-            "content": "150-300자 본문 (해요체)",
-            "bullets": ["포인트1", "포인트2"],
-            "chart": {{"data": [...], "layout": {{"title": "한국어 제목", "yaxis": {{"title": "단위"}}}}}},
-            "glossary": [{{"term": "용어", "definition": "해요체 정의", "domain": "금융"}}]
-        }},
-        "concept_explain": {{
-            "content": "150-300자 본문 (해요체)",
-            "bullets": ["포인트1", "포인트2"],
-            "chart": {{"data": [...], "layout": {{"title": "한국어 제목"}}}},
-            "glossary": [{{"term": "용어", "definition": "정의", "domain": "금융"}}]
-        }},
-        "history": {{
-            "content": "150-300자 본문 (해요체)",
-            "bullets": ["포인트1", "포인트2"],
-            "chart": {{"data": [...], "layout": {{"title": "한국어 제목"}}}},
-            "glossary": [...]
-        }},
-        "application": {{
-            "content": "150-300자 본문 (해요체)",
-            "bullets": ["포인트1", "포인트2", "포인트3"],
-            "chart": {{"data": [...], "layout": {{"title": "한국어 제목"}}}},
-            "glossary": [...]
-        }},
-        "caution": {{
-            "content": "150-300자 본문 (해요체)",
-            "bullets": ["반대 논거1", "반대 논거2", "반대 논거3"],
-            "chart": null,
-            "glossary": [...]
-        }},
-        "summary": {{
-            "content": "150-300자 본문 (해요체, 관찰 지표 3가지 포함)",
-            "bullets": ["핵심 요약1", "핵심 요약2"],
-            "chart": {{"data": [{{"y": ["지표1","지표2","지표3"], "x": [7,8,9], "type": "bar", "orientation": "h"}}], "layout": {{"title": "핵심 관찰 지표"}}}},
-            "glossary": [...]
-        }}
-    }},
-    "sources": [
-        {{"name": "출처명", "url_domain": "도메인", "used_in_pages": [1,3]}}
-    ],
-    "hallucination_checklist": [
-        {{"claim": "주장 내용", "source": "출처", "risk": "낮음|중간|높음", "note": "비고"}}
-    ],
-    "past_metric": {{"value": 숫자, "company": "종목명", "metric_name": "지표명"}},
-    "present_metric": {{"value": 숫자, "metric_name": "지표명"}},
-    "key_insight": "6페이지 전체 스토리를 3~5문장으로 요약 (해요체)",
-    "glossary_terms": ["용어1", "용어2"]
-}}
-
-JSON만 출력하세요."""
+    # 프롬프트 파일 로드
+    prompt_template = _load_prompt("generate_case_v1.md")
+    if prompt_template:
+        prompt = prompt_template.format(
+            keyword=clean_title,
+            category=category,
+            stocks=stocks,
+            stock_data_section=stock_data_section,
+        )
+    else:
+        # fallback: 인라인 프롬프트 (기존 호환)
+        prompt = _build_inline_prompt(clean_title, category, stocks, stock_data_section)
 
     last_error = None
     for attempt in range(1, MAX_RETRIES + 1):
         try:
             response = client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=os.getenv("OPENAI_MAIN_MODEL", "gpt-4o-mini"),
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.7,
-                max_tokens=8000,
+                max_tokens=12000,  # 강화: 8000 → 12000 (더 긴 콘텐츠 생성)
             )
             content = response.choices[0].message.content.strip()
 
@@ -291,6 +228,8 @@ JSON만 출력하세요."""
                     logger.warning(f"  [검증 실패 attempt={attempt}] {issues}")
                     if attempt < MAX_RETRIES:
                         last_error = RuntimeError(f"검증 실패: {issues}")
+                        # 검증 실패 피드백을 프롬프트에 추가
+                        prompt = prompt + f"\n\n[이전 시도 검증 실패: {'; '.join(issues)}. 각 페이지 content 250자 이상, bullets 3개 이상, glossary 1개 이상으로 수정해주세요.]"
                         continue
                     else:
                         logger.warning(f"  [검증 최종 실패, 부분 데이터 사용] {issues}")
@@ -313,14 +252,29 @@ JSON만 출력하세요."""
     raise RuntimeError(f"LLM 생성 {MAX_RETRIES}회 실패: {last_error}")
 
 
-def apply_term_marking(case_data: dict) -> dict:
-    """후처리: 전체 콘텐츠 분석 → 핵심 용어/구문에 <mark class='term'> 태그 적용.
+def _build_inline_prompt(keyword: str, category: str, stocks: list, stock_data_section: str) -> str:
+    """프롬프트 파일 없을 때 인라인 fallback."""
+    return f"""당신은 친근한 금융 학습 메이트 '아델리'입니다. 2030세대를 위한 금융 교육 콘텐츠를 만듭니다.
+현재 키워드: "{keyword}" (카테고리: {category})
+관련 종목 코드: {stocks}
+{stock_data_section}
 
-    1단계: 모든 섹션의 content를 하나로 합침
-    2단계: LLM에게 용어/구문 목록 + 정의를 추출
-    3단계: 원래 content에 <mark class='term'> 태그 적용
-    4단계: key_insight를 dict로 래핑 + term_definitions 추가
-    """
+=== 과제 ===
+이 키워드와 유사한 과거 한국 주식 시장의 역사적 사례를 선정하고, 6페이지 브리핑 콘텐츠를 생성하세요.
+
+=== 6페이지: background, concept_explain, history, application, caution, summary ===
+
+=== 콘텐츠 규칙 ===
+- 해요체 필수, 각 페이지 content 250~500자, bullets 3~5개, glossary 2~3개
+- 6페이지에서 최소 4가지 다른 차트 유형 사용
+- caution은 chart: null 가능
+
+JSON만 출력하세요."""
+
+
+@traceable(name="apply_term_marking", run_type="llm")
+def apply_term_marking(case_data: dict) -> dict:
+    """후처리: 전체 콘텐츠 분석 -> 핵심 용어/구문에 <mark class='term'> 태그 적용."""
     narrative = case_data.get("narrative", {})
     if not isinstance(narrative, dict):
         return case_data
@@ -341,28 +295,21 @@ def apply_term_marking(case_data: dict) -> dict:
         return case_data
 
     # 2. LLM 호출: 용어/구문 추출
-    marking_prompt = f"""다음은 금융 교육 콘텐츠의 6개 섹션입니다.
+    marking_template = _load_prompt("term_marking_v1.md")
+    if marking_template:
+        marking_prompt = marking_template.format(full_text=full_text)
+    else:
+        marking_prompt = f"""다음은 금융 교육 콘텐츠의 6개 섹션입니다.
 
 {full_text}
 
-위 텍스트에서 다음 유형의 용어와 구문을 추출하세요:
-1. 핵심 금융 용어 (예: PER, 금리, 변동성, 포트폴리오)
-2. 의미있는 금융 구문/절 (예: '변동성이 크게 확대된다', '시장 유동성이 풍부해진', '금리 인하 기대감')
-3. 이해가 필요한 핵심 개념 (예: '섹터 로테이션', '캐리 트레이드')
-
-규칙:
-- 총 15~25개 추출
-- 각 섹션당 2~4개가 되도록 분배
-- 구문은 3~15단어 이내 자연스러운 절 단위
-- 각 용어/구문에 초보자용 간단 정의(1문장) 포함
-- sections 필드에 해당 용어가 등장하는 섹션 키 목록 포함
-
+위 텍스트에서 핵심 금융 용어/구문 15~25개를 추출하세요.
 JSON 배열로만 응답:
-[{{"text": "용어 또는 구문", "definition": "간단한 정의", "sections": ["background", "history"]}}]
+[{{"text": "용어", "definition": "간단한 정의", "sections": ["background"]}}]
 JSON만 출력하세요."""
 
     response = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=os.getenv("OPENAI_MAIN_MODEL", "gpt-4o-mini"),
         messages=[{"role": "user", "content": marking_prompt}],
         temperature=0.3,
         max_tokens=2000,
@@ -427,6 +374,8 @@ def _log_quality_metrics(narrative: dict, keyword: str) -> None:
     sections_with_chart = 0
     chart_types = []
     total_content_len = 0
+    total_bullets = 0
+    total_glossary = 0
     mark_count = 0
 
     for key in PAGE_KEYS:
@@ -437,6 +386,12 @@ def _log_quality_metrics(narrative: dict, keyword: str) -> None:
         content = str(section.get("content", ""))
         total_content_len += len(content)
         mark_count += len(re.findall(r"<mark", content))
+
+        bullets = section.get("bullets", [])
+        total_bullets += len(bullets) if isinstance(bullets, list) else 0
+
+        glossary = section.get("glossary", [])
+        total_glossary += len(glossary) if isinstance(glossary, list) else 0
 
         chart = section.get("chart")
         if isinstance(chart, dict):
@@ -453,8 +408,6 @@ def _log_quality_metrics(narrative: dict, keyword: str) -> None:
         type_dist[ct] = type_dist.get(ct, 0) + 1
 
     unique_types = set(chart_types)
-    if len(unique_types) == 1 and len(chart_types) >= 4:
-        logger.warning(f"  [품질 경고] chart type 다양성 부족: {type_dist}")
 
     logger.info(
         f"  [품질] keyword={keyword} "
@@ -462,8 +415,16 @@ def _log_quality_metrics(narrative: dict, keyword: str) -> None:
         f"chart_types={type_dist} "
         f"unique={len(unique_types)} "
         f"avg_content={avg_content_len:.0f}자 "
+        f"total_bullets={total_bullets} "
+        f"total_glossary={total_glossary} "
         f"marks={mark_count}"
     )
+
+    # 품질 경고
+    if avg_content_len < MIN_CONTENT_LENGTH:
+        logger.warning(f"  [품질 경고] avg_content {avg_content_len:.0f}자 < {MIN_CONTENT_LENGTH}자 목표")
+    if len(unique_types) < MIN_UNIQUE_CHART_TYPES and len(chart_types) >= 3:
+        logger.warning(f"  [품질 경고] chart type 다양성 부족: {type_dist}")
 
 
 async def main():
@@ -616,7 +577,7 @@ async def main():
             case_data.get("full_content", ""),
             keywords_jsonb
         )
-        print(f"  → historical_cases: id={case_id}")
+        print(f"  -> historical_cases: id={case_id}")
 
         # case_matches에 삽입
         stock_code = stock_codes[0] if stock_codes else None
@@ -632,7 +593,7 @@ async def main():
             case_data.get("sync_rate", 70) / 100.0,
             (case_data.get("key_insight", {}).get("summary", "") if isinstance(case_data.get("key_insight"), dict) else case_data.get("key_insight", "")) or "유사한 시장 패턴"
         )
-        print(f"  → case_matches: id={match_id}")
+        print(f"  -> case_matches: id={match_id}")
 
         # case_stock_relations에 삽입
         for j, sc in enumerate(stock_codes):
@@ -656,7 +617,7 @@ async def main():
                 relation_type,
                 f"{kw_category} 관련 종목"
             )
-            print(f"  → case_stock_relations: id={rel_id} ({stock_code} - {stock_name})")
+            print(f"  -> case_stock_relations: id={rel_id} ({stock_code} - {stock_name})")
 
     # 5. 최종 확인
     final_cases = await conn.fetchval("SELECT COUNT(*) FROM historical_cases")

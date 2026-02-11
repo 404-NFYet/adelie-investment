@@ -35,6 +35,15 @@ KOREAN_FINANCIAL_DOMAINS = [
     "thebell.co.kr",
 ]
 
+# ── 콘텐츠 품질 기준 (골든케이스 수준) ──
+MIN_CONTENT_LENGTH = 150       # content 최소 글자 수
+MIN_BULLETS = 3                # bullets 최소 개수
+MIN_GLOSSARY = 1               # 페이지당 glossary 최소 개수
+MIN_UNIQUE_CHART_TYPES = 3     # 6페이지에서 최소 고유 차트 유형 수
+
+# ── KOSPI/KOSDAQ 필터링 ──
+MIN_TRADE_VALUE = 500_000_000  # 최소 거래대금 5억원/일
+
 # ── 6페이지 골든케이스 ──
 PAGE_KEYS = ["background", "concept_explain", "history", "application", "caution", "summary"]
 PAGE_TITLES = {

@@ -225,8 +225,12 @@ def get_latest_trading_date(max_days_back=7):
     raise ValueError("최근 영업일 없음")
 
 
-def fetch_multi_day_data(end_date_str, days=5):
-    """N일 OHLCV 데이터 수집."""
+def fetch_multi_day_data(end_date_str, days=5, min_trade_value=0):
+    """N일 OHLCV 데이터 수집.
+
+    Args:
+        min_trade_value: 최소 거래대금 필터 (원). 0이면 필터 없음.
+    """
     end_date = datetime.strptime(end_date_str, "%Y%m%d")
     df_list = []
     current = end_date
@@ -239,6 +243,12 @@ def fetch_multi_day_data(end_date_str, days=5):
             if daily_df is not None and len(daily_df) > 0:
                 daily_df["date"] = date_str
                 daily_df = daily_df[daily_df["거래량"] > 0]
+                # 거래대금 필터 (KOSPI/KOSDAQ 초소형주 제외)
+                if min_trade_value > 0 and "거래대금" in daily_df.columns:
+                    before = len(daily_df)
+                    daily_df = daily_df[daily_df["거래대금"] >= min_trade_value]
+                    if collected == 0:
+                        print(f"  거래대금 필터: {before} → {len(daily_df)}종목 (>= {min_trade_value:,}원)")
                 if len(daily_df) > 0:
                     df_list.append(daily_df)
                     collected += 1
