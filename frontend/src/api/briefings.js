@@ -1,7 +1,7 @@
 /**
  * briefings.js - 내러티브 브리핑 API (새 엔드포인트)
  */
-import { fetchJson, postJson } from './client';
+import { fetchJson } from './client';
 
 /**
  * 최신 브리핑 조회
@@ -30,13 +30,4 @@ export async function getBriefingById(id) {
   return fetchJson(`/api/v1/briefings/${id}`);
 }
 
-/**
- * 퀴즈 보상 처리
- * @param {object} data - { user_id, scenario_id, selected_answer, correct_answer }
- * @returns {Promise<{reward_amount: number, is_correct: boolean, new_cash_balance: number}>}
- */
-export async function processQuizReward(data) {
-  return postJson('/api/v1/quiz/reward', data);
-}
-
-export default { getLatestBriefing, listBriefings, getBriefingById, processQuizReward };
+export default { getLatestBriefing, listBriefings, getBriefingById };
