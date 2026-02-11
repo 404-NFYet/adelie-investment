@@ -3,7 +3,8 @@ import pytest
 from pydantic import ValidationError
 
 import sys
-sys.path.insert(0, "/home/hj/2026/project/narrative-investment/backend-api")
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "fastapi"))
 
 from app.schemas.briefing import BriefingStock, BriefingResponse
 from app.schemas.case import CaseSearchRequest, HistoricalCase

@@ -56,15 +56,15 @@ build-frontend:
 
 build-api:
 	@echo "🔨 Building backend-api..."
-	docker build -f backend_api/Dockerfile -t $(REGISTRY)/adelie-backend-api:$(TAG) .
+	docker build -f fastapi/Dockerfile -t $(REGISTRY)/adelie-backend-api:$(TAG) .
 
 build-spring:
 	@echo "🔨 Building backend-spring..."
-	docker build -t $(REGISTRY)/adelie-backend-spring:$(TAG) ./backend-spring
+	docker build -t $(REGISTRY)/adelie-backend-spring:$(TAG) ./springboot
 
 build-ai:
 	@echo "🔨 Building ai-pipeline..."
-	docker build -t $(REGISTRY)/adelie-ai-pipeline:$(TAG) ./ai_module
+	docker build -f datapipeline/Dockerfile -t $(REGISTRY)/adelie-ai-pipeline:$(TAG) .
 
 # --- Docker Push ---
 push:
@@ -126,7 +126,7 @@ test-pipeline:
 
 # --- DB 마이그레이션 ---
 migrate:
-	cd backend_api && alembic upgrade head
+	cd database && alembic upgrade head
 
 # --- 로그 ---
 logs:
