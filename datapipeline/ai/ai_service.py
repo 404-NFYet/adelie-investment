@@ -1,7 +1,6 @@
-"""8단계 AI 에이전트 오케스트레이터.
+"""6페이지 골든케이스 파이프라인 AI 서비스.
 
-adelie_fe_test/pipeline/ai_service.py에서 이식.
-OpenRouterClient -> MultiProviderClient로 교체.
+MultiProviderClient를 통한 OpenAI/Perplexity/Anthropic 통합 호출.
 프롬프트 로더를 통한 마크다운 기반 프롬프트 사용.
 """
 
@@ -14,16 +13,11 @@ import re
 from typing import Any
 
 from ..prompts import load_prompt
+from ..scripts.pipeline_config import PAGE_KEYS
 from .multi_provider_client import MultiProviderClient, get_multi_provider_client
 from .types import KeywordPlan
 
 LOGGER = logging.getLogger(__name__)
-
-# 7단계 내러티브 섹션
-NARRATIVE_SECTIONS = [
-    "background", "mirroring", "difference", "devils_advocate",
-    "simulation", "result", "action",
-]
 
 
 def _extract_content(result: dict[str, Any], fallback: str = "") -> str:
@@ -52,7 +46,7 @@ def _safe_json(raw: str, default: Any) -> Any:
 
 
 class PipelineAIService:
-    """8단계 내러티브 파이프라인 AI 서비스."""
+    """6페이지 골든케이스 파이프라인 AI 서비스."""
 
     def __init__(self, client: MultiProviderClient | None = None, dry_run: bool = False):
         self.client = client or get_multi_provider_client()
@@ -195,7 +189,7 @@ class PipelineAIService:
     def _correct_tone(self, narrative: dict[str, Any]) -> dict[str, Any]:
         """톤 교정 에이전트."""
         contents = []
-        for section in NARRATIVE_SECTIONS:
+        for section in PAGE_KEYS:
             data = narrative.get(section)
             if isinstance(data, dict) and data.get("content"):
                 contents.append(f"[{section}]: {data['content']}")
@@ -296,18 +290,18 @@ class PipelineAIService:
     # ── 후처리 ──
 
     def _ensure_narrative_shape(self, narrative: dict[str, Any], theme: str) -> dict[str, Any]:
-        """7단계 구조 보장."""
+        """6페이지 골든케이스 구조 보장."""
         output: dict[str, Any] = {}
-        for idx, section in enumerate(NARRATIVE_SECTIONS, start=1):
+        for idx, section in enumerate(PAGE_KEYS, start=1):
             raw = narrative.get(section)
             data = raw if isinstance(raw, dict) else {}
             content = str(data.get("content", f"{theme} 관련 내용을 정리했어요.")).strip()
             bullets = [str(b).strip() for b in (data.get("bullets") or []) if str(b).strip()]
 
-            if section == "devils_advocate":
+            if section == "caution":
                 bullets = bullets[:3]
                 while len(bullets) < 3:
-                    bullets.append(f"{theme} 관련 반대 시나리오")
+                    bullets.append(f"{theme} 관련 주의사항")
             else:
                 bullets = bullets[:2]
                 if not bullets:
@@ -347,8 +341,8 @@ class PipelineAIService:
         return {
             s: {
                 "content": f"{theme} 관련 {s} 내용이에요.",
-                "bullets": [f"{theme} 포인트1", f"{theme} 포인트2"] + ([f"{theme} 포인트3"] if s == "devils_advocate" else []),
+                "bullets": [f"{theme} 포인트1", f"{theme} 포인트2"] + ([f"{theme} 포인트3"] if s == "caution" else []),
                 "chart": _chart(s, 10 + i),
             }
-            for i, s in enumerate(NARRATIVE_SECTIONS)
+            for i, s in enumerate(PAGE_KEYS)
         }
