@@ -8,7 +8,8 @@ TAG ?= latest
 SERVICES = frontend backend-api backend-spring ai-pipeline
 
 .PHONY: help build push push-local dev dev-down deploy deploy-down \
-        test test-backend test-e2e test-load test-pipeline \
+        dev-frontend-local dev-api-local dev-spring \
+        test test-backend test-e2e test-load test-pipeline test-frontend test-spring \
         migrate logs clean
 
 # --- 도움말 ---
@@ -94,6 +95,16 @@ dev-frontend:
 dev-api:
 	docker compose -f docker-compose.dev.yml up --build backend-api
 
+# --- 로컬 개발 (Docker 없이) ---
+dev-frontend-local:
+	cd frontend && npm run dev
+
+dev-api-local:
+	cd fastapi && ../.venv/bin/uvicorn app.main:app --port 8082 --reload
+
+dev-spring:
+	cd springboot && ./gradlew bootRun
+
 # --- 배포 환경 ---
 deploy:
 	REGISTRY=$(REGISTRY) TAG=$(TAG) docker compose -f docker-compose.prod.yml up -d
@@ -133,6 +144,14 @@ test-load:
 	@echo "🧪 Running load test (40 users)..."
 	@command -v locust >/dev/null 2>&1 || pip install locust -q
 	locust -f tests/load/locustfile.py --headless -u 40 -r 5 --run-time 2m --host http://localhost:80
+
+test-frontend:
+	@echo "🧪 Running frontend tests..."
+	cd frontend && npm test
+
+test-spring:
+	@echo "🧪 Running Spring Boot tests..."
+	cd springboot && ./gradlew test
 
 test-pipeline:
 	@echo "🧪 Running pipeline validation..."

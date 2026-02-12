@@ -10,6 +10,9 @@
 # Data Pipeline
 /datapipeline/      @J2hoon10
 
+# Shared (AI config)
+/shared/            @J2hoon10
+
 # Backend Spring
 /springboot/        @jjjh02
 
