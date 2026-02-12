@@ -1,0 +1,4 @@
+config:
+  limits.cpu: "4"
+  limits.memory: 12GB
+description: AI 개발 프로파일 (LLM/임베딩 작업 고려)

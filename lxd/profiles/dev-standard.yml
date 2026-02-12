@@ -1,0 +1,4 @@
+config:
+  limits.cpu: "4"
+  limits.memory: 8GB
+description: 개발자 표준 프로파일 (Docker 빌드 + 코드 편집)

@@ -1,0 +1,4 @@
+config:
+  limits.cpu: "2"
+  limits.memory: 4GB
+description: QA 프로파일 (테스트 실행 전용)
