@@ -22,17 +22,19 @@ graph TB
         SPRING[Spring Boot<br/>Auth API<br/>:8083]
     end
 
-    subgraph AI["AI Module"]
+    subgraph Chatbot["Chatbot (chatbot/)"]
         AGENT[LangGraph Agent]
+    end
+
+    subgraph Pipeline["Data Pipeline (datapipeline/)"]
+        PYKRX[pykrx<br/>주가 수집]
+        NAVER[네이버 금융<br/>리포트 수집]
+    end
+
+    subgraph AI["AI Providers"]
         OPENAI[OpenAI<br/>gpt-4o-mini / gpt-4o]
         PPLX[Perplexity<br/>sonar-pro]
         LSMITH[LangSmith<br/>Observability]
-    end
-
-    subgraph Pipeline["Data Pipeline"]
-        PYKRX[pykrx<br/>주가 수집]
-        NAVER[네이버 금융<br/>리포트 수집]
-        VISION[Vision API<br/>PDF 처리]
     end
 
     subgraph Infra["infra-server (10.10.10.10)"]
@@ -52,11 +54,10 @@ graph TB
     FAST --> REDIS
     FAST --> NEO4J
     SPRING --> PG
-    SPRING --> REDIS
+    Pipeline --> OPENAI
     Pipeline --> PG
     Pipeline --> NEO4J
     Pipeline --> MINIO
-    NAVER --> VISION
 ```
 
 ---
@@ -157,12 +158,14 @@ cp .env.example .env
 # .env 파일에서 API 키 입력 (OPENAI_API_KEY, PERPLEXITY_API_KEY, LANGCHAIN_API_KEY)
 ```
 
-### 2. 인프라 서비스 시작 (infra-server)
+### 2. 개발 환경 실행
 
 ```bash
-# infra-server에 docker-compose 배포
-scp -r infra/* root@10.10.10.10:/opt/narrative-investment/infra/
-ssh root@10.10.10.10 "cd /opt/narrative-investment/infra && docker compose --env-file .env up -d"
+# Docker 기반 (권장) - infra-server(10.10.10.10) 연결
+make dev                    # 풀스택: frontend + backend-api + backend-spring
+make dev-frontend           # 프론트엔드만
+make dev-api                # 백엔드 API만
+make dev-down               # 개발 환경 중지
 ```
 
 ### 3. Frontend 실행
@@ -223,15 +226,59 @@ cd springboot
 
 ---
 
-## 팀 구성
+## 팀원
 
-| 역할 | 이름 | 담당 업무 |
-|------|------|----------|
-| 팀장 | 손영진 | 기획, React UI, 프로젝트 관리 |
-| AI 개발 | 정지훈 | FastAPI, LangGraph, AI 서비스 |
-| AI QA | 안례진 | AI 테스트, 프롬프트 엔지니어링, LangSmith |
-| 백엔드 | 허진서 | Spring Boot API, 인증, DB 설계 |
-| 인프라 | 도형준 | Docker, CI/CD, 인프라 운영 |
+<div align="center">
+<table>
+  <tr>
+    <td align="center">
+      <a href="https://github.com/YJ99Son">
+        <img src="https://github.com/YJ99Son.png" width="80" /><br/>
+        <sub><b>손영진</b></sub>
+      </a><br/>
+      <sub>PM / Frontend</sub><br/>
+      <sub><b>팀장</b></sub>
+    </td>
+    <td align="center">
+      <a href="https://github.com/J2hoon10">
+        <img src="https://github.com/J2hoon10.png" width="80" /><br/>
+        <sub><b>정지훈</b></sub>
+      </a><br/>
+      <sub>AI / Backend</sub><br/>
+      <sub>팀원</sub>
+    </td>
+    <td align="center">
+      <a href="https://github.com/ryejinn">
+        <img src="https://github.com/ryejinn.png" width="80" /><br/>
+        <sub><b>안례진</b></sub>
+      </a><br/>
+      <sub>AI QA</sub><br/>
+      <sub>팀원</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <a href="https://github.com/jjjh02">
+        <img src="https://github.com/jjjh02.png" width="80" /><br/>
+        <sub><b>허진서</b></sub>
+      </a><br/>
+      <sub>Backend</sub><br/>
+      <sub>팀원</sub>
+    </td>
+    <td align="center">
+      <a href="https://github.com/dorae222">
+        <img src="https://github.com/dorae222.png" width="80" /><br/>
+        <sub><b>도형준</b></sub>
+      </a><br/>
+      <sub>Infra</sub><br/>
+      <sub>팀원</sub>
+    </td>
+    <td></td>
+  </tr>
+</table>
+</div>
+
+> 멋쟁이사자처럼 NLP 3기 팀 프로젝트
 
 ---
 
@@ -239,4 +286,6 @@ cd springboot
 
 - [PRD (제품 요구사항 정의서)](docs/PRD.md)
 - [DB 스키마](docs/database/schema.dbml)
+- [Docker 가이드](docs/02_DOCKER.md)
+- [AI 파이프라인](docs/05_AI_PIPELINE.md)
 - [인프라 설정 가이드](infra/README.md)
