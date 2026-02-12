@@ -17,6 +17,14 @@ logger = logging.getLogger("narrative_api.auth")
 security = HTTPBearer(auto_error=False)
 
 
+def _get_jwt_key(secret: str) -> bytes:
+    """Spring Boot JwtService와 동일한 키 바이트 생성."""
+    key_bytes = secret.encode("utf-8")
+    if len(key_bytes) < 32:
+        key_bytes = key_bytes + b"\x00" * (32 - len(key_bytes))
+    return key_bytes
+
+
 def _decode_token(token: str) -> dict:
     """JWT 토큰 디코딩 공통 로직."""
     settings = get_settings()
@@ -28,7 +36,7 @@ def _decode_token(token: str) -> dict:
     try:
         return jwt.decode(
             token,
-            settings.JWT_SECRET,
+            _get_jwt_key(settings.JWT_SECRET),
             algorithms=[settings.JWT_ALGORITHM],
         )
     except jwt.ExpiredSignatureError:
