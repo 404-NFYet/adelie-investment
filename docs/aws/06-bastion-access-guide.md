@@ -7,7 +7,7 @@
 ssh -i ~/.ssh/adelie-bastion.pem ec2-user@<BASTION_PUBLIC_IP>
 
 # 또는 Terraform output 사용
-BASTION_IP=$(terraform -chdir=infra/terraform output -raw bastion_public_ip)
+BASTION_IP=$(terraform -chdir=infra/terraform/environments/dev output -raw bastion_ip)
 ssh -i ~/.ssh/adelie-bastion.pem ec2-user@$BASTION_IP
 
 # SSH 설정 파일 사용 (~/.ssh/config)

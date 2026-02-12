@@ -610,7 +610,7 @@ src/
 
 **디렉토리 구조**:
 ```
-backend-api/
+fastapi/
 ├── app/
 │   ├── api/routes/       # 라우터
 │   ├── core/             # 설정, DB

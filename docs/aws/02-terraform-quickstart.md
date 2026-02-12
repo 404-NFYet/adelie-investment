@@ -33,7 +33,7 @@ aws sts get-caller-identity
 
 ```bash
 # 프로젝트 디렉토리로 이동
-cd infra/terraform
+cd infra/terraform/environments/dev
 
 # 초기화 (프로바이더 다운로드)
 terraform init
@@ -45,7 +45,7 @@ terraform plan
 terraform apply
 
 # 특정 리소스만 적용
-terraform apply -target=aws_ecr_repository.backend_api
+terraform apply -target=module.ecr
 
 # 인프라 삭제
 terraform destroy
@@ -53,12 +53,14 @@ terraform destroy
 
 ## 모듈별 설명
 
-- **VPC 모듈**: 네트워크 구성 (VPC, 서브넷, 라우팅 테이블)
-- **ECR 모듈**: 컨테이너 이미지 저장소
-- **ECS 모듈**: 컨테이너 오케스트레이션 (클러스터, 서비스, 태스크 정의)
-- **RDS 모듈**: PostgreSQL 데이터베이스
-- **ALB 모듈**: 로드 밸런서 설정
+- **VPC 모듈**: 네트워크 구성 (VPC, 서브넷, IGW, NAT, 라우팅 테이블)
 - **Bastion 모듈**: SSH 접속용 점프 서버
+- **ECR 모듈**: 컨테이너 이미지 저장소 (frontend, backend-api, backend-spring, ai-pipeline)
+- **RDS 모듈**: PostgreSQL + pgvector 데이터베이스
+- **ElastiCache 모듈**: Redis 캐시 서버
+- **S3 모듈**: 객체 스토리지 (MinIO 대체)
+- **Secrets 모듈**: API 키 및 비밀 정보 관리 (Secrets Manager)
+- **ECS 모듈**: Fargate 컨테이너 오케스트레이션 (클러스터, 서비스, 태스크 정의, ALB 포함)
 
 ## 유용한 명령어
 

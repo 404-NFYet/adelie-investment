@@ -4,12 +4,12 @@
 
 ### 데이터 생성 파이프라인
 
-#### 1. 시장 데이터 수집 (`scripts/seed_fresh_data.py`)
+#### 1. 시장 데이터 수집 (`datapipeline/scripts/seed_fresh_data_integrated.py`)
 - pykrx로 당일 급등주, 급락주, 거래량 상위 종목 수집
 - `daily_briefings`, `briefing_stocks` 테이블에 저장
 - 키워드 title에 `<mark class='term'>용어</mark>` 형식 포함
 
-#### 2. 역사적 사례 생성 (`scripts/generate_cases.py`)
+#### 2. 역사적 사례 생성 (`datapipeline/scripts/generate_cases.py`)
 - GPT-4o-mini로 각 키워드별 유사 역사적 사례 자동 생성
 - `historical_cases` - 사례 제목, 요약, 전체 스토리, 비교 지표
 - `case_matches` - 키워드 ↔ 케이스 매핑 (유사도 점수)
@@ -40,15 +40,25 @@ DB에서 검색 실패 시 LLM이 동적으로 생성하고 Redis에 24시간 �
 
 ### 구조
 ```
-ai_module/prompts/
-  prompt_loader.py     # 마크다운 프롬프트 로더
-  templates/           # 15개 마크다운 템플릿
-    _tone_guide.md     # 공용 톤 가이드
-    tutor_system.md    # 튜터 시스템 프롬프트
+chatbot/prompts/
+  prompt_loader.py          # 튜터 프롬프트 로더
+  templates/
+    _tone_guide.md          # 공용 톤 가이드
+    tutor_system.md         # 튜터 시스템 프롬프트
+    tutor_beginner.md
+    tutor_intermediate.md
+    tutor_elementary.md
+    search_historical.md
+    term_explanation.md
+
+datapipeline/prompts/
+  prompt_loader.py          # 파이프라인 프롬프트 로더
+  templates/
+    _tone_guide.md          # 공용 톤 가이드
     keyword_extraction.md
     research_context.md
     planner.md
-    writer.md          # <mark class='term'> 형식 사용
+    writer.md               # <mark class='term'> 형식 사용
     reviewer.md
     glossary.md
     ...
@@ -68,7 +78,8 @@ thinking: true
 
 ### 사용법
 ```python
-from ai_module.prompts import load_prompt
+from datapipeline.prompts import load_prompt  # 파이프라인용
+from chatbot.prompts import load_prompt       # 튜터용
 spec = load_prompt("keyword_extraction", count="8", rss_text="...")
 ```
 

@@ -19,7 +19,7 @@ make test-load
 make test-pipeline
 
 # AI QA 테스트 (환각 검증)
-cd backend_api && pytest ai-qa-tests/ -v
+cd fastapi && pytest ai-qa-tests/ -v
 ```
 
 ## 테스트 구조
@@ -54,7 +54,7 @@ frontend/e2e/
   mobile-full-flow.spec.js       # 모바일 전체 플로우
   ...
 
-backend_api/ai-qa-tests/
+fastapi/ai-qa-tests/
   test_hallucination.py          # AI 환각 검증
 ```
 

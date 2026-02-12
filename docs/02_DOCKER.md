@@ -97,7 +97,7 @@ make dev-frontend
 ```bash
 make dev-api
 # → http://localhost:8082/docs 접속 (Swagger UI)
-# → backend_api/app/ 파일 수정 시 자동 재시작 (--reload)
+# → fastapi/app/ 파일 수정 시 자동 재시작 (--reload)
 ```
 
 ### 전체 서비스 통합 개발
@@ -118,9 +118,9 @@ docker compose -f docker-compose.dev.yml --profile pipeline up -d
 | 서비스 | Docker Hub 이미지 | Dockerfile 위치 |
 |--------|------------------|-----------------|
 | Frontend | `dorae222/adelie-frontend:TAG` | `frontend/Dockerfile` |
-| FastAPI | `dorae222/adelie-backend-api:TAG` | `backend_api/Dockerfile` |
-| Spring Boot | `dorae222/adelie-backend-spring:TAG` | `backend-spring/Dockerfile` |
-| AI Pipeline | `dorae222/adelie-ai-pipeline:TAG` | `ai_module/Dockerfile` |
+| FastAPI | `dorae222/adelie-backend-api:TAG` | `fastapi/Dockerfile` |
+| Spring Boot | `dorae222/adelie-backend-spring:TAG` | `springboot/Dockerfile` |
+| AI Pipeline | `dorae222/adelie-ai-pipeline:TAG` | `datapipeline/Dockerfile` |
 
 빌드 아키텍처:
 - **Frontend**: Multi-stage (Node.js builder → Nginx runtime)

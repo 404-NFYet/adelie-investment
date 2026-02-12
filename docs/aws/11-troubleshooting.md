@@ -86,11 +86,10 @@ aws iam get-user-policy --user-name <USER_NAME> --policy-name <POLICY_NAME>
 terraform show
 
 # 상태 파일 새로고침
-terraform refresh
+terraform apply -refresh-only
 
 # 특정 리소스만 재생성
-terraform taint aws_ecs_service.backend_api
-terraform apply
+terraform apply -replace="module.ecs.aws_ecs_service.backend_api"
 
 # 상태 파일 백업
 cp terraform.tfstate terraform.tfstate.backup
