@@ -66,7 +66,36 @@ async def run_daily_pipeline():
         logger.error("LangGraph 파이프라인 실패 → 파이프라인 중단")
         return
 
+    # ── 후처리: 캐시 무효화 + MV 리프레시 ──
+    await _post_pipeline_hooks()
+
     logger.info("=== 데일리 파이프라인 완료 ===")
+
+
+async def _post_pipeline_hooks():
+    """파이프라인 완료 후 캐시 무효화 및 MV 갱신."""
+    from app.services.redis_cache import get_redis_cache
+    from app.core.database import AsyncSessionLocal
+    from sqlalchemy import text
+
+    # 1. Redis 캐시 무효화
+    try:
+        cache = await get_redis_cache()
+        deleted = await cache.invalidate_pipeline_caches()
+        logger.info(f"Redis 캐시 무효화: {deleted}개 키")
+    except Exception as e:
+        logger.warning(f"캐시 무효화 실패 (서비스 영향 없음): {e}")
+
+    # 2. Materialized View 리프레시
+    try:
+        async with AsyncSessionLocal() as session:
+            await session.execute(text(
+                "REFRESH MATERIALIZED VIEW CONCURRENTLY mv_keyword_frequency"
+            ))
+            await session.commit()
+        logger.info("mv_keyword_frequency 리프레시 완료")
+    except Exception as e:
+        logger.warning(f"MV 리프레시 실패 (다음 파이프라인에서 재시도): {e}")
 
 
 def start_scheduler():

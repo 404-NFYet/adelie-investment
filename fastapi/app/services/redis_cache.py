@@ -219,6 +219,40 @@ class RedisCacheService:
             logger.warning(f"Redis invalidate_session_cache error: {e}")
             return False
 
+    # ==================== Pipeline Cache Invalidation ====================
+
+    async def invalidate_pipeline_caches(self) -> int:
+        """파이프라인 실행 후 API 응답 캐시 일괄 무효화.
+
+        Returns: 삭제된 키 수
+        """
+        if not self._is_available():
+            return 0
+
+        deleted = 0
+        try:
+            # 키워드 캐시: api:keywords:today:* 패턴 삭제
+            cursor = b"0"
+            while True:
+                cursor, keys = await self._client.scan(
+                    cursor=cursor, match="api:keywords:today:*", count=100
+                )
+                if keys:
+                    deleted += await self._client.delete(*keys)
+                if cursor == b"0" or cursor == 0:
+                    break
+
+            # 브리핑 캐시 삭제
+            for key in ["api:briefings:latest"]:
+                result = await self._client.delete(key)
+                deleted += result
+
+            logger.info(f"파이프라인 캐시 무효화 완료: {deleted}개 키 삭제")
+        except Exception as e:
+            logger.warning(f"Redis invalidate_pipeline_caches error: {e}")
+
+        return deleted
+
     # ==================== Generic Cache ====================
 
     async def get(self, key: str) -> Optional[str]:
