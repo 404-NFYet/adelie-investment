@@ -32,7 +32,7 @@ server:
 
 # JWT Configuration
 jwt:
-  secret: ${JWT_SECRET:your-super-secret-jwt-key-for-narrative-investment-2026}
+  secret: ${JWT_SECRET:narrative-invest-jwt-secret-change-in-production}
   expiration: 86400000  # 24 hours in milliseconds
   refresh-expiration: 604800000  # 7 days in milliseconds
 

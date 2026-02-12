@@ -47,12 +47,6 @@ public class SecurityConfig {
                 // Public endpoints
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers("/api/health/**").permitAll()
-                .requestMatchers("/api/glossary/**").permitAll()
-                // Protected endpoints
-                .requestMatchers("/api/user/**").authenticated()
-                .requestMatchers("/api/bookmarks/**").authenticated()
-                .requestMatchers("/api/history/**").authenticated()
-                .requestMatchers("/api/settings/**").authenticated()
                 // All other requests
                 .anyRequest().permitAll()
             )
