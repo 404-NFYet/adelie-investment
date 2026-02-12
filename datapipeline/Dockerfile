@@ -15,6 +15,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # 소스 복사
 COPY datapipeline/ ./datapipeline/
+COPY shared/ ./shared/
 COPY fastapi/app/ ./app/
 
 CMD ["python", "-m", "datapipeline.scripts.keyword_pipeline_graph"]
