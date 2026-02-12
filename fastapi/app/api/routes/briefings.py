@@ -1,4 +1,6 @@
 """브리핑 API 라우트 - /api/v1/briefings/*"""
+import json as json_module
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,6 +9,7 @@ from datetime import date, timedelta
 
 from app.core.database import get_db
 from app.models.narrative import DailyNarrative, NarrativeScenario
+from app.services.redis_cache import get_redis_cache
 
 router = APIRouter(prefix="/briefings", tags=["briefings"])
 
@@ -14,6 +17,16 @@ router = APIRouter(prefix="/briefings", tags=["briefings"])
 @router.get("/latest")
 async def get_latest_briefing(db: AsyncSession = Depends(get_db)):
     """최신 브리핑 조회"""
+    # Redis 캐시 체크
+    cache_key = "api:briefings:latest"
+    try:
+        cache = await get_redis_cache()
+        cached = await cache.get(cache_key)
+        if cached:
+            return json_module.loads(cached)
+    except Exception:
+        pass
+
     result = await db.execute(
         select(DailyNarrative)
         .options(selectinload(DailyNarrative.scenarios))
@@ -23,7 +36,16 @@ async def get_latest_briefing(db: AsyncSession = Depends(get_db)):
     narrative = result.scalar_one_or_none()
     if not narrative:
         raise HTTPException(404, "No briefings available")
-    return _serialize_narrative(narrative)
+
+    data = _serialize_narrative(narrative)
+
+    # Redis 캐시 저장 (5분)
+    try:
+        await cache.set(cache_key, json_module.dumps(data, ensure_ascii=False, default=str), 300)
+    except Exception:
+        pass
+
+    return data
 
 
 @router.get("/list")

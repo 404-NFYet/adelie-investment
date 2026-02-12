@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 TTL_TERM_EXPLANATION = 60 * 60 * 24  # 24시간
 TTL_GLOSSARY = 60 * 60 * 24  # 24시간
 TTL_USER_SETTINGS = 60 * 60 * 2  # 2시간 (세션)
+TTL_CHAT_MESSAGES = 60 * 60  # 1시간
 
 
 class RedisCacheService:
@@ -179,6 +180,43 @@ class RedisCacheService:
             return True
         except Exception as e:
             logger.warning(f"Redis invalidate_user_settings error: {e}")
+            return False
+
+    # ==================== Chat Session Messages ====================
+
+    async def get_chat_messages(self, session_id: str) -> Optional[str]:
+        """채팅 세션 메시지 캐시 조회."""
+        if not self._is_available():
+            return None
+        key = f"chat_messages:{session_id}"
+        try:
+            return await self._client.get(key)
+        except Exception as e:
+            logger.warning(f"Redis get_chat_messages error: {e}")
+            return None
+
+    async def set_chat_messages(self, session_id: str, data: str, ttl: int = TTL_CHAT_MESSAGES) -> bool:
+        """채팅 세션 메시지 캐시 저장."""
+        if not self._is_available():
+            return False
+        key = f"chat_messages:{session_id}"
+        try:
+            await self._client.setex(key, ttl, data)
+            return True
+        except Exception as e:
+            logger.warning(f"Redis set_chat_messages error: {e}")
+            return False
+
+    async def invalidate_session_cache(self, session_id: str) -> bool:
+        """채팅 세션 캐시 무효화."""
+        if not self._is_available():
+            return False
+        key = f"chat_messages:{session_id}"
+        try:
+            await self._client.delete(key)
+            return True
+        except Exception as e:
+            logger.warning(f"Redis invalidate_session_cache error: {e}")
             return False
 
     # ==================== Generic Cache ====================

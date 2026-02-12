@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
 
     # JWT (반드시 .env에서 설정 필요)
-    JWT_SECRET: str = ""
+    JWT_SECRET: str = "narrative-invest-jwt-secret-change-in-production"
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 30
 

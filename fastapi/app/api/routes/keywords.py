@@ -1,6 +1,7 @@
 """Keywords API routes - today's dynamic keyword themes with matched cases."""
 
 import json
+import json as json_module
 from datetime import datetime, date
 from typing import Optional
 
@@ -11,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.models.briefing import DailyBriefing
 from app.models.historical_case import HistoricalCase, CaseMatch
+from app.services.redis_cache import get_redis_cache
 
 router = APIRouter(prefix="/keywords", tags=["Keywords"])
 
@@ -28,7 +30,18 @@ async def get_today_keywords(
             raise HTTPException(status_code=400, detail="Invalid date format")
     else:
         target_date = datetime.now().date()
-    
+
+    # Redis 캐시 체크
+    target_date_str = target_date.strftime("%Y%m%d")
+    cache_key = f"api:keywords:today:{target_date_str}"
+    try:
+        cache = await get_redis_cache()
+        cached = await cache.get(cache_key)
+        if cached:
+            return json_module.loads(cached)
+    except Exception:
+        pass
+
     # Get briefing with keywords
     stmt = select(DailyBriefing).where(DailyBriefing.briefing_date == target_date)
     result = await db.execute(stmt)
@@ -110,11 +123,19 @@ async def get_today_keywords(
             **(case_info or {}),
         })
     
-    return {
+    result = {
         "date": target_date.strftime("%Y%m%d"),
         "market_summary": briefing.market_summary or "",
         "keywords": keywords_with_cases,
     }
+
+    # Redis 캐시 저장 (5분)
+    try:
+        await cache.set(cache_key, json_module.dumps(result, ensure_ascii=False, default=str), 300)
+    except Exception:
+        pass
+
+    return result
 
 
 @router.get("/history")
