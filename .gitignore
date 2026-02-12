@@ -120,6 +120,21 @@ tests/viz_test_output/
 .docker/
 
 # ============================================
+# Terraform
+# ============================================
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# ============================================
 # OS
 # ============================================
 .DS_Store
@@ -149,14 +164,12 @@ Thumbs.db
 *.backup
 .history/
 springboot/bin/
-capture
 
 # 리팩토링 백업 (Neo4j/유사도 등 제거 코드)
 _backup/
 
 # 참고용 (커밋 제외)
 adelie_fe_test/
-KIS_API_RESEARCH_SUMMARY.md
 test-results/
 playwright-report/
 *.plan.md

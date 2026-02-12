@@ -1,0 +1,4 @@
+config:
+  limits.cpu: "8"
+  limits.memory: 24GB
+description: 인프라 서버 (PostgreSQL, Redis, Neo4j, MinIO)

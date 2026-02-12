@@ -1,0 +1,4 @@
+config:
+  limits.cpu: "16"
+  limits.memory: 32GB
+description: 배포 서버 프로파일 (50+ 동시 사용자 대응)
