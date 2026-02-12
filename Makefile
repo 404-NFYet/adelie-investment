@@ -108,13 +108,15 @@ deploy-logs:
 deploy-test: build push
 	ssh deploy-test 'cd ~/adelie-investment && git pull origin develop && \
 		docker compose -f docker-compose.prod.yml pull && \
-		docker compose -f docker-compose.prod.yml up -d'
+		docker compose -f docker-compose.prod.yml up -d && \
+		docker exec adelie-frontend nginx -s reload 2>/dev/null || true'
 
 deploy-test-service:
 	$(MAKE) build-$(SVC) && docker push $(REGISTRY)/adelie-$(SVC):$(TAG)
 	ssh deploy-test 'cd ~/adelie-investment && git pull origin develop && \
 		docker compose -f docker-compose.prod.yml pull $(SVC) && \
-		docker compose -f docker-compose.prod.yml up -d $(SVC)'
+		docker compose -f docker-compose.prod.yml up -d $(SVC) && \
+		docker exec adelie-frontend nginx -s reload 2>/dev/null || true'
 
 # --- 테스트 ---
 test: test-backend

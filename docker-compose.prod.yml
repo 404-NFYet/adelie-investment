@@ -105,6 +105,7 @@ services:
       MINIO_ENDPOINT: http://minio:9000
       DB_HOST: postgres
       DB_PORT: 5432
+      JWT_SECRET: ${JWT_SECRET:-narrative-invest-jwt-secret-change-in-production}
     depends_on:
       postgres:
         condition: service_healthy
