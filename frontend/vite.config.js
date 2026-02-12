@@ -8,7 +8,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'images/*.png'],
+      includeAssets: ['favicon.ico', 'images/apple-touch-icon.png'],
       manifest: {
         name: '아델리에',
         short_name: '아델리에',
@@ -118,32 +118,12 @@ export default defineConfig({
         target: 'http://localhost:8082',
         changeOrigin: true,
       },
-      // Spring Boot 엔드포인트 (/api/auth/*, /api/user/* 등)
+      // Spring Boot 엔드포인트 (/api/auth/*)
       '/api/auth': {
         target: 'http://localhost:8083',
         changeOrigin: true,
       },
-      '/api/user': {
-        target: 'http://localhost:8083',
-        changeOrigin: true,
-      },
-      '/api/bookmarks': {
-        target: 'http://localhost:8083',
-        changeOrigin: true,
-      },
-      '/api/history': {
-        target: 'http://localhost:8083',
-        changeOrigin: true,
-      },
-      '/api/settings': {
-        target: 'http://localhost:8083',
-        changeOrigin: true,
-      },
       '/api/health': {
-        target: 'http://localhost:8083',
-        changeOrigin: true,
-      },
-      '/api/glossary': {
         target: 'http://localhost:8083',
         changeOrigin: true,
       },

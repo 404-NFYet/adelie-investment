@@ -78,7 +78,7 @@ function TradeItem({ trade }) {
 /* ── 메인 컴포넌트 ── */
 export default function Portfolio() {
   const { user, isLoading: isUserLoading } = useUser();
-  const { portfolio, isLoading, fetchPortfolio } = usePortfolio();
+  const { portfolio, isLoading, error, fetchPortfolio } = usePortfolio();
   const [activeTab, setActiveTab] = useState('holdings');
   const [trades, setTrades] = useState([]);
   const [rewards, setRewards] = useState([]);
@@ -122,10 +122,28 @@ export default function Portfolio() {
     setTradeModal({ isOpen: true, stock, type });
   };
 
-  if (isUserLoading || isLoading || !portfolio) {
+  if (isUserLoading || isLoading || (!portfolio && !error)) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="animate-pulse text-text-secondary">로딩 중...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-background pb-24">
+        <AppHeader title="포트폴리오" />
+        <main className="container py-6">
+          <div className="card text-center py-12">
+            <p className="text-text-primary font-medium mb-1">포트폴리오를 불러올 수 없습니다</p>
+            <p className="text-text-secondary text-sm mb-4">{error || '잠시 후 다시 시도해주세요'}</p>
+            <button onClick={fetchPortfolio}
+              className="bg-primary text-white px-6 py-2 rounded-xl text-sm font-medium">
+              다시 시도
+            </button>
+          </div>
+        </main>
       </div>
     );
   }

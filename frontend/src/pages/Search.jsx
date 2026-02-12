@@ -7,7 +7,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { KeywordCard } from '../components';
 import AppHeader from '../components/layout/AppHeader';
-import { keywordsApi } from '../api/keywords';
+import { keywordsApi } from '../api';
 
 const SEARCH_HISTORY_KEY = 'adelie_search_history';
 const MAX_HISTORY = 10;

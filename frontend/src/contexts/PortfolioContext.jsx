@@ -9,17 +9,20 @@ export function PortfolioProvider({ children }) {
   const [portfolio, setPortfolio] = useState(null);
   const [summary, setSummary] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   const userId = user?.id;
 
   const fetchPortfolio = useCallback(async () => {
     if (!userId) return;
     setIsLoading(true);
+    setError(null);
     try {
       const data = await portfolioApi.getPortfolio(userId);
       setPortfolio(data);
     } catch (err) {
       console.error('Portfolio fetch error:', err);
+      setError(err.message || '포트폴리오를 불러올 수 없습니다');
     } finally {
       setIsLoading(false);
     }
@@ -62,6 +65,7 @@ export function PortfolioProvider({ children }) {
       portfolio,
       summary,
       isLoading,
+      error,
       fetchPortfolio,
       fetchSummary,
       executeTrade,
