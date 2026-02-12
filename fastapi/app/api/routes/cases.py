@@ -27,7 +27,7 @@ from app.schemas.case import (
     CompanyGraphResponse,
 )
 
-router = APIRouter(tags=["Cases"])
+router = APIRouter(tags=["cases"])
 
 
 @router.get("/search/cases", response_model=CaseSearchResponse)
