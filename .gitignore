@@ -173,3 +173,4 @@ adelie_fe_test/
 test-results/
 playwright-report/
 *.plan.md
+.entire/
