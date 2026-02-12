@@ -17,9 +17,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY fastapi/ ./
 COPY shared/ ./shared/
 COPY chatbot/ ./chatbot/
-COPY datapipeline/scripts/ ./scripts/
-COPY datapipeline/collectors/ ./collectors/
-COPY datapipeline/prompts/ ./datapipeline/prompts/
+COPY datapipeline/ ./datapipeline/
+# 기존 경로 호환 심링크 (scheduler, pipeline route)
+RUN ln -sf /app/datapipeline/scripts /app/scripts && \
+    ln -sf /app/datapipeline/collectors /app/collectors
 
 # 헬스체크
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
