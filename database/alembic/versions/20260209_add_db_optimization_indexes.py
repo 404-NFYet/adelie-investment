@@ -44,73 +44,90 @@ def upgrade() -> None:
         """)
 
     # ── 2. JSONB GIN 인덱스 추가 ──
-    op.execute("""
-        CREATE INDEX IF NOT EXISTS ix_daily_briefings_top_keywords
-            ON daily_briefings USING gin (top_keywords);
-    """)
-    op.execute("""
-        CREATE INDEX IF NOT EXISTS ix_briefing_stocks_keywords
-            ON briefing_stocks USING gin (keywords);
-    """)
-    op.execute("""
-        CREATE INDEX IF NOT EXISTS ix_narrative_scenarios_glossary
-            ON narrative_scenarios USING gin (glossary);
-    """)
-    op.execute("""
-        CREATE INDEX IF NOT EXISTS ix_narrative_scenarios_sources
-            ON narrative_scenarios USING gin (sources);
-    """)
-    op.execute("""
-        CREATE INDEX IF NOT EXISTS ix_narrative_scenarios_related_companies
-            ON narrative_scenarios USING gin (related_companies);
-    """)
-    op.execute("""
-        CREATE INDEX IF NOT EXISTS ix_broker_reports_stock_codes
-            ON broker_reports USING gin (stock_codes);
-    """)
+    if 'daily_briefings' in existing_tables:
+        op.execute("""
+            CREATE INDEX IF NOT EXISTS ix_daily_briefings_top_keywords
+                ON daily_briefings USING gin (top_keywords);
+        """)
+    if 'briefing_stocks' in existing_tables:
+        op.execute("""
+            CREATE INDEX IF NOT EXISTS ix_briefing_stocks_keywords
+                ON briefing_stocks USING gin (keywords);
+        """)
+    # glossary 컬럼은 daily_narratives 테이블에 존재 (narrative_scenarios 아님)
+    if 'daily_narratives' in existing_tables:
+        op.execute("""
+            CREATE INDEX IF NOT EXISTS ix_daily_narratives_glossary
+                ON daily_narratives USING gin (glossary);
+        """)
+    if 'narrative_scenarios' in existing_tables:
+        op.execute("""
+            CREATE INDEX IF NOT EXISTS ix_narrative_scenarios_sources
+                ON narrative_scenarios USING gin (sources);
+        """)
+        op.execute("""
+            CREATE INDEX IF NOT EXISTS ix_narrative_scenarios_related_companies
+                ON narrative_scenarios USING gin (related_companies);
+        """)
+    if 'broker_reports' in existing_tables:
+        op.execute("""
+            CREATE INDEX IF NOT EXISTS ix_broker_reports_stock_codes
+                ON broker_reports USING gin (stock_codes);
+        """)
 
     # ── 3. market_daily_history 인덱스 추가 ──
-    op.execute("""
-        CREATE INDEX IF NOT EXISTS ix_market_daily_history_date
-            ON market_daily_history (date);
-    """)
-    op.execute("""
-        CREATE INDEX IF NOT EXISTS ix_market_daily_history_index_code
-            ON market_daily_history (index_code);
-    """)
-    op.execute("""
-        CREATE INDEX IF NOT EXISTS ix_market_daily_history_date_index
-            ON market_daily_history (date, index_code);
-    """)
+    if 'market_daily_history' in existing_tables:
+        op.execute("""
+            CREATE INDEX IF NOT EXISTS ix_market_daily_history_date
+                ON market_daily_history (date);
+        """)
+        op.execute("""
+            CREATE INDEX IF NOT EXISTS ix_market_daily_history_index_code
+                ON market_daily_history (index_code);
+        """)
+        op.execute("""
+            CREATE INDEX IF NOT EXISTS ix_market_daily_history_date_index
+                ON market_daily_history (date, index_code);
+        """)
 
     # ── 4. 복합 인덱스 추가 ──
-    op.execute("""
-        CREATE INDEX IF NOT EXISTS ix_notifications_user_created
-            ON notifications (user_id, created_at);
-    """)
-    op.execute("""
-        CREATE INDEX IF NOT EXISTS ix_case_matches_keyword_matched
-            ON case_matches (current_keyword, matched_at);
-    """)
-    op.execute("""
-        CREATE INDEX IF NOT EXISTS ix_simulation_trades_portfolio_traded
-            ON simulation_trades (portfolio_id, traded_at);
-    """)
+    if 'notifications' in existing_tables:
+        op.execute("""
+            CREATE INDEX IF NOT EXISTS ix_notifications_user_created
+                ON notifications (user_id, created_at);
+        """)
+    if 'case_matches' in existing_tables:
+        op.execute("""
+            CREATE INDEX IF NOT EXISTS ix_case_matches_keyword_matched
+                ON case_matches (current_keyword, matched_at);
+        """)
+    if 'simulation_trades' in existing_tables:
+        op.execute("""
+            CREATE INDEX IF NOT EXISTS ix_simulation_trades_portfolio_traded
+                ON simulation_trades (portfolio_id, traded_at);
+        """)
 
     # ── 5. 부분(Partial) 인덱스 추가 ──
-    if 'tutor_sessions' in existing_tables:
+    # 테이블 + 컬럼 존재 여부를 모두 확인 (초기 스키마에 없는 컬럼 참조 방지)
+    def _has_column(table, column):
+        if table not in existing_tables:
+            return False
+        cols = [c['name'] for c in inspector.get_columns(table)]
+        return column in cols
+
+    if _has_column('tutor_sessions', 'is_active'):
         op.execute("""
             CREATE INDEX IF NOT EXISTS ix_tutor_sessions_active
                 ON tutor_sessions (user_id) WHERE is_active = true;
         """)
 
-    if 'notifications' in existing_tables:
+    if _has_column('notifications', 'is_read'):
         op.execute("""
             CREATE INDEX IF NOT EXISTS ix_notifications_unread
                 ON notifications (user_id, created_at) WHERE is_read = false;
         """)
 
-    if 'briefing_rewards' in existing_tables:
+    if _has_column('briefing_rewards', 'maturity_at'):
         op.execute("""
             CREATE INDEX IF NOT EXISTS ix_briefing_rewards_pending
                 ON briefing_rewards (user_id, maturity_at) WHERE status = 'pending';
@@ -162,7 +179,7 @@ def downgrade() -> None:
     op.execute("DROP INDEX IF EXISTS ix_broker_reports_stock_codes;")
     op.execute("DROP INDEX IF EXISTS ix_narrative_scenarios_related_companies;")
     op.execute("DROP INDEX IF EXISTS ix_narrative_scenarios_sources;")
-    op.execute("DROP INDEX IF EXISTS ix_narrative_scenarios_glossary;")
+    op.execute("DROP INDEX IF EXISTS ix_daily_narratives_glossary;")
     op.execute("DROP INDEX IF EXISTS ix_briefing_stocks_keywords;")
     op.execute("DROP INDEX IF EXISTS ix_daily_briefings_top_keywords;")
 
