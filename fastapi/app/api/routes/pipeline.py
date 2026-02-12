@@ -92,7 +92,26 @@ async def trigger_pipeline(
         results.append(result)
     
     total_duration = time.time() - total_start
-    
+
+    # ── 후처리: 캐시 무효화 + MV 리프레시 ──
+    try:
+        from app.services.redis_cache import get_redis_cache
+        cache = await get_redis_cache()
+        await cache.invalidate_pipeline_caches()
+    except Exception:
+        pass  # 캐시 무효화 실패해도 응답은 정상 반환
+
+    try:
+        from app.core.database import AsyncSessionLocal
+        from sqlalchemy import text
+        async with AsyncSessionLocal() as session:
+            await session.execute(text(
+                "REFRESH MATERIALIZED VIEW CONCURRENTLY mv_keyword_frequency"
+            ))
+            await session.commit()
+    except Exception:
+        pass
+
     return PipelineTriggerResponse(
         job_id=job_id,
         results=results,
