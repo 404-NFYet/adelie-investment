@@ -16,7 +16,7 @@ from app.core.database import get_db
 from app.models.briefing import DailyBriefing, BriefingStock
 from app.schemas.briefing import BriefingResponse, BriefingStock as BriefingStockSchema
 
-router = APIRouter(prefix="/briefing", tags=["Briefing"])
+router = APIRouter(prefix="/briefing", tags=["briefing"])
 
 
 @router.get("/today", response_model=BriefingResponse)

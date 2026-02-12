@@ -25,7 +25,7 @@ except ImportError:
     except ImportError:
         _VIZ_AVAILABLE = False
 
-router = APIRouter(prefix="/tutor", tags=["AI Tutor - Visualization"])
+router = APIRouter(prefix="/tutor", tags=["visualization"])
 
 
 @router.post("/visualize")

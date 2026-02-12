@@ -4,6 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import List
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,6 +28,17 @@ class Settings(BaseSettings):
     JWT_SECRET: str = "narrative-invest-jwt-secret-change-in-production"
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(60, validation_alias="ACCESS_TOKEN_EXPIRE_MINUTES")
+    JWT_ACCESS_EXPIRATION: int = Field(0, validation_alias="JWT_ACCESS_EXPIRATION")  # ms
+    JWT_REFRESH_EXPIRATION: int = Field(0, validation_alias="JWT_REFRESH_EXPIRATION")  # ms
+
+    # Registration guardrails
+    REGISTRATION_BLOCKED_DOMAINS: str = (
+        "tempmail.com,throwaway.email,guerrillamail.com,mailinator.com,yopmail.com"
+    )
+    REGISTRATION_BLOCKED_USERNAME_PATTERN: str = (
+        ".*(admin|test|root|관리자|운영자|시발|씨발|개새|병신).*"
+    )
 
     # API Keys (반드시 .env에서 설정 필요)
     OPENAI_API_KEY: str = ""
@@ -48,6 +60,15 @@ class Settings(BaseSettings):
     def cors_origins(self) -> List[str]:
         """Parse CORS_ALLOWED_ORIGINS into a list."""
         return [origin.strip() for origin in self.CORS_ALLOWED_ORIGINS.split(",")]
+
+    @property
+    def registration_blocked_domains(self) -> List[str]:
+        """Parse blocked email domains into a list."""
+        return [
+            domain.strip()
+            for domain in self.REGISTRATION_BLOCKED_DOMAINS.split(",")
+            if domain.strip()
+        ]
 
 
 @lru_cache
