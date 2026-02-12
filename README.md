@@ -19,7 +19,7 @@ graph TB
 
     subgraph Backend
         FAST[FastAPI<br/>AI/Data API<br/>:8082]
-        SPRING[Spring Boot<br/>Auth/CRUD API<br/>:8083]
+        SPRING[Spring Boot<br/>Auth API<br/>:8083]
     end
 
     subgraph AI["AI Module"]
@@ -67,7 +67,7 @@ graph TB
 |------|------|------|
 | **Frontend** | React, Vite, Tailwind CSS, Framer Motion | React 19, Vite 6.x, Tailwind 4.x |
 | **Backend (AI/Data)** | Python, FastAPI, LangGraph, LangChain | Python 3.11+, FastAPI 0.115+ |
-| **Backend (Auth/CRUD)** | Java, Spring Boot, Spring Security | Java 17, Spring Boot 3.x |
+| **Backend (Auth)** | Java, Spring Boot, Spring Security | Java 17, Spring Boot 3.x |
 | **AI/LLM** | OpenAI (gpt-4o-mini, gpt-4o), Perplexity (sonar-pro) | - |
 | **Observability** | LangSmith | - |
 | **Database** | PostgreSQL + pgvector, Neo4j, Redis | PG 16, Neo4j 5, Redis 7 |
@@ -80,27 +80,26 @@ graph TB
 
 ```
 adelie-investment/
-├── frontend/                # React 프론트엔드 (Vite + Tailwind)
+├── frontend/                # React 19 프론트엔드 (Vite + Tailwind)
 │   ├── src/
-│   │   ├── components/      # UI 컴포넌트
+│   │   ├── components/      # UI 컴포넌트 (common, domain, layout, charts, tutor, trading)
 │   │   ├── pages/           # 페이지 컴포넌트
 │   │   ├── hooks/           # 커스텀 훅
-│   │   ├── api/             # API 호출 모듈
+│   │   ├── api/             # API 호출 모듈 (통합 index.js)
 │   │   ├── contexts/        # React Context
 │   │   └── styles/          # 전역 스타일
 │   └── package.json
 │
-├── backend-api/             # FastAPI 서버 (AI/Data API)
+├── fastapi/                 # FastAPI 서버 (AI/Data API)
 │   ├── app/
-│   │   ├── api/routes/      # 라우터 (briefing, glossary, tutor 등)
+│   │   ├── api/routes/      # 라우터 (briefings, keywords, learning, reports 등)
 │   │   ├── core/            # 설정, 인증, DB
 │   │   ├── models/          # SQLAlchemy ORM 모델
 │   │   ├── schemas/         # Pydantic 스키마
-│   │   └── services/        # 비즈니스 로직
-│   ├── alembic/             # DB 마이그레이션
+│   │   └── services/        # 비즈니스 로직 (redis_cache 등)
 │   └── requirements.txt
 │
-├── backend-spring/          # Spring Boot 서버 (Auth/CRUD API)
+├── springboot/              # Spring Boot 서버 (Auth API)
 │   └── src/main/java/com/narrative/invest/
 │       ├── controller/      # REST 컨트롤러
 │       ├── service/         # 서비스 계층
@@ -108,26 +107,30 @@ adelie-investment/
 │       ├── repository/      # JPA 리포지토리
 │       └── security/        # JWT 인증
 │
-├── ai-module/               # AI 모듈 (LangGraph 에이전트)
+├── chatbot/                 # AI 튜터 모듈 (LangGraph 에이전트)
 │   ├── agent/               # 튜터 에이전트
 │   ├── tools/               # LangGraph 도구 (briefing, search, glossary 등)
-│   ├── services/            # OpenAI, Perplexity, Neo4j 서비스
-│   └── config/              # LangSmith 설정
+│   ├── services/            # 용어 하이라이트 서비스
+│   ├── prompts/             # 마크다운 프롬프트 템플릿
+│   └── core/                # config, LangSmith 설정
 │
-├── data-pipeline/           # 데이터 수집 파이프라인
-│   ├── collectors/          # pykrx, 네이버 리포트, Perplexity 수집기
-│   ├── processors/          # PDF Vision 처리
-│   ├── loaders/             # DB 로더
-│   ├── services/            # MinIO, Neo4j 서비스
-│   └── seed_data/           # 시드 데이터 (용어집 등)
+├── datapipeline/            # 데이터 수집 + 케이스 생성 파이프라인
+│   ├── scripts/             # 파이프라인 스크립트 (seed, generate, verify)
+│   ├── ai/                  # LLM 프로바이더 클라이언트 + AI 서비스
+│   ├── collectors/          # pykrx 주가, 네이버 리포트 수집기
+│   ├── prompts/             # 파이프라인 프롬프트 (planner, writer, reviewer)
+│   └── core/                # config, LangSmith 설정
 │
-├── infra/                   # 인프라 (Docker Compose)
-│   ├── docker-compose.yml   # PostgreSQL, Redis, Neo4j, MinIO
-│   └── setup-infra.sh       # 초기 설정 스크립트
+├── shared/                  # 공통 모듈 (AI 설정, LangSmith 설정)
 │
-├── tests/                   # 통합 테스트 / 유닛 테스트
-├── docs/                    # 문서 (PRD, DB 스키마)
-├── .github/                 # GitHub Actions CI/CD
+├── database/                # DB 마이그레이션 + 스크립트
+│   ├── alembic/             # Alembic migrations
+│   └── scripts/             # DB 초기화 스크립트
+│
+├── lxd/                     # LXD 인프라 구성 (프로파일, 인벤토리)
+├── tests/                   # 테스트 (unit, backend, integration)
+├── docs/                    # 문서 (PRD, 가이드)
+├── .github/                 # GitHub Actions CI/CD + CODEOWNERS
 └── .env.example             # 환경 변수 템플릿
 ```
 
@@ -173,7 +176,7 @@ npm run dev    # http://localhost:3001
 ### 4. FastAPI (Backend) 실행
 
 ```bash
-cd backend-api
+cd fastapi
 pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 8082 --reload
 ```
@@ -181,7 +184,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8082 --reload
 ### 5. Spring Boot (Backend) 실행
 
 ```bash
-cd backend-spring
+cd springboot
 ./gradlew bootRun    # http://localhost:8083
 ```
 
@@ -193,7 +196,7 @@ cd backend-spring
 |--------|-----|------|
 | Frontend | http://localhost:3001 | React 개발 서버 |
 | FastAPI | http://localhost:8082 | AI/Data API |
-| Spring Boot | http://localhost:8083 | Auth/CRUD API |
+| Spring Boot | http://localhost:8083 | Auth API |
 | PostgreSQL | 10.10.10.10:5432 | 메인 DB (pgvector) |
 | Redis | 10.10.10.10:6379 | 캐싱, 세션, Rate Limiting |
 | Neo4j Browser | http://10.10.10.10:7474 | 그래프 DB 웹 콘솔 |
