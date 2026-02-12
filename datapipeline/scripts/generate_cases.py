@@ -19,8 +19,7 @@ from pathlib import Path
 _project_root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(_project_root))
 
-from openai import OpenAI
-
+from datapipeline.ai.multi_provider_client import get_multi_provider_client
 from datapipeline.scripts.pipeline_config import (
     PAGE_KEYS,
     MAX_RETRIES,
@@ -42,8 +41,8 @@ except ImportError:
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-# OpenAI Client
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# MultiProviderClient (OpenAI/Perplexity/Anthropic 통합)
+client = get_multi_provider_client()
 
 # 프롬프트 파일 경로
 PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
@@ -64,7 +63,7 @@ def strip_marks(text: str) -> str:
 
 
 def fetch_stock_data(stock_codes: list[str]) -> str:
-    """pykrx로 종목별 90일 OHLCV 요약 데이터 조회."""
+    """pykrx로 종목별 90일 OHLCV 요약 데이터 + 재무지표 + 애널리스트 리포트 조회."""
     try:
         from pykrx import stock as pykrx_stock
     except ImportError:
@@ -95,9 +94,46 @@ def fetch_stock_data(stock_codes: list[str]) -> str:
                 f"90일 고가 {high:,}원, 저가 {low:,}원, 평균거래량 {avg_vol:,}주"
                 + (f", 평균거래대금 {avg_trade_val:,}원" if avg_trade_val else "")
             )
+
+            # 재무지표 (PER/PBR/EPS) 추가
+            try:
+                from datapipeline.collectors.financial_collector import format_fundamentals_for_llm
+                fundamentals = format_fundamentals_for_llm(code)
+                if fundamentals and "찾을 수 없습니다" not in fundamentals:
+                    lines.append(fundamentals)
+            except ImportError:
+                pass
+            except Exception as e:
+                logger.debug(f"  재무지표 조회 실패 ({code}): {e}")
+
         except Exception as e:
             logger.warning(f"  pykrx 조회 실패 ({code}): {e}")
             continue
+
+    # 애널리스트 리포트 조회 (종목명 기반 필터링)
+    try:
+        from datapipeline.collectors.naver_report_crawler import fetch_report_list
+        import asyncio
+        reports = asyncio.get_event_loop().run_until_complete(fetch_report_list(page=1))
+        stock_names = set()
+        for code in stock_codes[:3]:
+            if code:
+                try:
+                    stock_names.add(pykrx_stock.get_market_ticker_name(code) or "")
+                except Exception:
+                    pass
+        matched = [r for r in reports if r.stock_name in stock_names]
+        for r in matched[:3]:
+            report_line = f"- [리포트] {r.stock_name}: {r.title} ({r.broker}, {r.date})"
+            if r.target_price:
+                report_line += f" 목표가: {r.target_price}"
+            if r.opinion:
+                report_line += f" 투자의견: {r.opinion}"
+            lines.append(report_line)
+    except ImportError:
+        pass
+    except Exception as e:
+        logger.debug(f"  애널리스트 리포트 조회 실패: {e}")
 
     return "\n".join(lines) if lines else ""
 
@@ -208,13 +244,14 @@ def generate_historical_case(keyword_title: str, category: str, stocks: list[str
     last_error = None
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            response = client.chat.completions.create(
+            response = client.chat_completion(
+                provider="openai",
                 model=os.getenv("OPENAI_MAIN_MODEL", "gpt-4o-mini"),
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.7,
-                max_tokens=12000,  # 강화: 8000 → 12000 (더 긴 콘텐츠 생성)
+                max_tokens=12000,
             )
-            content = response.choices[0].message.content.strip()
+            content = response["choices"][0]["message"]["content"].strip()
 
             # JSON 파싱 (코드 블록 제거)
             if content.startswith("```"):
@@ -313,13 +350,14 @@ JSON 배열로만 응답:
 [{{"text": "용어", "definition": "간단한 정의", "sections": ["background"]}}]
 JSON만 출력하세요."""
 
-    response = client.chat.completions.create(
+    response = client.chat_completion(
+        provider="openai",
         model=os.getenv("OPENAI_MAIN_MODEL", "gpt-4o-mini"),
         messages=[{"role": "user", "content": marking_prompt}],
         temperature=0.3,
         max_tokens=2000,
     )
-    raw_content = response.choices[0].message.content.strip()
+    raw_content = response["choices"][0]["message"]["content"].strip()
 
     # JSON 파싱
     if raw_content.startswith("```"):
