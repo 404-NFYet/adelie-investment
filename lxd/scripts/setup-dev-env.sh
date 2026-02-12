@@ -33,7 +33,7 @@ GIT_USER_NAME="$1"
 GIT_EMAIL="$2"
 GITHUB_TOKEN="${3:-}"
 
-REPO_URL="https://github.com/dorae222/adelie-investment.git"
+REPO_URL="https://github.com/404-NFYet/adelie-investment.git"
 PROJECT_DIR="$HOME/adelie-investment"
 INFRA_DIR="$PROJECT_DIR/infra"
 
