@@ -33,7 +33,7 @@ jobs:
           ECR_REPOSITORY: adelie-backend-api
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker build -f fastapi/Dockerfile -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
       
       - name: Deploy to ECS
@@ -59,10 +59,10 @@ jobs:
 
 ```bash
 # 로컬에서 수동 빌드 및 푸시
-ECR_REGISTRY=$(terraform -chdir=infra/terraform output -raw ecr_registry)
+ECR_REGISTRY=$(terraform -chdir=infra/terraform/environments/dev output -raw ecr_registry)
 aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin $ECR_REGISTRY
 
-docker build -t $ECR_REGISTRY/adelie-backend-api:latest .
+docker build -f fastapi/Dockerfile -t $ECR_REGISTRY/adelie-backend-api:latest .
 docker push $ECR_REGISTRY/adelie-backend-api:latest
 ```
 

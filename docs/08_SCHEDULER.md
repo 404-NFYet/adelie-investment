@@ -27,11 +27,14 @@ FastAPI (lifespan)
 ## 파일 구조
 
 ```
-backend_api/
+fastapi/
 ├── app/core/scheduler.py          # 스케줄러 코어
-├── app/main.py                    # lifespan에서 start/stop 호출
-├── scripts/seed_fresh_data.py     # Step 1: 시장 데이터 수집
-└── generate_cases.py              # Step 2: AI 케이스 생성
+└── app/main.py                    # lifespan에서 start/stop 호출
+
+datapipeline/
+└── scripts/
+    ├── seed_fresh_data_integrated.py  # Step 1: 시장 데이터 수집
+    └── generate_cases.py              # Step 2: AI 케이스 생성
 ```
 
 ## 실행 흐름

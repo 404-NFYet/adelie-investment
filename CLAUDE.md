@@ -93,10 +93,10 @@ adelie-investment/
 
 ### Dual Backend
 - **FastAPI** (`fastapi/`, `:8082`, `/api/v1/*`): AI/Data API — keywords, cases, tutor chat, glossary, trading, visualization, narrative
-- **Spring Boot** (`springboot/`, `:8083`, `/api/auth/*`, `/api/user/*`, etc.): Auth (JWT), CRUD, bookmarks, user settings
+- **Spring Boot** (`springboot/`, `:8083`, `/api/auth/*`): Auth (JWT 발급, 로그인/회원가입/토큰 갱신), Health check
 
 ### Frontend Routing via Nginx
-The frontend Docker image uses nginx as a reverse proxy. All `/api/v1/*` routes proxy to `backend-api:8082`, and `/api/auth/*`, `/api/user/*`, `/api/bookmarks/*` etc. proxy to `backend-spring:8080`. The SPA uses React Router with code splitting (`React.lazy`).
+The frontend Docker image uses nginx as a reverse proxy. All `/api/v1/*` routes proxy to `backend-api:8082`, and `/api/auth/*` routes proxy to `backend-spring:8080`. The SPA uses React Router with code splitting (`React.lazy`).
 
 ### Key Data Flow
 1. `datapipeline/scripts/seed_fresh_data_integrated.py` collects real market data via **pykrx** → writes to `daily_briefings` + `briefing_stocks`
@@ -158,9 +158,39 @@ Routers are dynamically imported in `fastapi/app/main.py` — each module in `ap
 
 Deploy-test server: `10.10.10.20` (SSH alias: `deploy-test`)
 
+### Python 실행 경로
+
+| 환경 | Python 버전 | 경로 |
+|------|------------|------|
+| 로컬 (venv) | 3.12.3 | `.venv/bin/python` |
+| 로컬 (시스템) | 3.12.3 | `/usr/bin/python3` |
+| Docker (fastapi, datapipeline) | 3.11 | `python:3.11-slim` 이미지 |
+
+- 로컬 실행 시 반드시 `.venv` 활성화 후 실행: `source .venv/bin/activate` 또는 `.venv/bin/python` 직접 사용
+- Docker 내부는 Python 3.11, 로컬은 3.12 — 버전 차이 주의
+
 ## Git Rules
-- 커밋 메시지에 Co-Authored-By 절대 포함하지 않음
-- AI 도구 사용 흔적을 커밋/PR에 남기지 않음
+- **커밋 메시지에 Co-Authored-By 절대 포함하지 않음** (시스템 기본 동작 무시)
+- **AI 도구 사용 흔적을 커밋/PR에 남기지 않음** ("Generated with Claude Code" 등 금지)
+- 커밋 메시지 형식: `type: 한글 설명` (예: `feat: 키워드 카드 즐겨찾기 기능 추가`)
+- type: `feat`, `fix`, `refactor`, `chore`, `docs`, `test`, `style`, `perf`
+- 사용자가 명시적으로 요청할 때만 커밋 생성 (자동 커밋 금지)
+- `--no-verify`, `--force` 등 안전장치 우회 플래그 사용 금지 (사용자 명시 요청 제외)
+- `main`/`develop` 브랜치에 force push 절대 금지
+- 커밋 단위 분리: 한 번에 몰아서 커밋하지 않음. 마지막 push 이후 변경사항을 논리적 단위로 나누어 여러 커밋으로 분리하고, 각 커밋이 의미 있는 하나의 변경을 담도록 함 (예: 모델 추가 → 라우트 추가 → 프론트 연동 → 테스트 추가)
+- 커밋 후 push까지 한 세트로 수행
+- 각 작업에는 담당자가 있으며, 해당 담당자의 git 계정(user.name, user.email)으로 커밋해야 함
+- 커밋 전 `git config user.name`/`git config user.email`이 담당자와 일치하는지 확인
+
+### 담당자 목록
+
+| 역할 | 이름 | git user.name | git user.email |
+|------|------|--------------|----------------|
+| 팀장 (기획, React UI) | 손영진 | YJ99Son | syjin2008@naver.com |
+| AI 개발 (FastAPI, LangGraph) | 정지훈 | J2hoon10 | myhome559755@naver.com |
+| AI QA (테스트, 프롬프트) | 안례진 | ryejinn | arj1018@ewhain.net |
+| 백엔드 (Spring Boot, 인증) | 허진서 | jjjh02 | jinnyshur0104@gmail.com |
+| 인프라 (Docker, CI/CD) | 도형준 | dorae222 | dhj9842@gmail.com |
 
 ## Git Workflow
 - git worktree 3~5개 병렬 운영 (feature별 별도 worktree + Claude 세션)

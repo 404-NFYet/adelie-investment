@@ -152,13 +152,14 @@ make deploy
 ```
 adelie-investment/
 ├── frontend/                   # React 19 + Vite
-├── backend_api/                # FastAPI
-├── backend-spring/             # Spring Boot
-├── ai_module/                  # LangGraph 튜터
-├── data_pipeline/              # pykrx 데이터 수집
+├── fastapi/                    # FastAPI (AI/Data API)
+├── springboot/                 # Spring Boot (Auth, CRUD)
+├── chatbot/                    # LangGraph AI 튜터
+├── datapipeline/               # 데이터 수집 + 케이스 생성 파이프라인
+├── database/                   # DB 마이그레이션 + 스크립트
+├── shared/                     # 공유 설정 모듈
 ├── infra/                      # Docker Compose, Terraform
-├── tests/                      # 통합 테스트
-├── scripts/                    # 유틸리티 스크립트
+├── tests/                      # 테스트
 ├── docs/                       # 프로젝트 문서
 ├── .github/                    # GitHub 설정
 ├── Makefile                    # 빌드/배포 자동화
@@ -171,10 +172,11 @@ adelie-investment/
 | 모듈 | 담당자 | 설명 |
 |------|--------|------|
 | `frontend/` | @YJ99Son | React 프론트엔드 |
-| `backend_api/` | @J2hoon10 | FastAPI 백엔드 |
-| `backend-spring/` | @jjjh02 | Spring Boot 인증/CRUD |
-| `ai_module/` | @J2hoon10 @ryejinn | LangGraph AI 튜터 |
-| `data_pipeline/` | @J2hoon10 | 데이터 수집 파이프라인 |
+| `fastapi/` | @J2hoon10 | FastAPI 백엔드 |
+| `springboot/` | @jjjh02 | Spring Boot 인증/CRUD |
+| `chatbot/` | @J2hoon10 @ryejinn | LangGraph AI 튜터 |
+| `datapipeline/` | @J2hoon10 | 데이터 수집 파이프라인 |
+| `database/` | @dorae222 | DB 마이그레이션 |
 | `infra/` | @dorae222 | Docker, Terraform, CI/CD |
 | `docs/` | @YJ99Son | 프로젝트 문서 |
 | `tests/` | @ryejinn | 통합 테스트, QA |
@@ -188,12 +190,13 @@ adelie-investment/
 - **Frontend**: JavaScript, Tailwind CSS, 함수형 컴포넌트
 - **FastAPI**: Python 3.11+, 비동기(async/await), 한글 주석
 - **Spring Boot**: Java 17, 어노테이션 기반
-- **AI Module**: Python, 한글 주석, 마크다운 프롬프트
+- **Chatbot / Data Pipeline**: Python, 한글 주석, 마크다운 프롬프트
 
 ## 파일 구조 규칙
 
 - 새 컴포넌트: `frontend/src/components/{domain|common|layout}/`
-- 새 API 라우트: `backend_api/app/api/routes/`
-- 새 서비스: `backend_api/app/services/`
-- 새 프롬프트: `ai_module/prompts/templates/`
+- 새 API 라우트: `fastapi/app/api/routes/`
+- 새 서비스: `fastapi/app/services/`
+- 새 프롬프트 (튜터): `chatbot/prompts/templates/`
+- 새 프롬프트 (파이프라인): `datapipeline/prompts/templates/`
 - 새 테스트: `tests/` 또는 `frontend/e2e/`

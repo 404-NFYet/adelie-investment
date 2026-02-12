@@ -17,16 +17,15 @@ aws ecr describe-repositories --repository-names adelie-backend-api --region ap-
 aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin <ACCOUNT_ID>.dkr.ecr.ap-northeast-2.amazonaws.com
 
 # 또는 Terraform output 사용
-ECR_REGISTRY=$(terraform -chdir=infra/terraform output -raw ecr_registry)
+ECR_REGISTRY=$(terraform -chdir=infra/terraform/environments/dev output -raw ecr_registry)
 aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin $ECR_REGISTRY
 ```
 
 ## 이미지 빌드 및 푸시
 
 ```bash
-# 이미지 빌드
-cd backend_api
-docker build -t backend-api:latest .
+# 이미지 빌드 (프로젝트 루트에서 실행)
+docker build -f fastapi/Dockerfile -t backend-api:latest .
 
 # ECR 태깅
 docker tag backend-api:latest <ACCOUNT_ID>.dkr.ecr.ap-northeast-2.amazonaws.com/adelie-backend-api:latest
