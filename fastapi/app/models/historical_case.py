@@ -7,6 +7,11 @@ from sqlalchemy import String, Text, Date, Integer, Numeric, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+try:
+    from pgvector.sqlalchemy import Vector
+except ImportError:
+    Vector = None
+
 from app.core.database import Base
 
 
@@ -25,6 +30,9 @@ class HistoricalCase(Base):
     source_urls: Mapped[Optional[dict]] = mapped_column(JSONB, comment="출처 URL 배열")
     difficulty: Mapped[str] = mapped_column(String(20), default="beginner")
     view_count: Mapped[int] = mapped_column(Integer, default=0)
+    embedding: Mapped[Optional[list]] = mapped_column(
+        Vector(1536) if Vector else None, nullable=True, comment="OpenAI text-embedding-3-small 벡터"
+    )
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
     
