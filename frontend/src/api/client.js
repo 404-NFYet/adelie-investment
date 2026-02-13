@@ -5,7 +5,6 @@ import { API_BASE_URL } from '../config';
 
 export { API_BASE_URL };
 
-export const SPRING_URL = import.meta.env.VITE_SPRING_URL || '';
 
 /** localStorage에서 JWT 토큰을 읽어 Authorization 헤더를 생성 */
 const getAuthHeaders = () => {

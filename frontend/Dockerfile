@@ -11,7 +11,6 @@ RUN npm ci --silent
 # 소스 복사 + 빌드
 COPY . .
 ARG VITE_FASTAPI_URL=""
-ARG VITE_SPRING_URL=""
 RUN npm run build
 
 # ============================================================
