@@ -73,7 +73,79 @@ _MOCK_TOPICS = [
             "source_ids": ["ws1_s1", "ws1_s2"],
             "evidence_source_urls": ["https://example.com/mock-evidence-1"],
         },
-    }
+    },
+    {
+        "topic": "2차전지 공급과잉 우려",
+        "interface_1_curated_context": {
+            "date": dt.date.today().isoformat(),
+            "theme": "2차전지 공급과잉 국면에서의 구조조정과 생존 전략",
+            "one_liner": "전기차 판매는 늘고 있는데 배터리 기업 주가는 왜 빠질까요?",
+            "selected_stocks": [
+                {"ticker": "373220", "name": "LG에너지솔루션", "momentum": "하락", "change_pct": -12.3, "period_days": 30},
+                {"ticker": "006400", "name": "삼성SDI", "momentum": "하락", "change_pct": -8.7, "period_days": 30},
+            ],
+            "verified_news": [
+                {
+                    "title": "[Mock] 2차전지 공급과잉 심화",
+                    "url": "https://example.com/mock-news-2",
+                    "source": "Mock Economy",
+                    "summary": "글로벌 배터리 생산능력이 수요의 2배를 넘어섰어요.",
+                    "published_date": dt.date.today().isoformat(),
+                },
+            ],
+            "reports": [
+                {
+                    "title": "[Mock] 2차전지 산업 구조조정 전망",
+                    "source": "Mock Securities",
+                    "summary": "2026년 하반기까지 공급과잉 지속, 원가 경쟁력이 핵심이에요.",
+                    "date": dt.date.today().isoformat(),
+                },
+            ],
+            "concept": {
+                "name": "공급과잉(Oversupply)",
+                "definition": "시장에 공급되는 양이 수요보다 많아 가격이 하락하는 현상이에요.",
+                "relevance": "배터리 업계의 공격적 증설이 가격 하락과 수익성 악화로 이어지고 있어요.",
+            },
+            "source_ids": ["ws2_s1", "ws2_s2"],
+            "evidence_source_urls": ["https://example.com/mock-evidence-2"],
+        },
+    },
+    {
+        "topic": "AI 인프라 투자 확대",
+        "interface_1_curated_context": {
+            "date": dt.date.today().isoformat(),
+            "theme": "AI 인프라 투자 사이클과 수혜 밸류체인 확장",
+            "one_liner": "빅테크의 AI 투자가 폭발적인데, 한국 기업은 어디서 수혜를 받을까요?",
+            "selected_stocks": [
+                {"ticker": "035420", "name": "NAVER", "momentum": "상승", "change_pct": 11.2, "period_days": 20},
+                {"ticker": "017670", "name": "SK텔레콤", "momentum": "상승", "change_pct": 6.8, "period_days": 20},
+            ],
+            "verified_news": [
+                {
+                    "title": "[Mock] 빅테크 AI 인프라 투자 급증",
+                    "url": "https://example.com/mock-news-3",
+                    "source": "Mock Economy",
+                    "summary": "글로벌 빅테크 기업들의 AI 인프라 투자가 전년 대비 50% 이상 증가했어요.",
+                    "published_date": dt.date.today().isoformat(),
+                },
+            ],
+            "reports": [
+                {
+                    "title": "[Mock] AI 인프라 수혜 분석",
+                    "source": "Mock Securities",
+                    "summary": "데이터센터, 냉각장비, 전력 인프라 순으로 수혜가 확산될 전망이에요.",
+                    "date": dt.date.today().isoformat(),
+                },
+            ],
+            "concept": {
+                "name": "밸류체인(Value Chain)",
+                "definition": "제품이 만들어지기까지 거치는 기업 간 가치 사슬이에요.",
+                "relevance": "AI 칩 → 서버 → 데이터센터 → 냉각/전력으로 이어지는 투자 파급 효과를 이해해야 해요.",
+            },
+            "source_ids": ["ws3_s1", "ws3_s2"],
+            "evidence_source_urls": ["https://example.com/mock-evidence-3"],
+        },
+    },
 ]
 
 
