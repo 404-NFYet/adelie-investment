@@ -71,9 +71,9 @@ services:
     volumes:
       - ./fastapi/app:/app/app  # 핫 리로드
       - ./chatbot:/app/chatbot  # 챗봇 모듈 공유
-      - ./datapipeline/scripts:/app/scripts  # 파이프라인 스크립트
-      - ./datapipeline/collectors:/app/collectors  # 데이터 수집기
-      - ./datapipeline/prompts:/app/datapipeline/prompts  # 파이프라인 프롬프트
+      - ./datapipeline:/app/datapipeline  # 파이프라인 전체
+      - ./datapipeline/scripts:/app/scripts  # 레거시 symlink 호환
+      - ./datapipeline/collectors:/app/collectors  # 레거시 symlink 호환
     command: uvicorn app.main:app --host 0.0.0.0 --port 8082 --reload
     restart: unless-stopped
     develop:

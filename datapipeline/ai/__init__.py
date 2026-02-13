@@ -1,18 +1,14 @@
-"""내러티브 브리핑 생성 파이프라인.
+"""AI 클라이언트 모듈.
 
-6페이지 골든케이스 AI 에이전트 파이프라인.
-MultiProviderClient를 통한 OpenAI/Perplexity/Anthropic 통합 호출.
+멀티 프로바이더 LLM 클라이언트 + 프롬프트 유틸리티.
 """
 
-from .types import KeywordPlan, ScenarioResult, BriefingResult
-from .ai_service import PipelineAIService
 from .multi_provider_client import MultiProviderClient, get_multi_provider_client
+from .llm_utils import call_llm_with_prompt, extract_json_object
 
 __all__ = [
-    "KeywordPlan",
-    "ScenarioResult",
-    "BriefingResult",
-    "PipelineAIService",
     "MultiProviderClient",
     "get_multi_provider_client",
+    "call_llm_with_prompt",
+    "extract_json_object",
 ]

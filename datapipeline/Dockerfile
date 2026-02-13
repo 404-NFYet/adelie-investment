@@ -18,4 +18,4 @@ COPY datapipeline/ ./datapipeline/
 COPY shared/ ./shared/
 COPY fastapi/app/ ./app/
 
-CMD ["python", "-m", "datapipeline.scripts.keyword_pipeline_graph"]
+CMD ["python", "-m", "datapipeline.run", "--backend", "live", "--market", "KR"]
