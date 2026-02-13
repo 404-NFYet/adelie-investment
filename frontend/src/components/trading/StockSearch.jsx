@@ -1,16 +1,17 @@
 /**
  * StockSearch.jsx - 종목 검색 + 결과 표시
  */
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { API_BASE_URL } from '../../config';
 
 export default function StockSearch({ onSelect }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
+  const timerRef = useRef(null);
 
   const search = useCallback(async (q) => {
-    if (!q.trim() || q.length < 1) { setResults([]); return; }
+    if (!q.trim() || q.length < 2) { setResults([]); return; }
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/trading/search?q=${encodeURIComponent(q)}`);
@@ -23,8 +24,12 @@ export default function StockSearch({ onSelect }) {
   const handleChange = (e) => {
     const val = e.target.value;
     setQuery(val);
-    if (val.length >= 1) search(val);
-    else setResults([]);
+    clearTimeout(timerRef.current);
+    if (val.length >= 2) {
+      timerRef.current = setTimeout(() => search(val), 300);
+    } else {
+      setResults([]);
+    }
   };
 
   return (
