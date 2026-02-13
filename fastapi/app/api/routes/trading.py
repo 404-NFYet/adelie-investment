@@ -61,6 +61,14 @@ async def get_ranking(type: str = Query(default="volume")):
     return {"ranking": results, "type": type}
 
 
+@router.get("/market-status")
+async def get_market_status():
+    """오늘 한국 주식시장 개장 여부."""
+    from app.services.market_calendar import is_kr_market_open_today
+    is_open = await is_kr_market_open_today()
+    return {"is_trading_day": is_open}
+
+
 @router.post("/order")
 async def execute_order(
     order: OrderRequest,
@@ -70,24 +78,9 @@ async def execute_order(
     """자유 매매 주문. JWT 인증 필수."""
     user_id = current_user["id"]
 
-    if order.order_kind == "limit" and order.target_price:
-        # 지정가 주문
-        await db.execute(text("""
-            CREATE TABLE IF NOT EXISTS limit_orders (
-                id SERIAL PRIMARY KEY, user_id INTEGER,
-                stock_code VARCHAR(10), stock_name VARCHAR(100),
-                order_type VARCHAR(4), target_price INTEGER,
-                quantity INTEGER, status VARCHAR(10) DEFAULT 'pending',
-                created_at TIMESTAMPTZ DEFAULT NOW(),
-                filled_at TIMESTAMPTZ, cancelled_at TIMESTAMPTZ)
-        """))
-        await db.execute(text(
-            "INSERT INTO limit_orders (user_id, stock_code, stock_name, order_type, target_price, quantity) "
-            "VALUES (:uid, :sc, :sn, :ot, :tp, :q)"
-        ), {"uid": user_id, "sc": order.stock_code, "sn": order.stock_name,
-            "ot": order.order_type, "tp": order.target_price, "q": order.quantity})
-        await db.commit()
-        return {"status": "pending", "message": "지정가 주문 접수"}
+    if order.order_kind == "limit":
+        # 지정가 주문 비활성화 (매칭/체결 로직 미구현)
+        raise HTTPException(status_code=400, detail="현재 시장가 주문만 지원됩니다")
     else:
         # 시장가 주문
         price_data = await get_current_price(order.stock_code)
@@ -153,12 +146,6 @@ async def get_watchlist(
     """관심종목 목록. JWT 인증 필수."""
     user_id = current_user["id"]
     try:
-        await db.execute(text("""
-            CREATE TABLE IF NOT EXISTS watchlists (
-                id SERIAL PRIMARY KEY, user_id INTEGER,
-                stock_code VARCHAR(10), stock_name VARCHAR(100),
-                added_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE(user_id, stock_code))
-        """))
         result = await db.execute(text(
             "SELECT * FROM watchlists WHERE user_id = :uid ORDER BY added_at DESC"
         ), {"uid": user_id})
@@ -175,12 +162,6 @@ async def add_to_watchlist(
 ):
     """관심종목 추가. JWT 인증 필수."""
     user_id = current_user["id"]
-    await db.execute(text("""
-        CREATE TABLE IF NOT EXISTS watchlists (
-            id SERIAL PRIMARY KEY, user_id INTEGER,
-            stock_code VARCHAR(10), stock_name VARCHAR(100),
-            added_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE(user_id, stock_code))
-    """))
     await db.execute(text(
         "INSERT INTO watchlists (user_id, stock_code, stock_name) VALUES (:uid, :sc, :sn) "
         "ON CONFLICT (user_id, stock_code) DO NOTHING"

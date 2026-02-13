@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.portfolio import UserPortfolio, PortfolioHolding, SimulationTrade
 from app.models.reward import BriefingReward
-from app.services.stock_price_service import get_current_price
+from app.services.stock_price_service import get_current_price, get_batch_prices
 
 logger = logging.getLogger(__name__)
 
@@ -57,8 +57,13 @@ async def execute_trade(
     """매수 또는 매도를 실행한다.
 
     Raises:
-        ValueError: 잔액 부족 또는 보유 수량 부족 시
+        ValueError: 잔액 부족, 보유 수량 부족, 또는 휴장일 시
     """
+    # 휴장일 체크
+    from app.services.market_calendar import is_kr_market_open_today
+    if not await is_kr_market_open_today():
+        raise ValueError("오늘은 한국 주식시장 휴장일입니다")
+
     price_data = await get_current_price(stock_code)
     if not price_data:
         raise ValueError(f"종목 {stock_code}의 가격을 조회할 수 없습니다")
@@ -195,10 +200,15 @@ async def check_and_apply_multiplier(
     result = await db.execute(stmt)
     holdings = result.scalars().all()
 
+    # 배치 가격 조회 (N+1 방지)
+    codes = [h.stock_code for h in holdings]
+    batch_results = await get_batch_prices(codes) if codes else []
+    price_map = {p["stock_code"]: p["current_price"] for p in batch_results}
+
     for h in holdings:
-        price_data = await get_current_price(h.stock_code)
-        if price_data:
-            total_holdings_value += price_data["current_price"] * h.quantity
+        cp = price_map.get(h.stock_code)
+        if cp:
+            total_holdings_value += cp * h.quantity
 
     total_value = portfolio.current_cash + total_holdings_value
     profit = total_value - portfolio.initial_cash
