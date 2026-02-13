@@ -1,18 +1,20 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { useToast } from '../../components';
 
 export default function BottomNav() {
   const navigate = useNavigate();
   const location = useLocation();
+  const toast = useToast();
 
   // Don't show on learning flow pages or auth/onboarding
-  const hiddenPaths = ['/matching', '/story', '/comparison', '/companies', '/auth', '/onboarding', '/narrative'];
+  const hiddenPaths = ['/case', '/story', '/comparison', '/companies', '/auth', '/onboarding', '/narrative'];
   if (hiddenPaths.some(p => location.pathname.startsWith(p))) return null;
 
   const tabs = [
     { id: 'home', label: '홈', path: '/', onClick: () => navigate('/') },
     { id: 'portfolio', label: '포트폴리오', path: '/portfolio', onClick: () => navigate('/portfolio') },
-    { id: 'tutor', label: 'AI 튜터', path: '/tutor', onClick: () => navigate('/tutor') },
+    { id: 'tutor', label: 'AI 튜터', path: '/tutor', onClick: () => toast.info('빠르게 준비 될 예정이에요!') },
   ];
 
   const icons = {
