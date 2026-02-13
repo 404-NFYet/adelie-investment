@@ -1,6 +1,6 @@
 ---
 provider: openai
-model: gpt-4o-mini
+model: gpt-5-mini
 temperature: 0.3
 response_format: json_object
 system_message: >
