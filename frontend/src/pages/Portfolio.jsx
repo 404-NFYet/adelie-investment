@@ -1,7 +1,7 @@
 /**
  * Portfolio.jsx - 포트폴리오 (4탭: 보유종목/자유매매/보상내역/랭킹)
  */
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import AppHeader from '../components/layout/AppHeader';
 import { usePortfolio } from '../contexts/PortfolioContext';
@@ -12,6 +12,7 @@ import StockDetail from '../components/trading/StockDetail';
 import StockSearch from '../components/trading/StockSearch';
 import RewardCard from '../components/trading/RewardCard';
 import Leaderboard from '../components/trading/Leaderboard';
+import { PenguinMascot } from '../components';
 import { API_BASE_URL } from '../config';
 import useCountUp from '../hooks/useCountUp';
 import { formatKRW } from '../utils/formatNumber';
@@ -71,6 +72,27 @@ function TradeItem({ trade }) {
         <p className="text-sm font-semibold">{formatKRW(trade.total_amount)}</p>
         <p className="text-xs text-text-secondary">{trade.quantity}주 x {formatKRW(trade.price)}</p>
       </div>
+    </div>
+  );
+}
+
+/* ── 거래 내역 (더 보기 지원) ── */
+function TradeHistory({ trades }) {
+  const [showAll, setShowAll] = useState(false);
+  if (trades.length === 0) return null;
+  const visible = showAll ? trades : trades.slice(0, 10);
+  return (
+    <div className="card">
+      <h3 className="font-bold text-sm mb-3">최근 거래</h3>
+      {visible.map(t => <TradeItem key={t.id} trade={t} />)}
+      {!showAll && trades.length > 10 && (
+        <button
+          onClick={() => setShowAll(true)}
+          className="w-full pt-3 text-xs text-primary font-medium text-center"
+        >
+          더 보기 ({trades.length - 10}건)
+        </button>
+      )}
     </div>
   );
 }
@@ -227,8 +249,7 @@ export default function Portfolio() {
           <div className="space-y-3">
             {portfolio.holdings.length === 0 ? (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="card text-center py-8">
-                <img src="/images/penguin-3d.png" alt="Adelie" className="w-12 h-12 mx-auto mb-3" />
-                <p className="text-text-secondary text-sm">아직 보유 종목이 없습니다</p>
+                <PenguinMascot variant="empty" message="아직 보유 종목이 없습니다" />
                 <p className="text-text-muted text-xs mt-1">브리핑에서 투자하거나 자유 매매를 시작해보세요</p>
               </motion.div>
             ) : (
@@ -237,12 +258,7 @@ export default function Portfolio() {
               ))
             )}
             {/* 거래 내역 */}
-            {trades.length > 0 && (
-              <div className="card">
-                <h3 className="font-bold text-sm mb-3">최근 거래</h3>
-                {trades.slice(0, 10).map(t => <TradeItem key={t.id} trade={t} />)}
-              </div>
-            )}
+            <TradeHistory trades={trades} />
           </div>
         )}
 

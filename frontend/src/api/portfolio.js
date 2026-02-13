@@ -40,4 +40,8 @@ export const portfolioApi = {
   /** 리더보드 조회 */
   getLeaderboard: (limit = 20) =>
     fetchJson(`${API_BASE_URL}/api/v1/portfolio/leaderboard/ranking?limit=${limit}`),
+
+  /** 오늘 시장 개장 여부 */
+  getMarketStatus: () =>
+    fetchJson(`${API_BASE_URL}/api/v1/trading/market-status`),
 };
