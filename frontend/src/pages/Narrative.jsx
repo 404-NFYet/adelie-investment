@@ -4,7 +4,7 @@
  * + 브리핑 완료 보상 + 페이지별 용어 + 출처
  */
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
@@ -139,35 +139,6 @@ function NarrativeCard({ content, stepConfig }) {
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-/* ── 페이지별 용어 카드 ── */
-function GlossarySection({ glossary, color }) {
-  if (!glossary || glossary.length === 0) return null;
-
-  return (
-    <div className="space-y-2">
-      <p className="text-[10px] font-bold tracking-widest uppercase px-1" style={{ color }}>
-        용어 설명
-      </p>
-      {glossary.map((item, i) => (
-        <div key={i} className="bg-surface-elevated rounded-2xl p-3 shadow-sm border border-border">
-          <div className="flex items-start gap-2">
-            <span
-              className="text-[10px] font-bold px-1.5 py-0.5 rounded-md flex-shrink-0 mt-0.5"
-              style={{ color, backgroundColor: `${color}15` }}
-            >
-              {item.domain || '금융'}
-            </span>
-            <div>
-              <p className="text-sm font-semibold text-text-primary">{item.term}</p>
-              <p className="text-xs text-text-secondary mt-0.5 leading-relaxed">{item.definition}</p>
-            </div>
-          </div>
-        </div>
-      ))}
     </div>
   );
 }
@@ -354,14 +325,11 @@ function BottomNavBar({ current, total, onPrev, onNext, isLast }) {
    메인 Narrative 페이지 컴포넌트
    ══════════════════════════════════════ */
 export default function Narrative() {
-  const [searchParams] = useSearchParams();
+  const { caseId } = useParams();
   const navigate = useNavigate();
   const { claimReward } = usePortfolio();
   const { openTermSheet } = useTermContext();
   const contentRef = useRef(null);
-
-  const keyword = searchParams.get('keyword') || '';
-  const caseId = searchParams.get('caseId') || '';
 
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -552,8 +520,7 @@ export default function Narrative() {
                   <NarrativeCard content={stepData.content} stepConfig={stepMeta} />
                 )}
 
-                {/* 페이지별 용어 */}
-                <GlossarySection glossary={stepData.glossary} color={stepMeta.color} />
+                {/* 페이지별 용어는 인라인 하이라이트 + TermBottomSheet로 대체 */}
 
                 {/* 출처 (인라인 소스 링크) */}
                 {stepData.sources && stepData.sources.length > 0 && (

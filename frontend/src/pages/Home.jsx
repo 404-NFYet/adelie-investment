@@ -42,8 +42,8 @@ export default function Home() {
   const handleKeywordSelect = (keyword) => {
     setSelectedId(keyword.id);
     navigate(
-      `/matching?keyword=${encodeURIComponent(keyword.title)}&caseId=${keyword.case_id}`,
-      { state: { stocks: keyword.stocks || [] } }
+      `/case/${keyword.case_id}`,
+      { state: { keyword, stocks: keyword.stocks || [] } }
     );
   };
 
