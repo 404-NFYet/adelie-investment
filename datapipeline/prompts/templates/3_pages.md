@@ -2,6 +2,7 @@
 provider: anthropic
 model: claude-sonnet-4-5-20250929
 temperature: 0.4
+max_tokens: 16000
 response_format: json_object
 ---
 당신은 `interface_3_final_briefing` 2단계 생성기입니다.
