@@ -255,6 +255,8 @@ def build_curated_context_node(state: dict) -> dict:
                         "attention_score": m.get("attention_score"),
                         "attention_percentile": m.get("attention_percentile"),
                         "volume_ratio": m.get("volume_ratio", 0.0),
+                        "change_pct": m.get("return_pct", stock.change_pct),
+                        "period_days": m.get("period_days", stock.period_days),
                     })
                 enriched.append(stock)
             curated = curated.model_copy(update={"selected_stocks": enriched})
