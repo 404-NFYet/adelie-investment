@@ -9,6 +9,33 @@ const TABS = {
   REGISTER: 'register',
 };
 
+const EMAIL_DOMAINS = [
+  { label: 'gmail.com', value: 'gmail.com' },
+  { label: 'naver.com', value: 'naver.com' },
+  { label: 'daum.net', value: 'daum.net' },
+  { label: 'kakao.com', value: 'kakao.com' },
+  { label: '직접입력', value: '' },
+];
+
+/* SVG Eye 아이콘 */
+function EyeIcon({ open }) {
+  if (open) {
+    return (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+        <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+        <line x1="1" y1="1" x2="23" y2="23" />
+      </svg>
+    );
+  }
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
 export default function Auth() {
   const [activeTab, setActiveTab] = useState(TABS.LOGIN);
   const [email, setEmail] = useState('');
@@ -21,16 +48,30 @@ export default function Auth() {
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
 
+  // 회원가입 이메일 분리 상태
+  const [emailLocal, setEmailLocal] = useState('');
+  const [emailDomain, setEmailDomain] = useState('gmail.com');
+  const [customDomain, setCustomDomain] = useState('');
+
   const resetForm = () => {
     setEmail('');
     setPassword('');
     setUsername('');
     setError('');
+    setEmailLocal('');
+    setEmailDomain('gmail.com');
+    setCustomDomain('');
   };
 
   const handleTabSwitch = (tab) => {
     setActiveTab(tab);
     resetForm();
+  };
+
+  // 회원가입 이메일 조합
+  const getRegisterEmail = () => {
+    const domain = emailDomain || customDomain;
+    return domain ? `${emailLocal}@${domain}` : emailLocal;
   };
 
   const handleLogin = async (e) => {
@@ -51,9 +92,16 @@ export default function Auth() {
   const handleRegister = async (e) => {
     e.preventDefault();
     setError('');
+    if (password.length < 8) { setError('비밀번호는 8자 이상이어야 합니다'); return; }
+    if (!username || username.length < 2 || username.length > 10) { setError('사용자명은 2~10자로 입력해주세요'); return; }
+    const registerEmail = getRegisterEmail();
+    if (!registerEmail.includes('@') || !registerEmail.split('@')[1]) {
+      setError('올바른 이메일 형식이 아닙니다');
+      return;
+    }
     setLoading(true);
     try {
-      const response = await authApi.register(email, password, username);
+      const response = await authApi.register(registerEmail, password, username);
       login(response);
       setDifficulty(selectedDifficulty);
       navigate('/');
@@ -154,15 +202,15 @@ export default function Auth() {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="••••••••"
-                      className="input w-full"
+                      className="input w-full pr-10"
                       required
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary text-sm"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary"
                     >
-                      {showPassword ? '🙈' : '👁'}
+                      <EyeIcon open={showPassword} />
                     </button>
                   </div>
                 </div>
@@ -184,17 +232,52 @@ export default function Auth() {
                 onSubmit={handleRegister}
                 className="space-y-4"
               >
+                {/* 이메일 (로컬파트 + 도메인 선택) */}
                 <div>
                   <label className="block text-sm text-text-secondary mb-1.5">이메일</label>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="email@example.com"
-                    className="input w-full"
-                    required
-                  />
+                  <div className="flex gap-1 items-center">
+                    <input
+                      type="text"
+                      value={emailLocal}
+                      onChange={(e) => setEmailLocal(e.target.value)}
+                      placeholder="아이디"
+                      className="input flex-1 min-w-0"
+                      required
+                    />
+                    <span className="text-text-secondary text-sm flex-shrink-0">@</span>
+                    {emailDomain ? (
+                      <select
+                        value={emailDomain}
+                        onChange={(e) => setEmailDomain(e.target.value)}
+                        className="input flex-1 min-w-0 text-sm"
+                      >
+                        {EMAIL_DOMAINS.map(d => (
+                          <option key={d.value} value={d.value}>{d.label}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="flex-1 min-w-0 flex gap-1">
+                        <input
+                          type="text"
+                          value={customDomain}
+                          onChange={(e) => setCustomDomain(e.target.value)}
+                          placeholder="도메인"
+                          className="input flex-1 min-w-0 text-sm"
+                          required
+                        />
+                        <button
+                          type="button"
+                          onClick={() => { setEmailDomain('gmail.com'); setCustomDomain(''); }}
+                          className="text-xs text-primary flex-shrink-0 px-1"
+                        >
+                          목록
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
+
+                {/* 비밀번호 */}
                 <div>
                   <label className="block text-sm text-text-secondary mb-1.5">비밀번호</label>
                   <div className="relative">
@@ -203,18 +286,22 @@ export default function Auth() {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="••••••••"
-                      className="input w-full"
+                      className="input w-full pr-10"
+                      minLength={8}
                       required
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary text-sm"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary"
                     >
-                      {showPassword ? '🙈' : '👁'}
+                      <EyeIcon open={showPassword} />
                     </button>
                   </div>
+                  <p className="text-xs text-text-muted mt-1">8자 이상, 영문+숫자 조합 권장</p>
                 </div>
+
+                {/* 사용자 이름 */}
                 <div>
                   <label className="block text-sm text-text-secondary mb-1.5">사용자 이름</label>
                   <input
@@ -223,9 +310,13 @@ export default function Auth() {
                     onChange={(e) => setUsername(e.target.value)}
                     placeholder="홍길동"
                     className="input w-full"
+                    maxLength={10}
                     required
                   />
+                  <p className="text-xs text-text-muted mt-1">2~10자</p>
                 </div>
+
+                {/* 투자 경험 수준 */}
                 <div>
                   <label className="block text-sm text-text-secondary mb-1.5">투자 경험 수준</label>
                   <div className="grid grid-cols-3 gap-2">
