@@ -118,13 +118,14 @@ export default defineConfig({
         target: 'http://localhost:8082',
         changeOrigin: true,
       },
-      // Spring Boot 엔드포인트 (/api/auth/*)
+      // 인증 엔드포인트 (/api/auth/* → FastAPI)
       '/api/auth': {
-        target: 'http://localhost:8083',
+        target: 'http://localhost:8082',
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/auth/, '/api/v1/auth'),
       },
       '/api/health': {
-        target: 'http://localhost:8083',
+        target: 'http://localhost:8082',
         changeOrigin: true,
       },
     },
