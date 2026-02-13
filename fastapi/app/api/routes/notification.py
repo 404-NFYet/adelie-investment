@@ -11,7 +11,7 @@ from app.models.notification import Notification
 
 logger = logging.getLogger("narrative_api.notification")
 
-router = APIRouter(prefix="/notifications", tags=["Notifications"])
+router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 
 class NotificationItem(BaseModel):

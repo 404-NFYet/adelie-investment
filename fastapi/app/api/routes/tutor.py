@@ -31,7 +31,7 @@ from app.services.tutor_engine import (
 )
 from app.services.stock_resolver import detect_stock_codes
 
-router = APIRouter(prefix="/tutor", tags=["AI Tutor"])
+router = APIRouter(prefix="/tutor", tags=["AI tutor"])
 
 
 async def get_term_explanation_from_llm(term: str, difficulty: str) -> str:

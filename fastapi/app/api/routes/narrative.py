@@ -23,7 +23,7 @@ from app.services.narrative_builder import (
 
 logger = logging.getLogger("narrative_api.narrative")
 
-router = APIRouter(prefix="/narrative", tags=["Narrative"])
+router = APIRouter(prefix="/narrative", tags=["narrative"])
 
 
 # --- DB 쿼리 헬퍼 ---

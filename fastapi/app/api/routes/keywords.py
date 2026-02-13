@@ -14,7 +14,7 @@ from app.models.briefing import DailyBriefing
 from app.models.historical_case import HistoricalCase, CaseMatch
 from app.services.redis_cache import get_redis_cache
 
-router = APIRouter(prefix="/keywords", tags=["Keywords"])
+router = APIRouter(prefix="/keywords", tags=["keywords"])
 
 
 @router.get("/today")

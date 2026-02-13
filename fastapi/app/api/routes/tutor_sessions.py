@@ -16,7 +16,7 @@ from app.services.chart_storage import get_chart_presigned_url
 
 logger = logging.getLogger("narrative_api.tutor_sessions")
 
-router = APIRouter(prefix="/tutor", tags=["AI Tutor - Sessions"])
+router = APIRouter(prefix="/tutor", tags=["tutor sessions"])
 
 
 @router.get("/sessions")

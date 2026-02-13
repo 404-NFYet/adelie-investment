@@ -20,7 +20,7 @@ from app.schemas.pipeline import (
     PipelineTriggerResponse,
 )
 
-router = APIRouter(prefix="/pipeline", tags=["Pipeline"])
+router = APIRouter(prefix="/pipeline", tags=["pipeline"])
 
 
 @router.post("/trigger", response_model=PipelineTriggerResponse)
