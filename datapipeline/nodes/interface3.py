@@ -178,6 +178,36 @@ def run_hallcheck_pages_node(state: dict) -> dict:
 
 
 # ────────────────────────────────────────────
+# 3b. merge_theme_pages — hallcheck_pages 대체 (LLM 미호출)
+# ────────────────────────────────────────────
+
+def merge_theme_pages_node(state: dict) -> dict:
+    """hallcheck_pages 대체: LLM 호출 없이 i3_validated 구성.
+
+    validate_interface2에서 이미 수치/날짜 검증 완료.
+    run_pages는 검증된 데이터 기반 서사 구성이므로 hallcheck 중복 제거.
+    """
+    if state.get("error"):
+        return {"error": state["error"]}
+
+    node_start = time.time()
+    logger.info("[Node] merge_theme_pages (lightweight, no LLM)")
+
+    i3_theme = state["i3_theme"]
+    i3_pages = state["i3_pages"]
+    raw = state["raw_narrative"]
+
+    return {
+        "i3_validated": {
+            "validated_theme": i3_theme.get("theme", raw["theme"]),
+            "validated_one_liner": i3_theme.get("one_liner", raw["one_liner"]),
+            "validated_pages": i3_pages,
+        },
+        "metrics": _update_metrics(state, "merge_theme_pages", time.time() - node_start),
+    }
+
+
+# ────────────────────────────────────────────
 # 4. run_glossary — page_glossaries
 # ────────────────────────────────────────────
 
@@ -484,7 +514,7 @@ def assemble_output_node(state: dict) -> dict:
         pages = state["pages"]
         charts = state.get("charts") or {}
         sources = state.get("sources", [])
-        checklist = state.get("hallucination_checklist", [])
+        checklist = state.get("hallucination_checklist") or []
         theme = state.get("theme", raw_narrative["theme"])
         one_liner = state.get("one_liner", raw_narrative["one_liner"])
 

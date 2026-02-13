@@ -34,7 +34,7 @@ class MultiProviderClient:
 
         # OpenAI
         if openai_key:
-            self.providers["openai"] = OpenAI(api_key=openai_key)
+            self.providers["openai"] = OpenAI(api_key=openai_key, timeout=60)
             LOGGER.info("OpenAI provider initialized")
 
         # Perplexity (OpenAI 호환 API)
@@ -42,6 +42,7 @@ class MultiProviderClient:
             self.providers["perplexity"] = OpenAI(
                 api_key=perplexity_key,
                 base_url="https://api.perplexity.ai",
+                timeout=45,
             )
             LOGGER.info("Perplexity provider initialized")
 
