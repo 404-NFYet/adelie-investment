@@ -20,7 +20,7 @@ function Skeleton() {
 }
 
 export default function TermBottomSheet() {
-  const { selectedTerm, isTermSheetOpen, closeTermSheet, openTutorWithTerm } = useTermContext();
+  const { selectedTerm, isTermSheetOpen, closeTermSheet } = useTermContext();
   const [explanation, setExplanation] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -109,14 +109,14 @@ export default function TermBottomSheet() {
                 )}
               </div>
 
-              {/* AI 튜터 연결 버튼 */}
+              {/* AI 튜터 연결 버튼 (준비 중) */}
               <div className="px-6 pb-6 pt-2">
                 <button
-                  onClick={() => openTutorWithTerm(selectedTerm)}
-                  className="w-full py-3 bg-surface rounded-xl text-sm text-primary font-medium
-                             hover:bg-border-light active:scale-[0.98] transition-all"
+                  disabled
+                  className="w-full py-3 bg-surface rounded-xl text-sm text-text-muted font-medium
+                             cursor-not-allowed opacity-60"
                 >
-                  AI 튜터에게 더 물어보기
+                  AI 튜터 준비 중
                 </button>
               </div>
             </div>
