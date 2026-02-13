@@ -18,8 +18,7 @@ graph TB
     end
 
     subgraph Backend
-        FAST[FastAPI<br/>AI/Data API<br/>:8082]
-        SPRING[Spring Boot<br/>Auth API<br/>:8083]
+        API[FastAPI<br/>AI/Data/Auth API<br/>:8082]
     end
 
     subgraph Chatbot["Chatbot (chatbot/)"]
@@ -44,16 +43,14 @@ graph TB
         MINIO[(MinIO<br/>:9000)]
     end
 
-    FE --> FAST
-    FE --> SPRING
-    FAST --> AGENT
+    FE --> API
+    API --> AGENT
     AGENT --> OPENAI
     AGENT --> PPLX
     AGENT --> LSMITH
-    FAST --> PG
-    FAST --> REDIS
-    FAST --> NEO4J
-    SPRING --> PG
+    API --> PG
+    API --> REDIS
+    API --> NEO4J
     Pipeline --> OPENAI
     Pipeline --> PG
     Pipeline --> NEO4J
@@ -67,8 +64,7 @@ graph TB
 | 영역 | 기술 | 버전 |
 |------|------|------|
 | **Frontend** | React, Vite, Tailwind CSS, Framer Motion | React 19, Vite 6.x, Tailwind 4.x |
-| **Backend (AI/Data)** | Python, FastAPI, LangGraph, LangChain | Python 3.11+, FastAPI 0.115+ |
-| **Backend (Auth)** | Java, Spring Boot, Spring Security | Java 17, Spring Boot 3.x |
+| **Backend** | Python, FastAPI, LangGraph, LangChain | Python 3.11+, FastAPI 0.115+ |
 | **AI/LLM** | OpenAI (gpt-4o-mini, gpt-4o), Perplexity (sonar-pro) | - |
 | **Observability** | LangSmith | - |
 | **Database** | PostgreSQL + pgvector, Neo4j, Redis | PG 16, Neo4j 5, Redis 7 |
@@ -91,22 +87,14 @@ adelie-investment/
 │   │   └── styles/          # 전역 스타일
 │   └── package.json
 │
-├── fastapi/                 # FastAPI 서버 (AI/Data API)
+├── fastapi/                 # FastAPI 서버 (AI/Data/Auth API)
 │   ├── app/
-│   │   ├── api/routes/      # 라우터 (briefings, keywords, learning, reports 등)
+│   │   ├── api/routes/      # 라우터 (briefings, keywords, learning, reports, auth 등)
 │   │   ├── core/            # 설정, 인증, DB
 │   │   ├── models/          # SQLAlchemy ORM 모델
 │   │   ├── schemas/         # Pydantic 스키마
 │   │   └── services/        # 비즈니스 로직 (redis_cache 등)
 │   └── requirements.txt
-│
-├── springboot/              # Spring Boot 서버 (Auth API)
-│   └── src/main/java/com/narrative/invest/
-│       ├── controller/      # REST 컨트롤러
-│       ├── service/         # 서비스 계층
-│       ├── model/           # JPA 엔티티
-│       ├── repository/      # JPA 리포지토리
-│       └── security/        # JWT 인증
 │
 ├── chatbot/                 # AI 튜터 모듈 (LangGraph 에이전트)
 │   ├── agent/               # 튜터 에이전트
@@ -143,7 +131,6 @@ adelie-investment/
 
 - Node.js 20+
 - Python 3.11+
-- Java 17+
 - Docker & Docker Compose
 - infra-server (10.10.10.10) 접근 권한
 
@@ -162,7 +149,7 @@ cp .env.example .env
 
 ```bash
 # Docker 기반 (권장) - infra-server(10.10.10.10) 연결
-make dev                    # 풀스택: frontend + backend-api + backend-spring
+make dev                    # 풀스택: frontend + backend-api
 make dev-frontend           # 프론트엔드만
 make dev-api                # 백엔드 API만
 make dev-down               # 개발 환경 중지
@@ -184,13 +171,6 @@ pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 8082 --reload
 ```
 
-### 5. Spring Boot (Backend) 실행
-
-```bash
-cd springboot
-./gradlew bootRun    # http://localhost:8083
-```
-
 ---
 
 ## LXD 컨테이너 및 서비스 URL
@@ -198,8 +178,7 @@ cd springboot
 | 서비스 | URL | 설명 |
 |--------|-----|------|
 | Frontend | http://localhost:3001 | React 개발 서버 |
-| FastAPI | http://localhost:8082 | AI/Data API |
-| Spring Boot | http://localhost:8083 | Auth API |
+| FastAPI | http://localhost:8082 | AI/Data/Auth API |
 | PostgreSQL | 10.10.10.10:5432 | 메인 DB (pgvector) |
 | Redis | 10.10.10.10:6379 | 캐싱, 세션, Rate Limiting |
 | Neo4j Browser | http://10.10.10.10:7474 | 그래프 DB 웹 콘솔 |
