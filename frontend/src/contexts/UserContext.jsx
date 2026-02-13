@@ -61,6 +61,13 @@ export function UserProvider({ children }) {
     }
   }, []);
 
+  // 401 응답 시 자동 로그아웃 (client.js에서 이벤트 발행)
+  useEffect(() => {
+    const handleForceLogout = () => setUser(null);
+    window.addEventListener('auth:logout', handleForceLogout);
+    return () => window.removeEventListener('auth:logout', handleForceLogout);
+  }, []);
+
   const updateSettings = (newSettings) => {
     setSettings((prev) => ({ ...prev, ...newSettings }));
   };
