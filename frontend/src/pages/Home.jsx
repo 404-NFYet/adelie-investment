@@ -91,10 +91,10 @@ export default function Home() {
           <PenguinMascot variant="loading" message="오늘의 키워드를 준비 중입니다..." />
         )}
 
-        {/* Keyword Cards - stagger 입장 */}
+        {/* Keyword Cards - stagger 입장 (최신 3개만 표시) */}
         {!isLoading && !error && (
           <div className="space-y-4">
-            {keywords.map((keyword, index) => (
+            {keywords.slice(0, 3).map((keyword, index) => (
               <motion.div
                 key={keyword.id}
                 initial={{ opacity: 0, y: 20 }}
@@ -138,6 +138,20 @@ export default function Home() {
                 )}
               </motion.div>
             ))}
+
+            {/* 지난 브리핑 보기 버튼 */}
+            <motion.button
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.3 }}
+              onClick={() => navigate('/history')}
+              className="w-full py-3 text-sm font-medium text-primary hover:text-primary-hover transition-colors flex items-center justify-center gap-1"
+            >
+              지난 브리핑 보기
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 18l6-6-6-6" />
+              </svg>
+            </motion.button>
           </div>
         )}
       </main>
