@@ -45,16 +45,16 @@ hotfix/auth-token-expire       # 긴급: main에서 분기
 
 ## 커밋 컨벤션
 
-형식: `[type] 한글 설명`
+형식: `type: 한글 설명`
 
 ```
-[feat] 리더보드 API 추가
-[fix] 포트폴리오 크래시 수정
-[docs] 스케줄러 가이드 추가
-[refactor] 포트폴리오 서비스 쿼리 최적화
-[test] E2E 플로우 테스트 추가
-[chore] Dockerfile 빌드 캐시 개선
-[style] ESLint 경고 해결
+feat: 리더보드 API 추가
+fix: 포트폴리오 크래시 수정
+docs: 스케줄러 가이드 추가
+refactor: 포트폴리오 서비스 쿼리 최적화
+test: E2E 플로우 테스트 추가
+chore: Dockerfile 빌드 캐시 개선
+style: ESLint 경고 해결
 ```
 
 ### 커밋 타입
@@ -86,14 +86,14 @@ git checkout -b feat/hj/leaderboard-ui
 ```bash
 # 작업 후
 git add -A
-git commit -m "[feat] 리더보드 API 추가"
+git commit -m "feat: 리더보드 API 추가"
 ```
 
 ### 3. PR 생성
 
 ```bash
 git push -u origin feat/hj/leaderboard-ui
-gh pr create --base develop --title "[feat] 리더보드 API 추가" --body "..."
+gh pr create --base develop --title "feat: 리더보드 API 추가" --body "..."
 ```
 
 ### 4. 리뷰 + 머지
@@ -153,7 +153,6 @@ make deploy
 adelie-investment/
 ├── frontend/                   # React 19 + Vite
 ├── fastapi/                    # FastAPI (AI/Data API)
-├── springboot/                 # Spring Boot (Auth, CRUD)
 ├── chatbot/                    # LangGraph AI 튜터
 ├── datapipeline/               # 데이터 수집 + 케이스 생성 파이프라인
 ├── database/                   # DB 마이그레이션 + 스크립트
@@ -173,7 +172,6 @@ adelie-investment/
 |------|--------|------|
 | `frontend/` | @YJ99Son | React 프론트엔드 |
 | `fastapi/` | @J2hoon10 | FastAPI 백엔드 |
-| `springboot/` | @jjjh02 | Spring Boot 인증/CRUD |
 | `chatbot/` | @J2hoon10 @ryejinn | LangGraph AI 튜터 |
 | `datapipeline/` | @J2hoon10 | 데이터 수집 파이프라인 |
 | `database/` | @dorae222 | DB 마이그레이션 |
@@ -189,7 +187,6 @@ adelie-investment/
 
 - **Frontend**: JavaScript, Tailwind CSS, 함수형 컴포넌트
 - **FastAPI**: Python 3.11+, 비동기(async/await), 한글 주석
-- **Spring Boot**: Java 17, 어노테이션 기반
 - **Chatbot / Data Pipeline**: Python, 한글 주석, 마크다운 프롬프트
 
 ## 파일 구조 규칙

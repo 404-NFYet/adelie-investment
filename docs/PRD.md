@@ -530,19 +530,18 @@ LIMIT 5
 │  │Briefing │ │ Search  │ │  Story  │ │Compare  │ │Companies│   │
 │  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘   │
 └─────────────────────────────────────────────────────────────────┘
-              │                                  │
-              ▼                                  ▼
-┌─────────────────────────┐    ┌─────────────────────────────────┐
-│  Spring Boot (일반 API)  │    │     FastAPI (AI/Data API)       │
-│         :8083            │    │           :8082                 │
-│  ┌───────────────────┐  │    │  ┌─────────┐  ┌─────────────┐  │
-│  │ Auth, Session     │  │    │  │   AI    │  │    Data     │  │
-│  │ CRUD Operations   │  │    │  │ Module  │  │  Pipeline   │  │
-│  └───────────────────┘  │    │  └─────────┘  └─────────────┘  │
-└─────────────────────────┘    └─────────────────────────────────┘
-              │                        │              │
-              └────────────┬───────────┘              │
-                           ▼                          ▼
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    FastAPI (All APIs)                            │
+│                         :8082                                   │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐ │
+│  │    Auth     │  │     AI      │  │     Data Pipeline       │ │
+│  │   + CRUD    │  │   Module    │  │                         │ │
+│  └─────────────┘  └─────────────┘  └─────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+                       │                      │
+                       ▼                      ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                      인프라 (10.10.10.10)                        │
 │  ┌─────────────┐  ┌───────────┐  ┌────────┐  ┌───────────────┐ │
@@ -600,13 +599,20 @@ src/
 
 | 엔드포인트 | 메서드 | 설명 |
 |-----------|--------|------|
-| `/api/briefing/today` | GET | 오늘의 브리핑 조회 |
-| `/api/search/cases` | POST | 과거 사례 검색 |
-| `/api/story/{case_id}` | GET | 스토리 콘텐츠 조회 |
-| `/api/comparison/{case_id}` | GET | 과거-현재 비교 |
-| `/api/companies/{case_id}` | GET | 관련 기업 조회 |
-| `/api/tutor/chat` | POST | AI Tutor 대화 (SSE) |
-| `/api/pipeline/trigger` | POST | 데이터 파이프라인 실행 |
+| `/api/v1/auth/*` | POST | 인증 (login, register, refresh, logout) |
+| `/api/v1/briefing/today` | GET | 오늘의 브리핑 조회 |
+| `/api/v1/keywords/today` | GET | 오늘의 키워드 |
+| `/api/v1/cases/{id}` | GET | 역사적 사례 상세 |
+| `/api/v1/narrative/*` | GET | 내러티브 콘텐츠 |
+| `/api/v1/tutor/chat` | POST | AI Tutor 대화 (SSE) |
+| `/api/v1/trading/*` | POST | 매매 (주문, 체결) |
+| `/api/v1/portfolio/*` | GET | 포트폴리오, 리더보드 |
+| `/api/v1/notification/*` | GET | 알림 |
+| `/api/v1/learning/*` | GET/POST | 학습 진도 |
+| `/api/v1/quiz_reward/*` | GET/POST | 퀴즈/보상 |
+| `/api/v1/reports/*` | GET | 리서치 리포트 |
+| `/api/v1/glossary` | GET | 용어집 조회 |
+| `/api/v1/pipeline/trigger` | POST | 데이터 파이프라인 실행 |
 
 **디렉토리 구조**:
 ```
@@ -620,19 +626,6 @@ fastapi/
 ├── requirements.txt
 └── Dockerfile
 ```
-
-#### 5.3.2 Spring Boot (일반 API) - :8083
-
-**역할**: 인증, 세션 관리, 사용자 설정 CRUD
-
-| 엔드포인트 | 메서드 | 설명 |
-|-----------|--------|------|
-| `/api/auth/login` | POST | 로그인 |
-| `/api/auth/register` | POST | 회원가입 |
-| `/api/auth/refresh` | POST | 토큰 갱신 |
-| `/api/users/settings` | GET/PUT | 사용자 설정 |
-| `/api/bookmarks` | GET/POST/DELETE | 북마크 관리 |
-| `/api/history` | GET | 학습 히스토리 |
 
 ### 5.4 AI Module
 
@@ -1045,7 +1038,7 @@ research-reports/
 | 팀장 | 손영진 | 기획, React UI, 프로젝트 관리 |
 | AI 개발 | 정지훈 | FastAPI, LangGraph, AI 서비스 |
 | AI QA | 안례진 | AI 테스트, 프롬프트 엔지니어링, LangSmith |
-| 백엔드 | 허진서 | Spring Boot API, 인증, DB 설계 |
+| 백엔드 | 허진서 | FastAPI 인증/CRUD, DB 설계 |
 | 인프라 | 도형준 | Docker, CI/CD, 인프라 운영 |
 
 ### 8.2 역할별 상세
@@ -1069,7 +1062,7 @@ research-reports/
 - 환각 테스트 설계/실행
 
 #### 허진서 (백엔드)
-- Spring Boot API 개발
+- FastAPI 인증/CRUD API 개발
 - JWT 인증 구현
 - PostgreSQL/Neo4j 스키마 설계
 - API 문서화
@@ -1099,7 +1092,7 @@ research-reports/
 **목표**: 프로젝트 기반 구조 완성
 
 **주요 작업**:
-- [ ] 프로젝트 초기화 (React, FastAPI, Spring Boot)
+- [ ] 프로젝트 초기화 (React, FastAPI)
 - [ ] 개발 환경 설정 (Docker, .env)
 - [ ] CI/CD 파이프라인 구축
 - [ ] DB 스키마 설계 및 마이그레이션
@@ -1239,13 +1232,23 @@ research-reports/
 | Method | Path | 설명 |
 |--------|------|------|
 | GET | /api/v1/health | 헬스체크 |
+| POST | /api/v1/auth/login | 로그인 |
+| POST | /api/v1/auth/register | 회원가입 |
+| POST | /api/v1/auth/refresh | 토큰 갱신 |
+| POST | /api/v1/auth/logout | 로그아웃 |
 | GET | /api/v1/briefing/today | 오늘의 브리핑 |
+| GET | /api/v1/keywords/today | 오늘의 키워드 |
+| GET | /api/v1/cases/{id} | 역사적 사례 상세 |
+| GET | /api/v1/narrative/* | 내러티브 콘텐츠 |
 | GET | /api/v1/glossary | 용어집 조회 |
-| GET | /api/v1/search/cases | 역사적 사례 검색 |
 | POST | /api/v1/tutor/chat | AI 튜터 채팅 (SSE) |
 | GET | /api/v1/tutor/explain/{term} | 용어 설명 |
-| POST | /api/v1/pipeline/trigger | 파이프라인 실행 |
 | POST | /api/v1/highlight | 용어 하이라이팅 |
-| GET | /api/v1/story/{case_id} | 스토리 콘텐츠 |
-| GET | /api/v1/comparison/{case_id} | 비교 분석 |
-| GET | /api/v1/companies/{case_id} | 관련 기업 |
+| POST | /api/v1/trading/* | 매매 (주문, 체결) |
+| GET | /api/v1/portfolio/* | 포트폴리오, 리더보드 |
+| GET | /api/v1/notification/* | 알림 |
+| GET | /api/v1/learning/* | 학습 진도 |
+| POST | /api/v1/quiz_reward/* | 퀴즈/보상 |
+| GET | /api/v1/reports/* | 리서치 리포트 |
+| POST | /api/v1/pipeline/trigger | 파이프라인 실행 |
+| GET | /api/v1/visualization/* | 데이터 시각화 |

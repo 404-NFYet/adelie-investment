@@ -8,7 +8,7 @@ Adelie Investment ("History Repeats Itself") is an AI-powered financial educatio
 
 ## Build & Run Commands
 
-### Development (Docker, connects to infra-server 10.10.10.10)
+### Development (Docker, 로컬 PostgreSQL + Redis 포함)
 ```bash
 make dev                    # Full stack: frontend + backend-api
 make dev-frontend           # Frontend only
@@ -47,12 +47,14 @@ make deploy                 # Production deploy (docker-compose.prod.yml)
 make migrate                # Alembic migrations: cd database && alembic upgrade head
 ```
 
-### Data Pipeline (run inside backend-api container on deploy-test)
+### Data Pipeline
 ```bash
-# Step 1: Collect market data + seed keywords
-docker exec adelie-backend-api python /app/scripts/seed_fresh_data_integrated.py
+# 새 LangGraph 파이프라인 (18노드, 데이터 수집 → 내러티브 생성 → DB 저장)
+python -m datapipeline.run --backend live --market KR    # 실서비스
+python -m datapipeline.run --backend mock                # 테스트 (LLM 미호출)
 
-# Step 2: Generate historical cases via LLM (requires OPENAI_API_KEY in .env)
+# 레거시 스크립트 (deploy-test 수동 실행용)
+docker exec adelie-backend-api python /app/scripts/seed_fresh_data_integrated.py
 docker exec adelie-backend-api python /app/scripts/generate_cases.py
 ```
 
@@ -70,11 +72,18 @@ adelie-investment/
 │   ├── services/       # term_highlighter
 │   ├── prompts/        # 튜터 전용 프롬프트 템플릿
 │   └── core/           # config, langsmith
-├── datapipeline/       # 데이터 수집 + 케이스 생성 파이프라인
-│   ├── scripts/        # pipeline scripts (seed, generate, verify)
-│   ├── ai/             # AI 서비스 (multi_provider_client, ai_service)
-│   ├── collectors/     # 데이터 수집기 (stock, report, financial)
-│   └── prompts/        # 파이프라인 프롬프트 템플릿
+├── datapipeline/       # 데이터 수집 + 브리핑 생성 파이프라인
+│   ├── nodes/          # LangGraph 노드 (crawlers, screening, curation, interface1~3, db_save)
+│   ├── data_collection/# 데이터 수집 모듈 (news_crawler, research_crawler, screener 등)
+│   ├── ai/             # LLM 클라이언트 (multi_provider_client, llm_utils)
+│   ├── db/             # DB 저장 (writer.py — asyncpg)
+│   ├── collectors/     # 레거시 pykrx 수집기 (FastAPI sys.path 호환)
+│   ├── scripts/        # 레거시 파이프라인 스크립트 (seed, generate)
+│   ├── prompts/        # 프롬프트 템플릿 (9개 .md, frontmatter 기반)
+│   ├── graph.py        # LangGraph StateGraph 정의
+│   ├── run.py          # 파이프라인 실행 진입점
+│   ├── config.py       # 환경변수 기반 설정
+│   └── schemas.py      # Pydantic 스키마
 ├── database/           # DB 마이그레이션 + 스크립트
 │   ├── alembic/        # Alembic migrations
 │   └── scripts/        # create_database, reset_db, init_stock_listings
@@ -82,7 +91,8 @@ adelie-investment/
 └── tests/              # 테스트
     ├── unit/           # 유닛 테스트
     ├── backend/        # API 통합 테스트
-    └── integration/    # E2E/Phase0 테스트
+    ├── integration/    # E2E/Phase0 테스트
+    └── load/           # Locust 부하 테스트
 ```
 
 ### Backend
@@ -92,8 +102,8 @@ adelie-investment/
 The frontend Docker image uses nginx as a reverse proxy. All `/api/v1/*` routes proxy to `backend-api:8082`. Legacy `/api/auth/*` paths are rewritten to `/api/v1/auth/*`. The SPA uses React Router with code splitting (`React.lazy`).
 
 ### Key Data Flow
-1. `datapipeline/scripts/seed_fresh_data_integrated.py` collects real market data via **pykrx** → writes to `daily_briefings` + `briefing_stocks`
-2. `datapipeline/scripts/generate_cases.py` reads keywords from `daily_briefings`, calls **OpenAI gpt-4o-mini** to generate historical case matches → writes to `historical_cases` + `case_matches` + `case_stock_relations`
+1. `datapipeline/run.py` → 18노드 LangGraph: 뉴스/리서치 크롤링 → 종목 스크리닝 → LLM 큐레이션 → 내러티브 생성 → DB 저장
+2. 레거시 스크립트(`scripts/seed_fresh_data_integrated.py`, `scripts/generate_cases.py`)도 deploy-test에서 수동 실행 가능
 3. Frontend fetches `/api/v1/keywords/today` → displays keyword cards → user clicks → `/api/v1/cases/{id}` for full narrative
 
 ### Chatbot (`chatbot/`)
@@ -106,10 +116,12 @@ LangGraph-based tutor agent with SSE streaming. Structured as:
 The tutor modal is globally available in the frontend via `TutorContext` + `ChatFAB`.
 
 ### Data Pipeline (`datapipeline/`)
-- `scripts/` — 키워드 수집, 케이스 생성, 검증 스크립트
-- `ai/` — LLM 프로바이더 클라이언트 (OpenAI, Perplexity, Claude) + 파이프라인 AI 서비스
-- `collectors/` — pykrx 주가 수집기, 네이버 리포트 크롤러
-- `prompts/` — 파이프라인 프롬프트 (planner, writer, reviewer 등)
+- `graph.py` + `run.py` — 18노드 LangGraph 브리핑 파이프라인
+- `nodes/` — crawlers, screening, curation, interface1~3, db_save
+- `data_collection/` — news_crawler, research_crawler, screener, openai_curator
+- `ai/` — multi_provider_client (OpenAI, Perplexity, Claude)
+- `db/writer.py` — asyncpg 직접 저장
+- `prompts/templates/` — 9개 .md (page_purpose, historical_case, narrative_body, hallucination_check, final_hallucination, chart_generation, glossary_generation + _chart_skeletons, _tone_guide)
 
 ### Context Providers (React)
 App wraps routes in: `ThemeProvider > UserProvider > PortfolioProvider > TutorProvider > TermProvider > ErrorBoundary > ToastProvider`
@@ -142,12 +154,11 @@ Routers are dynamically imported in `fastapi/app/main.py` — each module in `ap
 
 ## Infrastructure
 
-| Service | Dev (infra-server) | Prod (docker-compose.prod.yml) |
-|---------|-------------------|-------------------------------|
-| PostgreSQL (pgvector) | 10.10.10.10:5432 | `postgres` container |
-| Redis 7 | 10.10.10.10:6379 | `redis` container |
-| Neo4j 5 | 10.10.10.10:7687 | `neo4j` container |
-| MinIO | 10.10.10.10:9000 | `minio` container |
+| Service | Dev (docker-compose.dev.yml) | Prod (docker-compose.prod.yml) |
+|---------|------|------|
+| PostgreSQL 15 | localhost:5433 (로컬 컨테이너) | `postgres` container |
+| Redis 7 | localhost:6379 (로컬 컨테이너) | `redis` container |
+| MinIO | — | `minio` container |
 
 Deploy-test server: `10.10.10.20` (SSH alias: `deploy-test`)
 
@@ -201,5 +212,5 @@ Deploy-test server: `10.10.10.20` (SSH alias: `deploy-test`)
 
 ## Environment Variables
 
-Required API keys in `.env`: `OPENAI_API_KEY`, `PERPLEXITY_API_KEY`, `LANGCHAIN_API_KEY`
-DB defaults are provided but can be overridden: `DATABASE_URL`, `REDIS_URL`, `NEO4J_URI`, `MINIO_ENDPOINT`
+Required API keys in `.env`: `OPENAI_API_KEY`, `PERPLEXITY_API_KEY`, `LANGCHAIN_API_KEY`, `CLAUDE_API_KEY` (선택, Writer 에이전트용)
+DB defaults are provided but can be overridden: `DATABASE_URL`, `REDIS_URL`, `MINIO_ENDPOINT`

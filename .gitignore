@@ -46,19 +46,12 @@ frontend/.vite/
 # Backend (Python)
 fastapi/dist/
 datapipeline/output/
+datapipeline/data/
 datapipeline/cache/
 *.pyc
 .pytest_cache/
 .coverage
 htmlcov/
-
-# Backend (Java/Spring)
-springboot/target/
-springboot/build/
-*.jar
-*.war
-*.class
-.gradle/
 
 # ============================================
 # IDE / Editor
@@ -163,8 +156,6 @@ Thumbs.db
 *.bak
 *.backup
 .history/
-springboot/bin/
-
 # 리팩토링 백업 (Neo4j/유사도 등 제거 코드)
 _backup/
 
@@ -174,3 +165,4 @@ test-results/
 playwright-report/
 *.plan.md
 .entire/
+data-gen/

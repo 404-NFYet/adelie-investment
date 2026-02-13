@@ -72,14 +72,14 @@ cp .env.example .env
 | 변수 | 설명 | 기본값 | 수정 필요 |
 |------|------|--------|-----------|
 | `OPENAI_API_KEY` | OpenAI API 키 | (없음) | **필수** - 팀장에게 요청 |
-| `DATABASE_URL` | PostgreSQL 연결 | infra-server | 변경 불필요 |
-| `REDIS_URL` | Redis 연결 | infra-server | 변경 불필요 |
-| `NEO4J_URI` | Neo4j 연결 | infra-server | 변경 불필요 |
-| `MINIO_ENDPOINT` | MinIO 연결 | infra-server | 변경 불필요 |
+| `DATABASE_URL` | PostgreSQL 연결 | 로컬 Docker | 변경 불필요 |
+| `REDIS_URL` | Redis 연결 | 로컬 Docker | 변경 불필요 |
+| `MINIO_ENDPOINT` | MinIO 연결 | (없음) | 프로덕션만 사용 |
 | `FASTAPI_PORT` | FastAPI 포트 | 8082 | 충돌 시 변경 |
 | `FRONTEND_PORT` | 프론트엔드 포트 | 3001 | 충돌 시 변경 |
 | `JWT_SECRET` | JWT 시크릿 | 기본값 | 개발 시 변경 불필요 |
 | `PERPLEXITY_API_KEY` | Perplexity 검색 | (없음) | AI 파이프라인 사용 시 필요 |
+| `CLAUDE_API_KEY` | Anthropic Claude | (없음) | 선택 (Writer 에이전트용) |
 | `LANGCHAIN_API_KEY` | LangSmith 트레이싱 | (없음) | 선택 (디버깅 시 유용) |
 
 > **중요**: `.env` 파일은 `.gitignore`에 포함되어 있으므로 커밋되지 않습니다. API 키를 절대 커밋하지 마세요.
@@ -87,7 +87,7 @@ cp .env.example .env
 ## 6. 개발 서버 실행
 
 ```bash
-# 전체 서비스 실행 (프론트엔드 + FastAPI + Spring Boot)
+# 전체 서비스 실행 (프론트엔드 + FastAPI)
 make dev
 
 # 특정 서비스만 실행
@@ -102,22 +102,18 @@ make dev-down
 
 ## 7. 데이터 초기화 (최초 1회)
 
-데이터베이스는 infra-server(10.10.10.10)에서 공유되지만, 초기 데이터가 없을 수 있습니다.
+데이터베이스는 로컬 Docker 컨테이너에서 실행되며, 초기 데이터가 없을 수 있습니다.
 
 ```bash
+# 방법 1: LangGraph 파이프라인 (권장)
+python -m datapipeline.run --backend live --market KR
+
+# 방법 2: 레거시 스크립트 (deploy-test 수동 실행용)
 # Step 1: 시장 데이터 수집 (pykrx로 오늘의 급등/급락/거래량 종목 수집)
-docker exec adelie-backend-api python /app/scripts/seed_fresh_data.py
-# 출력 예시:
-#   수집 날짜: 20260208
-#   전체 종목: 2847
-#   시장: KOSPI 2815.32, KOSDAQ 893.12
-#   키워드 5개 생성
-#   daily_briefings: id=1
-#   briefing_stocks: 15건
-#   === 완료 ===
+docker exec adelie-backend-api python /app/scripts/seed_fresh_data_integrated.py
 
 # Step 2: 역사적 사례 생성 (LLM 기반, OPENAI_API_KEY 필요)
-docker exec -e OPENAI_API_KEY="$OPENAI_API_KEY" adelie-backend-api python /app/generate_cases.py
+docker exec adelie-backend-api python /app/scripts/generate_cases.py
 # 이 과정은 약 2~5분 소요됩니다.
 ```
 
@@ -127,14 +123,13 @@ docker exec -e OPENAI_API_KEY="$OPENAI_API_KEY" adelie-backend-api python /app/g
 |--------|-----|------|
 | 프론트엔드 | http://localhost:3001 | React 앱 |
 | FastAPI Docs | http://localhost:8082/docs | Swagger UI |
-| Spring Boot | http://localhost:8083 | Spring API |
 | **데모 사이트** | https://demo.adelie-invest.com | deploy-test 배포판 |
 
 ## 9. 이미지 빌드/배포
 
 ```bash
 # Docker 이미지 빌드
-make build TAG=v1.0      # 전체 4개 서비스
+make build TAG=v1.0      # 전체 3개 서비스 (frontend, api, ai-pipeline)
 
 # Docker Hub에 푸시
 make push TAG=v1.0       # dorae222/* 레지스트리
@@ -167,8 +162,8 @@ docker compose -f docker-compose.dev.yml build --no-cache
 
 ### DB 연결 실패
 ```bash
-# infra-server 연결 확인
-ping 10.10.10.10
+# 로컬 PostgreSQL 컨테이너 상태 확인
+docker compose -f docker-compose.dev.yml ps postgres
 # PostgreSQL 연결 테스트
 docker exec adelie-backend-api python -c "from app.core.database import engine; print('OK')"
 ```
@@ -177,17 +172,12 @@ docker exec adelie-backend-api python -c "from app.core.database import engine; 
 
 ```
 ┌─────────────────────────────────────────┐
-│ infra-server (10.10.10.10)              │
-│ ├── PostgreSQL 16 + pgvector (5432)     │
-│ ├── Redis 7 (6379)                      │
-│ ├── Neo4j 5 (7687/7474)                │
-│ └── MinIO (9000/9001)                   │
-├─────────────────────────────────────────┤
 │ dev-* 컨테이너 (각 팀원)                │
 │ ├── Frontend (3001)                     │
 │ ├── FastAPI (8082)                      │
-│ └── Spring Boot (8083)                  │
-│    → infra-server DB 공유               │
+│ ├── PostgreSQL (5433, 로컬)             │
+│ └── Redis (6379, 로컬)                  │
+│    → 로컬 Docker 컨테이너 DB            │
 ├─────────────────────────────────────────┤
 │ deploy-test (10.10.10.20)               │
 │ ├── 풀스택 (자체 DB 포함)               │
