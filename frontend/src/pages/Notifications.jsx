@@ -40,7 +40,7 @@ const TYPE_LABELS = {
   system: '시스템',
 };
 
-function NotificationItem({ notification, onRead }) {
+function NotificationItem({ notification, onRead, onDelete }) {
   const label = TYPE_LABELS[notification.type] || TYPE_LABELS.system;
   const isUnread = !notification.is_read;
 
@@ -48,7 +48,7 @@ function NotificationItem({ notification, onRead }) {
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`card flex items-start gap-3 ${isUnread ? 'border-l-4 border-l-primary' : 'opacity-75'}`}
+      className={`card flex items-start gap-3 relative ${isUnread ? 'border-l-4 border-l-primary' : 'opacity-75'}`}
       onClick={() => isUnread && onRead?.(notification.id)}
     >
       <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 text-primary">
@@ -71,6 +71,16 @@ function NotificationItem({ notification, onRead }) {
           })}
         </p>
       </div>
+      {/* 삭제 버튼 */}
+      <button
+        onClick={(e) => { e.stopPropagation(); onDelete?.(notification.id); }}
+        className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full hover:bg-border-light text-text-muted hover:text-text-secondary transition-colors"
+        aria-label="삭제"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </button>
     </motion.div>
   );
 }
@@ -114,6 +124,26 @@ export default function Notifications() {
     } catch {}
   };
 
+  const handleDelete = async (notificationId) => {
+    try {
+      await notificationApi.deleteOne(notificationId);
+      const deleted = notifications.find(n => n.id === notificationId);
+      setNotifications(prev => prev.filter(n => n.id !== notificationId));
+      if (deleted && !deleted.is_read) {
+        setUnreadCount(prev => Math.max(0, prev - 1));
+      }
+    } catch {}
+  };
+
+  const handleDeleteRead = async () => {
+    try {
+      await notificationApi.deleteRead();
+      setNotifications(prev => prev.filter(n => !n.is_read));
+    } catch {}
+  };
+
+  const hasReadNotifs = notifications.some(n => n.is_read);
+
   return (
     <div className="min-h-screen bg-background pb-24">
       <AppHeader showBack title="알림" />
@@ -124,14 +154,24 @@ export default function Notifications() {
           <h2 className="text-lg font-bold">
             알림 {unreadCount > 0 && <span className="text-primary text-sm ml-1">({unreadCount})</span>}
           </h2>
-          {unreadCount > 0 && (
-            <button
-              onClick={handleReadAll}
-              className="text-xs text-primary font-medium"
-            >
-              모두 읽음
-            </button>
-          )}
+          <div className="flex items-center gap-3">
+            {hasReadNotifs && (
+              <button
+                onClick={handleDeleteRead}
+                className="text-xs text-red-400 font-medium"
+              >
+                읽은 알림 삭제
+              </button>
+            )}
+            {unreadCount > 0 && (
+              <button
+                onClick={handleReadAll}
+                className="text-xs text-primary font-medium"
+              >
+                모두 읽음
+              </button>
+            )}
+          </div>
         </div>
 
         {isLoading && (
@@ -155,7 +195,7 @@ export default function Notifications() {
         {!isLoading && notifications.length > 0 && (
           <div className="space-y-3">
             {notifications.map(n => (
-              <NotificationItem key={n.id} notification={n} onRead={handleRead} />
+              <NotificationItem key={n.id} notification={n} onRead={handleRead} onDelete={handleDelete} />
             ))}
           </div>
         )}
