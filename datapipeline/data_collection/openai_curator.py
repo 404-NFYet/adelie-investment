@@ -314,6 +314,7 @@ def _parse_topics(data: dict) -> list[dict]:
 
 def _validate_topics(topics: list[dict], source_catalog: list[dict]) -> tuple[list[str], list[dict]]:
     errors: list[str] = []
+    warnings: list[str] = []
     source_ids_available = {
         str(s.get("source_id", "")).strip()
         for s in source_catalog if isinstance(s, dict) and str(s.get("source_id", "")).strip()
@@ -333,12 +334,10 @@ def _validate_topics(topics: list[dict], source_catalog: list[dict]) -> tuple[li
         source_ids = [str(v).strip() for v in (ctx.get("source_ids") or []) if str(v).strip()]
         evidence_urls = [str(v).strip() for v in (ctx.get("evidence_source_urls") or []) if str(v).strip()]
 
-        if not source_ids:
-            errors.append(f"{topic_name}: source_ids_empty")
         if not evidence_urls:
             errors.append(f"{topic_name}: evidence_source_urls_empty")
 
-        # ws0_* → ws1_* 보정
+        # ws0_* → ws1_* 보정 + unknown source_id는 경고만
         normalized_ids = []
         for sid in source_ids:
             if sid not in source_ids_available:
@@ -348,7 +347,20 @@ def _validate_topics(topics: list[dict], source_catalog: list[dict]) -> tuple[li
             if sid in source_ids_available:
                 normalized_ids.append(sid)
             else:
-                errors.append(f"{topic_name}: unknown_source_id={sid}")
+                warnings.append(f"{topic_name}: unknown_source_id={sid} (무시)")
+
+        # source_ids를 검증된 것만으로 교체 (빈 배열이어도 evidence_urls 있으면 OK)
+        if normalized_ids:
+            ctx["source_ids"] = normalized_ids
+        elif source_ids and not normalized_ids:
+            # 원본 유지 (추적용 — hard error 아님)
+            warnings.append(f"{topic_name}: source_ids 전부 미매칭, 원본 유지")
+
+        if not source_ids and not evidence_urls:
+            errors.append(f"{topic_name}: source_ids와 evidence_source_urls 모두 비어있음")
+
+    if warnings:
+        logger.warning("[큐레이션 검증 경고]\n%s", "\n".join(f"  - {w}" for w in warnings))
 
     return errors, []
 
