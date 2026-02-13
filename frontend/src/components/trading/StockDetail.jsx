@@ -1,33 +1,45 @@
 /**
  * StockDetail.jsx - 종목 상세 바텀시트
- * 실시간 시세 + 미니 차트 + 매수/매도 버튼
+ * 실시간 시세 + 미니 차트 + 매수/매도 버튼 (보유 상태 반영)
  */
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { portfolioApi } from '../../api';
 import { formatKRW, formatVolume } from '../../utils/formatNumber';
+import { usePortfolio } from '../../contexts/PortfolioContext';
 import MiniChart from './MiniChart';
 
 export default function StockDetail({ isOpen, onClose, stock, onTrade }) {
   const [price, setPrice] = useState(null);
   const [chart, setChart] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [marketClosed, setMarketClosed] = useState(false);
+  const { portfolio } = usePortfolio();
 
   useEffect(() => {
     if (isOpen && stock?.stock_code) {
       setLoading(true);
       setChart(null);
+      setMarketClosed(false);
       Promise.all([
         portfolioApi.getStockPrice(stock.stock_code).catch(() => null),
         portfolioApi.getStockChart(stock.stock_code, 20).catch(() => null),
-      ]).then(([priceData, chartData]) => {
+        portfolioApi.getMarketStatus().catch(() => null),
+      ]).then(([priceData, chartData, statusData]) => {
         setPrice(priceData);
         setChart(chartData);
+        if (statusData && !statusData.is_trading_day) setMarketClosed(true);
       }).finally(() => setLoading(false));
     }
   }, [isOpen, stock]);
 
   if (!isOpen) return null;
+
+  // 보유 현금 & 해당 종목 보유 여부
+  const currentCash = portfolio?.current_cash || 0;
+  const holding = portfolio?.holdings?.find(h => h.stock_code === stock?.stock_code);
+  const hasHolding = holding && holding.quantity > 0;
+  const noCash = currentCash <= 0;
 
   return (
     <AnimatePresence>
@@ -96,20 +108,39 @@ export default function StockDetail({ isOpen, onClose, stock, onTrade }) {
             </div>
           )}
 
+          {/* 휴장일 안내 */}
+          {marketClosed && (
+            <div className="mb-3 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-500 text-xs font-medium text-center">
+              오늘은 휴장일입니다. 거래가 제한됩니다.
+            </div>
+          )}
+
           {/* 매수/매도 버튼 */}
           <div className="flex gap-3">
-            <button
-              onClick={() => onTrade?.(stock, 'buy')}
-              className="flex-1 py-3 rounded-xl font-semibold text-white bg-red-500 hover:bg-red-600 transition-colors"
-            >
-              매수
-            </button>
-            <button
-              onClick={() => onTrade?.(stock, 'sell')}
-              className="flex-1 py-3 rounded-xl font-semibold text-white bg-blue-500 hover:bg-blue-600 transition-colors"
-            >
-              매도
-            </button>
+            <div className="flex-1">
+              <button
+                onClick={() => onTrade?.(stock, 'buy')}
+                disabled={marketClosed || noCash}
+                className="w-full py-3 rounded-xl font-semibold text-white bg-red-500 hover:bg-red-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                매수
+              </button>
+              {noCash && (
+                <p className="text-[10px] text-error text-center mt-1">보유 현금이 없습니다</p>
+              )}
+            </div>
+            <div className="flex-1">
+              <button
+                onClick={() => onTrade?.(stock, 'sell')}
+                disabled={marketClosed || !hasHolding}
+                className="w-full py-3 rounded-xl font-semibold text-white bg-blue-500 hover:bg-blue-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                매도
+              </button>
+              {!hasHolding && (
+                <p className="text-[10px] text-text-muted text-center mt-1">보유 종목만 매도 가능</p>
+              )}
+            </div>
           </div>
         </motion.div>
       </motion.div>
