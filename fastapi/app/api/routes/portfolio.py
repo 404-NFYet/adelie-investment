@@ -68,16 +68,20 @@ async def get_leaderboard(
     result = await db.execute(stmt)
     rows = result.unique().all()
 
+    # 전체 종목 코드를 모아 배치 조회 (N+1 방지)
+    all_codes = set()
+    for portfolio, _ in rows:
+        for h in portfolio.holdings:
+            all_codes.add(h.stock_code)
+    batch_results = await get_batch_prices(list(all_codes))
+    price_map = {p["stock_code"]: p["current_price"] for p in batch_results}
+
     entries = []
     for portfolio, username in rows:
-        # 보유 종목 평가액 계산
         total_holdings = 0.0
         for h in portfolio.holdings:
-            price_data = await get_current_price(h.stock_code)
-            if price_data:
-                total_holdings += price_data["current_price"] * h.quantity
-            else:
-                total_holdings += float(h.avg_buy_price) * h.quantity
+            cp = price_map.get(h.stock_code)
+            total_holdings += (cp if cp else float(h.avg_buy_price)) * h.quantity
 
         total_value = portfolio.current_cash + total_holdings
         profit_loss = total_value - portfolio.initial_cash
@@ -135,14 +139,16 @@ async def get_portfolio(
     user_id = current_user["id"]
     portfolio = await get_or_create_portfolio(db, user_id)
 
+    # 배치 가격 조회 (N+1 방지)
+    codes = [h.stock_code for h in portfolio.holdings]
+    batch_results = await get_batch_prices(codes) if codes else []
+    price_map = {p["stock_code"]: p["current_price"] for p in batch_results}
+
     holdings_response = []
     total_holdings_value = 0.0
 
     for h in portfolio.holdings:
-        price_data = await get_current_price(h.stock_code)
-        current_price = price_data["current_price"] if price_data else None
-        if current_price is None:
-            current_price = int(h.avg_buy_price)  # 가격 조회 실패 시 매입가로 폴백
+        current_price = price_map.get(h.stock_code) or int(h.avg_buy_price)
         current_value = current_price * h.quantity
         invested = float(h.avg_buy_price) * h.quantity
         profit_loss = current_value - invested
@@ -184,11 +190,16 @@ async def get_portfolio_summary(
     """경량 포트폴리오 요약 (BottomNav 뱃지용). JWT 인증 필수."""
     user_id = current_user["id"]
     portfolio = await get_or_create_portfolio(db, user_id)
+    # 배치 가격 조회 (N+1 방지)
+    codes = [h.stock_code for h in portfolio.holdings]
+    batch_results = await get_batch_prices(codes) if codes else []
+    price_map = {p["stock_code"]: p["current_price"] for p in batch_results}
+
     total_holdings = 0
     for h in portfolio.holdings:
-        price_data = await get_current_price(h.stock_code)
-        if price_data:
-            total_holdings += price_data["current_price"] * h.quantity
+        cp = price_map.get(h.stock_code)
+        if cp:
+            total_holdings += cp * h.quantity
 
     total_value = portfolio.current_cash + total_holdings
     total_pl = total_value - portfolio.initial_cash
