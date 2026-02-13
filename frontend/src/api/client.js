@@ -16,12 +16,20 @@ const getAuthHeaders = () => {
   return headers;
 };
 
+/** 401 응답 시 토큰 삭제 + 자동 로그아웃 이벤트 발행 */
+const handle401 = () => {
+  localStorage.removeItem('token');
+  localStorage.removeItem('refreshToken');
+  window.dispatchEvent(new Event('auth:logout'));
+};
+
 /** JSON GET 요청 래퍼 (에러 핸들링 + 인증 헤더 포함) */
 export const fetchJson = async (url) => {
   const response = await fetch(url, {
     headers: getAuthHeaders(),
   });
   if (!response.ok) {
+    if (response.status === 401) handle401();
     const errorData = await response.json().catch(() => ({}));
     const msg = errorData.detail || errorData.message || `요청 실패 (${response.status})`;
     throw new Error(msg);
@@ -40,6 +48,7 @@ export const postJson = async (url, body) => {
     body: JSON.stringify(body),
   });
   if (!response.ok) {
+    if (response.status === 401) handle401();
     const errorData = await response.json().catch(() => ({}));
     const msg = errorData.detail || errorData.message || `요청 실패 (${response.status})`;
     throw new Error(msg);

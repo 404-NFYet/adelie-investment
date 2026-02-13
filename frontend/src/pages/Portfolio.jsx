@@ -92,20 +92,17 @@ export default function Portfolio() {
   const animatedTotal = useCountUp(portfolio?.total_value || 0, 800);
   const animatedPL = useCountUp(portfolio?.total_profit_loss || 0, 800);
 
-  // 포트폴리오 초기 로드
-  useEffect(() => { if (userId) fetchPortfolio(); }, [userId, fetchPortfolio]);
-
   // 거래 내역 로드
   useEffect(() => {
     if (activeTab === 'holdings' && trades.length === 0 && userId) {
-      portfolioApi.getTradeHistory(userId, 50).then(data => setTrades(data.trades || [])).catch(() => {});
+      portfolioApi.getTradeHistory(50).then(data => setTrades(data.trades || [])).catch(() => {});
     }
   }, [activeTab, userId]);
 
   // 보상 내역 로드
   useEffect(() => {
     if (activeTab === 'rewards' && rewards.length === 0 && userId) {
-      portfolioApi.getRewards(userId).then(data => setRewards(data.rewards || [])).catch(() => {});
+      portfolioApi.getRewards().then(data => setRewards(data.rewards || [])).catch(() => {});
     }
   }, [activeTab, userId]);
 
@@ -122,7 +119,17 @@ export default function Portfolio() {
     setTradeModal({ isOpen: true, stock, type });
   };
 
-  if (isUserLoading || isLoading || (!portfolio && !error)) {
+  // 유저 로딩 중
+  if (isUserLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="animate-pulse text-text-secondary">로딩 중...</div>
+      </div>
+    );
+  }
+
+  // 포트폴리오 로딩 중 (Context에서 자동 로드)
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="animate-pulse text-text-secondary">로딩 중...</div>
