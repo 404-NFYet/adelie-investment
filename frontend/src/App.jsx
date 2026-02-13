@@ -59,8 +59,8 @@ function AppRoutes() {
         <Route path="/story" element={<ProtectedRoute><Story /></ProtectedRoute>} />
         <Route path="/companies" element={<ProtectedRoute><Companies /></ProtectedRoute>} />
         <Route path="/history" element={<ProtectedRoute><History /></ProtectedRoute>} />
-        <Route path="/matching" element={<ProtectedRoute><Matching /></ProtectedRoute>} />
-        <Route path="/narrative" element={<ProtectedRoute><Narrative /></ProtectedRoute>} />
+        <Route path="/case/:caseId" element={<ProtectedRoute><Matching /></ProtectedRoute>} />
+        <Route path="/narrative/:caseId" element={<ProtectedRoute><Narrative /></ProtectedRoute>} />
         <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
         <Route path="/portfolio" element={<ProtectedRoute><Portfolio /></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />

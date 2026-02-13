@@ -4,7 +4,7 @@
  * 관련 기업 섹션 + 모의 투자 연동
  */
 import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { HighlightedText } from '../components';
 import AppHeader from '../components/layout/AppHeader';
@@ -19,9 +19,8 @@ const stripMarkTags = (text) => {
 export default function Matching() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [searchParams] = useSearchParams();
-  const keyword = searchParams.get('keyword') || '';
-  const caseId = searchParams.get('caseId') || '';
+  const { caseId } = useParams();
+  const keyword = location.state?.keyword?.title || '';
 
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -179,7 +178,7 @@ export default function Matching() {
               <p className="text-secondary text-sm mb-4">어떻게 전개될지 궁금하신가요?</p>
               <button
                 className="btn-primary w-full max-w-xs"
-                onClick={() => navigate(`/narrative?caseId=${caseId}&keyword=${encodeURIComponent(keyword)}`)}
+                onClick={() => navigate(`/narrative/${caseId}`)}
               >
                 NEXT STEP →
               </button>
