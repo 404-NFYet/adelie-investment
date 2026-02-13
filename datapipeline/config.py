@@ -22,14 +22,29 @@ ANTHROPIC_API_KEY = os.getenv("CLAUDE_API_KEY", "")
 
 # ── 기본 모델 (Interface 2/3 내러티브 생성) ──
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "claude-sonnet-4-20250514")
-CHART_MODEL = os.getenv("CHART_MODEL", "gpt-4o-mini")
+CHART_MODEL = os.getenv("CHART_MODEL", "gpt-5-mini")
+CHART_AGENT_MODEL = os.getenv("CHART_AGENT_MODEL", "gpt-5-mini")
 
 # ── 경로 ──
 OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", str(DATAPIPELINE_DIR / "output")))
 PROMPTS_DIR = DATAPIPELINE_DIR / "prompts" / "templates"
 
+# ── 외부 API 키 ──
+DART_API_KEY = os.getenv("DART_API_KEY", "")
+ECOS_API_KEY = os.getenv("ECOS_API_KEY", "")
+
 # ── 색상 팔레트 ──
 COLOR_PALETTE = ["#FF6B35", "#004E89", "#1A936F", "#C5D86D", "#8B95A1"]
+
+# ── 6페이지 스텝 정의 ──
+SECTION_MAP = [
+    (1, "현재 배경", "background"),
+    (2, "금융 개념 설명", "concept_explain"),
+    (3, "과거 비슷한 사례", "history"),
+    (4, "현재 상황에 적용", "application"),
+    (5, "주의해야 할 점", "caution"),
+    (6, "최종 정리", "summary"),
+]
 
 # ═══════════════════════════════════════════
 # Data Collection 설정
