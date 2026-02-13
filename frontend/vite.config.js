@@ -7,7 +7,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       includeAssets: ['favicon.ico', 'images/apple-touch-icon.png'],
       manifest: {
         name: '아델리에',
@@ -51,8 +51,6 @@ export default defineConfig({
       },
       workbox: {
         cleanupOutdatedCaches: true,
-        skipWaiting: true,
-        clientsClaim: true,
         globPatterns: ['**/*.{js,css,html,svg,woff2}'],
         globIgnores: ['**/images/penguin-3d.png', '**/images/icon-512.png', '**/favicon.ico', '**/images/icon-192.png'],
         navigateFallback: '/index.html',
