@@ -46,7 +46,7 @@ export function PortfolioProvider({ children }) {
   }, [userId, fetchPortfolio]);
 
   const claimReward = useCallback(async (caseId) => {
-    if (!userId) return;
+    if (!userId) throw new Error('로그인이 필요합니다');
     const result = await portfolioApi.claimBriefingReward(caseId);
     await fetchSummary();
     return result;

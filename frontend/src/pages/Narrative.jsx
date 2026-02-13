@@ -347,6 +347,7 @@ export default function Narrative() {
   // 보상 관련 상태
   const [showReward, setShowReward] = useState(false);
   const [rewardData, setRewardData] = useState(null);
+  const [rewardError, setRewardError] = useState(null);
 
   // API에서 내러티브 데이터 가져오기
   useEffect(() => {
@@ -387,10 +388,20 @@ export default function Narrative() {
       // 마지막 페이지: 브리핑 완료 보상 청구
       try {
         const reward = await claimReward(Number(caseId));
-        setRewardData(reward || { base_reward: 100000 });
-        setShowReward(true);
+        if (reward) {
+          setRewardData(reward);
+          setShowReward(true);
+        } else {
+          navigate('/auth');
+        }
       } catch (e) {
-        navigate('/');
+        const msg = e?.message || '';
+        if (msg.includes('이미')) {
+          // 이미 보상 받은 케이스 → 홈으로 이동
+          navigate('/');
+        } else {
+          setRewardError(msg || '보상 청구 실패');
+        }
       }
     }
   };
@@ -553,6 +564,15 @@ export default function Narrative() {
         onNext={goNext}
         isLast={isLastPage}
       />
+
+      {/* ── 보상 에러 표시 ── */}
+      {rewardError && (
+        <div className="fixed bottom-20 left-0 right-0 z-40 flex justify-center px-4">
+          <div className="bg-red-500/90 text-white text-sm font-medium px-4 py-3 rounded-xl max-w-mobile w-full text-center shadow-lg">
+            {rewardError}
+          </div>
+        </div>
+      )}
 
       {/* ── 보상 축하 오버레이 ── */}
       {showReward && rewardData && (
