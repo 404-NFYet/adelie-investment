@@ -14,6 +14,7 @@ import TermBottomSheet from './components/domain/TermBottomSheet';
 import ChatFAB from './components/layout/ChatFAB';
 import BottomNav from './components/layout/BottomNav';
 import PenguinLoading from './components/common/PenguinLoading';
+import UpdatePrompt from './components/common/UpdatePrompt';
 
 // 코드 스플리팅: 각 페이지를 동적 import
 const Onboarding = lazy(() => import('./pages/Onboarding'));
@@ -81,6 +82,7 @@ export default function App() {
               <ErrorBoundary>
                 <ToastProvider>
                   <div className="app-container">
+                    <UpdatePrompt />
                     <AppRoutes />
                     <TermBottomSheet />
                     <TutorModal />
