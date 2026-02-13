@@ -128,6 +128,43 @@ async def mark_as_read(
     return {"message": "읽음 처리 완료"}
 
 
+@router.delete("/read", name="delete_read_notifications")
+async def delete_read_notifications(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """읽은 알림 일괄 삭제."""
+    user_id = current_user["id"]
+    from sqlalchemy import delete as sa_delete
+    stmt = sa_delete(Notification).where(
+        and_(Notification.user_id == user_id, Notification.is_read == True)
+    )
+    result = await db.execute(stmt)
+    await db.commit()
+    return {"message": f"{result.rowcount}개 알림 삭제 완료", "deleted_count": result.rowcount}
+
+
+@router.delete("/{notification_id}")
+async def delete_notification(
+    notification_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """단일 알림 삭제 (본인 것만)."""
+    user_id = current_user["id"]
+    result = await db.execute(
+        select(Notification).where(
+            and_(Notification.id == notification_id, Notification.user_id == user_id)
+        )
+    )
+    notification = result.scalar_one_or_none()
+    if not notification:
+        raise HTTPException(status_code=404, detail="알림을 찾을 수 없습니다")
+    await db.delete(notification)
+    await db.commit()
+    return {"message": "삭제 완료"}
+
+
 async def create_notification(
     db: AsyncSession,
     user_id: int,

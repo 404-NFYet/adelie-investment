@@ -55,3 +55,18 @@ export const postJson = async (url, body) => {
   }
   return response.json();
 };
+
+/** JSON DELETE 요청 래퍼 (에러 핸들링 + 인증 헤더 포함) */
+export const deleteJson = async (url) => {
+  const response = await fetch(url, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+  if (!response.ok) {
+    if (response.status === 401) handle401();
+    const errorData = await response.json().catch(() => ({}));
+    const msg = errorData.detail || errorData.message || `요청 실패 (${response.status})`;
+    throw new Error(msg);
+  }
+  return response.json();
+};

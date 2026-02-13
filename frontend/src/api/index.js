@@ -2,7 +2,7 @@
  * API endpoints for Narrative Investment
  */
 
-import { API_BASE_URL, fetchJson, postJson } from './client';
+import { API_BASE_URL, fetchJson, postJson, deleteJson } from './client';
 
 // Re-export module APIs
 export { portfolioApi } from './portfolio';
@@ -47,5 +47,11 @@ export const notificationApi = {
 
   markAsRead: (notificationIds = null) =>
     postJson(`${API_BASE_URL}/api/v1/notifications/read`, { notification_ids: notificationIds }),
+
+  deleteOne: (notificationId) =>
+    deleteJson(`${API_BASE_URL}/api/v1/notifications/${notificationId}`),
+
+  deleteRead: () =>
+    deleteJson(`${API_BASE_URL}/api/v1/notifications/read`),
 };
 
