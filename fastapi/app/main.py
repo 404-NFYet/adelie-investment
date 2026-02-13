@@ -17,7 +17,28 @@ import logging as _logging
 
 # 각 라우터를 개별적으로 import (Docker 환경에서 일부 모듈 미존재 시 graceful 처리)
 _route_modules = {}
-for _mod_name in ["health", "briefing", "glossary", "cases", "tutor", "pipeline", "highlight", "keywords", "feedback", "trading", "narrative", "portfolio", "tutor_sessions", "visualization", "notification", "briefings", "quiz_reward", "learning", "reports"]:
+for _mod_name in [
+    "health",
+    "auth",
+    "briefing",
+    "glossary",
+    "cases",
+    "tutor",
+    "pipeline",
+    "highlight",
+    "keywords",
+    "feedback",
+    "trading",
+    "narrative",
+    "portfolio",
+    "tutor_sessions",
+    "visualization",
+    "notification",
+    "briefings",
+    "quiz_reward",
+    "learning",
+    "reports",
+]:
     try:
         _route_modules[_mod_name] = importlib.import_module(f"app.api.routes.{_mod_name}")
     except Exception as _e:
@@ -158,25 +179,26 @@ async def global_rate_limit_middleware(request: Request, call_next):
 
 # Include routers (로드 성공한 모듈만 등록)
 _router_config = {
-    "health": ("Health", "/api/v1"),
-    "briefing": ("Briefing", "/api/v1"),
-    "glossary": ("Glossary", "/api/v1"),
-    "cases": ("Cases", "/api/v1"),
-    "tutor": ("AI Tutor", "/api/v1"),
-    "pipeline": ("Pipeline", "/api/v1"),
-    "highlight": ("Highlighting", "/api/v1"),
-    "keywords": ("Keywords", "/api/v1"),
-    "feedback": ("Feedback", "/api/v1"),
-    "trading": ("Trading", "/api/v1"),
-    "narrative": ("Narrative", "/api/v1"),
-    "portfolio": ("Portfolio", "/api/v1"),
-    "tutor_sessions": ("Tutor Sessions", "/api/v1"),
-    "visualization": ("Visualization", "/api/v1"),
-    "notification": ("Notifications", "/api/v1"),
-    "briefings": ("Briefings", "/api/v1"),
-    "quiz_reward": ("Quiz", "/api/v1"),
-    "learning": ("Learning Progress", "/api/v1"),
-    "reports": ("Broker Reports", "/api/v1"),
+    "health": ("health", "/api/v1"),
+    "auth": ("auth", "/api/v1"),
+    "briefing": ("briefing", "/api/v1"),
+    "glossary": ("glossary", "/api/v1"),
+    "cases": ("cases", "/api/v1"),
+    "tutor": ("AI tutor", "/api/v1"),
+    "pipeline": ("pipeline", "/api/v1"),
+    "highlight": ("highlighting", "/api/v1"),
+    "keywords": ("keywords", "/api/v1"),
+    "feedback": ("feedback", "/api/v1"),
+    "trading": ("trading", "/api/v1"),
+    "narrative": ("narrative", "/api/v1"),
+    "portfolio": ("portfolio", "/api/v1"),
+    "tutor_sessions": ("tutor sessions", "/api/v1"),
+    "visualization": ("visualization", "/api/v1"),
+    "notification": ("notifications", "/api/v1"),
+    "briefings": ("briefings", "/api/v1"),
+    "quiz_reward": ("quiz", "/api/v1"),
+    "learning": ("learning progress", "/api/v1"),
+    "reports": ("broker reports", "/api/v1"),
 }
 for _name, (_tag, _prefix) in _router_config.items():
     _mod = _route_modules.get(_name)
@@ -184,6 +206,11 @@ for _name, (_tag, _prefix) in _router_config.items():
         app.include_router(_mod.router, prefix=_prefix, tags=[_tag])
     else:
         logger.warning(f"라우터 '{_name}' 건너뜀 (미로드)")
+
+# Legacy compatibility: /api/health (Spring Boot path)
+_health_mod = _route_modules.get("health")
+if _health_mod and hasattr(_health_mod, "router"):
+    app.include_router(_health_mod.router, prefix="/api", tags=["health"], include_in_schema=False)
 
 
 @app.get("/")

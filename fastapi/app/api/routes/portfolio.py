@@ -43,7 +43,7 @@ from app.models.portfolio import UserPortfolio, PortfolioHolding
 
 logger = logging.getLogger("narrative_api.portfolio")
 
-router = APIRouter(prefix="/portfolio", tags=["Portfolio"])
+router = APIRouter(prefix="/portfolio", tags=["portfolio"])
 
 
 # ──────────────────── Leaderboard ────────────────────

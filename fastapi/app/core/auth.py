@@ -73,7 +73,12 @@ async def _resolve_user_from_payload(payload: dict, db: AsyncSession) -> dict:
             detail="User not found",
         )
 
-    return {"id": user.id, "email": user.email, "username": user.username}
+    return {
+        "id": user.id,
+        "email": user.email,
+        "username": user.username,
+        "difficulty_level": user.difficulty_level,
+    }
 
 
 async def get_current_user_optional(

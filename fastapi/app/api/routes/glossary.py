@@ -17,7 +17,7 @@ from app.core.database import get_db
 from app.services.redis_cache import get_redis_cache
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/glossary", tags=["Glossary"])
+router = APIRouter(prefix="/glossary", tags=["glossary"])
 
 # 캐시 TTL (24시간)
 GLOSSARY_CACHE_TTL = 60 * 60 * 24

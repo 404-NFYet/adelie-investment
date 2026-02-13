@@ -13,7 +13,7 @@ from app.core.database import get_db
 from app.models.report import BrokerReport
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/reports", tags=["Broker Reports"])
+router = APIRouter(prefix="/reports", tags=["broker reports"])
 
 
 # ── Schemas ──

@@ -14,7 +14,7 @@ from app.core.database import get_db
 from app.models.learning import LearningProgress
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/learning", tags=["Learning Progress"])
+router = APIRouter(prefix="/learning", tags=["learning progress"])
 
 
 # ── Schemas ──

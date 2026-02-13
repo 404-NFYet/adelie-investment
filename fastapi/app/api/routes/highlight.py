@@ -29,7 +29,7 @@ except ImportError:
     def get_terms_for_difficulty(difficulty="beginner"):
         return []
 
-router = APIRouter(prefix="/highlight", tags=["Term Highlighting"])
+router = APIRouter(prefix="/highlight", tags=["term highlighting"])
 
 
 class HighlightRequest(BaseModel):
