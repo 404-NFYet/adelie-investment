@@ -18,7 +18,7 @@ security = HTTPBearer(auto_error=False)
 
 
 def _get_jwt_key(secret: str) -> bytes:
-    """Spring Boot JwtService와 동일한 키 바이트 생성."""
+    """JWT 시크릿에서 키 바이트 생성 (최소 32바이트 보장)."""
     key_bytes = secret.encode("utf-8")
     if len(key_bytes) < 32:
         key_bytes = key_bytes + b"\x00" * (32 - len(key_bytes))

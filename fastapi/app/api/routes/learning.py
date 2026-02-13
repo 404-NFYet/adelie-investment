@@ -10,6 +10,7 @@ from sqlalchemy import select, func, case as sql_case
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import get_current_user
 from app.core.database import get_db
 from app.models.learning import LearningProgress
 
@@ -22,7 +23,6 @@ router = APIRouter(prefix="/learning", tags=["learning progress"])
 
 class LearningProgressRequest(BaseModel):
     """학습 진도 기록/업데이트 요청."""
-    user_id: int = Field(..., description="사용자 ID")
     content_type: str = Field(..., max_length=50, description="콘텐츠 유형 (case, glossary, briefing)")
     content_id: int = Field(..., description="콘텐츠 ID")
     status: Optional[str] = Field(None, max_length=20, description="학습 상태 (viewed, in_progress, completed)")
@@ -66,6 +66,7 @@ class LearningStatsResponse(BaseModel):
 @router.post("/progress")
 async def upsert_learning_progress(
     body: LearningProgressRequest,
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """학습 진도 기록/업데이트 (upsert).
@@ -82,7 +83,7 @@ async def upsert_learning_progress(
 
     # PostgreSQL INSERT ... ON CONFLICT DO UPDATE (upsert)
     stmt = pg_insert(LearningProgress).values(
-        user_id=body.user_id,
+        user_id=current_user["id"],
         content_type=body.content_type,
         content_id=body.content_id,
         status=status,
@@ -127,9 +128,9 @@ async def upsert_learning_progress(
     return {"status": "success", "data": data}
 
 
-@router.get("/progress/{user_id}")
+@router.get("/progress")
 async def get_user_progress(
-    user_id: int,
+    current_user: dict = Depends(get_current_user),
     content_type: Optional[str] = Query(None, description="콘텐츠 유형 필터 (case, glossary, briefing)"),
     status: Optional[str] = Query(None, description="상태 필터 (viewed, in_progress, completed)"),
     db: AsyncSession = Depends(get_db),
@@ -138,6 +139,7 @@ async def get_user_progress(
 
     선택적으로 content_type, status 필터를 적용할 수 있다.
     """
+    user_id = current_user["id"]
     stmt = select(LearningProgress).where(LearningProgress.user_id == user_id)
 
     if content_type:
@@ -167,15 +169,16 @@ async def get_user_progress(
     return {"status": "success", "data": data, "total": len(data)}
 
 
-@router.get("/progress/{user_id}/stats")
+@router.get("/progress/stats")
 async def get_user_stats(
-    user_id: int,
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """사용자 학습 완료율/통계 조회.
 
     전체 통계와 content_type별 breakdown을 반환한다.
     """
+    user_id = current_user["id"]
     # 전체 통계 쿼리
     total_stmt = select(
         func.count(LearningProgress.id).label("total"),

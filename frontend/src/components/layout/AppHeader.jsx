@@ -10,7 +10,7 @@ export default function AppHeader({ showBack = false, title = null }) {
 
   useEffect(() => {
     if (!user?.id) return;
-    notificationApi.getUnreadCount(user.id)
+    notificationApi.getUnreadCount()
       .then(data => setUnreadCount(data.unread_count || 0))
       .catch(() => {});
   }, [user?.id]);

@@ -207,7 +207,7 @@ for _name, (_tag, _prefix) in _router_config.items():
     else:
         logger.warning(f"라우터 '{_name}' 건너뜀 (미로드)")
 
-# Legacy compatibility: /api/health (Spring Boot path)
+# Legacy compatibility: /api/health
 _health_mod = _route_modules.get("health")
 if _health_mod and hasattr(_health_mod, "router"):
     app.include_router(_health_mod.router, prefix="/api", tags=["health"], include_in_schema=False)

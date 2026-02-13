@@ -126,14 +126,13 @@ async def get_leaderboard(
 # ──────────────────── Portfolio ────────────────────
 
 
-@router.get("/{user_id}", response_model=PortfolioResponse)
+@router.get("", response_model=PortfolioResponse)
 async def get_portfolio(
-    user_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
     """포트폴리오 전체 조회 (실시간 평가액 포함). JWT 인증 필수."""
-    user_id = current_user["id"]  # 경로 파라미터 무시, JWT 기준
+    user_id = current_user["id"]
     portfolio = await get_or_create_portfolio(db, user_id)
 
     holdings_response = []
@@ -177,9 +176,8 @@ async def get_portfolio(
     )
 
 
-@router.get("/{user_id}/summary", response_model=PortfolioSummary)
+@router.get("/summary", response_model=PortfolioSummary)
 async def get_portfolio_summary(
-    user_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
@@ -206,9 +204,8 @@ async def get_portfolio_summary(
 # ──────────────────── Trading ────────────────────
 
 
-@router.post("/{user_id}/trade", response_model=TradeResponse)
+@router.post("/trade", response_model=TradeResponse)
 async def create_trade(
-    user_id: int,
     req: TradeRequest,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
@@ -242,9 +239,8 @@ async def create_trade(
     )
 
 
-@router.get("/{user_id}/trades", response_model=TradeHistoryResponse)
+@router.get("/trades", response_model=TradeHistoryResponse)
 async def get_trade_history(
-    user_id: int,
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -307,9 +303,8 @@ async def get_batch_stock_prices(stock_codes: list[str]):
 # ──────────────────── Rewards ────────────────────
 
 
-@router.post("/{user_id}/reward", response_model=RewardResponse)
+@router.post("/reward", response_model=RewardResponse)
 async def claim_briefing_reward(
-    user_id: int,
     req: BriefingCompleteRequest,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
@@ -339,9 +334,8 @@ async def claim_briefing_reward(
     )
 
 
-@router.get("/{user_id}/rewards", response_model=RewardsListResponse)
+@router.get("/rewards", response_model=RewardsListResponse)
 async def get_rewards(
-    user_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
@@ -382,9 +376,8 @@ class DwellRewardRequest(BaseModel):
     dwell_seconds: int
 
 
-@router.post("/{user_id}/dwell-reward")
+@router.post("/dwell-reward")
 async def claim_dwell_reward(
-    user_id: int,
     req: DwellRewardRequest,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),

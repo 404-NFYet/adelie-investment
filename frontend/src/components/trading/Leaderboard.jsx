@@ -12,7 +12,7 @@ export default function Leaderboard({ userId }) {
 
   useEffect(() => {
     setIsLoading(true);
-    portfolioApi.getLeaderboard(userId)
+    portfolioApi.getLeaderboard()
       .then(d => setData(d))
       .catch(() => {})
       .finally(() => setIsLoading(false));

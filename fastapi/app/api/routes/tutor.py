@@ -16,6 +16,7 @@ from openai import AsyncOpenAI
 
 logger = logging.getLogger("narrative_api.tutor")
 
+from app.core.auth import get_current_user_optional
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.limiter import limiter
@@ -131,6 +132,7 @@ async def generate_tutor_response(
     request: TutorChatRequest,
     db: AsyncSession,
     http_request: Request,
+    current_user: Optional[dict] = None,
 ) -> AsyncGenerator[str, None]:
     """Generate streaming response for AI tutor."""
     
@@ -165,20 +167,22 @@ async def generate_tutor_response(
             pass  # 컨텍스트 로드 실패해도 대화는 계속
 
     # 포트폴리오 컨텍스트 주입 (개인화된 조언용)
-    try:
-        portfolio_result = await db.execute(text(
-            "SELECT current_cash, initial_cash FROM user_portfolios WHERE user_id = :uid LIMIT 1"
-        ), {"uid": 1})  # TODO: 실제 user_id 전달
-        pf_row = portfolio_result.fetchone()
-        if pf_row:
-            holdings_result = await db.execute(text(
-                "SELECT stock_name, quantity, avg_buy_price FROM portfolio_holdings WHERE portfolio_id = (SELECT id FROM user_portfolios WHERE user_id = 1 LIMIT 1)"
-            ))
-            holdings = holdings_result.fetchall()
-            holdings_text = ", ".join(f"{h[0]} {h[1]}주(평균 {int(h[2]):,}원)" for h in holdings) if holdings else "없음"
-            page_context += f"\n\n[사용자 포트폴리오]\n보유 현금: {int(pf_row[0]):,}원 / 초기 자본: {int(pf_row[1]):,}원\n보유 종목: {holdings_text}"
-    except Exception:
-        pass
+    user_id = current_user["id"] if current_user else None
+    if user_id:
+        try:
+            portfolio_result = await db.execute(text(
+                "SELECT current_cash, initial_cash FROM user_portfolios WHERE user_id = :uid LIMIT 1"
+            ), {"uid": user_id})
+            pf_row = portfolio_result.fetchone()
+            if pf_row:
+                holdings_result = await db.execute(text(
+                    "SELECT stock_name, quantity, avg_buy_price FROM portfolio_holdings WHERE portfolio_id = (SELECT id FROM user_portfolios WHERE user_id = :uid LIMIT 1)"
+                ), {"uid": user_id})
+                holdings = holdings_result.fetchall()
+                holdings_text = ", ".join(f"{h[0]} {h[1]}주(평균 {int(h[2]):,}원)" for h in holdings) if holdings else "없음"
+                page_context += f"\n\n[사용자 포트폴리오]\n보유 현금: {int(pf_row[0]):,}원 / 초기 자본: {int(pf_row[1]):,}원\n보유 종목: {holdings_text}"
+        except Exception:
+            pass
 
     # 출처 수집 (glossary, DB 사례/리포트, 주가/기업관계)
     sources = []
@@ -383,10 +387,11 @@ async def tutor_chat(
     request: Request,
     chat_request: TutorChatRequest,
     db: AsyncSession = Depends(get_db),
+    current_user: Optional[dict] = Depends(get_current_user_optional),
 ) -> StreamingResponse:
     """AI Tutor chat endpoint with SSE streaming."""
     return StreamingResponse(
-        generate_tutor_response(chat_request, db, request),
+        generate_tutor_response(chat_request, db, request, current_user),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
