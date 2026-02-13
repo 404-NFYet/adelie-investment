@@ -14,7 +14,6 @@ user_invocable: true
 
 - `/deploy frontend` — 프론트엔드만 빌드 + 푸시 + 배포
 - `/deploy api` — FastAPI 백엔드만 빌드 + 푸시 + 배포
-- `/deploy spring` — Spring Boot만 빌드 + 푸시 + 배포
 - `/deploy all` — 전체 서비스 빌드 + 푸시 + 배포
 - `/deploy` (인자 없음) — 변경된 서비스 자동 감지 후 배포
 

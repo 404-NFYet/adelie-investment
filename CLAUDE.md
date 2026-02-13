@@ -10,7 +10,7 @@ Adelie Investment ("History Repeats Itself") is an AI-powered financial educatio
 
 ### Development (Docker, connects to infra-server 10.10.10.10)
 ```bash
-make dev                    # Full stack: frontend + backend-api + backend-spring
+make dev                    # Full stack: frontend + backend-api
 make dev-frontend           # Frontend only
 make dev-api                # Backend API only
 make dev-down               # Stop dev environment
@@ -25,11 +25,6 @@ cd frontend && npm install && npm run dev   # http://localhost:3001
 ```bash
 cd fastapi && pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 8082 --reload
-```
-
-### Spring Boot
-```bash
-cd springboot && ./gradlew bootRun   # http://localhost:8083
 ```
 
 ### Testing
@@ -69,7 +64,6 @@ adelie-investment/
 ├── frontend/           # React 19 + Vite + Nginx (SPA)
 ├── fastapi/            # FastAPI backend (AI/Data API)
 │   └── app/            # app.models, app.schemas, app.api.routes, app.services
-├── springboot/         # Spring Boot backend (Auth, CRUD)
 ├── chatbot/            # AI 튜터 모듈 (LangGraph agent + tools)
 │   ├── agent/          # tutor_agent, prompts, checkpointer
 │   ├── tools/          # LangChain tools (glossary, search, visualization...)
@@ -91,12 +85,11 @@ adelie-investment/
     └── integration/    # E2E/Phase0 테스트
 ```
 
-### Dual Backend
-- **FastAPI** (`fastapi/`, `:8082`, `/api/v1/*`): AI/Data API — keywords, cases, tutor chat, glossary, trading, visualization, narrative
-- **Spring Boot** (`springboot/`, `:8083`, `/api/auth/*`): Auth (JWT 발급, 로그인/회원가입/토큰 갱신), Health check
+### Backend
+- **FastAPI** (`fastapi/`, `:8082`, `/api/v1/*`): 모든 API — auth, keywords, cases, tutor chat, glossary, trading, visualization, narrative
 
 ### Frontend Routing via Nginx
-The frontend Docker image uses nginx as a reverse proxy. All `/api/v1/*` routes proxy to `backend-api:8082`, and `/api/auth/*` routes proxy to `backend-spring:8080`. The SPA uses React Router with code splitting (`React.lazy`).
+The frontend Docker image uses nginx as a reverse proxy. All `/api/v1/*` routes proxy to `backend-api:8082`. Legacy `/api/auth/*` paths are rewritten to `/api/v1/auth/*`. The SPA uses React Router with code splitting (`React.lazy`).
 
 ### Key Data Flow
 1. `datapipeline/scripts/seed_fresh_data_integrated.py` collects real market data via **pykrx** → writes to `daily_briefings` + `briefing_stocks`
@@ -189,7 +182,7 @@ Deploy-test server: `10.10.10.20` (SSH alias: `deploy-test`)
 | 팀장 (기획, React UI) | 손영진 | YJ99Son | syjin2008@naver.com |
 | AI 개발 (FastAPI, LangGraph) | 정지훈 | J2hoon10 | myhome559755@naver.com |
 | AI QA (테스트, 프롬프트) | 안례진 | ryejinn | arj1018@ewhain.net |
-| 백엔드 (Spring Boot, 인증) | 허진서 | jjjh02 | jinnyshur0104@gmail.com |
+| 백엔드 (FastAPI 인증, DB) | 허진서 | jjjh02 | jinnyshur0104@gmail.com |
 | 인프라 (Docker, CI/CD) | 도형준 | dorae222 | dhj9842@gmail.com |
 
 ## Git Workflow
@@ -201,7 +194,7 @@ Deploy-test server: `10.10.10.20` (SSH alias: `deploy-test`)
 
 | 명령 | 설명 |
 |------|------|
-| `/deploy [frontend\|api\|spring\|all]` | 서비스 빌드 → Docker Hub 푸시 → deploy-test 배포 |
+| `/deploy [frontend\|api\|all]` | 서비스 빌드 → Docker Hub 푸시 → deploy-test 배포 |
 | `/test [unit\|backend\|integration\|e2e\|all]` | 테스트 실행 (pytest/playwright) |
 | `/seed [collect\|generate\|all]` | 데이터 파이프라인 실행 (시장 데이터 수집 + 케이스 생성) |
 | `/migrate [upgrade\|current\|history\|revision\|downgrade]` | Alembic DB 마이그레이션 관리 |
