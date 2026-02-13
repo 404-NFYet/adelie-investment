@@ -1,4 +1,4 @@
-"""매일 08:00 KST 데이터 파이프라인 스케줄러."""
+"""매일 KST 09:00 모닝 파이프라인 + KST 16:10 레거시 파이프라인 스케줄러."""
 
 import asyncio
 import logging
@@ -11,6 +11,50 @@ from apscheduler.triggers.cron import CronTrigger
 logger = logging.getLogger("narrative_api.scheduler")
 
 _scheduler: AsyncIOScheduler | None = None
+
+
+async def _is_trading_day() -> bool:
+    """오늘이 한국 주식시장 영업일인지 확인."""
+    try:
+        from app.services.market_calendar import is_kr_market_open_today
+        return await is_kr_market_open_today()
+    except Exception as e:
+        logger.warning("영업일 확인 실패 (실행 진행): %s", e)
+        return True  # 실패 시 실행
+
+
+async def _run_datapipeline_subprocess() -> bool:
+    """datapipeline.run을 subprocess로 실행 (30분 타임아웃)."""
+    # Docker: /app, 로컬: 프로젝트 루트
+    cwd = Path("/app") if Path("/app/datapipeline").exists() else Path(__file__).resolve().parents[3]
+    logger.info("datapipeline subprocess 시작 (cwd=%s)", cwd)
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable, "-m", "datapipeline.run",
+            "--backend", "live", "--market", "KR", "--topic-count", "3",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=str(cwd),
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=1800)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            logger.error("datapipeline 타임아웃 (30분)")
+            return False
+
+        if proc.returncode == 0:
+            logger.info("datapipeline 완료")
+            return True
+        else:
+            stderr_text = stderr.decode() if stderr else ""
+            logger.error("datapipeline 실패\nstderr: %s", stderr_text[-500:] if stderr_text else "")
+            return False
+    except Exception as e:
+        logger.error("datapipeline 실행 오류: %s", e)
+        return False
 
 
 async def _run_script(script_name: str) -> bool:
@@ -56,8 +100,27 @@ async def _run_script(script_name: str) -> bool:
         return False
 
 
+async def run_morning_pipeline():
+    """모닝 파이프라인: KST 09:00, 영업일만 실행."""
+    if not await _is_trading_day():
+        logger.info("=== 모닝 파이프라인 스킵 (휴장일) ===")
+        return
+
+    logger.info("=== 모닝 파이프라인 시작 ===")
+    ok = await _run_datapipeline_subprocess()
+    if ok:
+        await _post_pipeline_hooks()
+    else:
+        logger.error("모닝 파이프라인 실패")
+    logger.info("=== 모닝 파이프라인 완료 ===")
+
+
 async def run_daily_pipeline():
-    """매일 실행: LangGraph 통합 파이프라인 (keywords + narratives)."""
+    """매일 실행: LangGraph 통합 파이프라인 (keywords + narratives). 휴장일 스킵."""
+    if not await _is_trading_day():
+        logger.info("=== 데일리 파이프라인 스킵 (휴장일) ===")
+        return
+
     logger.info("=== 데일리 파이프라인 시작 ===")
 
     # LangGraph 통합 파이프라인 (keyword + narrative 생성 통합)
@@ -99,12 +162,24 @@ async def _post_pipeline_hooks():
 
 
 def start_scheduler():
-    """스케줄러 시작. KST 16:10 = UTC 07:10, 월-금요일 (장 마감 후 30분)."""
+    """스케줄러 시작. 모닝(KST 09:00) + 데일리(KST 16:10), 월-금."""
     global _scheduler
     if _scheduler is not None:
         return
 
     _scheduler = AsyncIOScheduler()
+
+    # 모닝 파이프라인: KST 09:00 = UTC 00:00
+    _scheduler.add_job(
+        run_morning_pipeline,
+        trigger=CronTrigger(hour=0, minute=0, day_of_week="mon,tue,wed,thu,fri"),
+        id="morning_pipeline",
+        name="Morning Data Pipeline (09:00 KST)",
+        misfire_grace_time=3600,
+        replace_existing=True,
+    )
+
+    # 레거시 데일리 파이프라인: KST 16:10 = UTC 07:10
     _scheduler.add_job(
         run_daily_pipeline,
         trigger=CronTrigger(hour=7, minute=10, day_of_week="mon,tue,wed,thu,fri"),
@@ -113,8 +188,9 @@ def start_scheduler():
         misfire_grace_time=3600,
         replace_existing=True,
     )
+
     _scheduler.start()
-    logger.info("daily pipeline scheduled for 16:10 KST (UTC 07:10, Mon-Fri)")
+    logger.info("스케줄러 시작: 모닝(09:00 KST) + 데일리(16:10 KST), Mon-Fri")
 
 
 def stop_scheduler():
