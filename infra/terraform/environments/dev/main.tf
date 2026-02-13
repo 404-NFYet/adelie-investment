@@ -62,7 +62,7 @@ module "ecr" {
   source = "../../modules/ecr"
 
   project_name = var.project_name
-  services     = ["frontend", "backend-api", "backend-spring", "ai-pipeline"]
+  services     = ["frontend", "backend-api", "ai-pipeline"]
 }
 
 # --- RDS (PostgreSQL + pgvector) ---

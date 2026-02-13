@@ -18,7 +18,7 @@
 
 | 파일 | 용도 | DB 연결 | 사용 시점 |
 |------|------|---------|-----------|
-| `docker-compose.dev.yml` | 개발자 로컬 개발 | infra-server 공유 | `make dev` |
+| `docker-compose.dev.yml` | 개발자 로컬 개발 | 로컬 Docker DB | `make dev` |
 | `docker-compose.prod.yml` | 배포 (deploy-test, AWS) | 자체 포함 (풀스택) | `make deploy` |
 | `docker-compose.test.yml` | 자동화 테스트 | 격리된 테스트 DB | `make test` |
 | `infra/docker-compose.yml` | 인프라 전용 | - | infra-server에서만 |
@@ -28,14 +28,16 @@
 ### docker-compose.dev.yml (개발 환경)
 | 서비스 | 포트 | 설명 | 핫 리로드 |
 |--------|------|------|-----------|
-| `frontend` | 3001 | React + Vite | O (Vite HMR) |
+| `postgres` | 5433 | PostgreSQL 15 (로컬) | - |
+| `redis` | 6379 | Redis 7 | - |
+| `frontend` | 3001 | React + Vite + Nginx | O (rebuild) |
 | `backend-api` | 8082 | FastAPI + Uvicorn | O (`--reload`) |
-| `backend-spring` | 8083 | Spring Boot | X |
-| `ai-pipeline` | - | LangGraph 워커 | X (프로필 전용) |
+| `ai-pipeline` | - | LangGraph 파이프라인 | X (프로필 전용) |
+| `db-migrate` | - | Alembic 마이그레이션 | X (one-shot) |
 
 ### docker-compose.prod.yml (배포 환경)
-위 서비스 + 인프라(PostgreSQL, Redis, Neo4j, MinIO) 모두 포함.
-리소스 제한 설정 (PostgreSQL 8GB, Neo4j 4GB 등).
+위 서비스 + 인프라(PostgreSQL, Redis, MinIO) 모두 포함.
+리소스 제한 설정 적용.
 
 ### docker-compose.test.yml (테스트 환경)
 | 서비스 | 설명 |
@@ -49,7 +51,7 @@
 
 ```bash
 # === 빌드 ===
-make build                # 전체 4개 서비스 이미지 빌드
+make build                # 전체 3개 서비스 이미지 빌드
 make build TAG=v1.0       # 태그 지정 빌드
 make build-frontend       # 프론트엔드만
 make build-api            # FastAPI만
@@ -103,8 +105,8 @@ make dev-api
 ### 전체 서비스 통합 개발
 ```bash
 make dev
-# → 프론트엔드(3001) + FastAPI(8082) + Spring Boot(8083) 동시 실행
-# → infra-server(10.10.10.10)의 DB 공유
+# → PostgreSQL(5433) + Redis(6379) + 프론트엔드(3001) + FastAPI(8082) 동시 실행
+# → 로컬 Docker 컨테이너 DB 사용
 ```
 
 ### AI 파이프라인 실행
@@ -119,13 +121,11 @@ docker compose -f docker-compose.dev.yml --profile pipeline up -d
 |--------|------------------|-----------------|
 | Frontend | `dorae222/adelie-frontend:TAG` | `frontend/Dockerfile` |
 | FastAPI | `dorae222/adelie-backend-api:TAG` | `fastapi/Dockerfile` |
-| Spring Boot | `dorae222/adelie-backend-spring:TAG` | `springboot/Dockerfile` |
 | AI Pipeline | `dorae222/adelie-ai-pipeline:TAG` | `datapipeline/Dockerfile` |
 
 빌드 아키텍처:
 - **Frontend**: Multi-stage (Node.js builder → Nginx runtime)
 - **FastAPI**: Python 3.11-slim, 4 Uvicorn workers
-- **Spring Boot**: Multi-stage (Gradle builder → JRE 17 runtime)
 - **AI Pipeline**: Python 3.11-slim, 워커 서비스
 
 ## 6. 개발 → 배포 플로우
@@ -191,11 +191,11 @@ make clean
 docker system prune -af --volumes
 ```
 
-### 네트워크 문제 (infra-server 연결 불가)
+### DB 연결 문제
 ```bash
-# infra-server 핑 테스트
-ping 10.10.10.10
+# 로컬 PostgreSQL 컨테이너 상태 확인
+docker compose -f docker-compose.dev.yml ps postgres
 
 # PostgreSQL 직접 연결 테스트
-docker run --rm postgres:16 pg_isready -h 10.10.10.10 -p 5432
+docker compose -f docker-compose.dev.yml exec postgres pg_isready
 ```

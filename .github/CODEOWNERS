@@ -13,9 +13,6 @@
 # Shared (AI config)
 /shared/            @J2hoon10
 
-# Backend Spring
-/springboot/        @jjjh02
-
 # Database (Alembic + scripts)
 /database/          @dorae222
 

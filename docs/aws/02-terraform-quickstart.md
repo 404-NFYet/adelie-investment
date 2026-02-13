@@ -55,7 +55,7 @@ terraform destroy
 
 - **VPC 모듈**: 네트워크 구성 (VPC, 서브넷, IGW, NAT, 라우팅 테이블)
 - **Bastion 모듈**: SSH 접속용 점프 서버
-- **ECR 모듈**: 컨테이너 이미지 저장소 (frontend, backend-api, backend-spring, ai-pipeline)
+- **ECR 모듈**: 컨테이너 이미지 저장소 (frontend, backend-api, ai-pipeline)
 - **RDS 모듈**: PostgreSQL + pgvector 데이터베이스
 - **ElastiCache 모듈**: Redis 캐시 서버
 - **S3 모듈**: 객체 스토리지 (MinIO 대체)

@@ -22,13 +22,13 @@ docker compose -f docker-compose.prod.yml ps
 
 ```bash
 # 1. 시장 데이터 수집 (키워드 + 종목)
-docker exec adelie-backend-api python /app/scripts/seed_fresh_data.py
+docker exec adelie-backend-api python /app/scripts/seed_fresh_data_integrated.py
 
 # 2. 역사적 사례 생성 (LLM 기반, OPENAI_API_KEY 필요)
-docker exec -e OPENAI_API_KEY="$OPENAI_API_KEY" adelie-backend-api python /app/generate_cases.py
+docker exec adelie-backend-api python /app/scripts/generate_cases.py
 
 # 데이터 확인
-docker exec adelie-postgres psql -U adelie -d adelie -c "SELECT COUNT(*) FROM historical_cases;"
+docker exec adelie-postgres psql -U narative -d narrative_invest -c "SELECT COUNT(*) FROM historical_cases;"
 ```
 
 ### 업데이트 배포 (이미지 교체)
@@ -61,7 +61,7 @@ docker compose -f docker-compose.prod.yml logs backend-api --tail=30
 ```bash
 # 스케줄러 등록 로그 확인
 docker compose -f docker-compose.prod.yml logs backend-api | grep "scheduler"
-# 기대: "daily pipeline scheduled for 08:00 KST (UTC 23:00, Sun-Thu)"
+# 기대: "daily pipeline scheduled for 16:10 KST (UTC 07:10, Mon-Fri)"
 ```
 
 상세 내용: [08_SCHEDULER.md](08_SCHEDULER.md) 참조

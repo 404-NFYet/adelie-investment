@@ -5,7 +5,7 @@
 - VPC: 10.0.0.0/16
   - Public Subnet x2 (10.0.1.0/24, 10.0.2.0/24) - ALB, Bastion, NAT
   - Private Subnet x2 (10.0.10.0/24, 10.0.20.0/24) - ECS, RDS, ElastiCache, Neo4j
-- ECS Fargate: Frontend, FastAPI, Spring Boot (ALB 뒤)
+- ECS Fargate: Frontend, FastAPI (ALB 뒤)
 - RDS PostgreSQL 16 + pgvector
 - ElastiCache Redis 7
 - EC2 Neo4j (Docker)

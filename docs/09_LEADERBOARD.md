@@ -11,11 +11,12 @@
 
 수익률 기반 리더보드 조회.
 
+**인증**: JWT 토큰 필수 (Authorization 헤더에서 사용자 ID 자동 추출)
+
 **Query Parameters**
 
 | 파라미터 | 타입 | 기본값 | 설명 |
 |---------|------|--------|------|
-| `user_id` | int | 0 | 현재 사용자 ID (내 순위 표시용) |
 | `limit` | int | 20 | 조회할 상위 사용자 수 (1~100) |
 
 **응답 예시**
@@ -90,16 +91,13 @@
 frontend/src/components/trading/Leaderboard.jsx
 ```
 
-| Props | 타입 | 설명 |
-|-------|------|------|
-| `userId` | number | 현재 사용자 ID |
-
 ### API 호출
 
 ```js
 // frontend/src/api/portfolio.js
-portfolioApi.getLeaderboard(userId, limit)
-// → GET /api/v1/portfolio/leaderboard/ranking?user_id={userId}&limit={limit}
+portfolioApi.getLeaderboard(limit)
+// → GET /api/v1/portfolio/leaderboard/ranking?limit={limit}
+// JWT 토큰에서 사용자 ID 자동 추출 (fetchJson이 Authorization 헤더 자동 포함)
 ```
 
 ### UI 구성

@@ -8,7 +8,7 @@
 | deploy-test | 10.10.10.20 | 테스트 배포 서버 | 16/64GB | ~1.3GB | **16/32GB** | `deploy.yml` |
 | dev-hj | - | 인프라 (Docker, CI/CD) | 8/28GB | ~228MB | **4/8GB** | `dev-standard.yml` |
 | dev-j2hoon10 | - | AI 개발 (FastAPI, LangGraph) | 8/28GB | ~104MB | **4/12GB** | `dev-ai.yml` |
-| dev-jjjh02 | - | 백엔드 (Spring Boot, 인증) | 8/28GB | ~104MB | **4/8GB** | `dev-standard.yml` |
+| dev-jjjh02 | - | 백엔드 (FastAPI, 인증) | 8/28GB | ~104MB | **4/8GB** | `dev-standard.yml` |
 | dev-ryejinn | - | AI QA (테스트, 프롬프트) | 8/28GB | ~104MB | **2/4GB** | `dev-qa.yml` |
 | dev-yj99son | - | 프론트엔드 (React UI) | 8/28GB | ~104MB | **4/8GB** | `dev-standard.yml` |
 | **합계** | - | - | **64/228GB** | **~3.2GB** | **42/96GB** | - |

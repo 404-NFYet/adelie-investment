@@ -27,21 +27,30 @@ cd fastapi && pytest ai-qa-tests/ -v
 ```
 tests/
   conftest.py                    # pytest 공통 설정
-  phase0_tests.py                # 외부 서비스 통합 테스트
-  test_api_health.py             # 헬스체크 API
-  test_api_glossary.py           # 용어 사전 API
-  test_api_cases.py              # 케이스 검색 API
-  test_api_pipeline.py           # 파이프라인 API
-  test_api_tutor.py              # AI 튜터 API (SSE)
-  test_viz_model_comparison.py   # 시각화 모델 비교
   unit/
+    test_prompt_loader.py        # 프롬프트 로더
     test_services.py             # 서비스 레이어
     test_schemas.py              # Pydantic 스키마
     test_collectors.py           # 데이터 수집기
     test_ai_tools.py             # AI 도구
-    test_prompt_loader.py        # 프롬프트 로더 (신규)
+  backend/
+    test_api_health.py           # 헬스체크 API
+    test_api_smoke.py            # 스모크 테스트
+    test_api_cases.py            # 케이스 API
+    test_api_glossary.py         # 용어 사전 API
+    test_api_pipeline.py         # 파이프라인 API
+    test_api_tutor.py            # AI 튜터 API (SSE)
+  integration/
+    phase0_tests.py              # 외부 서비스 통합 테스트
+    test_viz_model_comparison.py # 시각화 모델 비교
   load/
-    locustfile.py                # 40인 부하 테스트 (신규)
+    locustfile.py                # 40인 부하 테스트
+
+datapipeline/tests/
+    test_data_collection.py      # 데이터 수집 테스트
+    test_data_collection_utils.py# 수집 유틸 테스트
+    test_nodes.py                # 파이프라인 노드 테스트
+    test_schemas.py              # 스키마 테스트
 
 frontend/e2e/
   smoke.spec.js                  # 스모크 테스트
