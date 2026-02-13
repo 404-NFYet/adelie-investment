@@ -5,11 +5,11 @@
 
 REGISTRY ?= dorae222
 TAG ?= latest
-SERVICES = frontend backend-api backend-spring ai-pipeline
+SERVICES = frontend backend-api ai-pipeline
 
 .PHONY: help build push push-local dev dev-down deploy deploy-down \
-        dev-frontend-local dev-api-local dev-spring \
-        test test-backend test-e2e test-load test-pipeline test-frontend test-spring \
+        dev-frontend-local dev-api-local \
+        test test-backend test-e2e test-load test-pipeline test-frontend \
         migrate logs clean
 
 # --- 도움말 ---
@@ -49,7 +49,7 @@ help:
 	@echo ""
 
 # --- Docker 빌드 ---
-build: build-frontend build-api build-spring build-ai
+build: build-frontend build-api build-ai
 
 build-frontend:
 	@echo "🔨 Building frontend..."
@@ -58,10 +58,6 @@ build-frontend:
 build-api:
 	@echo "🔨 Building backend-api..."
 	docker build -f fastapi/Dockerfile -t $(REGISTRY)/adelie-backend-api:$(TAG) .
-
-build-spring:
-	@echo "🔨 Building backend-spring..."
-	docker build -t $(REGISTRY)/adelie-backend-spring:$(TAG) ./springboot
 
 build-ai:
 	@echo "🔨 Building ai-pipeline..."
@@ -72,12 +68,11 @@ push:
 	@echo "📤 Pushing to Docker Hub ($(REGISTRY))..."
 	docker push $(REGISTRY)/adelie-frontend:$(TAG)
 	docker push $(REGISTRY)/adelie-backend-api:$(TAG)
-	docker push $(REGISTRY)/adelie-backend-spring:$(TAG)
 	docker push $(REGISTRY)/adelie-ai-pipeline:$(TAG)
 
 push-local:
 	@echo "📤 Pushing to local registry..."
-	@for svc in frontend backend-api backend-spring ai-pipeline; do \
+	@for svc in frontend backend-api ai-pipeline; do \
 		docker tag $(REGISTRY)/adelie-$$svc:$(TAG) 10.10.10.10:5000/adelie-$$svc:$(TAG); \
 		docker push 10.10.10.10:5000/adelie-$$svc:$(TAG); \
 	done
@@ -102,9 +97,6 @@ dev-frontend-local:
 dev-api-local:
 	cd fastapi && ../.venv/bin/uvicorn app.main:app --port 8082 --reload
 
-dev-spring:
-	cd springboot && ./gradlew bootRun
-
 # --- 배포 환경 ---
 deploy:
 	REGISTRY=$(REGISTRY) TAG=$(TAG) docker compose -f docker-compose.prod.yml up -d
@@ -119,7 +111,7 @@ deploy-logs:
 deploy-test: build push
 	ssh deploy-test 'cd ~/adelie-investment && git pull origin develop && \
 		docker compose -f docker-compose.prod.yml pull && \
-		docker compose -f docker-compose.prod.yml up -d && \
+		docker compose -f docker-compose.prod.yml up -d --remove-orphans && \
 		docker exec adelie-frontend nginx -s reload 2>/dev/null || true'
 
 deploy-test-service:
@@ -148,10 +140,6 @@ test-load:
 test-frontend:
 	@echo "🧪 Running frontend tests..."
 	cd frontend && npm test
-
-test-spring:
-	@echo "🧪 Running Spring Boot tests..."
-	cd springboot && ./gradlew test
 
 test-pipeline:
 	@echo "🧪 Running pipeline validation..."
