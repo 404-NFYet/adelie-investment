@@ -61,7 +61,6 @@ services:
     depends_on:
       - frontend
       - backend-api
-      - backend-spring
     profiles:
       - e2e
 
@@ -70,7 +69,6 @@ services:
     build: ./frontend
     depends_on:
       - backend-api
-      - backend-spring
     profiles:
       - e2e
 
@@ -81,18 +79,6 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://test:test@postgres-test:5432/test_narrative
       REDIS_URL: redis://redis-test:6379/0
-    depends_on:
-      postgres-test:
-        condition: service_healthy
-    profiles:
-      - e2e
-
-  backend-spring:
-    build: ./springboot
-    environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-test:5432/test_narrative
-      SPRING_DATASOURCE_USERNAME: test
-      SPRING_DATASOURCE_PASSWORD: test
     depends_on:
       postgres-test:
         condition: service_healthy
