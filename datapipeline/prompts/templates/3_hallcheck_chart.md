@@ -2,6 +2,7 @@
 provider: openai
 model: gpt-5-mini
 temperature: 0.1
+max_tokens: 8192
 response_format: json_object
 ---
 

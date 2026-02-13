@@ -81,75 +81,77 @@ def run_chart_agent_node(state: dict) -> dict:
                 })
                 continue
 
-            # 1. Reasoning
-            reasoning_result = call_llm_with_prompt("3_chart_reasoning", {
-                "section_title": title,
-                "content": section["content"],
-                "viz_hint": viz_hint,
-                "curated_context": internal_context_summary
-            })
-            
-            tool_calls = reasoning_result.get("tool_calls", [])
-            chart_type = reasoning_result.get("chart_type", "Unknown")
-            logger.info(f"    Reasoning: Type={chart_type}, Tools={len(tool_calls)}")
+            try:
+                # 1. Reasoning
+                reasoning_result = call_llm_with_prompt("3_chart_reasoning", {
+                    "section_title": title,
+                    "content": section["content"],
+                    "viz_hint": viz_hint,
+                    "curated_context": internal_context_summary
+                })
 
-            # 2. Tool Execution
-            tool_outputs = []
-            for call in tool_calls:
-                tool_name = call.get("tool")
-                args = call.get("args", {})
-                
-                if tool_name in AVAILABLE_TOOLS:
-                    try:
-                        logger.info(f"    Executing {tool_name} with {args}")
-                        # Execute tool
-                        output = AVAILABLE_TOOLS[tool_name](**args)
-                        tool_outputs.append({
-                            "tool": tool_name,
-                            "args": args,
-                            "output": output
-                        })
-                    except Exception as e:
-                        logger.error(f"    Tool {tool_name} failed: {e}")
-                        tool_outputs.append({
-                            "tool": tool_name,
-                            "error": str(e)
-                        })
-                else:
-                    logger.warning(f"    Unknown tool: {tool_name}")
+                tool_calls = reasoning_result.get("tool_calls", [])
+                chart_type = reasoning_result.get("chart_type", "Unknown")
+                logger.info(f"    Reasoning: Type={chart_type}, Tools={len(tool_calls)}")
 
-            # 3. Generation
-            generation_result = call_llm_with_prompt("3_chart_generation", {
-                "section_title": title,
-                "step": step,
-                "viz_hint": viz_hint,
-                "chart_type": chart_type,
-                "internal_context_summary": internal_context_summary,
-                "tool_outputs": json.dumps(tool_outputs, ensure_ascii=False),
-                "color_palette": COLOR_PALETTE
-            })
-            
-            generated_chart = generation_result.get("chart")
-            generated_sources = generation_result.get("sources", [])
-            
-            if generated_chart:
-                charts[section_key] = generated_chart
-                
-                # Merge sources
-                for src in generated_sources:
-                    # Ensure used_in_pages is set correctly
-                    if "used_in_pages" not in src or not src["used_in_pages"]:
-                        src["used_in_pages"] = [step]
-                    
-                    # Deduplicate or update existing source
-                    existing = next((s for s in all_sources if s["name"] == src["name"]), None)
-                    if existing:
-                        if step not in existing["used_in_pages"]:
-                            existing["used_in_pages"].append(step)
+                # 2. Tool Execution
+                tool_outputs = []
+                for call in tool_calls:
+                    tool_name = call.get("tool")
+                    args = call.get("args", {})
+
+                    if tool_name in AVAILABLE_TOOLS:
+                        try:
+                            logger.info(f"    Executing {tool_name} with {args}")
+                            output = AVAILABLE_TOOLS[tool_name](**args)
+                            tool_outputs.append({
+                                "tool": tool_name,
+                                "args": args,
+                                "output": output
+                            })
+                        except Exception as e:
+                            logger.error(f"    Tool {tool_name} failed: {e}")
+                            tool_outputs.append({
+                                "tool": tool_name,
+                                "error": str(e)
+                            })
                     else:
-                        all_sources.append(src)
-            else:
-                logger.warning(f"    Chart generation returned empty for {section_key}")
+                        logger.warning(f"    Unknown tool: {tool_name}")
+
+                # 3. Generation
+                generation_result = call_llm_with_prompt("3_chart_generation", {
+                    "section_title": title,
+                    "step": step,
+                    "viz_hint": viz_hint,
+                    "chart_type": chart_type,
+                    "internal_context_summary": internal_context_summary,
+                    "tool_outputs": json.dumps(tool_outputs, ensure_ascii=False),
+                    "color_palette": COLOR_PALETTE
+                })
+
+                generated_chart = generation_result.get("chart")
+                generated_sources = generation_result.get("sources", [])
+
+                if generated_chart:
+                    charts[section_key] = generated_chart
+
+                    # Merge sources
+                    for src in generated_sources:
+                        if "used_in_pages" not in src or not src["used_in_pages"]:
+                            src["used_in_pages"] = [step]
+
+                        existing = next((s for s in all_sources if s["name"] == src["name"]), None)
+                        if existing:
+                            if step not in existing["used_in_pages"]:
+                                existing["used_in_pages"].append(step)
+                        else:
+                            all_sources.append(src)
+                else:
+                    logger.warning(f"    Chart generation returned empty for {section_key}")
+                    charts[section_key] = None
+
+            except Exception as chart_err:
+                logger.warning(f"    Chart failed for {section_key} (non-fatal): {chart_err}")
                 charts[section_key] = None
 
         logger.info(f"  run_chart_agent done. Generated {len([k for k,v in charts.items() if v])} charts.")
