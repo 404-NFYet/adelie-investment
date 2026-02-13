@@ -42,7 +42,7 @@ class RedisCacheService:
             self._pool = redis.ConnectionPool.from_url(
                 settings.REDIS_URL,
                 decode_responses=True,
-                max_connections=10,
+                max_connections=50,
             )
             self._client = redis.Redis(connection_pool=self._pool)
             await self._client.ping()
