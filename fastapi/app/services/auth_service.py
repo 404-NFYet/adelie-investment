@@ -1,4 +1,4 @@
-"""Authentication business logic for FastAPI (Spring Boot parity)."""
+"""Authentication business logic."""
 
 from __future__ import annotations
 

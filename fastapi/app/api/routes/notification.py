@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, and_, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import get_current_user
 from app.core.database import get_db
 from app.models.notification import Notification
 
@@ -38,14 +39,15 @@ class ReadRequest(BaseModel):
     notification_ids: list[int] | None = None  # None이면 전체 읽음 처리
 
 
-@router.get("/{user_id}", response_model=NotificationsListResponse)
+@router.get("", response_model=NotificationsListResponse)
 async def get_notifications(
-    user_id: int,
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
     """알림 목록 조회."""
+    user_id = current_user["id"]
     offset = (page - 1) * per_page
 
     # 알림 목록
@@ -86,9 +88,13 @@ async def get_notifications(
     )
 
 
-@router.get("/{user_id}/unread-count", response_model=UnreadCountResponse)
-async def get_unread_count(user_id: int, db: AsyncSession = Depends(get_db)):
+@router.get("/unread-count", response_model=UnreadCountResponse)
+async def get_unread_count(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
     """안읽은 알림 수."""
+    user_id = current_user["id"]
     stmt = select(func.count()).where(
         and_(Notification.user_id == user_id, Notification.is_read == False)
     )
@@ -96,11 +102,14 @@ async def get_unread_count(user_id: int, db: AsyncSession = Depends(get_db)):
     return UnreadCountResponse(unread_count=count)
 
 
-@router.post("/{user_id}/read")
+@router.post("/read")
 async def mark_as_read(
-    user_id: int, req: ReadRequest, db: AsyncSession = Depends(get_db),
+    req: ReadRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
     """알림 읽음 처리."""
+    user_id = current_user["id"]
     if req.notification_ids:
         stmt = (
             update(Notification)

@@ -2,7 +2,7 @@
  * API endpoints for Narrative Investment
  */
 
-import { API_BASE_URL } from '../config';
+import { API_BASE_URL, fetchJson, postJson } from './client';
 
 // Re-export module APIs
 export { portfolioApi } from './portfolio';
@@ -39,17 +39,13 @@ export const keywordsApi = {
 
 // Notification API
 export const notificationApi = {
-  getAll: (userId, page = 1, perPage = 20) =>
-    fetch(`${API_BASE_URL}/api/v1/notifications/${userId}?page=${page}&per_page=${perPage}`).then(r => r.json()),
+  getAll: (page = 1, perPage = 20) =>
+    fetchJson(`${API_BASE_URL}/api/v1/notifications?page=${page}&per_page=${perPage}`),
 
-  getUnreadCount: (userId) =>
-    fetch(`${API_BASE_URL}/api/v1/notifications/${userId}/unread-count`).then(r => r.json()),
+  getUnreadCount: () =>
+    fetchJson(`${API_BASE_URL}/api/v1/notifications/unread-count`),
 
-  markAsRead: (userId, notificationIds = null) =>
-    fetch(`${API_BASE_URL}/api/v1/notifications/${userId}/read`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ notification_ids: notificationIds }),
-    }).then(r => r.json()),
+  markAsRead: (notificationIds = null) =>
+    postJson(`${API_BASE_URL}/api/v1/notifications/read`, { notification_ids: notificationIds }),
 };
 

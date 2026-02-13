@@ -86,7 +86,7 @@ export default function Notifications() {
   useEffect(() => {
     if (!userId) return;
     setIsLoading(true);
-    notificationApi.getAll(userId, 1, 50)
+    notificationApi.getAll(1, 50)
       .then(data => {
         setNotifications(data.notifications || []);
         setUnreadCount(data.unread_count || 0);
@@ -97,7 +97,7 @@ export default function Notifications() {
 
   const handleRead = async (notificationId) => {
     try {
-      await notificationApi.markAsRead(userId, [notificationId]);
+      await notificationApi.markAsRead([notificationId]);
       setNotifications(prev =>
         prev.map(n => n.id === notificationId ? { ...n, is_read: true } : n)
       );
@@ -108,7 +108,7 @@ export default function Notifications() {
   const handleReadAll = async () => {
     if (unreadCount === 0) return;
     try {
-      await notificationApi.markAsRead(userId);
+      await notificationApi.markAsRead();
       setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
       setUnreadCount(0);
     } catch {}
