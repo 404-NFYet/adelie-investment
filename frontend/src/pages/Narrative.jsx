@@ -3,7 +3,7 @@
  * 순서: background → concept_explain → history → application → caution → summary
  * + 브리핑 완료 보상 + 페이지별 용어 + 출처
  */
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
@@ -101,7 +101,7 @@ function StepPlaceholder({ stepKey, color }) {
 }
 
 /* ── Narrative 텍스트 카드 ── */
-function NarrativeCard({ content, stepConfig }) {
+function NarrativeCard({ content, stepConfig, onTermClick }) {
   const sections = content.split(/(?=^### )/m).filter(Boolean);
 
   return (
@@ -122,8 +122,15 @@ function NarrativeCard({ content, stepConfig }) {
               <ReactMarkdown
                 rehypePlugins={[rehypeRaw]}
                 components={{
-                  mark: ({ node, ...props }) => (
-                    <mark className="term-highlight cursor-pointer" {...props} />
+                  mark: ({ node, className, ...props }) => (
+                    <mark
+                      className="term-highlight cursor-pointer"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        onTermClick?.(e.target.textContent);
+                      }}
+                      {...props}
+                    />
                   ),
                   h3: ({ node, ...props }) => (
                     <h3 className="text-[13px] font-bold mb-2" style={{ color: stepConfig.color }} {...props} />
@@ -329,7 +336,6 @@ export default function Narrative() {
   const navigate = useNavigate();
   const { claimReward } = usePortfolio();
   const { openTermSheet } = useTermContext();
-  const contentRef = useRef(null);
 
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -354,21 +360,6 @@ export default function Narrative() {
       .then((d) => { setData(d); setIsLoading(false); })
       .catch((e) => { console.error('Narrative fetch error:', e); setError(e.message); setIsLoading(false); });
   }, [caseId]);
-
-  // 용어 하이라이트 클릭 -> TermBottomSheet 연동
-  useEffect(() => {
-    const el = contentRef.current;
-    if (!el) return;
-    const handler = (e) => {
-      const term = e.target.closest('.term-highlight');
-      if (term) {
-        e.preventDefault();
-        openTermSheet(term.textContent);
-      }
-    };
-    el.addEventListener('click', handler);
-    return () => el.removeEventListener('click', handler);
-  }, [openTermSheet]);
 
   // 로딩/에러/빈 데이터 처리
   if (isLoading) return <div className="min-h-screen flex items-center justify-center"><div className="animate-pulse text-secondary">로딩 중...</div></div>;
@@ -464,7 +455,7 @@ export default function Narrative() {
       </header>
 
       {/* ── 메인 콘텐츠 (애니메이션) ── */}
-      <main ref={contentRef} className="max-w-mobile mx-auto px-4 pt-2">
+      <main className="max-w-mobile mx-auto px-4 pt-2">
         <AnimatePresence mode="wait" custom={direction}>
           <motion.div
             key={currentStep}
@@ -517,7 +508,7 @@ export default function Narrative() {
 
                 {/* 내러티브 텍스트 */}
                 {stepData.content && (
-                  <NarrativeCard content={stepData.content} stepConfig={stepMeta} />
+                  <NarrativeCard content={stepData.content} stepConfig={stepMeta} onTermClick={openTermSheet} />
                 )}
 
                 {/* 페이지별 용어는 인라인 하이라이트 + TermBottomSheet로 대체 */}
