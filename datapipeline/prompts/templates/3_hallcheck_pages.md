@@ -2,6 +2,7 @@
 provider: anthropic
 model: claude-sonnet-4-5-20250929
 temperature: 0.1
+max_tokens: 16000
 response_format: json_object
 ---
 당신은 `interface_3_final_briefing` 전용 팩트체커입니다.
