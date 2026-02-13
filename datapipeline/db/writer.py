@@ -85,6 +85,10 @@ async def _save(
     result: dict[str, Any] = {"briefing_date": str(briefing_date)}
 
     async with conn.transaction():
+        # 동일 날짜에 대한 동시 쓰기 방지 (advisory lock)
+        lock_key = int(briefing_date.toordinal()) & 0x7FFFFFFF
+        await conn.execute("SELECT pg_advisory_xact_lock($1)", lock_key)
+
         # ── 1. daily_briefings (UPSERT) ──
         existing_id = await conn.fetchval(
             "SELECT id FROM daily_briefings WHERE briefing_date = $1",
@@ -155,7 +159,8 @@ async def _save(
                    (briefing_id, stock_code, stock_name, change_rate, volume,
                     selection_reason, created_at, trend_days, trend_type,
                     catalyst, catalyst_url, catalyst_published_at, catalyst_source)
-                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)""",
+                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+                   ON CONFLICT (briefing_id, stock_code) DO NOTHING""",
                 rows,
             )
             result["stocks_saved"] = len(rows)
