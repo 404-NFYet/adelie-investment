@@ -70,18 +70,44 @@ def _is_valid_narrative(narrative_data: dict) -> bool:
     return True
 
 
+def _inject_glossary_marks(content: str, glossary: list[dict]) -> str:
+    """content 내 glossary 용어를 <mark> 태그로 감싸기 (각 용어 첫 등장 1회만)."""
+    if not content or not glossary:
+        return content
+    for item in glossary:
+        term = item.get("term", "")
+        if not term or len(term) < 2:
+            continue
+        # 이미 <mark> 안에 있는 것은 건너뛰기
+        pattern = re.compile(
+            rf'(?<!<mark>)(?<!<mark class="term-highlight">)({re.escape(term)})(?!</mark>)',
+            re.IGNORECASE,
+        )
+        content = pattern.sub(r'<mark class="term-highlight">\1</mark>', content, count=1)
+    return content
+
+
 def _build_from_llm(narrative_data: dict) -> dict:
-    """LLM이 생성한 6페이지 narrative 데이터를 그대로 반환."""
+    """LLM이 생성한 6페이지 narrative 데이터를 반환 (glossary 하이라이팅 포함)."""
     steps = {}
     for key in PAGE_KEYS:
         section = narrative_data.get(key, {})
         if isinstance(section, str):
             section = {"content": section, "bullets": []}
+
+        content = section.get("content", "")
+        glossary = section.get("glossary", [])
+
+        # glossary 용어를 content에 하이라이팅
+        content = _inject_glossary_marks(content, glossary)
+        # 기존 [[term]] 패턴도 변환
+        content = highlight_terms(content)
+
         step_data = {
             "bullets": section.get("bullets", []),
-            "content": section.get("content", ""),
+            "content": content,
             "chart": section.get("chart"),
-            "glossary": section.get("glossary", []),
+            "glossary": glossary,
         }
         # sources/citations 전달 (Perplexity 출처)
         if section.get("sources"):
