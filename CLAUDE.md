@@ -173,6 +173,33 @@ Deploy-test server: `10.10.10.20` (SSH alias: `deploy-test`)
 - 로컬 실행 시 반드시 `.venv` 활성화 후 실행: `source .venv/bin/activate` 또는 `.venv/bin/python` 직접 사용
 - Docker 내부는 Python 3.11, 로컬은 3.12 — 버전 차이 주의
 
+### Python 가상환경 케이스별 가이드
+
+| 케이스 | 실행 방법 | 비고 |
+|--------|-----------|------|
+| 로컬 FastAPI 개발 | `make dev-api-local` 또는 `.venv/bin/uvicorn ...` | `.env`의 DATABASE_URL 사용 |
+| 로컬 Alembic | `cd database && ../.venv/bin/alembic upgrade head` | `.env` → 동기 드라이버 자동 변환 |
+| 로컬 datapipeline | `.venv/bin/python -m datapipeline.run --backend live` | 프로젝트 루트에서 실행 |
+| 로컬 reset_db | `.venv/bin/python database/scripts/reset_db.py` | `--content-only` 옵션 가능 |
+| Docker dev 마이그레이션 | `docker compose -f docker-compose.dev.yml run db-migrate` | postgres 컨테이너 대상 |
+| Docker prod 마이그레이션 | `docker exec adelie-backend-api sh -c "cd /app/database && alembic upgrade head"` | Alembic이 backend-api 이미지에 포함 |
+| deploy-test 원격 마이그레이션 | `ssh deploy-test 'docker exec adelie-backend-api sh -c "cd /app/database && alembic upgrade head"'` | 원격 서버 |
+
+### 로컬에서 원격 서버 DB 접속
+
+```bash
+# 방법 1: .env의 DATABASE_URL이 원격 호스트를 가리키면 자동으로 원격 DB 사용
+# (reset_db, alembic, pipeline 모두 .env 참조)
+DATABASE_URL=postgresql+asyncpg://narative:password@10.10.10.20:5432/narrative_invest
+
+# 방법 2: SSH 터널 (DB 포트가 외부 비노출인 경우)
+ssh -L 15432:localhost:5432 deploy-test -N &
+# 이후 DATABASE_URL에서 host를 localhost:15432로 변경
+
+# 방법 3: psql 직접 접속
+psql -h 10.10.10.20 -p 5432 -U narative -d narrative_invest
+```
+
 ## Git Rules
 - **커밋 메시지에 Co-Authored-By 절대 포함하지 않음** (시스템 기본 동작 무시)
 - **AI 도구 사용 흔적을 커밋/PR에 남기지 않음** ("Generated with Claude Code" 등 금지)
