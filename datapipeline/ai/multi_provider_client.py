@@ -1,7 +1,7 @@
 """멀티 프로바이더 AI 클라이언트.
 
-OpenRouter를 대체하여 OpenAI, Perplexity, Anthropic을 직접 호출한다.
-GPT-5 thinking 모드를 지원한다.
+datapipeline/ai/multi_provider_client.py에서 복제.
+config 의존을 제거하고 환경변수를 직접 참조한다.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from typing import Any, Optional
 
 from openai import OpenAI
 
-from ..core.config import get_settings
+from ..config import OPENAI_API_KEY, PERPLEXITY_API_KEY, ANTHROPIC_API_KEY
 
 LOGGER = logging.getLogger(__name__)
 
@@ -26,9 +26,9 @@ class MultiProviderClient:
         perplexity_key: str = "",
         anthropic_key: str = "",
     ) -> None:
-        settings = get_settings()
-        openai_key = openai_key or settings.openai.api_key
-        perplexity_key = perplexity_key or settings.perplexity.api_key
+        openai_key = openai_key or OPENAI_API_KEY
+        perplexity_key = perplexity_key or PERPLEXITY_API_KEY
+        anthropic_key = anthropic_key or ANTHROPIC_API_KEY
 
         self.providers: dict[str, Any] = {}
 
@@ -46,10 +46,6 @@ class MultiProviderClient:
             LOGGER.info("Perplexity provider initialized")
 
         # Anthropic (선택적)
-        anthropic_key = anthropic_key or getattr(settings, 'claude_api_key', '') or ''
-        if not anthropic_key:
-            import os
-            anthropic_key = os.getenv("CLAUDE_API_KEY", "")
         if anthropic_key:
             try:
                 from anthropic import Anthropic
@@ -71,24 +67,12 @@ class MultiProviderClient:
         response_format: Optional[dict[str, Any]] = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
-        """프로바이더별 chat completion 호출.
-
-        Args:
-            provider: "openai", "perplexity", "anthropic"
-            model: 실제 모델명
-            messages: 대화 메시지 목록
-            thinking: GPT-5 thinking 모드 활성화
-            thinking_effort: thinking 강도 (low/medium/high)
-            temperature: 온도 파라미터
-            max_tokens: 최대 토큰 수
-            response_format: JSON 응답 형식 강제
-            **kwargs: 추가 파라미터
-
-        Returns:
-            응답 딕셔너리 (OpenAI 호환 형식)
-        """
+        """프로바이더별 chat completion 호출."""
         if provider not in self.providers:
-            raise ValueError(f"프로바이더 '{provider}'가 초기화되지 않았습니다. 사용 가능: {list(self.providers.keys())}")
+            raise ValueError(
+                f"프로바이더 '{provider}'가 초기화되지 않았습니다. "
+                f"사용 가능: {list(self.providers.keys())}"
+            )
 
         started = time.perf_counter()
         LOGGER.info(
@@ -106,7 +90,10 @@ class MultiProviderClient:
                 )
         except Exception as exc:
             elapsed = time.perf_counter() - started
-            LOGGER.error("[%s] error model=%s elapsed=%.2fs: %s", provider.upper(), model, elapsed, exc)
+            LOGGER.error(
+                "[%s] error model=%s elapsed=%.2fs: %s",
+                provider.upper(), model, elapsed, exc,
+            )
             raise
 
         elapsed = time.perf_counter() - started
@@ -121,7 +108,6 @@ class MultiProviderClient:
         """OpenAI 호환 API 호출 (OpenAI, Perplexity)."""
         client = self.providers[provider]
 
-        # gpt-5 계열: max_completion_tokens만 지원, temperature는 기본값(1)만 허용
         is_gpt5 = provider == "openai" and "gpt-5" in model
 
         call_kwargs: dict[str, Any] = {
@@ -131,12 +117,10 @@ class MultiProviderClient:
 
         if is_gpt5:
             call_kwargs["max_completion_tokens"] = max_tokens
-            # gpt-5는 temperature 커스텀 불가 → 파라미터 생략 (기본값 1 적용)
         else:
             call_kwargs["max_tokens"] = max_tokens
             call_kwargs["temperature"] = temperature
 
-        # GPT-5 thinking 모드
         if thinking and is_gpt5:
             call_kwargs["reasoning_effort"] = thinking_effort
 
@@ -169,7 +153,6 @@ class MultiProviderClient:
         """Anthropic Claude API 호출."""
         client = self._anthropic_client
 
-        # system 메시지 분리 (Anthropic API 형식)
         system_msg = ""
         user_messages = []
         for msg in messages:
@@ -178,7 +161,6 @@ class MultiProviderClient:
             else:
                 user_messages.append(msg)
 
-        # 최소 1개의 user 메시지 필요
         if not user_messages:
             user_messages = [{"role": "user", "content": "위 지시사항을 수행해주세요."}]
 

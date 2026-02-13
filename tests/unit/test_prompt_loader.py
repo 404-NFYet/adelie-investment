@@ -61,17 +61,16 @@ class TestDatapipelinePromptLoader:
     def test_frontmatter_parsing(self):
         """frontmatter에서 provider, model, temperature 등 파싱."""
         from datapipeline.prompts import load_prompt
-        spec = load_prompt("keyword_extraction", count="8", avoid_section="", rss_text="테스트")
-        assert spec.provider == "openai"
-        assert spec.model == "gpt-5-mini"
-        assert spec.thinking is True
-        assert spec.thinking_effort == "medium"
+        spec = load_prompt("page_purpose", curated_context="{}")
+        assert spec.provider == "anthropic"
+        assert "claude" in spec.model
+        assert spec.response_format == "json_object"
 
-    def test_writer_uses_anthropic(self):
-        """writer 프롬프트가 anthropic 프로바이더를 사용."""
+    def test_narrative_body_uses_anthropic(self):
+        """narrative_body 프롬프트가 anthropic 프로바이더를 사용."""
         from datapipeline.prompts import load_prompt
-        spec = load_prompt("writer", theme="test", mirroring_hint="test",
-                          plan="{}", context_research="test", simulation_research="test")
+        spec = load_prompt("narrative_body",
+                          curated_context="{}", page_purpose="{}", historical_case="{}")
         assert spec.provider == "anthropic"
 
     def test_all_datapipeline_templates_loadable(self):
@@ -82,11 +81,13 @@ class TestDatapipelinePromptLoader:
                 continue
             from datapipeline.prompts import load_prompt
             spec = load_prompt(md_file.stem, **{
-                "difficulty": "beginner", "count": "8", "rss_text": "test",
-                "keyword": "test", "mirroring_hint": "test", "theme": "test",
-                "plan": "{}", "context_research": "test", "simulation_research": "test",
-                "draft": "{}", "sections_text": "test", "terms": "test",
-                "query": "test", "term": "test", "avoid_section": "",
+                "curated_context": "{}",
+                "page_purpose": "{}",
+                "historical_case": "{}",
                 "narrative_json": "{}",
+                "raw_narrative": "{}",
+                "charts": "[]",
+                "glossaries": "[]",
+                "final_briefing": "{}",
             })
             assert spec.body, f"{md_file.name} body가 비어있음"

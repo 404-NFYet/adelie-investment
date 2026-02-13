@@ -1,8 +1,8 @@
 """프롬프트 로더: .md 프롬프트 템플릿을 로드하고 변수 치환을 수행한다.
 
-adelie_fe_test/pipeline/prompt_loader.py에서 이식 + 확장.
+datapipeline/prompts/prompt_loader.py에서 복제.
 
-각 프롬프트 파일은 ``datapipeline/prompts/templates/`` 에 위치하며 다음 형식을 따른다::
+각 프롬프트 파일은 ``interface/prompts/templates/`` 에 위치하며 다음 형식을 따른다::
 
     ---
     provider: openai
@@ -143,8 +143,8 @@ def load_prompt(
     """이름으로 프롬프트 템플릿을 로드하고, include 해결 및 변수 치환을 수행한다.
 
     Args:
-        name: 확장자 없는 프롬프트 파일 이름 (예: "planner").
-        prompts_dir: 오버라이드 디렉토리. 기본값: ``datapipeline/prompts/templates/``.
+        name: 확장자 없는 프롬프트 파일 이름 (예: "page_purpose").
+        prompts_dir: 오버라이드 디렉토리. 기본값: ``interface/prompts/templates/``.
         **kwargs: 템플릿에 치환할 변수.
 
     Returns:
@@ -165,6 +165,13 @@ def load_prompt(
     # 변수 치환
     str_kwargs = {k: str(v) for k, v in kwargs.items()}
     body = _substitute_vars(body, str_kwargs)
+
+    # system_message에도 include/변수 치환 적용
+    sys_msg = meta.get("system_message", "")
+    if sys_msg:
+        sys_msg = _resolve_includes(sys_msg, directory)
+        sys_msg = _substitute_vars(sys_msg, str_kwargs)
+        meta["system_message"] = sys_msg
 
     # frontmatter에서 값 추출
     response_format = meta.get("response_format")
