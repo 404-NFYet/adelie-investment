@@ -552,7 +552,7 @@ def assemble_output_node(state: dict) -> dict:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_path = OUTPUT_DIR / f"briefing_{timestamp}.json"
         output_path.write_text(
-            output.model_dump_json(indent=2, ensure_ascii=False),
+            json.dumps(output.model_dump(), indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
 
