@@ -32,6 +32,7 @@ pgvector==0.3.6
 
 # Financial data
 finance-datareader>=0.9.0
+feedparser>=6.0.0
 
 # Test dependencies
 pytest>=8.0.0
