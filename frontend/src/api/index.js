@@ -13,28 +13,24 @@ export { authApi } from './auth';
 // Cases API
 export const casesApi = {
   search: (query, recency = 'year', limit = 5) =>
-    fetch(
-      `${API_BASE_URL}/api/v1/search/cases?query=${encodeURIComponent(query)}&recency=${recency}&limit=${limit}`
-    ).then((r) => r.json()),
+    fetchJson(`${API_BASE_URL}/api/v1/search/cases?query=${encodeURIComponent(query)}&recency=${recency}&limit=${limit}`),
 
   getStory: (caseId, difficulty = 'beginner') =>
-    fetch(`${API_BASE_URL}/api/v1/story/${caseId}?difficulty=${difficulty}`).then((r) =>
-      r.json()
-    ),
+    fetchJson(`${API_BASE_URL}/api/v1/story/${caseId}?difficulty=${difficulty}`),
 
   getComparison: (caseId) =>
-    fetch(`${API_BASE_URL}/api/v1/comparison/${caseId}`).then((r) => r.json()),
+    fetchJson(`${API_BASE_URL}/api/v1/comparison/${caseId}`),
 
   getCompanies: (caseId) =>
-    fetch(`${API_BASE_URL}/api/v1/companies/${caseId}`).then((r) => r.json()),
+    fetchJson(`${API_BASE_URL}/api/v1/companies/${caseId}`),
 };
 
 // Keywords API
 export const keywordsApi = {
   getToday: (date) =>
-    fetch(`${API_BASE_URL}/api/v1/keywords/today${date ? `?date=${date}` : ''}`).then((r) => r.json()),
+    fetchJson(`${API_BASE_URL}/api/v1/keywords/today${date ? `?date=${date}` : ''}`),
   getHistory: () =>
-    fetch(`${API_BASE_URL}/api/v1/keywords/history`).then((r) => r.json()),
+    fetchJson(`${API_BASE_URL}/api/v1/keywords/history`),
 };
 
 // Notification API
