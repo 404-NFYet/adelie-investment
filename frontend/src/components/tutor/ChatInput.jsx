@@ -9,10 +9,13 @@ const ChatInput = forwardRef(function ChatInput({ value, onChange, onSubmit, isL
       <div className="flex gap-2">
         <input
           ref={ref}
+          id="tutor-chat-input"
+          name="message"
           type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="질문을 입력하세요..."
+          aria-label="질문 입력"
           className="flex-1 px-4 py-3 rounded-xl border border-border bg-background text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-primary"
           disabled={isLoading}
         />

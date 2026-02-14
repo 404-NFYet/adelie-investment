@@ -36,10 +36,13 @@ export default function StockSearch({ onSelect }) {
     <div>
       <div className="relative mb-4">
         <input
+          id="stock-search-input"
+          name="query"
           type="text"
           value={query}
           onChange={handleChange}
           placeholder="종목명 또는 코드 검색"
+          aria-label="종목 검색"
           className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
         />
         {loading && (

@@ -135,9 +135,12 @@ export default function FeedbackWidget({ externalOpen = false, onExternalClose }
 
                 {/* 텍스트 의견 */}
                 <textarea
+                  id="feedback-comment"
+                  name="comment"
                   value={comment}
                   onChange={(e) => setComment(e.target.value)}
                   placeholder="더 나은 서비스를 위해 의견을 남겨주세요 (선택)"
+                  aria-label="피드백 의견"
                   className="w-full p-3 rounded-xl border border-border bg-surface text-sm resize-none mb-4"
                   rows={3}
                 />

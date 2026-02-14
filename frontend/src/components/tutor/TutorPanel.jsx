@@ -107,10 +107,13 @@ export default function TutorPanel() {
       <form onSubmit={handleSubmit} className="p-4 border-t border-border">
         <div className="flex gap-2">
           <input
+            id="tutor-panel-input"
+            name="message"
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="용어에 대해 질문하세요..."
+            aria-label="용어 질문 입력"
             className="input flex-1"
             disabled={isLoading}
           />

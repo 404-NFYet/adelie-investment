@@ -46,9 +46,12 @@ function ContactSection() {
         서비스 이용 중 궁금한 점이나 개선 사항이 있으시면 아래에 남겨주세요.
       </p>
       <textarea
+        id="inquiry-message"
+        name="message"
         value={message}
         onChange={(e) => setMessage(e.target.value)}
         placeholder="문의 내용을 입력해주세요"
+        aria-label="문의 내용"
         className="w-full p-3 rounded-xl border border-border bg-surface text-sm resize-none mb-3"
         rows={3}
       />
