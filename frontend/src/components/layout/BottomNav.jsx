@@ -9,7 +9,6 @@ const HIDDEN_PREFIXES = [
   '/comparison',
   '/companies',
   '/case',
-  '/narrative',
   '/notifications',
 ];
 const HIDDEN_EXACT = ['/'];

@@ -58,8 +58,7 @@ const LANDING_SLIDES = [
   },
 ];
 
-const SLIDE_INTERVAL_MS = 3800;
-const FEATURE_SLIDES = LANDING_SLIDES.slice(1);
+const SWIPE_THRESHOLD = 70;
 
 export default function Landing() {
   const navigate = useNavigate();
@@ -68,7 +67,7 @@ export default function Landing() {
   const [currentIndex, setCurrentIndex] = useState(0);
 
   const currentSlide = useMemo(() => LANDING_SLIDES[currentIndex], [currentIndex]);
-  const activeFeatureIndex = currentIndex === 0 ? 0 : currentIndex - 1;
+  const totalSlides = LANDING_SLIDES.length;
 
   useEffect(() => {
     if (isLoading || !isAuthenticated) return undefined;
@@ -79,22 +78,37 @@ export default function Landing() {
   }, [isLoading, isAuthenticated, navigate]);
 
   useEffect(() => {
-    if (isLoading || isAuthenticated) return undefined;
-    const timer = setInterval(() => {
-      setCurrentIndex((prev) => (prev + 1) % LANDING_SLIDES.length);
-    }, SLIDE_INTERVAL_MS);
-    return () => clearInterval(timer);
-  }, [isLoading, isAuthenticated]);
-
-  useEffect(() => {
     LANDING_SLIDES.forEach((slide) => {
       const img = new Image();
       img.src = slide.image;
     });
   }, []);
 
-  const moveToFeature = (index) => {
-    setCurrentIndex(index + 1);
+  const goToSlide = (index) => {
+    const normalized = (index + totalSlides) % totalSlides;
+    setCurrentIndex(normalized);
+  };
+
+  const goPrev = () => {
+    goToSlide(currentIndex - 1);
+  };
+
+  const goNext = () => {
+    goToSlide(currentIndex + 1);
+  };
+
+  const handleDragEnd = (_, info) => {
+    const offsetX = info?.offset?.x ?? 0;
+    const velocityX = info?.velocity?.x ?? 0;
+
+    if (offsetX <= -SWIPE_THRESHOLD || velocityX <= -500) {
+      goNext();
+      return;
+    }
+
+    if (offsetX >= SWIPE_THRESHOLD || velocityX >= 500) {
+      goPrev();
+    }
   };
 
   return (
@@ -107,7 +121,11 @@ export default function Landing() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -14 }}
             transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-            className="relative flex flex-1 flex-col"
+            drag="x"
+            dragConstraints={{ left: 0, right: 0 }}
+            dragElastic={0.12}
+            onDragEnd={handleDragEnd}
+            className="relative flex flex-1 flex-col touch-pan-y"
           >
             {currentSlide.type === 'hero' ? (
               <>
@@ -124,7 +142,7 @@ export default function Landing() {
                 <img
                   src={currentSlide.image}
                   alt="ADELIE 랜딩 메인 비주얼"
-                  className="pointer-events-none absolute bottom-[-58px] left-1/2 w-[170%] max-w-none -translate-x-[58%] select-none"
+                  className="pointer-events-none absolute bottom-[-58px] left-1/2 z-0 w-[170%] max-w-none -translate-x-[58%] select-none"
                 />
               </>
             ) : (
@@ -159,33 +177,50 @@ export default function Landing() {
                     className={`pointer-events-none select-none ${currentSlide.imageClass}`}
                   />
                 </div>
-
-                <footer className="px-[41px] pb-[48px]">
-                  <div className="mb-[42px] flex justify-center gap-[10px]">
-                    {FEATURE_SLIDES.map((_, index) => (
-                      <button
-                        key={`landing-dot-${index}`}
-                        type="button"
-                        onClick={() => moveToFeature(index)}
-                        className={`h-[15px] rounded-full transition-all ${
-                          index === activeFeatureIndex ? 'w-[40px] bg-primary' : 'w-[15px] bg-[#d0d0d0]'
-                        }`}
-                        aria-label={`${index + 1}번째 랜딩 화면으로 이동`}
-                        aria-current={index === activeFeatureIndex ? 'true' : undefined}
-                      />
-                    ))}
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => navigate('/auth')}
-                    className="w-full rounded-[20px] bg-primary py-[16px] text-[24px] font-bold text-white transition-transform active:scale-[0.99]"
-                  >
-                    아델리 시작하기
-                  </button>
-                </footer>
               </>
             )}
+
+            <footer className="relative z-20 px-[41px] pb-[48px]">
+              <div className="mb-[42px] flex justify-center gap-[10px]">
+                {LANDING_SLIDES.map((_, index) => (
+                  <button
+                    key={`landing-dot-${index}`}
+                    type="button"
+                    onClick={() => goToSlide(index)}
+                    className={`h-[15px] rounded-full transition-all ${
+                      index === currentIndex ? 'w-[40px] bg-primary' : 'w-[15px] bg-[#d0d0d0]'
+                    }`}
+                    aria-label={`${index + 1}번째 랜딩 화면으로 이동`}
+                    aria-current={index === currentIndex ? 'true' : undefined}
+                  />
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => navigate('/auth')}
+                className="w-full rounded-[20px] bg-primary py-[16px] text-[24px] font-bold text-white transition-transform active:scale-[0.99]"
+              >
+                아델리 시작하기
+              </button>
+            </footer>
+
+            <button
+              type="button"
+              onClick={goPrev}
+              aria-label="이전 랜딩 화면"
+              className="absolute left-4 top-1/2 z-10 h-10 w-10 -translate-y-1/2 rounded-full border border-white/40 bg-white/25 text-black backdrop-blur-md transition hover:bg-white/35"
+            >
+              <span className="text-lg leading-none">‹</span>
+            </button>
+            <button
+              type="button"
+              onClick={goNext}
+              aria-label="다음 랜딩 화면"
+              className="absolute right-4 top-1/2 z-10 h-10 w-10 -translate-y-1/2 rounded-full border border-white/40 bg-white/25 text-black backdrop-blur-md transition hover:bg-white/35"
+            >
+              <span className="text-lg leading-none">›</span>
+            </button>
           </motion.section>
         </AnimatePresence>
       </main>

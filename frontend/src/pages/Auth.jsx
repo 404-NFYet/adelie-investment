@@ -122,7 +122,7 @@ export default function Auth() {
           animate={{ opacity: 1, y: 0 }}
           onClick={() => navigate('/')}
         >
-          <h1 className="font-handwriting text-4xl text-primary">아델리에</h1>
+          <h1 className="text-4xl font-black tracking-[-0.03em] text-black">ADELIE</h1>
           <p className="text-text-secondary text-sm mt-1">역사는 반복된다</p>
         </motion.div>
 
