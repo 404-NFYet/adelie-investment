@@ -40,6 +40,7 @@ export default function Home() {
   }, []);
 
   const handleKeywordSelect = (keyword) => {
+    if (!keyword.case_id) return;
     setSelectedId(keyword.id);
     navigate(
       `/case/${keyword.case_id}`,
@@ -128,12 +129,21 @@ export default function Home() {
                     animate={{ opacity: 1, height: 'auto' }}
                     transition={{ duration: 0.25 }}
                   >
-                    <button
-                      className="btn-primary w-full max-w-xs"
-                      onClick={() => handleKeywordSelect(keyword)}
-                    >
-                      START BRIEFING →
-                    </button>
+                    {keyword.case_id ? (
+                      <button
+                        className="btn-primary w-full max-w-xs"
+                        onClick={() => handleKeywordSelect(keyword)}
+                      >
+                        START BRIEFING →
+                      </button>
+                    ) : (
+                      <button
+                        className="btn-primary w-full max-w-xs opacity-50 cursor-not-allowed"
+                        disabled
+                      >
+                        브리핑 준비 중...
+                      </button>
+                    )}
                   </motion.div>
                 )}
               </motion.div>

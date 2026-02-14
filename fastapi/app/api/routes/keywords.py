@@ -122,7 +122,13 @@ async def get_today_keywords(
             "catalyst_source": kw.get("catalyst_source"),
             "mirroring_hint": kw.get("mirroring_hint"),
             "quality_score": kw.get("quality_score"),
-            **(case_info or {}),
+            # case_id를 명시적으로 반환 (null이면 프론트에서 버튼 비활성화)
+            "case_id": case_info["case_id"] if case_info else None,
+            "case_title": case_info["case_title"] if case_info else None,
+            "event_year": case_info["event_year"] if case_info else None,
+            "sync_rate": case_info["sync_rate"] if case_info else None,
+            "past_event": case_info.get("past_event") if case_info else None,
+            "present_label": case_info.get("present_label") if case_info else None,
         })
     
     result = {
