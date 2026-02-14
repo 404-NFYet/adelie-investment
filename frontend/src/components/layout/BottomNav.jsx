@@ -12,6 +12,7 @@ const HIDDEN_PREFIXES = [
   '/narrative',
   '/notifications',
 ];
+const HIDDEN_EXACT = ['/'];
 
 const tabs = [
   { id: 'home', label: '홈', path: '/home' },
@@ -57,7 +58,10 @@ export default function BottomNav() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  if (HIDDEN_PREFIXES.some(prefix => location.pathname.startsWith(prefix))) {
+  if (
+    HIDDEN_EXACT.includes(location.pathname) ||
+    HIDDEN_PREFIXES.some(prefix => location.pathname.startsWith(prefix))
+  ) {
     return null;
   }
 
