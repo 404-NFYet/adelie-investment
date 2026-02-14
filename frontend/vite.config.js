@@ -7,7 +7,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'prompt',
+      registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'images/apple-touch-icon.png'],
       manifest: {
         name: '아델리에',
@@ -51,56 +51,32 @@ export default defineConfig({
       },
       workbox: {
         cleanupOutdatedCaches: true,
-        globPatterns: ['**/*.{js,css,html,svg,woff2}'],
-        globIgnores: [
-          '**/images/penguin-3d.png', '**/images/icon-512.png',
-          '**/favicon.ico', '**/images/icon-192.png',
-          '**/assets/react-plotly-*.js',
-          '**/assets/plotly-basic.min-*.js',
-        ],
+        clientsClaim: true,
+        globPatterns: ['**/*.html'],
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//],
-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB
         runtimeCaching: [
+          // 정적 에셋 — StaleWhileRevalidate (Vite content hash → stale 불가)
+          {
+            urlPattern: /\/assets\/.+\.(js|css)$/,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'static-assets',
+              expiration: { maxEntries: 60, maxAgeSeconds: 7 * 24 * 60 * 60 },
+            },
+          },
           // SSE 튜터 채팅 — 캐싱 불가
           {
             urlPattern: /^https?:\/\/.*\/api\/v1\/tutor\/.*/i,
             handler: 'NetworkOnly',
           },
-          // 키워드 — 하루 단위 갱신, 빠른 응답 우선
-          {
-            urlPattern: /^https?:\/\/.*\/api\/v1\/keywords\/.*/i,
-            handler: 'StaleWhileRevalidate',
-            options: {
-              cacheName: 'keywords-cache',
-              expiration: {
-                maxEntries: 30,
-                maxAgeSeconds: 60 * 60, // 1시간
-              },
-            },
-          },
-          // 역사적 사례/내러티브 — 네트워크 우선, 오프라인 시 캐시 폴백
-          {
-            urlPattern: /^https?:\/\/.*\/api\/v1\/(cases|narrative)\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'cases-cache',
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 12 * 60 * 60, // 12시간
-              },
-            },
-          },
-          // 나머지 API — 네트워크 우선, 5분 캐시
+          // 모든 API — NetworkFirst (항상 최신, 오프라인 폴백용)
           {
             urlPattern: /^https?:\/\/.*\/api\/v1\/.*/i,
             handler: 'NetworkFirst',
             options: {
               cacheName: 'api-cache',
-              expiration: {
-                maxEntries: 50,
-                maxAgeSeconds: 5 * 60, // 5분
-              },
+              expiration: { maxEntries: 50, maxAgeSeconds: 5 * 60 },
             },
           },
         ],
@@ -136,5 +112,14 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          plotly: ['react-plotly.js', 'plotly.js-basic-dist-min'],
+          'framer-motion': ['framer-motion'],
+          chartjs: ['chart.js', 'react-chartjs-2'],
+        },
+      },
+    },
   },
 });
