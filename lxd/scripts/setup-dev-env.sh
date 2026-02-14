@@ -1,10 +1,20 @@
 #!/usr/bin/env bash
 # setup-dev-env.sh — 개발 환경 설정 (컨테이너 내부 실행)
-# Usage: lxc exec dev-{name} -- bash /path/to/setup-dev-env.sh {GIT_USER_NAME} {GIT_EMAIL} [GITHUB_TOKEN]
+#
+# Usage:
+#   lxc exec dev-{name} -- bash /tmp/setup-dev-env.sh <GIT_USER> <GIT_EMAIL> [OPTIONS]
+#
+# Options:
+#   --mode shared|local     DB 모드 (기본: shared = infra-server 사용)
+#   --part <name>           파트명 → dev/<name> 브랜치 자동 전환
+#   --token <GITHUB_TOKEN>  GitHub 인증 토큰
 #
 # 예시:
-#   lxc exec dev-j2hoon10 -- bash /tmp/setup-dev-env.sh J2hoon10 myhome559755@naver.com
-#   lxc exec dev-hj -- bash /tmp/setup-dev-env.sh dorae222 dhj9842@gmail.com ghp_xxxxx
+#   # infra-server DB 사용 + chatbot 브랜치
+#   lxc exec dev-j2hoon10 -- bash /tmp/setup-dev-env.sh J2hoon10 myhome559755@naver.com --part chatbot
+#
+#   # 로컬 DB + GitHub 토큰
+#   lxc exec dev-hj -- bash /tmp/setup-dev-env.sh dorae222 dhj9842@gmail.com --mode local --token ghp_xxxxx
 
 set -euo pipefail
 
@@ -25,21 +35,69 @@ step()    { echo -e "\n${CYAN}${BOLD}>>> $*${NC}"; }
 step "Step 1/12: 인자 파싱"
 
 if [[ $# -lt 2 ]]; then
-    error "사용법: $0 <GIT_USER_NAME> <GIT_EMAIL> [GITHUB_TOKEN]"
+    error "사용법: $0 <GIT_USER_NAME> <GIT_EMAIL> [--mode shared|local] [--part <name>] [--token <TOKEN>]"
+    echo ""
+    echo "  --mode shared   infra-server(10.10.10.10) DB 사용 (기본값)"
+    echo "  --mode local    로컬 Docker DB 생성"
+    echo "  --part <name>   dev/<name> 브랜치로 자동 전환 (frontend|chatbot|pipeline|backend|infra)"
+    echo "  --token <TOKEN> GitHub 인증 토큰"
     exit 1
 fi
 
 GIT_USER_NAME="$1"
 GIT_EMAIL="$2"
-GITHUB_TOKEN="${3:-}"
+shift 2
+
+# 옵션 기본값
+DB_MODE="shared"
+PART_NAME=""
+GITHUB_TOKEN=""
+
+# 옵션 파싱
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --mode)
+            DB_MODE="$2"
+            if [[ "$DB_MODE" != "shared" && "$DB_MODE" != "local" ]]; then
+                error "--mode는 shared 또는 local만 가능합니다"
+                exit 1
+            fi
+            shift 2
+            ;;
+        --part)
+            PART_NAME="$2"
+            shift 2
+            ;;
+        --token)
+            GITHUB_TOKEN="$2"
+            shift 2
+            ;;
+        *)
+            # 하위 호환: 3번째 위치 인자를 토큰으로 처리
+            if [[ -z "$GITHUB_TOKEN" ]]; then
+                GITHUB_TOKEN="$1"
+            fi
+            shift
+            ;;
+    esac
+done
 
 REPO_URL="https://github.com/404-NFYet/adelie-investment.git"
 PROJECT_DIR="$HOME/adelie-investment"
 INFRA_DIR="$PROJECT_DIR/infra"
 
+# infra-server 연결 정보
+INFRA_DB_HOST="10.10.10.10"
+INFRA_DB_PORT="5432"
+INFRA_DB_USER="narative"
+INFRA_DB_PASS="password"
+INFRA_DB_NAME="narrative_invest"
+
 info "Git 사용자: $GIT_USER_NAME <$GIT_EMAIL>"
+info "DB 모드: $DB_MODE"
+[[ -n "$PART_NAME" ]] && info "파트: $PART_NAME → dev/$PART_NAME 브랜치"
 if [[ -n "$GITHUB_TOKEN" ]]; then
-    REPO_URL="https://${GITHUB_TOKEN}@github.com/dorae222/adelie-investment.git"
+    REPO_URL="https://${GITHUB_TOKEN}@github.com/404-NFYet/adelie-investment.git"
     info "GitHub 토큰: 제공됨"
 fi
 
@@ -98,12 +156,26 @@ step "Step 5/12: 레포지토리 클론"
 if [[ -d "$PROJECT_DIR/.git" ]]; then
     warn "프로젝트가 이미 존재합니다. 업데이트합니다."
     cd "$PROJECT_DIR"
-    git pull --rebase origin main 2>/dev/null || git pull origin main || true
+    git pull --rebase origin develop 2>/dev/null || git pull origin develop || true
 else
     git clone "$REPO_URL" "$PROJECT_DIR"
     info "클론 완료: $PROJECT_DIR"
 fi
 cd "$PROJECT_DIR"
+
+# develop 브랜치로 전환 (기본)
+git checkout develop 2>/dev/null || true
+
+# 파트 브랜치 전환
+if [[ -n "$PART_NAME" ]]; then
+    BRANCH="dev/$PART_NAME"
+    info "브랜치 전환: $BRANCH"
+    git fetch origin "$BRANCH" 2>/dev/null || true
+    git checkout "$BRANCH" 2>/dev/null || git checkout -b "$BRANCH" origin/"$BRANCH" 2>/dev/null || {
+        warn "브랜치 $BRANCH를 찾을 수 없습니다. develop에서 생성합니다."
+        git checkout -b "$BRANCH" develop
+    }
+fi
 
 # ── Step 6: Git 설정 ──
 step "Step 6/12: Git 설정"
@@ -112,11 +184,13 @@ git config user.email "$GIT_EMAIL"
 info "git user.name:  $(git config user.name)"
 info "git user.email: $(git config user.email)"
 
-# ── Step 7: 로컬 DB docker-compose.yml ──
-step "Step 7/12: 로컬 DB 스택 구성"
-mkdir -p "$INFRA_DIR"
+# ── Step 7: 로컬 DB docker-compose.yml (local 모드만) ──
+step "Step 7/12: DB 스택 구성 (모드: $DB_MODE)"
 
-cat > "$INFRA_DIR/docker-compose.yml" << 'COMPOSE_EOF'
+if [[ "$DB_MODE" == "local" ]]; then
+    mkdir -p "$INFRA_DIR"
+
+    cat > "$INFRA_DIR/docker-compose.yml" << 'COMPOSE_EOF'
 version: "3.8"
 
 services:
@@ -147,48 +221,36 @@ services:
     volumes:
       - redisdata:/data
 
-  neo4j:
-    image: neo4j:5
-    container_name: adelie-neo4j
-    restart: unless-stopped
-    environment:
-      NEO4J_AUTH: neo4j/adelie_neo4j
-    ports:
-      - "7474:7474"
-      - "7687:7687"
-    volumes:
-      - neo4jdata:/data
-
-  minio:
-    image: minio/minio:latest
-    container_name: adelie-minio
-    restart: unless-stopped
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: adelie
-      MINIO_ROOT_PASSWORD: adelie_minio
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    volumes:
-      - miniodata:/data
-
 volumes:
   pgdata:
   redisdata:
-  neo4jdata:
-  miniodata:
 COMPOSE_EOF
 
-info "docker-compose.yml 생성 완료"
+    info "로컬 DB docker-compose.yml 생성 완료"
+else
+    info "shared 모드: infra-server(${INFRA_DB_HOST}) DB 사용 — 로컬 DB 스택 생략"
+fi
 
-# ── Step 8: DB 스택 시작 ──
+# ── Step 8: DB 스택 시작 (local 모드만) ──
 step "Step 8/12: DB 스택 시작"
-cd "$INFRA_DIR"
-docker compose up -d
-sleep 5
-docker compose ps
-cd "$PROJECT_DIR"
+
+if [[ "$DB_MODE" == "local" ]]; then
+    cd "$INFRA_DIR"
+    docker compose up -d
+    sleep 5
+    docker compose ps
+    cd "$PROJECT_DIR"
+else
+    info "shared 모드: 로컬 DB 시작 건너뜀"
+    info "infra-server DB 연결 테스트..."
+    if command -v pg_isready &>/dev/null; then
+        pg_isready -h "$INFRA_DB_HOST" -p "$INFRA_DB_PORT" -U "$INFRA_DB_USER" 2>/dev/null \
+            && info "PostgreSQL 연결 성공" \
+            || warn "PostgreSQL 연결 실패 — infra-server 상태 확인 필요"
+    else
+        info "pg_isready 미설치 — DB 연결은 앱 실행 시 확인됩니다"
+    fi
+fi
 
 # ── Step 9: .env 생성 ──
 step "Step 9/12: .env 파일 생성"
@@ -198,30 +260,31 @@ if [[ -f "$PROJECT_DIR/.env" ]]; then
     cp "$PROJECT_DIR/.env" "$PROJECT_DIR/.env.backup.$(date +%Y%m%d_%H%M%S)"
 fi
 
-cat > "$PROJECT_DIR/.env" << 'ENV_EOF'
+if [[ "$DB_MODE" == "shared" ]]; then
+    cat > "$PROJECT_DIR/.env" << ENV_EOF
 # Adelie Investment 환경 변수 (setup-dev-env.sh 생성)
+# 모드: shared (infra-server DB)
 
-# --- Database ---
-DATABASE_URL=postgresql+asyncpg://adelie:adelie@localhost:5432/adelie_db
-SYNC_DATABASE_URL=postgresql://adelie:adelie@localhost:5432/adelie_db
+# --- Database (infra-server) ---
+DATABASE_URL=postgresql+asyncpg://${INFRA_DB_USER}:${INFRA_DB_PASS}@${INFRA_DB_HOST}:${INFRA_DB_PORT}/${INFRA_DB_NAME}
+SYNC_DATABASE_URL=postgresql://${INFRA_DB_USER}:${INFRA_DB_PASS}@${INFRA_DB_HOST}:${INFRA_DB_PORT}/${INFRA_DB_NAME}
 
-# --- Redis ---
-REDIS_URL=redis://localhost:6379/0
+# --- Redis (infra-server) ---
+REDIS_URL=redis://${INFRA_DB_HOST}:6379/0
 
-# --- Neo4j ---
-NEO4J_URI=bolt://localhost:7687
-NEO4J_USER=neo4j
-NEO4J_PASSWORD=adelie_neo4j
-
-# --- MinIO ---
-MINIO_ENDPOINT=localhost:9000
+# --- MinIO (infra-server) ---
+MINIO_ENDPOINT=${INFRA_DB_HOST}:9000
 MINIO_ACCESS_KEY=adelie
 MINIO_SECRET_KEY=adelie_minio
 
-# --- API Keys (직접 입력 필요) ---
+# --- API Keys (팀 공유 — 직접 입력 필요) ---
 OPENAI_API_KEY=your_openai_api_key_here
 PERPLEXITY_API_KEY=your_perplexity_api_key_here
 LANGCHAIN_API_KEY=your_langchain_api_key_here
+
+# --- LangSmith ---
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_PROJECT=v.1.contents_generation
 
 # --- JWT ---
 JWT_SECRET=adelie-dev-jwt-secret-key-change-in-production
@@ -230,8 +293,42 @@ JWT_SECRET=adelie-dev-jwt-secret-key-change-in-production
 ENV=development
 DEBUG=true
 ENV_EOF
+else
+    cat > "$PROJECT_DIR/.env" << 'ENV_EOF'
+# Adelie Investment 환경 변수 (setup-dev-env.sh 생성)
+# 모드: local (로컬 Docker DB)
 
-info ".env 생성 완료"
+# --- Database (로컬) ---
+DATABASE_URL=postgresql+asyncpg://adelie:adelie@localhost:5432/adelie_db
+SYNC_DATABASE_URL=postgresql://adelie:adelie@localhost:5432/adelie_db
+
+# --- Redis (로컬) ---
+REDIS_URL=redis://localhost:6379/0
+
+# --- MinIO ---
+MINIO_ENDPOINT=localhost:9000
+MINIO_ACCESS_KEY=adelie
+MINIO_SECRET_KEY=adelie_minio
+
+# --- API Keys (팀 공유 — 직접 입력 필요) ---
+OPENAI_API_KEY=your_openai_api_key_here
+PERPLEXITY_API_KEY=your_perplexity_api_key_here
+LANGCHAIN_API_KEY=your_langchain_api_key_here
+
+# --- LangSmith ---
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_PROJECT=v.1.contents_generation
+
+# --- JWT ---
+JWT_SECRET=adelie-dev-jwt-secret-key-change-in-production
+
+# --- 기타 ---
+ENV=development
+DEBUG=true
+ENV_EOF
+fi
+
+info ".env 생성 완료 (모드: $DB_MODE)"
 
 # ── Step 10: Python venv + 의존성 ──
 step "Step 10/12: Python 가상환경 + 의존성 설치"
@@ -263,12 +360,14 @@ fi
 step "Step 12/12: Alembic 마이그레이션"
 
 if [[ -d "database" && -f "database/alembic.ini" ]]; then
-    # PostgreSQL 준비 대기 (최대 30초)
-    for i in $(seq 1 30); do
-        docker exec adelie-postgres pg_isready -U adelie -d adelie_db > /dev/null 2>&1 && break
-        [[ $i -eq 30 ]] && warn "PostgreSQL 준비 시간 초과"
-        sleep 1
-    done
+    if [[ "$DB_MODE" == "local" ]]; then
+        # 로컬 PostgreSQL 준비 대기 (최대 30초)
+        for i in $(seq 1 30); do
+            docker exec adelie-postgres pg_isready -U adelie -d adelie_db > /dev/null 2>&1 && break
+            [[ $i -eq 30 ]] && warn "PostgreSQL 준비 시간 초과"
+            sleep 1
+        done
+    fi
 
     cd database
     ../.venv/bin/alembic upgrade head 2>&1 || warn "마이그레이션 실패. 수동: cd database && ../.venv/bin/alembic upgrade head"
@@ -279,10 +378,15 @@ fi
 echo ""
 step "개발 환경 설정 완료!"
 info "프로젝트: $PROJECT_DIR"
-info "Git:    $GIT_USER_NAME <$GIT_EMAIL>"
-info "Python: $(python3.12 --version 2>&1)"
-info "Node:   $(node --version 2>&1)"
+info "Git:     $GIT_USER_NAME <$GIT_EMAIL>"
+info "브랜치:  $(git branch --show-current)"
+info "DB 모드: $DB_MODE"
+info "Python:  $(python3.12 --version 2>&1)"
+info "Node:    $(node --version 2>&1)"
 echo ""
-echo -e "${YELLOW}${BOLD}[TODO] .env에 API 키 입력:${NC}"
-echo "  vi ~/adelie-investment/.env"
-echo "  - OPENAI_API_KEY / PERPLEXITY_API_KEY / LANGCHAIN_API_KEY"
+
+if grep -q "your_openai_api_key_here" "$PROJECT_DIR/.env" 2>/dev/null; then
+    echo -e "${YELLOW}${BOLD}[TODO] .env에 API 키 입력:${NC}"
+    echo "  vi ~/adelie-investment/.env"
+    echo "  - OPENAI_API_KEY / PERPLEXITY_API_KEY / LANGCHAIN_API_KEY"
+fi
