@@ -2,12 +2,70 @@
  * StockDetail.jsx - 종목 상세 바텀시트
  * 실시간 시세 + 미니 차트 + 매수/매도 버튼 (보유 상태 반영)
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { portfolioApi } from '../../api';
 import { formatKRW, formatVolume } from '../../utils/formatNumber';
 import { usePortfolio } from '../../contexts/PortfolioContext';
 import MiniChart from './MiniChart';
+
+function toFiniteNumbers(list) {
+  if (!Array.isArray(list)) return [];
+  return list.map((v) => Number(v)).filter((v) => Number.isFinite(v));
+}
+
+function normalizeChartData(rawChart) {
+  if (!rawChart || typeof rawChart !== 'object') {
+    return { dates: [], values: [] };
+  }
+
+  const sourceDates = Array.isArray(rawChart.dates) ? rawChart.dates : [];
+  const closes = toFiniteNumbers(rawChart.closes);
+  if (closes.length > 0) {
+    const dates = closes.map((_, idx) => sourceDates[idx] ?? `${idx + 1}`);
+    return { dates, values: closes };
+  }
+
+  const opens = Array.isArray(rawChart.opens) ? rawChart.opens.map((v) => Number(v)) : [];
+  const highs = Array.isArray(rawChart.highs) ? rawChart.highs.map((v) => Number(v)) : [];
+  const lows = Array.isArray(rawChart.lows) ? rawChart.lows.map((v) => Number(v)) : [];
+
+  const maxLen = Math.max(opens.length, highs.length, lows.length);
+  const pairs = [];
+
+  for (let idx = 0; idx < maxLen; idx += 1) {
+    const open = opens[idx];
+    const high = highs[idx];
+    const low = lows[idx];
+
+    let value = null;
+    if (Number.isFinite(high) && Number.isFinite(low)) {
+      value = (high + low) / 2;
+    } else if (Number.isFinite(open) && Number.isFinite(high)) {
+      value = (open + high) / 2;
+    } else if (Number.isFinite(open) && Number.isFinite(low)) {
+      value = (open + low) / 2;
+    } else if (Number.isFinite(open)) {
+      value = open;
+    } else if (Number.isFinite(high)) {
+      value = high;
+    } else if (Number.isFinite(low)) {
+      value = low;
+    }
+
+    if (Number.isFinite(value)) {
+      pairs.push({
+        date: sourceDates[idx] ?? `${idx + 1}`,
+        value,
+      });
+    }
+  }
+
+  return {
+    dates: pairs.map((p) => p.date),
+    values: pairs.map((p) => p.value),
+  };
+}
 
 export default function StockDetail({ isOpen, onClose, stock, onTrade }) {
   const [price, setPrice] = useState(null);
@@ -40,6 +98,8 @@ export default function StockDetail({ isOpen, onClose, stock, onTrade }) {
   const holding = portfolio?.holdings?.find(h => h.stock_code === stock?.stock_code);
   const hasHolding = holding && holding.quantity > 0;
   const noCash = currentCash <= 0;
+  const normalizedChart = useMemo(() => normalizeChartData(chart), [chart]);
+  const hasChartData = normalizedChart.values.length > 0;
 
   return (
     <AnimatePresence>
@@ -96,17 +156,25 @@ export default function StockDetail({ isOpen, onClose, stock, onTrade }) {
             </div>
           )}
 
-          {/* 미니 차트 */}
-          {chart?.closes?.length > 0 && (
-            <div className="mb-4">
+          {/* 미니 차트 (항상 라인차트 우선, 폴백 메시지 포함) */}
+          <div className="mb-4">
+            {loading ? (
+              <div className="h-[100px] rounded-2xl bg-gray-50 dark:bg-gray-800 flex items-center justify-center text-xs text-gray-500">
+                차트 데이터를 불러오는 중입니다
+              </div>
+            ) : hasChartData ? (
               <MiniChart
-                dates={chart.dates}
-                values={chart.closes}
+                dates={normalizedChart.dates}
+                values={normalizedChart.values}
                 color="auto"
                 height={100}
               />
-            </div>
-          )}
+            ) : (
+              <div className="h-[100px] rounded-2xl bg-gray-50 dark:bg-gray-800 flex items-center justify-center text-xs text-gray-500">
+                차트 데이터가 없습니다
+              </div>
+            )}
+          </div>
 
           {/* 휴장일 안내 */}
           {marketClosed && (
