@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
 import { API_BASE_URL } from '../config';
 
 const TutorContext = createContext(null);
@@ -22,19 +22,19 @@ export function TutorProvider({ children }) {
     } catch {}
   }, [sessionId]);
 
-  const openTutor = (termOrContext = null) => {
+  const openTutor = useCallback((termOrContext = null) => {
     setIsOpen(true);
     if (typeof termOrContext === 'string') {
       setCurrentTerm(termOrContext);
     } else if (termOrContext) {
       setContextInfo(termOrContext);
     }
-  };
+  }, []);
 
-  const closeTutor = () => {
+  const closeTutor = useCallback(() => {
     setIsOpen(false);
     setCurrentTerm(null);
-  };
+  }, []);
 
   const sendMessage = useCallback(
     async (message, difficulty = 'beginner') => {
@@ -219,34 +219,38 @@ export function TutorProvider({ children }) {
     sendMessage(`${query} (차트로 보여주세요)`, 'beginner');
   }, [sendMessage]);
 
-  const clearMessages = () => {
+  const clearMessages = useCallback(() => {
     setMessages([]);
     setSessionId(null);
     setCurrentTerm(null);
-  };
+  }, []);
+
+  const value = useMemo(() => ({
+    isOpen,
+    openTutor,
+    closeTutor,
+    messages,
+    isLoading,
+    sendMessage,
+    clearMessages,
+    contextInfo,
+    setContextInfo,
+    currentTerm,
+    setCurrentTerm,
+    sessions,
+    activeSessionId,
+    createNewChat,
+    deleteChat,
+    loadChatHistory,
+    requestVisualization,
+  }), [
+    isOpen, openTutor, closeTutor, messages, isLoading, sendMessage,
+    clearMessages, contextInfo, currentTerm, sessions, activeSessionId,
+    createNewChat, deleteChat, loadChatHistory, requestVisualization,
+  ]);
 
   return (
-    <TutorContext.Provider
-      value={{
-        isOpen,
-        openTutor,
-        closeTutor,
-        messages,
-        isLoading,
-        sendMessage,
-        clearMessages,
-        contextInfo,
-        setContextInfo,
-        currentTerm,
-        setCurrentTerm,
-        sessions,
-        activeSessionId,
-        createNewChat,
-        deleteChat,
-        loadChatHistory,
-        requestVisualization,
-      }}
-    >
+    <TutorContext.Provider value={value}>
       {children}
     </TutorContext.Provider>
   );

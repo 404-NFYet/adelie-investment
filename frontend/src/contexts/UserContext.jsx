@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
 import { authApi } from '../api/auth';
 
 const UserContext = createContext(null);
@@ -68,33 +68,33 @@ export function UserProvider({ children }) {
     return () => window.removeEventListener('auth:logout', handleForceLogout);
   }, []);
 
-  const updateSettings = (newSettings) => {
+  const updateSettings = useCallback((newSettings) => {
     setSettings((prev) => ({ ...prev, ...newSettings }));
-  };
+  }, []);
 
-  const setDifficulty = (difficulty) => {
+  const setDifficulty = useCallback((difficulty) => {
     setSettings((prev) => ({ ...prev, difficulty }));
-  };
+  }, []);
 
-  const completeOnboarding = () => {
+  const completeOnboarding = useCallback(() => {
     setSettings((prev) => ({ ...prev, hasCompletedOnboarding: true }));
-  };
+  }, []);
 
-  const addBookmark = (item) => {
+  const addBookmark = useCallback((item) => {
     setSettings((prev) => ({
       ...prev,
       bookmarks: [...prev.bookmarks.filter((b) => b.id !== item.id), item],
     }));
-  };
+  }, []);
 
-  const removeBookmark = (itemId) => {
+  const removeBookmark = useCallback((itemId) => {
     setSettings((prev) => ({
       ...prev,
       bookmarks: prev.bookmarks.filter((b) => b.id !== itemId),
     }));
-  };
+  }, []);
 
-  const addToHistory = (item) => {
+  const addToHistory = useCallback((item) => {
     setSettings((prev) => ({
       ...prev,
       history: [
@@ -102,9 +102,9 @@ export function UserProvider({ children }) {
         ...prev.history.filter((h) => h.id !== item.id).slice(0, 49),
       ],
     }));
-  };
+  }, []);
 
-  const login = (authResponse) => {
+  const login = useCallback((authResponse) => {
     setUser({
       id: authResponse.user?.id,
       email: authResponse.user?.email,
@@ -115,30 +115,34 @@ export function UserProvider({ children }) {
     if (authResponse.refreshToken) {
       localStorage.setItem('refreshToken', authResponse.refreshToken);
     }
-  };
+  }, []);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     setUser(null);
     localStorage.removeItem('token');
     localStorage.removeItem('refreshToken');
-  };
+  }, []);
+
+  const value = useMemo(() => ({
+    user,
+    settings,
+    isLoading,
+    updateSettings,
+    setDifficulty,
+    completeOnboarding,
+    addBookmark,
+    removeBookmark,
+    addToHistory,
+    login,
+    logout,
+  }), [
+    user, settings, isLoading, updateSettings, setDifficulty,
+    completeOnboarding, addBookmark, removeBookmark, addToHistory,
+    login, logout,
+  ]);
 
   return (
-    <UserContext.Provider
-      value={{
-        user,
-        settings,
-        isLoading,
-        updateSettings,
-        setDifficulty,
-        completeOnboarding,
-        addBookmark,
-        removeBookmark,
-        addToHistory,
-        login,
-        logout,
-      }}
-    >
+    <UserContext.Provider value={value}>
       {children}
     </UserContext.Provider>
   );

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
 import { portfolioApi } from '../api';
 import { useUser } from './UserContext';
 
@@ -65,17 +65,19 @@ export function PortfolioProvider({ children }) {
     }
   }, [fetchSummary, fetchPortfolio, userId]);
 
+  const value = useMemo(() => ({
+    portfolio,
+    summary,
+    isLoading,
+    error,
+    fetchPortfolio,
+    fetchSummary,
+    executeTrade,
+    claimReward,
+  }), [portfolio, summary, isLoading, error, fetchPortfolio, fetchSummary, executeTrade, claimReward]);
+
   return (
-    <PortfolioContext.Provider value={{
-      portfolio,
-      summary,
-      isLoading,
-      error,
-      fetchPortfolio,
-      fetchSummary,
-      executeTrade,
-      claimReward,
-    }}>
+    <PortfolioContext.Provider value={value}>
       {children}
     </PortfolioContext.Provider>
   );
