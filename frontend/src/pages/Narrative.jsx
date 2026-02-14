@@ -508,7 +508,11 @@ export default function Narrative() {
                 <div className="rounded-[20px] border border-border overflow-hidden bg-white/70 shadow-sm">
                   {stepData.chart?.layout?.title && (
                     <div className="px-4 pt-3 pb-1">
-                      <h4 className="text-xs font-bold text-text-primary">{stepData.chart.layout.title}</h4>
+                      <h4 className="text-xs font-bold text-text-primary">
+                        {typeof stepData.chart.layout.title === 'string'
+                          ? stepData.chart.layout.title
+                          : stepData.chart.layout.title?.text || ''}
+                      </h4>
                     </div>
                   )}
                   {stepData.chart?.data && Array.isArray(stepData.chart.data) ? (() => {

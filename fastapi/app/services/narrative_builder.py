@@ -93,6 +93,12 @@ def _sanitize_chart(chart_raw) -> dict | None:
         return None
     if "data" in chart_raw and not isinstance(chart_raw["data"], list):
         return None
+    # layout.title이 객체({font, text})면 문자열로 정규화 (React Error #31 방지)
+    layout = chart_raw.get("layout")
+    if isinstance(layout, dict):
+        title = layout.get("title")
+        if isinstance(title, dict):
+            layout["title"] = title.get("text", "")
     return chart_raw
 
 
