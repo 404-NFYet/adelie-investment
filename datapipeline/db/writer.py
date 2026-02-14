@@ -17,6 +17,8 @@ import os
 from datetime import datetime, date
 from typing import Any, Optional
 
+from ..config import kst_today
+
 logger = logging.getLogger(__name__)
 
 
@@ -80,7 +82,7 @@ async def _save(
         try:
             briefing_date = datetime.strptime(date_str, "%Y-%m-%d").date()
         except (ValueError, TypeError):
-            briefing_date = date.today()
+            briefing_date = kst_today()
 
     result: dict[str, Any] = {"briefing_date": str(briefing_date)}
 

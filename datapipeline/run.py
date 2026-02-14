@@ -134,8 +134,9 @@ def _build_initial_state(
 
 def _save_curated_topics(curated_topics: list) -> Path:
     """curated_topics를 output/curated_ALL_{date}.json으로 저장."""
+    from .config import kst_today
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    today = dt.date.today().isoformat()
+    today = kst_today().isoformat()
     path = OUTPUT_DIR / f"curated_ALL_{today}.json"
     payload = {"topics": curated_topics}
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
