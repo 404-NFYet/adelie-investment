@@ -2,7 +2,7 @@
  * TermContext.jsx - 용어 바텀시트 상태 관리
  * 하이라이트된 용어 클릭 시 바텀시트를 열고, 필요 시 AI 튜터로 연결
  */
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo } from 'react';
 import { useTutor } from './TutorContext';
 
 const TermContext = createContext(null);
@@ -31,16 +31,16 @@ export function TermProvider({ children }) {
     openTutor(term);
   }, [openTutor]);
 
+  const value = useMemo(() => ({
+    selectedTerm,
+    isTermSheetOpen,
+    openTermSheet,
+    closeTermSheet,
+    openTutorWithTerm,
+  }), [selectedTerm, isTermSheetOpen, openTermSheet, closeTermSheet, openTutorWithTerm]);
+
   return (
-    <TermContext.Provider
-      value={{
-        selectedTerm,
-        isTermSheetOpen,
-        openTermSheet,
-        closeTermSheet,
-        openTutorWithTerm,
-      }}
-    >
+    <TermContext.Provider value={value}>
       {children}
     </TermContext.Provider>
   );
