@@ -9,7 +9,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@tanstack/react-query": "^5.90.20",
     "chart.js": "^4.5.1",
     "framer-motion": "^12.0.0",
     "plotly.js": "^3.3.1",
