@@ -1,7 +1,7 @@
 """Portfolio management service - 포트폴리오/거래/보상 비즈니스 로직."""
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -169,7 +169,7 @@ async def complete_briefing_reward(
         multiplier=1.0,
         final_reward=BRIEFING_BASE_REWARD,
         status="pending",
-        maturity_at=datetime.now(timezone.utc) + timedelta(days=REWARD_MATURITY_DAYS),
+        maturity_at=datetime.utcnow() + timedelta(days=REWARD_MATURITY_DAYS),
     )
     db.add(reward)
     await db.commit()
@@ -187,7 +187,7 @@ async def check_and_apply_multiplier(
     """
     if reward.status != "pending":
         return reward
-    if datetime.now(timezone.utc) < reward.maturity_at.replace(tzinfo=timezone.utc):
+    if datetime.utcnow() < reward.maturity_at:
         return reward
 
     portfolio = await get_or_create_portfolio(db, reward.user_id)
@@ -225,6 +225,6 @@ async def check_and_apply_multiplier(
         reward.multiplier = 1.0
         reward.status = "expired"
 
-    reward.applied_at = datetime.now(timezone.utc)
+    reward.applied_at = datetime.utcnow()
     await db.commit()
     return reward
