@@ -32,6 +32,13 @@ EXPECTED_EMAIL["dev-ryejinn"]="arj1018@ewhain.net"
 EXPECTED_EMAIL["dev-jjjh02"]="jinnyshur0104@gmail.com"
 EXPECTED_EMAIL["dev-hj"]="dhj9842@gmail.com"
 
+declare -A EXPECTED_BRANCH
+EXPECTED_BRANCH["dev-yj99son"]="dev/frontend"
+EXPECTED_BRANCH["dev-j2hoon10"]="dev/chatbot"
+EXPECTED_BRANCH["dev-ryejinn"]="dev/pipeline"
+EXPECTED_BRANCH["dev-jjjh02"]="dev/backend"
+EXPECTED_BRANCH["dev-hj"]="dev/infra"
+
 PROJECT_DIR="adelie-investment"
 TOTAL_PASS=0
 TOTAL_FAIL=0
@@ -91,7 +98,7 @@ for ct in "${CONTAINERS[@]}"; do
 
     # 1. Git 레포 존재 + 브랜치
     check "$ct" "Git 레포" "test -d ~/$PROJECT_DIR/.git && echo 'exists' || echo ''" "exists"
-    check "$ct" "Git 브랜치" "cd ~/$PROJECT_DIR && git branch --show-current" "main"
+    check "$ct" "Git 브랜치" "cd ~/$PROJECT_DIR && git branch --show-current" "${EXPECTED_BRANCH[$ct]}"
 
     # 2. Git config
     check "$ct" "git user.name" "cd ~/$PROJECT_DIR && git config user.name" "${EXPECTED_NAME[$ct]}"
@@ -110,7 +117,6 @@ for ct in "${CONTAINERS[@]}"; do
     check "$ct" "Docker 데몬" "systemctl is-active docker 2>/dev/null" "active"
     check "$ct" "PostgreSQL" "docker ps --format '{{.Names}}' 2>/dev/null | grep -q adelie-postgres && echo 'running' || echo ''" "running"
     check "$ct" "Redis" "docker ps --format '{{.Names}}' 2>/dev/null | grep -q adelie-redis && echo 'running' || echo ''" "running"
-    check "$ct" "Neo4j" "docker ps --format '{{.Names}}' 2>/dev/null | grep -q adelie-neo4j && echo 'running' || echo ''" "running"
     check "$ct" "MinIO" "docker ps --format '{{.Names}}' 2>/dev/null | grep -q adelie-minio && echo 'running' || echo ''" "running"
 
     # 6. .env + localhost DB

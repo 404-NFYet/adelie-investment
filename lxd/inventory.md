@@ -6,11 +6,11 @@
 |----------|-----|------|--------|---------|---------|
 | infra-server | 10.10.10.10 | PostgreSQL, Redis, MinIO | 공유 | 8/24GB | `infra.yml` |
 | deploy-test | 10.10.10.20 | prod 배포 서버 | 도형준 | 16/32GB | `deploy.yml` |
-| dev-yj99son | - | PM / Frontend | 손영진 | 4/8GB | `dev-standard.yml` |
-| dev-j2hoon10 | - | Chatbot (LangGraph 에이전트) | 정지훈 | 4/12GB | `dev-ai.yml` |
-| dev-ryejinn | - | Data Pipeline (LangGraph 파이프라인) | 안례진 | 4/12GB | `dev-ai.yml` |
-| dev-jjjh02 | - | Backend (FastAPI, DB) | 허진서 | 4/8GB | `dev-standard.yml` |
-| dev-hj | - | Infra (Docker, CI/CD) | 도형준 | 4/8GB | `dev-standard.yml` |
+| dev-yj99son | 10.10.10.14 | PM / Frontend | 손영진 | 4/8GB | `dev-standard.yml` |
+| dev-j2hoon10 | 10.10.10.11 | Chatbot (LangGraph 에이전트) | 정지훈 | 4/12GB | `dev-ai.yml` |
+| dev-ryejinn | 10.10.10.13 | Data Pipeline (LangGraph 파이프라인) | 안례진 | 4/12GB | `dev-ai.yml` |
+| dev-jjjh02 | 10.10.10.12 | Backend (FastAPI, DB) | 허진서 | 4/8GB | `dev-standard.yml` |
+| dev-hj | 10.10.10.15 | Infra (Docker, CI/CD) | 도형준 | 4/8GB | `dev-standard.yml` |
 | **합계** | - | - | - | **34/84GB** | - |
 
 > 디스크: 전체 인스턴스가 **1개의 1.8TB NVMe**를 공유하는 구조.

@@ -280,7 +280,14 @@ MINIO_SECRET_KEY=adelie_minio
 # --- API Keys (팀 공유 — 직접 입력 필요) ---
 OPENAI_API_KEY=your_openai_api_key_here
 PERPLEXITY_API_KEY=your_perplexity_api_key_here
+CLAUDE_API_KEY=your_claude_api_key_here
 LANGCHAIN_API_KEY=your_langchain_api_key_here
+
+# --- 외부 API ---
+KIS_APP_KEY=your_kis_app_key_here
+KIS_APP_SECRET=your_kis_app_secret_here
+OPEN_DART_API_KEY=your_open_dart_api_key_here
+ECOS_API_KEY=your_ecos_api_key_here
 
 # --- LangSmith ---
 LANGCHAIN_TRACING_V2=true
@@ -313,7 +320,14 @@ MINIO_SECRET_KEY=adelie_minio
 # --- API Keys (팀 공유 — 직접 입력 필요) ---
 OPENAI_API_KEY=your_openai_api_key_here
 PERPLEXITY_API_KEY=your_perplexity_api_key_here
+CLAUDE_API_KEY=your_claude_api_key_here
 LANGCHAIN_API_KEY=your_langchain_api_key_here
+
+# --- 외부 API ---
+KIS_APP_KEY=your_kis_app_key_here
+KIS_APP_SECRET=your_kis_app_secret_here
+OPEN_DART_API_KEY=your_open_dart_api_key_here
+ECOS_API_KEY=your_ecos_api_key_here
 
 # --- LangSmith ---
 LANGCHAIN_TRACING_V2=true
@@ -388,5 +402,6 @@ echo ""
 if grep -q "your_openai_api_key_here" "$PROJECT_DIR/.env" 2>/dev/null; then
     echo -e "${YELLOW}${BOLD}[TODO] .env에 API 키 입력:${NC}"
     echo "  vi ~/adelie-investment/.env"
-    echo "  - OPENAI_API_KEY / PERPLEXITY_API_KEY / LANGCHAIN_API_KEY"
+    echo "  - OPENAI_API_KEY / PERPLEXITY_API_KEY / CLAUDE_API_KEY / LANGCHAIN_API_KEY"
+    echo "  - KIS_APP_KEY / KIS_APP_SECRET / OPEN_DART_API_KEY / ECOS_API_KEY"
 fi

@@ -44,6 +44,11 @@ jobs:
               EMOJI=":books:"
               TITLE="문서 업데이트"
               ;;
+            entire/*)
+              COLOR=8421504     # 회색
+              EMOJI=":bookmark:"
+              TITLE="Entire 체크포인트"
+              ;;
             hotfix/*)
               COLOR=16711680    # 빨강
               EMOJI=":warning:"
