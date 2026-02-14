@@ -2,19 +2,19 @@
 /frontend/          @YJ99Son
 
 # Backend API (FastAPI)
-/fastapi/           @J2hoon10
+/fastapi/           @jjjh02
 
 # Chatbot (AI Tutor)
-/chatbot/           @J2hoon10 @ryejinn
+/chatbot/           @J2hoon10
 
 # Data Pipeline
-/datapipeline/      @J2hoon10
+/datapipeline/      @ryejinn
 
 # Shared (AI config)
-/shared/            @J2hoon10
+/shared/            @J2hoon10 @ryejinn
 
 # Database (Alembic + scripts)
-/database/          @dorae222
+/database/          @jjjh02 @dorae222
 
 # Infrastructure
 /lxd/               @dorae222

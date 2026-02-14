@@ -109,14 +109,14 @@ deploy-logs:
 
 # --- Deploy-test (10.10.10.20): 로컬 빌드 → 푸시 → 서버 pull → 재시작 ---
 deploy-test: build push
-	ssh deploy-test 'cd ~/adelie-investment && git pull origin develop && \
+	ssh deploy-test 'cd ~/adelie-investment && git pull origin prod && \
 		docker compose -f docker-compose.prod.yml pull && \
 		docker compose -f docker-compose.prod.yml up -d --remove-orphans && \
 		docker exec adelie-frontend nginx -s reload 2>/dev/null || true'
 
 deploy-test-service:
 	$(MAKE) build-$(SVC) && docker push $(REGISTRY)/adelie-$(SVC):$(TAG)
-	ssh deploy-test 'cd ~/adelie-investment && git pull origin develop && \
+	ssh deploy-test 'cd ~/adelie-investment && git pull origin prod && \
 		docker compose -f docker-compose.prod.yml pull $(SVC) && \
 		docker compose -f docker-compose.prod.yml up -d $(SVC) && \
 		docker exec adelie-frontend nginx -s reload 2>/dev/null || true'
