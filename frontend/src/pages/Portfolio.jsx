@@ -1,7 +1,7 @@
 /**
  * Portfolio.jsx - 포트폴리오 (4탭: 보유종목/자유매매/보상내역/랭킹)
  */
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import AppHeader from '../components/layout/AppHeader';
 import { usePortfolio } from '../contexts/PortfolioContext';
@@ -18,7 +18,7 @@ import useCountUp from '../hooks/useCountUp';
 import { formatKRW } from '../utils/formatNumber';
 
 /* ── 보유 종목 카드 ── */
-function HoldingCard({ holding, onClick }) {
+const HoldingCard = React.memo(function HoldingCard({ holding, onClick }) {
   const isPositive = (holding.profit_loss || 0) > 0;
   const isNegative = (holding.profit_loss || 0) < 0;
   return (
@@ -52,10 +52,10 @@ function HoldingCard({ holding, onClick }) {
       </div>
     </motion.div>
   );
-}
+});
 
 /* ── 거래 내역 아이템 ── */
-function TradeItem({ trade }) {
+const TradeItem = React.memo(function TradeItem({ trade }) {
   const isBuy = trade.trade_type === 'buy';
   return (
     <div className="flex items-center justify-between py-3 border-b border-border last:border-0">
@@ -74,7 +74,7 @@ function TradeItem({ trade }) {
       </div>
     </div>
   );
-}
+});
 
 /* ── 거래 내역 (더 보기 지원) ── */
 function TradeHistory({ trades }) {
