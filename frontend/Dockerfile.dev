@@ -1,0 +1,16 @@
+# ============================================================
+# Adelie Investment - Frontend 개발용 (Vite Dev Server + HMR)
+# docker-compose.dev.yml에서 사용
+# ============================================================
+FROM node:20-alpine
+WORKDIR /app
+
+# 의존성 설치 (캐시 최적화)
+COPY package*.json ./
+RUN npm install
+
+# 소스 복사 (volume mount로 src/, public/ 덮어씀)
+COPY . .
+
+EXPOSE 3001
+CMD ["npm", "run", "dev"]
