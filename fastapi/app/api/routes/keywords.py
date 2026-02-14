@@ -2,8 +2,10 @@
 
 import json
 import json as json_module
-from datetime import datetime, date
+from datetime import datetime, date, timezone, timedelta
 from typing import Optional
+
+KST = timezone(timedelta(hours=9))
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, and_, text
@@ -29,7 +31,7 @@ async def get_today_keywords(
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid date format")
     else:
-        target_date = datetime.now().date()
+        target_date = datetime.now(KST).date()
 
     # Redis 캐시 체크
     target_date_str = target_date.strftime("%Y%m%d")
