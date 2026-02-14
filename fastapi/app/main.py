@@ -86,6 +86,16 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+# --- Prometheus 메트릭 ---
+from prometheus_fastapi_instrumentator import Instrumentator
+
+Instrumentator(
+    should_group_status_codes=False,
+    should_ignore_untemplated=True,
+    excluded_handlers=["/metrics", "/docs", "/redoc", "/openapi.json"],
+    should_instrument_requests_inprogress=True,
+).instrument(app).expose(app, include_in_schema=False)
+
 # --- Rate Limiter 등록 ---
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -156,6 +166,9 @@ _RATE_LIMIT_WINDOW = 60
 @app.middleware("http")
 async def global_rate_limit_middleware(request: Request, call_next):
     """IP 기반 글로벌 레이트 리미팅 (100 req/min, Redis INCR 패턴)."""
+    # /metrics는 Prometheus 스크래핑용이므로 rate limit 제외
+    if request.url.path == "/metrics":
+        return await call_next(request)
     client_ip = request.client.host if request.client else "unknown"
     key = f"rate_limit:{client_ip}"
     try:
