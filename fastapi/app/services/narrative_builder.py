@@ -87,6 +87,15 @@ def _inject_glossary_marks(content: str, glossary: list[dict]) -> str:
     return content
 
 
+def _sanitize_chart(chart_raw) -> dict | None:
+    """chart 데이터가 Plotly 렌더링 가능한 구조인지 최소 검증."""
+    if not chart_raw or not isinstance(chart_raw, dict):
+        return None
+    if "data" in chart_raw and not isinstance(chart_raw["data"], list):
+        return None
+    return chart_raw
+
+
 def _build_from_llm(narrative_data: dict) -> dict:
     """LLM이 생성한 6페이지 narrative 데이터를 반환 (glossary 하이라이팅 포함)."""
     steps = {}
@@ -106,7 +115,7 @@ def _build_from_llm(narrative_data: dict) -> dict:
         step_data = {
             "bullets": section.get("bullets", []),
             "content": content,
-            "chart": section.get("chart"),
+            "chart": _sanitize_chart(section.get("chart")),
             "glossary": glossary,
         }
         # sources/citations 전달 (Perplexity 출처)
