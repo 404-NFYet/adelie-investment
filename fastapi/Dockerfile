@@ -18,6 +18,7 @@ COPY fastapi/ ./
 COPY shared/ ./shared/
 COPY chatbot/ ./chatbot/
 COPY datapipeline/ ./datapipeline/
+COPY database/ ./database/
 # 기존 경로 호환 심링크 (scheduler, pipeline route)
 RUN ln -sf /app/datapipeline/scripts /app/scripts && \
     ln -sf /app/datapipeline/collectors /app/collectors
