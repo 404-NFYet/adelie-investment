@@ -22,12 +22,73 @@ jobs:
             COMMIT_MSG="커밋 메시지가 없습니다"
           fi
 
+          # 브랜치별 색상/이모지/제목 설정
+          case "$BRANCH" in
+            prod)
+              COLOR=16711680    # 빨강
+              EMOJI=":rocket:"
+              TITLE="프로덕션 배포"
+              ;;
+            develop)
+              COLOR=16744448    # 주황
+              EMOJI=":gear:"
+              TITLE="통합 브랜치 업데이트"
+              ;;
+            dev/*)
+              COLOR=3447003     # 파랑
+              EMOJI=":hammer:"
+              TITLE="개인 작업 푸시"
+              ;;
+            main)
+              COLOR=9807270     # 회색
+              EMOJI=":books:"
+              TITLE="문서 업데이트"
+              ;;
+            hotfix/*)
+              COLOR=16711680    # 빨강
+              EMOJI=":warning:"
+              TITLE="긴급 수정"
+              ;;
+            *)
+              COLOR=3447003     # 파랑
+              EMOJI=":pushpin:"
+              TITLE="브랜치 푸시"
+              ;;
+          esac
+
+          # 커밋 메시지에서 줄바꿈/특수문자 이스케이프
+          ESCAPED_MSG=$(echo "$COMMIT_MSG" | head -5 | jq -Rs '.')
+
           cat <<EOF > payload.json
           {
-            "content": "🚀 **새로운 코드 푸시 알림**\n\n👤 작업자: **$AUTHOR**\n🌿 브랜치: **$BRANCH**\n📦 저장소: **$REPO**\n📝 커밋 내용:\n$COMMIT_MSG\n\n🔗 커밋 확인하기:\n$COMMIT_URL"
+            "embeds": [{
+              "title": "${EMOJI} ${TITLE}",
+              "color": ${COLOR},
+              "fields": [
+                {
+                  "name": "작업자",
+                  "value": "**${AUTHOR}**",
+                  "inline": true
+                },
+                {
+                  "name": "브랜치",
+                  "value": "\`${BRANCH}\`",
+                  "inline": true
+                },
+                {
+                  "name": "커밋 내용",
+                  "value": ${ESCAPED_MSG}
+                }
+              ],
+              "url": "${COMMIT_URL}",
+              "footer": {
+                "text": "${REPO}"
+              },
+              "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            }]
           }
           EOF
 
-          curl -H "Content-Type: application/json" \
+          curl -s -H "Content-Type: application/json" \
                -d @payload.json \
                "$DISCORD_WEBHOOK"
