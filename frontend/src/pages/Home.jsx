@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { keywordsApi } from '../api';
-import { useUser } from '../contexts';
 
 const CARD_IMAGES = [
   '/images/figma/card-coin.png',
@@ -11,7 +10,6 @@ const CARD_IMAGES = [
 
 export default function Home() {
   const navigate = useNavigate();
-  const { user } = useUser();
   const [keywords, setKeywords] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -35,16 +33,15 @@ export default function Home() {
   }, []);
 
   const visibleCards = useMemo(() => keywords.slice(0, 3), [keywords]);
-  const username = user?.username || '지훈님';
 
   return (
     <div className="min-h-screen bg-[#f5f5f5] pb-24">
       <main className="max-w-mobile mx-auto px-6 pt-28">
-        <p className="text-[18px] font-medium text-[#616161]">
-          안녕하세요, {username}
+        <p className="text-[16px] font-medium text-[#616161]">
+          안녕하세요
         </p>
 
-        <h1 className="mt-2 text-[48px] leading-[1.12] font-black tracking-tight text-black break-keep">
+        <h1 className="mt-2 text-[36px] leading-[1.2] font-black tracking-tight text-black break-keep">
           오늘 시장에서 놓치면 안 되는
           <br />
           <span className="text-primary">3가지 핵심 이야기</span>에요
@@ -69,13 +66,13 @@ export default function Home() {
               className="rounded-[20px] bg-white shadow-card border border-border px-6 py-5 flex items-center justify-between gap-4"
             >
               <div className="min-w-0">
-                <h2 className="text-[23px] leading-[1.2] font-bold text-black break-keep">
+                <h2 className="text-[19px] leading-[1.25] font-bold text-black break-keep">
                   {keyword.title}
                 </h2>
                 <button
                   className="mt-4 px-5 h-[35px] rounded-[10px] bg-primary text-white text-sm font-semibold disabled:opacity-40"
                   disabled={!keyword.case_id}
-                  onClick={() => navigate(`/content/${keyword.case_id}`, { state: { keyword } })}
+                  onClick={() => navigate(`/narrative/${keyword.case_id}`, { state: { keyword } })}
                 >
                   기사 읽으러 가기
                 </button>

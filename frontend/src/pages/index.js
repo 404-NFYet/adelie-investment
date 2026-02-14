@@ -4,7 +4,6 @@
 export { default as Onboarding } from './Onboarding';
 export { default as Landing } from './Landing';
 export { default as Home } from './Home';
-export { default as Content } from './Content';
 export { default as Search } from './Search';
 export { default as Comparison } from './Comparison';
 export { default as Story } from './Story';

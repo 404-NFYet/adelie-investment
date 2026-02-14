@@ -1,8 +1,20 @@
+import { useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import { useUser } from '../contexts';
 
 export default function Landing() {
   const navigate = useNavigate();
+  const { user, isLoading } = useUser();
+  const isAuthenticated = !!user?.isAuthenticated;
+
+  useEffect(() => {
+    if (isLoading || !isAuthenticated) return undefined;
+    const timer = setTimeout(() => {
+      navigate('/home', { replace: true });
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [isLoading, isAuthenticated, navigate]);
 
   return (
     <div className="min-h-screen bg-[#f5f5f5] flex flex-col overflow-hidden">
@@ -29,10 +41,10 @@ export default function Landing() {
 
       <div className="px-6 pb-10">
         <button
-          onClick={() => navigate('/')}
+          onClick={() => navigate(isAuthenticated ? '/home' : '/auth')}
           className="w-full py-4 rounded-2xl bg-primary text-white text-base font-bold active:scale-[0.99] transition-transform"
         >
-          시작하기
+          {isAuthenticated ? '홈으로 이동' : '시작하기'}
         </button>
       </div>
     </div>

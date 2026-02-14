@@ -14,7 +14,7 @@ const HIDDEN_PREFIXES = [
 ];
 
 const tabs = [
-  { id: 'home', label: '홈', path: '/' },
+  { id: 'home', label: '홈', path: '/home' },
   { id: 'portfolio', label: '모의투자', path: '/portfolio' },
   { id: 'tutor', label: 'AI 튜터', path: '/tutor' },
   { id: 'profile', label: '프로필', path: '/profile' },
@@ -47,8 +47,8 @@ const icons = {
 };
 
 function isActivePath(tabPath, pathname) {
-  if (tabPath === '/') {
-    return pathname === '/' || pathname.startsWith('/content');
+  if (tabPath === '/home') {
+    return pathname === '/home';
   }
   return pathname === tabPath || pathname.startsWith(`${tabPath}/`);
 }

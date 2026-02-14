@@ -422,7 +422,7 @@ export default function Narrative() {
         const msg = e?.message || '';
         if (msg.includes('이미')) {
           // 이미 보상 받은 케이스 → 홈으로 이동
-          navigate('/');
+          navigate('/home');
         } else {
           setRewardError(msg || '보상 청구 실패');
         }
