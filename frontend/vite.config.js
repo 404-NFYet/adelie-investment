@@ -74,15 +74,15 @@ export default defineConfig({
               },
             },
           },
-          // 역사적 사례/내러티브 — 변경 거의 없음
+          // 역사적 사례/내러티브 — 네트워크 우선, 오프라인 시 캐시 폴백
           {
             urlPattern: /^https?:\/\/.*\/api\/v1\/(cases|narrative)\/.*/i,
-            handler: 'CacheFirst',
+            handler: 'NetworkFirst',
             options: {
               cacheName: 'cases-cache',
               expiration: {
                 maxEntries: 100,
-                maxAgeSeconds: 24 * 60 * 60, // 24시간
+                maxAgeSeconds: 12 * 60 * 60, // 12시간
               },
             },
           },

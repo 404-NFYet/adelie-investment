@@ -3,7 +3,7 @@
  * 순서: background → concept_explain → history → application → caution → summary
  * + 브리핑 완료 보상 + 페이지별 용어 + 출처
  */
-import React, { useState, useEffect } from 'react';
+import React, { Component, useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
@@ -17,6 +17,22 @@ import { formatKRW } from '../utils/formatNumber';
 const Plot = React.lazy(() =>
   import('react-plotly.js').then(mod => ({ default: mod.default }))
 );
+
+/* ── 차트 에러 바운더리 (Plotly 크래시 방지) ── */
+class ChartErrorBoundary extends Component {
+  state = { hasError: false };
+  static getDerivedStateFromError() { return { hasError: true }; }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="h-[200px] flex items-center justify-center text-text-secondary text-sm">
+          차트를 표시할 수 없습니다
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 /* ── 6페이지 스텝 정의 ── */
 const STEPS = [
@@ -358,7 +374,15 @@ export default function Narrative() {
     }
     setIsLoading(true);
     narrativeApi.getNarrative(caseId)
-      .then((d) => { setData(d); setIsLoading(false); })
+      .then((d) => {
+        if (!d || !d.steps) {
+          setError('내러티브 데이터가 없습니다.');
+          setIsLoading(false);
+          return;
+        }
+        setData(d);
+        setIsLoading(false);
+      })
       .catch((e) => { console.error('Narrative fetch error:', e); setError(e.message); setIsLoading(false); });
   }, [caseId]);
 
@@ -487,30 +511,32 @@ export default function Narrative() {
                       <h4 className="text-xs font-bold text-text-primary">{stepData.chart.layout.title}</h4>
                     </div>
                   )}
-                  {stepData.chart?.data ? (() => {
+                  {stepData.chart?.data && Array.isArray(stepData.chart.data) ? (() => {
                     const hasPie = stepData.chart.data.some(t => t.type === 'pie');
                     return (
-                    <React.Suspense fallback={<div className="h-[240px] flex items-center justify-center animate-pulse text-sm text-text-secondary">차트 로딩 중...</div>}>
-                      <Plot
-                        data={stepData.chart.data}
-                        layout={{
-                          ...(stepData.chart.layout || {}),
-                          title: undefined,
-                          autosize: true,
-                          height: 240,
-                          margin: hasPie ? { l: 10, r: 10, t: 10, b: 10 } : { l: 40, r: 20, t: 10, b: 40 },
-                          paper_bgcolor: 'transparent',
-                          plot_bgcolor: 'transparent',
-                          font: { family: 'IBM Plex Sans KR, sans-serif', size: 11 },
-                          legend: stepData.chart.data.length > 1
-                            ? { orientation: 'h', y: hasPie ? -0.1 : -0.2, x: 0.5, xanchor: 'center' }
-                            : undefined,
-                        }}
-                        config={{ responsive: true, displayModeBar: false }}
-                        style={{ width: '100%', height: '240px' }}
-                        useResizeHandler
-                      />
-                    </React.Suspense>
+                    <ChartErrorBoundary>
+                      <React.Suspense fallback={<div className="h-[240px] flex items-center justify-center animate-pulse text-sm text-text-secondary">차트 로딩 중...</div>}>
+                        <Plot
+                          data={stepData.chart.data}
+                          layout={{
+                            ...(stepData.chart.layout || {}),
+                            title: undefined,
+                            autosize: true,
+                            height: 240,
+                            margin: hasPie ? { l: 10, r: 10, t: 10, b: 10 } : { l: 40, r: 20, t: 10, b: 40 },
+                            paper_bgcolor: 'transparent',
+                            plot_bgcolor: 'transparent',
+                            font: { family: 'IBM Plex Sans KR, sans-serif', size: 11 },
+                            legend: stepData.chart.data.length > 1
+                              ? { orientation: 'h', y: hasPie ? -0.1 : -0.2, x: 0.5, xanchor: 'center' }
+                              : undefined,
+                          }}
+                          config={{ responsive: true, displayModeBar: false }}
+                          style={{ width: '100%', height: '240px' }}
+                          useResizeHandler
+                        />
+                      </React.Suspense>
+                    </ChartErrorBoundary>
                     );
                   })() : (
                     <StepPlaceholder stepKey={stepMeta.key} color={stepMeta.color} />
