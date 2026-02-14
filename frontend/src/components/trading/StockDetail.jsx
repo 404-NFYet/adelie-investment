@@ -73,6 +73,12 @@ export default function StockDetail({ isOpen, onClose, stock, onTrade }) {
   const [loading, setLoading] = useState(false);
   const [marketClosed, setMarketClosed] = useState(false);
   const { portfolio } = usePortfolio();
+  const normalizedChart = useMemo(() => normalizeChartData(chart), [chart]);
+  const hasChartData = normalizedChart.values.length > 0;
+  const currentCash = portfolio?.current_cash || 0;
+  const holding = portfolio?.holdings?.find((h) => h.stock_code === stock?.stock_code);
+  const hasHolding = holding && holding.quantity > 0;
+  const noCash = currentCash <= 0;
 
   useEffect(() => {
     if (isOpen && stock?.stock_code) {
@@ -92,14 +98,6 @@ export default function StockDetail({ isOpen, onClose, stock, onTrade }) {
   }, [isOpen, stock]);
 
   if (!isOpen) return null;
-
-  // 보유 현금 & 해당 종목 보유 여부
-  const currentCash = portfolio?.current_cash || 0;
-  const holding = portfolio?.holdings?.find(h => h.stock_code === stock?.stock_code);
-  const hasHolding = holding && holding.quantity > 0;
-  const noCash = currentCash <= 0;
-  const normalizedChart = useMemo(() => normalizeChartData(chart), [chart]);
-  const hasChartData = normalizedChart.values.length > 0;
 
   return (
     <AnimatePresence>

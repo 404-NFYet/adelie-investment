@@ -15,15 +15,20 @@ import {
 
 ChartJS.register(LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip);
 
+function parseNumeric(value) {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') return Number(value.replace(/,/g, ''));
+  return Number(value);
+}
+
 export default function MiniChart({ dates = [], values = [], color = '#4F46E5', height = 80 }) {
   const normalized = useMemo(() => {
     const sourceDates = Array.isArray(dates) ? dates : [];
     const sourceValues = Array.isArray(values) ? values : [];
-    const maxLen = Math.max(sourceDates.length, sourceValues.length);
     const pairs = [];
 
-    for (let idx = 0; idx < maxLen; idx += 1) {
-      const value = Number(sourceValues[idx]);
+    for (let idx = 0; idx < sourceValues.length; idx += 1) {
+      const value = parseNumeric(sourceValues[idx]);
       if (!Number.isFinite(value)) continue;
       pairs.push({
         label: sourceDates[idx] ?? `${idx + 1}`,
@@ -82,7 +87,7 @@ export default function MiniChart({ dates = [], values = [], color = '#4F46E5', 
   if (!normalized.values.length) return null;
 
   return (
-    <div style={{ height }}>
+    <div className="w-full" style={{ height }}>
       <Line data={data} options={options} />
     </div>
   );
