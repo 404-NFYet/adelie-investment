@@ -81,7 +81,7 @@ export default function Auth() {
     try {
       const response = await authApi.login(email, password);
       login(response);
-      navigate('/');
+      navigate('/home');
     } catch (err) {
       setError(err.message || '로그인에 실패했습니다.');
     } finally {
@@ -104,7 +104,7 @@ export default function Auth() {
       const response = await authApi.register(registerEmail, password, username);
       login(response);
       setDifficulty(selectedDifficulty);
-      navigate('/');
+      navigate('/home');
     } catch (err) {
       setError(err.message || '회원가입에 실패했습니다.');
     } finally {
