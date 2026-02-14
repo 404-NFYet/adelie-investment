@@ -72,55 +72,13 @@ async def submit_feedback(feedback: FeedbackCreate, db: AsyncSession = Depends(g
         return {"status": "success", "message": "피드백이 접수되었습니다"}
     except Exception as e:
         logger.error(f"피드백 저장 실패: {e}")
-        # 테이블이 없으면 자동 생성 시도
-        try:
-            await db.execute(text("""
-                CREATE TABLE IF NOT EXISTS user_feedback (
-                    id SERIAL PRIMARY KEY,
-                    user_id INTEGER,
-                    page VARCHAR(50) NOT NULL,
-                    rating INTEGER CHECK (rating BETWEEN 1 AND 5),
-                    category VARCHAR(20),
-                    comment TEXT,
-                    device_info JSONB,
-                    created_at TIMESTAMPTZ DEFAULT NOW()
-                )
-            """))
-            await db.execute(
-                text("""
-                    INSERT INTO user_feedback (page, rating, category, comment, device_info, created_at)
-                    VALUES (:page, :rating, :category, :comment, :device_info::jsonb, NOW())
-                """),
-                {
-                    "page": feedback.page,
-                    "rating": feedback.rating,
-                    "category": feedback.category,
-                    "comment": feedback.comment,
-                    "device_info": str(feedback.device_info) if feedback.device_info else None,
-                },
-            )
-            await db.commit()
-            return {"status": "success", "message": "피드백이 접수되었습니다"}
-        except Exception as e2:
-            logger.error(f"피드백 저장 재시도 실패: {e2}")
-            raise HTTPException(status_code=500, detail="피드백 저장에 실패했습니다")
+        raise HTTPException(status_code=500, detail="피드백 저장에 실패했습니다")
 
 
 @router.post("/briefing", status_code=201)
 async def submit_briefing_feedback(feedback: BriefingFeedbackCreate, db: AsyncSession = Depends(get_db)):
     """브리핑 완독 후 미니 설문."""
     try:
-        await db.execute(text("""
-            CREATE TABLE IF NOT EXISTS briefing_feedback (
-                id SERIAL PRIMARY KEY,
-                user_id INTEGER,
-                briefing_id INTEGER,
-                scenario_keyword VARCHAR(100),
-                overall_rating VARCHAR(10),
-                favorite_section VARCHAR(30),
-                created_at TIMESTAMPTZ DEFAULT NOW()
-            )
-        """))
         await db.execute(
             text("""
                 INSERT INTO briefing_feedback (briefing_id, scenario_keyword, overall_rating, favorite_section, created_at)
@@ -182,16 +140,6 @@ async def get_feedback_stats(db: AsyncSession = Depends(get_db)):
 async def submit_analytics_events(batch: AnalyticsEventBatch, db: AsyncSession = Depends(get_db)):
     """사용 행동 이벤트 배치 저장."""
     try:
-        await db.execute(text("""
-            CREATE TABLE IF NOT EXISTS usage_events (
-                id SERIAL PRIMARY KEY,
-                user_id INTEGER,
-                session_id VARCHAR(36),
-                event_type VARCHAR(50),
-                event_data JSONB,
-                created_at TIMESTAMPTZ DEFAULT NOW()
-            )
-        """))
         for event in batch.events[:50]:  # 최대 50개까지
             await db.execute(
                 text("""
