@@ -1,9 +1,11 @@
 """Briefing API routes."""
 
 import sys
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from pathlib import Path
 from typing import Optional
+
+KST = timezone(timedelta(hours=9))
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, and_
@@ -36,7 +38,7 @@ async def get_today_briefing(
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid date format. Use YYYYMMDD.")
     else:
-        briefing_date = datetime.now().date()
+        briefing_date = datetime.now(KST).date()
     
     # Try to get from database first
     stmt = select(DailyBriefing).where(DailyBriefing.briefing_date == briefing_date)

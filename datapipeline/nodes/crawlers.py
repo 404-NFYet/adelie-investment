@@ -11,6 +11,8 @@ import time
 
 from langsmith import traceable
 
+from ..config import kst_today
+
 logger = logging.getLogger(__name__)
 
 
@@ -20,34 +22,40 @@ def _update_metrics(state: dict, node_name: str, elapsed: float, status: str = "
     return metrics
 
 
-# ── Mock 데이터 ──
+# ── Mock 데이터 (지연 평가 — KST 기준 날짜 사용) ──
 
-_MOCK_NEWS = [
-    {
-        "title": "[Mock] 반도체 업황 개선 신호",
-        "url": "https://example.com/mock-news-1",
-        "source": "Mock Economy",
-        "summary": "반도체 재고 조정이 마무리 국면에 접어들었어요.",
-        "published_date": dt.date.today().isoformat(),
-    },
-    {
-        "title": "[Mock] AI 관련주 상승세",
-        "url": "https://example.com/mock-news-2",
-        "source": "Mock Finance",
-        "summary": "AI 인프라 투자 확대로 관련 종목이 강세를 보이고 있어요.",
-        "published_date": dt.date.today().isoformat(),
-    },
-]
 
-_MOCK_REPORTS = [
-    {
-        "title": "[Mock] 산업 전망 리포트",
-        "source": "Mock Securities",
-        "summary": "2026년 반도체 업황은 하반기 회복이 예상돼요.",
-        "date": dt.date.today().isoformat(),
-        "firm": "Mock Securities",
-    },
-]
+def _mock_news():
+    today = kst_today().isoformat()
+    return [
+        {
+            "title": "[Mock] 반도체 업황 개선 신호",
+            "url": "https://example.com/mock-news-1",
+            "source": "Mock Economy",
+            "summary": "반도체 재고 조정이 마무리 국면에 접어들었어요.",
+            "published_date": today,
+        },
+        {
+            "title": "[Mock] AI 관련주 상승세",
+            "url": "https://example.com/mock-news-2",
+            "source": "Mock Finance",
+            "summary": "AI 인프라 투자 확대로 관련 종목이 강세를 보이고 있어요.",
+            "published_date": today,
+        },
+    ]
+
+
+def _mock_reports():
+    today = kst_today().isoformat()
+    return [
+        {
+            "title": "[Mock] 산업 전망 리포트",
+            "source": "Mock Securities",
+            "summary": "2026년 반도체 업황은 하반기 회복이 예상돼요.",
+            "date": today,
+            "firm": "Mock Securities",
+        },
+    ]
 
 
 @traceable(name="crawl_news", run_type="tool",
@@ -64,16 +72,17 @@ def crawl_news_node(state: dict) -> dict:
     market = state.get("market", "KR")
 
     if backend == "mock":
-        logger.info("  crawl_news mock: %d건", len(_MOCK_NEWS))
+        mock_news = _mock_news()
+        logger.info("  crawl_news mock: %d건", len(mock_news))
         return {
-            "raw_news": _MOCK_NEWS,
+            "raw_news": mock_news,
             "metrics": _update_metrics(state, "crawl_news", time.time() - node_start),
         }
 
     try:
         from ..data_collection.news_crawler import crawl_news, to_news_items
 
-        target_date = dt.date.today()
+        target_date = kst_today()
         raw_items = crawl_news(target_date, market=market)
         news_items = to_news_items(raw_items)
 
@@ -104,16 +113,17 @@ def crawl_research_node(state: dict) -> dict:
     backend = state.get("backend", "live")
 
     if backend == "mock":
-        logger.info("  crawl_research mock: %d건", len(_MOCK_REPORTS))
+        mock_reports = _mock_reports()
+        logger.info("  crawl_research mock: %d건", len(mock_reports))
         return {
-            "raw_reports": _MOCK_REPORTS,
+            "raw_reports": mock_reports,
             "metrics": _update_metrics(state, "crawl_research", time.time() - node_start),
         }
 
     try:
         from ..data_collection.research_crawler import crawl_research, to_report_items
 
-        target_date = dt.date.today()
+        target_date = kst_today()
         raw_items = crawl_research(target_date)
         report_items = to_report_items(raw_items)
 
