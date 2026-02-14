@@ -57,7 +57,7 @@ export default function Search() {
       <AppHeader showBack title="검색" />
       <div className="container pt-4">
         <form onSubmit={handleSearch} className="flex gap-2">
-          <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="키워드로 과거 사례 검색..." className="input flex-1" autoFocus />
+          <input id="search-input" name="query" type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="키워드로 과거 사례 검색..." aria-label="키워드 검색" className="input flex-1" autoFocus />
           <button type="submit" className="btn-primary px-4">검색</button>
         </form>
       </div>

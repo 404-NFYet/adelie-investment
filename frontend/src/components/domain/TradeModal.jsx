@@ -181,13 +181,15 @@ export default function TradeModal({ isOpen, onClose, stock, tradeType, caseId }
 
               {/* Quantity input */}
               <div className="mb-4">
-                <label className="text-xs text-text-secondary mb-2 block">수량</label>
+                <label htmlFor="trade-quantity" className="text-xs text-text-secondary mb-2 block">수량</label>
                 <div className="flex items-center gap-3 justify-center">
                   <button
                     onClick={() => setQuantity(q => Math.max(1, q - 1))}
                     className="w-10 h-10 rounded-full bg-surface border border-border flex items-center justify-center text-lg font-bold"
                   >-</button>
                   <input
+                    id="trade-quantity"
+                    name="quantity"
                     type="number"
                     value={quantity}
                     onChange={e => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}

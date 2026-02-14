@@ -184,8 +184,10 @@ export default function Auth() {
                 className="space-y-4"
               >
                 <div>
-                  <label className="block text-sm text-text-secondary mb-1.5">이메일</label>
+                  <label htmlFor="login-email" className="block text-sm text-text-secondary mb-1.5">이메일</label>
                   <input
+                    id="login-email"
+                    name="email"
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -195,9 +197,11 @@ export default function Auth() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-text-secondary mb-1.5">비밀번호</label>
+                  <label htmlFor="login-password" className="block text-sm text-text-secondary mb-1.5">비밀번호</label>
                   <div className="relative">
                     <input
+                      id="login-password"
+                      name="password"
                       type={showPassword ? 'text' : 'password'}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
@@ -234,9 +238,11 @@ export default function Auth() {
               >
                 {/* 이메일 (로컬파트 + 도메인 선택) */}
                 <div>
-                  <label className="block text-sm text-text-secondary mb-1.5">이메일</label>
+                  <label htmlFor="reg-email-local" className="block text-sm text-text-secondary mb-1.5">이메일</label>
                   <div className="flex gap-1 items-center">
                     <input
+                      id="reg-email-local"
+                      name="emailLocal"
                       type="text"
                       value={emailLocal}
                       onChange={(e) => setEmailLocal(e.target.value)}
@@ -247,9 +253,12 @@ export default function Auth() {
                     <span className="text-text-secondary text-sm flex-shrink-0">@</span>
                     {emailDomain ? (
                       <select
+                        id="reg-email-domain"
+                        name="emailDomain"
                         value={emailDomain}
                         onChange={(e) => setEmailDomain(e.target.value)}
                         className="input flex-1 min-w-0 text-sm"
+                        aria-label="이메일 도메인"
                       >
                         {EMAIL_DOMAINS.map(d => (
                           <option key={d.value} value={d.value}>{d.label}</option>
@@ -258,11 +267,14 @@ export default function Auth() {
                     ) : (
                       <div className="flex-1 min-w-0 flex gap-1">
                         <input
+                          id="reg-custom-domain"
+                          name="customDomain"
                           type="text"
                           value={customDomain}
                           onChange={(e) => setCustomDomain(e.target.value)}
                           placeholder="도메인"
                           className="input flex-1 min-w-0 text-sm"
+                          aria-label="직접 입력 도메인"
                           required
                         />
                         <button
@@ -279,9 +291,11 @@ export default function Auth() {
 
                 {/* 비밀번호 */}
                 <div>
-                  <label className="block text-sm text-text-secondary mb-1.5">비밀번호</label>
+                  <label htmlFor="reg-password" className="block text-sm text-text-secondary mb-1.5">비밀번호</label>
                   <div className="relative">
                     <input
+                      id="reg-password"
+                      name="password"
                       type={showPassword ? 'text' : 'password'}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
@@ -303,8 +317,10 @@ export default function Auth() {
 
                 {/* 사용자 이름 */}
                 <div>
-                  <label className="block text-sm text-text-secondary mb-1.5">사용자 이름</label>
+                  <label htmlFor="reg-username" className="block text-sm text-text-secondary mb-1.5">사용자 이름</label>
                   <input
+                    id="reg-username"
+                    name="username"
                     type="text"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
