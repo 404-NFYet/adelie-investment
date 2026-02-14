@@ -17,9 +17,10 @@ import PenguinLoading from './components/common/PenguinLoading';
 import UpdatePrompt from './components/common/UpdatePrompt';
 
 // 코드 스플리팅: 각 페이지를 동적 import
-const Onboarding = lazy(() => import('./pages/Onboarding'));
 const Auth = lazy(() => import('./pages/Auth'));
+const Landing = lazy(() => import('./pages/Landing'));
 const Home = lazy(() => import('./pages/Home'));
+const Content = lazy(() => import('./pages/Content'));
 const Search = lazy(() => import('./pages/Search'));
 const Comparison = lazy(() => import('./pages/Comparison'));
 const Story = lazy(() => import('./pages/Story'));
@@ -51,21 +52,23 @@ function AppRoutes() {
   return (
     <Suspense fallback={<PageLoader />}>
       <Routes>
-        <Route path="/onboarding" element={<Onboarding />} />
+        <Route path="/landing" element={<Landing />} />
+        <Route path="/onboarding" element={<Navigate to="/landing" replace />} />
         <Route path="/auth" element={<Auth />} />
-        <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
-        <Route path="/search" element={<ProtectedRoute><Search /></ProtectedRoute>} />
-        <Route path="/comparison" element={<ProtectedRoute><Comparison /></ProtectedRoute>} />
-        <Route path="/story" element={<ProtectedRoute><Story /></ProtectedRoute>} />
-        <Route path="/companies" element={<ProtectedRoute><Companies /></ProtectedRoute>} />
-        <Route path="/history" element={<ProtectedRoute><History /></ProtectedRoute>} />
-        <Route path="/case/:caseId" element={<ProtectedRoute><Matching /></ProtectedRoute>} />
-        <Route path="/narrative/:caseId" element={<ProtectedRoute><Narrative /></ProtectedRoute>} />
+        <Route path="/" element={<Home />} />
+        <Route path="/content/:caseId" element={<Content />} />
+        <Route path="/search" element={<Search />} />
+        <Route path="/comparison" element={<Comparison />} />
+        <Route path="/story" element={<Story />} />
+        <Route path="/companies" element={<Companies />} />
+        <Route path="/history" element={<History />} />
+        <Route path="/case/:caseId" element={<Matching />} />
+        <Route path="/narrative/:caseId" element={<Narrative />} />
         <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
-        <Route path="/portfolio" element={<ProtectedRoute><Portfolio /></ProtectedRoute>} />
+        <Route path="/portfolio" element={<Portfolio />} />
         <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
         <Route path="/tutor" element={<ProtectedRoute><TutorChat /></ProtectedRoute>} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<Navigate to="/landing" replace />} />
       </Routes>
     </Suspense>
   );
