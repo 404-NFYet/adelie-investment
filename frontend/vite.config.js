@@ -3,6 +3,10 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
 
+// Docker dev: PROXY_TARGET=http://backend-api:8082 (docker-compose에서 설정)
+// 로컬 dev: 기본값 http://localhost:8082
+const proxyTarget = process.env.PROXY_TARGET || 'http://localhost:8082';
+
 export default defineConfig({
   plugins: [
     react(),
@@ -94,17 +98,17 @@ export default defineConfig({
     proxy: {
       // FastAPI 엔드포인트 (/api/v1/*)
       '/api/v1': {
-        target: 'http://localhost:8082',
+        target: proxyTarget,
         changeOrigin: true,
       },
       // 인증 엔드포인트 (/api/auth/* → FastAPI)
       '/api/auth': {
-        target: 'http://localhost:8082',
+        target: proxyTarget,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/auth/, '/api/v1/auth'),
       },
       '/api/health': {
-        target: 'http://localhost:8082',
+        target: proxyTarget,
         changeOrigin: true,
       },
     },
