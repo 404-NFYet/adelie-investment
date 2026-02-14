@@ -22,6 +22,7 @@
  * @property {boolean} [selected] - 선택 상태
  */
 
+import React from 'react';
 import HighlightedText from './HighlightedText';
 
 function getTrendTypeLabel(trendType) {
@@ -35,7 +36,7 @@ function getTrendTypeLabel(trendType) {
   return labels[trendType] || '변동';
 }
 
-export default function KeywordCard({
+export default React.memo(function KeywordCard({
   id,
   category,
   title,
@@ -141,4 +142,4 @@ export default function KeywordCard({
       )}
     </div>
   );
-}
+})

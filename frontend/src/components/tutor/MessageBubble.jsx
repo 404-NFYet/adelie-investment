@@ -174,7 +174,7 @@ export function TypingIndicator() {
   );
 }
 
-export default function Message({ message }) {
+export default React.memo(function Message({ message }) {
   if (message.role === 'visualization') return <VisualizationMessage message={message} />;
 
   const isUser = message.role === 'user';
@@ -208,4 +208,4 @@ export default function Message({ message }) {
       </div>
     </motion.div>
   );
-}
+})
