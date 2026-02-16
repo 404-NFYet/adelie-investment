@@ -189,6 +189,11 @@ async def _save(
                    (title, event_year, summary, full_content, keywords,
                     difficulty, view_count, created_at, updated_at)
                    VALUES ($1, $2, $3, $4, $5::jsonb, 'beginner', 0, NOW(), NOW())
+                   ON CONFLICT (title, event_year) DO UPDATE SET
+                       summary = EXCLUDED.summary,
+                       full_content = EXCLUDED.full_content,
+                       keywords = EXCLUDED.keywords,
+                       updated_at = NOW()
                    RETURNING id""",
                 hist.get("title", curated.get("theme", "")),
                 event_year,
