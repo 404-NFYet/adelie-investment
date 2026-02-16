@@ -16,7 +16,7 @@ from typing import Any
 
 from langsmith import traceable
 
-from ..ai.llm_utils import call_llm_with_prompt
+from ..ai.llm_utils import JSONResponseParseError, call_llm_with_prompt
 from ..schemas import RawNarrative
 
 logger = logging.getLogger(__name__)
@@ -233,6 +233,23 @@ def run_narrative_body_node(state: dict) -> dict:
             "metrics": _update_metrics(state, "run_narrative_body", time.time() - node_start),
         }
 
+    except JSONResponseParseError as e:
+        logger.error(
+            "JSON_PARSE_FAILURE narrative_body 실패: prompt=%s provider=%s model=%s detail=%s",
+            e.prompt_name,
+            e.provider,
+            e.model,
+            e,
+        )
+        return {
+            "error": (
+                "narrative_body 실패: 모델 응답 JSON 불량 "
+                f"(prompt={e.prompt_name}, provider={e.provider}, model={e.model})"
+            ),
+            "metrics": _update_metrics(
+                state, "run_narrative_body", time.time() - node_start, "failed"
+            ),
+        }
     except Exception as e:
         logger.error("  narrative_body 실패: %s", e)
         return {

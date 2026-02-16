@@ -4,11 +4,12 @@
 """
 
 from .multi_provider_client import MultiProviderClient, get_multi_provider_client
-from .llm_utils import call_llm_with_prompt, extract_json_object
+from .llm_utils import JSONResponseParseError, call_llm_with_prompt, extract_json_object
 
 __all__ = [
     "MultiProviderClient",
     "get_multi_provider_client",
+    "JSONResponseParseError",
     "call_llm_with_prompt",
     "extract_json_object",
 ]

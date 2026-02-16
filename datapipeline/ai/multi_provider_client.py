@@ -83,7 +83,13 @@ class MultiProviderClient:
 
         try:
             if provider == "anthropic":
-                result = self._call_anthropic(model, messages, temperature, max_tokens)
+                result = self._call_anthropic(
+                    model=model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    response_format=response_format,
+                )
             else:
                 result = self._call_openai_compatible(
                     provider, model, messages, thinking, thinking_effort,
@@ -149,7 +155,12 @@ class MultiProviderClient:
         }
 
     def _call_anthropic(
-        self, model: str, messages: list[dict], temperature: float, max_tokens: int,
+        self,
+        model: str,
+        messages: list[dict],
+        temperature: float,
+        max_tokens: int,
+        response_format: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         """Anthropic Claude API 호출."""
         client = self._anthropic_client
@@ -173,6 +184,10 @@ class MultiProviderClient:
         }
         if system_msg.strip():
             call_kwargs["system"] = system_msg.strip()
+
+        # Anthropic SDK의 strict JSON mode 지원 여부가 모델/버전별로 달라
+        # 현재는 프롬프트 강제와 상위 파서 재시도 로직에 의존한다.
+        _ = response_format
 
         response = client.messages.create(**call_kwargs)
 
