@@ -163,10 +163,10 @@ async def _save(
                    (briefing_id, stock_code, stock_name, change_rate, volume,
                     selection_reason, created_at, trend_days, trend_type,
                     catalyst, catalyst_url, catalyst_published_at, catalyst_source)
-                   SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13
+                   SELECT $1,$2::text,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13
                    WHERE NOT EXISTS (
                        SELECT 1 FROM briefing_stocks
-                       WHERE briefing_id = $1 AND stock_code = $2
+                       WHERE briefing_id = $1 AND stock_code::text = $2::text
                    )""",
                 rows,
             )
