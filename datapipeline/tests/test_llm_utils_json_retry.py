@@ -9,10 +9,14 @@ from datapipeline.prompts.prompt_loader import PromptSpec
 
 
 def _json_prompt_spec() -> PromptSpec:
+    return _json_prompt_spec_for("anthropic", "claude-sonnet-4-5-20250929")
+
+
+def _json_prompt_spec_for(provider: str, model: str) -> PromptSpec:
     return PromptSpec(
         body='{"request":"test"}',
-        provider="anthropic",
-        model="claude-sonnet-4-5-20250929",
+        provider=provider,
+        model=model,
         temperature=0.7,
         response_format="json_object",
         system_message="테스트 시스템 메시지",
@@ -114,7 +118,7 @@ def test_json_prompt_openai_fallback_on_third_attempt(monkeypatch: pytest.Monkey
     client = ScriptedClient([
         ("anthropic", '{"broken": true'),
         ("anthropic", '{"still_broken": true'),
-        ("openai", '{"fallback": true, "engine": "gpt-5-mini"}'),
+        ("openai", '{"fallback": true, "engine": "gpt-5.2"}'),
     ])
     _patch_prompt_and_client(monkeypatch, _json_prompt_spec(), client)
 
@@ -123,7 +127,7 @@ def test_json_prompt_openai_fallback_on_third_attempt(monkeypatch: pytest.Monkey
     assert result["fallback"] is True
     assert len(client.calls) == 3
     assert client.calls[2]["provider"] == "openai"
-    assert client.calls[2]["model"] == "gpt-5-mini"
+    assert client.calls[2]["model"] == "gpt-5.2"
     assert client.calls[2]["response_format"] == {"type": "json_object"}
 
 
@@ -154,6 +158,39 @@ def test_non_json_prompt_does_not_retry(monkeypatch: pytest.MonkeyPatch) -> None
         call_llm_with_prompt("non_json_prompt", {"x": 1})
 
     assert len(client.calls) == 1
+
+
+def test_openai_provider_retries_once_on_transport_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = ScriptedClient([
+        ("openai", RuntimeError("upstream timeout")),
+        ("openai", '{"ok": true, "retried": true}'),
+    ])
+    _patch_prompt_and_client(monkeypatch, _json_prompt_spec_for("openai", "gpt-5.2"), client)
+
+    result = call_llm_with_prompt("narrative_body", {"x": 1})
+
+    assert result["ok"] is True
+    assert result["retried"] is True
+    assert len(client.calls) == 2
+    assert client.calls[0]["provider"] == "openai"
+    assert client.calls[1]["provider"] == "openai"
+    assert client.calls[1]["model"] == "gpt-5.2"
+
+
+def test_openai_provider_does_not_use_third_fallback_for_json_repair(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = ScriptedClient([
+        ("openai", '{"broken": true'),
+        ("openai", '{"still_broken": true'),
+    ])
+    _patch_prompt_and_client(monkeypatch, _json_prompt_spec_for("openai", "gpt-5.2"), client)
+
+    with pytest.raises(JSONResponseParseError) as exc_info:
+        call_llm_with_prompt("narrative_body", {"x": 1})
+
+    assert "동일 OpenAI 모델로 재시도/복구까지 실패" in str(exc_info.value)
+    assert exc_info.value.provider == "openai"
+    assert exc_info.value.model == "gpt-5.2"
+    assert len(client.calls) == 2
 
 
 def test_narrative_body_node_marks_json_parse_failure(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -51,6 +51,10 @@ DEFAULT_SECTION_HEADINGS: dict[int, tuple[str, str]] = {
     5: ("리스크 먼저 보기", "대응 포인트"),
 }
 
+PLACEHOLDER_HEADING_PATTERNS: tuple[str, ...] = (
+    r"^\s*###\s*(?:소제목|접두사|heading|subheading|subtitle|title|제목)(?:\s*[:\-]?\s*\d+)?\s*[:\-]?\s*$",
+)
+
 JARGON_REPLACEMENTS: tuple[tuple[str, str], ...] = (
     (r"\bCAPEX\b", "설비투자"),
     (r"\bguidance\b", "실적 전망"),
@@ -95,9 +99,50 @@ def _extract_content_lines(content: str) -> list[str]:
     return lines
 
 
+def _has_placeholder_heading(content: str) -> bool:
+    text = str(content or "")
+    for line in text.splitlines():
+        for pattern in PLACEHOLDER_HEADING_PATTERNS:
+            if re.match(pattern, line, flags=re.IGNORECASE):
+                return True
+    return False
+
+
+def _contains_anchor(text: str, anchor: str) -> bool:
+    if not anchor:
+        return True
+    return anchor.strip().lower() in str(text or "").lower()
+
+
+def _contains_any_phrase(text: str, phrases: tuple[str, ...]) -> bool:
+    lowered = str(text or "").lower()
+    return any(phrase.lower() in lowered for phrase in phrases)
+
+
+def _purpose_is_reflected(purpose: str, content: str) -> bool:
+    purpose_clean = _soften_text(purpose)
+    if not purpose_clean:
+        return True
+
+    content_lower = str(content or "").lower()
+    tokens = re.findall(r"[가-힣A-Za-z0-9]{2,}", purpose_clean)
+    if not tokens:
+        return True
+    checks = tokens[:3]
+    return any(token.lower() in content_lower for token in checks)
+
+
+def _align_content_with_purpose(purpose: str, content: str) -> str:
+    text = _soften_text(content)
+    purpose_clean = _soften_text(purpose)
+    if not purpose_clean or _purpose_is_reflected(purpose_clean, text):
+        return text
+    return f"### 이 단계의 포인트\n{purpose_clean}\n\n{text}".strip()
+
+
 def _inject_markdown_sections(step: int, content: str) -> str:
     text = _soften_text(content)
-    if re.search(r"^\s*###\s+", text, flags=re.MULTILINE):
+    if re.search(r"^\s*###\s+", text, flags=re.MULTILINE) and not _has_placeholder_heading(text):
         return text
 
     heading1, heading2 = DEFAULT_SECTION_HEADINGS.get(step, ("핵심 포인트", "체크 포인트"))
@@ -177,6 +222,78 @@ def _normalize_pages(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         normalized.append(current)
 
     return normalized
+
+
+def _enforce_story_spine(pages: list[dict[str, Any]], raw_narrative: dict[str, Any]) -> list[dict[str, Any]]:
+    if not isinstance(pages, list):
+        return []
+
+    concept = raw_narrative.get("concept") if isinstance(raw_narrative, dict) else {}
+    historical_case = raw_narrative.get("historical_case") if isinstance(raw_narrative, dict) else {}
+
+    concept_name = _soften_text(str((concept or {}).get("name", "") if isinstance(concept, dict) else ""))
+    concept_definition = _soften_text(str((concept or {}).get("definition", "") if isinstance(concept, dict) else ""))
+    concept_relevance = _soften_text(str((concept or {}).get("relevance", "") if isinstance(concept, dict) else ""))
+
+    hist_period = _soften_text(str((historical_case or {}).get("period", "") if isinstance(historical_case, dict) else ""))
+    hist_title = _soften_text(str((historical_case or {}).get("title", "") if isinstance(historical_case, dict) else ""))
+    hist_summary = _soften_text(str((historical_case or {}).get("summary", "") if isinstance(historical_case, dict) else ""))
+
+    enforced: list[dict[str, Any]] = []
+    for page in pages:
+        if not isinstance(page, dict):
+            continue
+        current = dict(page)
+        raw_step = current.get("step", 0)
+        try:
+            step = int(raw_step or 0)
+        except (TypeError, ValueError):
+            step = 0
+        content = _soften_text(str(current.get("content", "") or ""))
+        purpose = _soften_text(str(current.get("purpose", "") or ""))
+
+        if step in {1, 2, 3, 4, 5} and (not re.search(r"^\s*###\s+", content, flags=re.MULTILINE) or _has_placeholder_heading(content)):
+            content = _inject_markdown_sections(step, content)
+
+        if step in {1, 2, 3, 4, 5}:
+            content = _align_content_with_purpose(purpose, content)
+
+        if step == 2 and concept_name and not _contains_anchor(content, concept_name):
+            concept_lines = [f"오늘 배울 개념은 {concept_name}이에요."]
+            if concept_definition:
+                concept_lines.append(concept_definition)
+            if concept_relevance:
+                concept_lines.append(concept_relevance)
+            concept_block = " ".join(line for line in concept_lines if line)
+            content = f"### 오늘 배울 개념\n{concept_block}\n\n{content}".strip()
+
+        if step == 3:
+            has_period = bool(hist_period) and _contains_anchor(content, hist_period)
+            has_title = bool(hist_title) and _contains_anchor(content, hist_title)
+            if (hist_period or hist_title) and not (has_period or has_title):
+                case_head = " ".join(part for part in [hist_period, hist_title] if part).strip()
+                case_body = hist_summary or "같은 개념이 작동한 과거 사례를 먼저 확인해요."
+                content = f"### 참고할 과거 사례\n{case_head}: {case_body}\n\n{content}".strip()
+
+        if step == 4 and not (
+            _contains_any_phrase(content, ("### 닮은 점", "닮은 점"))
+            and _contains_any_phrase(content, ("### 다른 점", "다른 점"))
+        ):
+            lines = _extract_content_lines(content)
+            similar = lines[0] if lines else "과거 사례와 닮은 흐름을 먼저 확인해요."
+            different = " ".join(lines[1:3]) if len(lines) > 1 else "이번 국면의 다른 변수도 함께 확인해야 해요."
+            content = f"### 닮은 점\n{similar}\n\n### 다른 점\n{different}".strip()
+
+        if step == 6:
+            bullets = current.get("bullets", [])
+            bullets = bullets if isinstance(bullets, list) else []
+            current["content"] = _normalize_summary_content(content, [_soften_text(str(item)) for item in bullets if str(item).strip()])
+            current["chart"] = None
+        else:
+            current["content"] = content
+
+        enforced.append(current)
+    return enforced
 
 
 # ────────────────────────────────────────────
@@ -509,6 +626,7 @@ def run_tone_final_node(state: dict) -> dict:
 
         briefing = result.get("interface_3_final_briefing", {})
         normalized_pages = _normalize_pages(briefing.get("pages", []))
+        normalized_pages = _enforce_story_spine(normalized_pages, state.get("raw_narrative", {}))
         page_count = len(normalized_pages)
         logger.info("  run_tone_final done: %d pages merged", page_count)
 

@@ -1,6 +1,6 @@
 ---
-provider: anthropic
-model: claude-sonnet-4-5-20250929
+provider: openai
+model: gpt-5.2
 temperature: 0.4
 max_tokens: 8192
 response_format: json_object
@@ -49,13 +49,28 @@ system_message: >
 
 - `background`~`caution`(1~5단계) `content`는 아래 형식을 반드시 지켜요.
   - 2~3개 단락으로 작성해요.
-  - 각 단락은 `### 소제목`으로 시작해요.
+  - 각 단락은 `### {짧은 소제목}` 형식으로 시작해요.
   - 소제목은 짧고 캐치하게 작성하고, 단락 핵심을 정확히 담아야 해요.
+  - `### 소제목`, `### 접두사`, `### heading` 같은 자리표시자 문구를 그대로 쓰면 안 돼요.
   - 단락 사이에는 빈 줄 1개를 넣어요.
 - 문체는 중학생도 이해할 수 있는 쉬운 표현을 우선해요.
   - 한 문장을 너무 길게 쓰지 말고, 어려운 용어는 풀어서 설명해요.
   - 같은 말을 반복하지 말고 핵심만 간결하게 전달해요.
   - 설명체보다 대화체에 가깝게, 친근한 말투를 사용해요.
+
+---
+
+## 서사축(Story Spine) 고정 규칙
+
+6개 섹션은 아래 흐름을 반드시 지켜요.
+1. `background`: 문제/모순 제시
+2. `concept_explain`: 오늘 배울 단일 개념
+3. `history`: 같은 개념이 작동한 과거 사례
+4. `application`: 과거 메커니즘을 현재에 적용(닮은 점/다른 점)
+5. `caution`: 한계/리스크
+6. `summary`: 체크포인트
+
+이 흐름이 끊기지 않게 각 step의 첫 단락 첫 문장을 명확하게 써요.
 
 ---
 
@@ -67,15 +82,17 @@ system_message: >
 
 ### 2) concept_explain
 - `concept`에 있는 개념 1개만 설명해요.
+- 첫 문장은 반드시 `오늘 배울 개념은 {개념명}이에요` 형식을 사용해요.
 - 정의와 현재 맥락 연결이 함께 나와야 해요.
 
 ### 3) history
 - `historical_case`의 **'메커니즘(작동 원리)'**을 설명하는 데 집중해요.
+- 첫 단락에 `historical_case.period` 또는 `historical_case.title`을 반드시 포함해요.
 - 단순한 사실 나열보다 "A가 발생했지만 B로 이어지기까지 **시간이 걸렸다(Time Lag)**" 또는 "숨겨진 변수 C가 있었다"는 식의 **구조적 해석**을 곁들여요.
 
 ### 4) application
 - 과거의 메커니즘을 현재에 대입(Analogy)해요.
-- **"닮은 점(패턴)"과 "다른 점(변수)"**을 명확히 대조해요.
+- **반드시 `### 닮은 점`과 `### 다른 점` 소제목을 둘 다 사용**해 명확히 대조해요.
 - 과거의 교훈이 이번에도 유효할지, 아니면 새로운 변수 때문에 달라질지를 논리적으로 풀어요.
 
 ### 5) caution
@@ -169,7 +186,8 @@ system_message: >
 2. 최상위 키는 정확히 `narrative`만 사용해요.
 3. `narrative` 하위 키 6개를 모두 포함해요.
 4. 각 섹션의 `bullets`는 2~3개, `caution`은 3개 권장, `summary`는 반드시 3개로 작성해요.
-5. `background`~`caution`의 `content`는 `### 소제목`이 포함된 2~3개 단락 형식을 지켜요.
+5. `background`~`caution`의 `content`는 의미 있는 `###` 제목이 포함된 2~3개 단락 형식을 지켜요.
 6. `summary.content`는 `### 투자 전에 꼭 확인할 포인트` + 3개 체크리스트 형식으로 작성해요.
 7. `summary.viz_hint`는 반드시 `null`이에요.
 8. `application`과 `caution`은 차트 근거가 약하면 `viz_hint`를 `null`로 유지해요.
+9. 자리표시자 소제목(`### 소제목`, `### 접두사`, `### heading`)은 금지예요.
