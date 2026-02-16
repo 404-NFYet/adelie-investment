@@ -84,6 +84,8 @@
 | `OPENAI_VISION_MODEL` | `gpt-4o` | 비전 모델 | Backend |
 | `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | 임베딩 모델 | Backend |
 | `OPENAI_FALLBACK_MODEL` | `gpt-5.2` | Pipeline JSON 복구/Anthropic 대체 호출 시 사용하는 OpenAI 모델 | Pipeline |
+| `OPENAI_TIMEOUT_SECONDS` | `180` | OpenAI 요청 타임아웃(초). 장문 검증/생성 타임아웃 완화용 | Backend, Pipeline |
+| `PERPLEXITY_TIMEOUT_SECONDS` | `60` | Perplexity 요청 타임아웃(초) | Pipeline |
 | `PERPLEXITY_MODEL` | `sonar-pro` | Perplexity 모델 | Pipeline |
 | `DEFAULT_MODEL` | `claude-sonnet-4-20250514` | 레거시/일부 스크립트 기본 모델 (프롬프트 frontmatter가 우선) | Pipeline |
 | `CHART_MODEL` | `gpt-5-mini` | 차트 생성 모델 | Pipeline |
