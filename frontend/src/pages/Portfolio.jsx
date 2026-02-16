@@ -1,16 +1,14 @@
 /**
- * Portfolio.jsx - 포트폴리오 (4탭: 보유종목/자유매매/보상내역/랭킹)
+ * Portfolio.jsx - 포트폴리오 (3탭: 보유종목/자유매매/나의랭킹)
  */
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import AppHeader from '../components/layout/AppHeader';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import { portfolioApi } from '../api';
 import { useUser } from '../contexts/UserContext';
 import TradeModal from '../components/domain/TradeModal';
 import StockDetail from '../components/trading/StockDetail';
 import StockSearch from '../components/trading/StockSearch';
-import RewardCard from '../components/trading/RewardCard';
 import Leaderboard from '../components/trading/Leaderboard';
 import { PenguinMascot } from '../components';
 import { API_BASE_URL } from '../config';
@@ -103,16 +101,36 @@ export default function Portfolio() {
   const { portfolio, isLoading, error, fetchPortfolio } = usePortfolio();
   const [activeTab, setActiveTab] = useState('holdings');
   const [trades, setTrades] = useState([]);
-  const [rewards, setRewards] = useState([]);
   const [ranking, setRanking] = useState([]);
   const [stockDetail, setStockDetail] = useState({ isOpen: false, stock: null });
   const [tradeModal, setTradeModal] = useState({ isOpen: false, stock: null, type: 'buy' });
 
   const userId = user?.id;
+  const isGuest = !userId;
+
+  const previewPortfolio = {
+    total_value: 1000000,
+    total_profit_loss: 0,
+    total_profit_loss_pct: 0,
+    current_cash: 773200,
+    holdings: [
+      {
+        stock_code: '005930',
+        stock_name: '삼성전자',
+        quantity: 1,
+        avg_buy_price: 71500,
+        current_price: 71500,
+        current_value: 71500,
+        profit_loss_pct: 0,
+        profit_loss: 0,
+      },
+    ],
+  };
+  const displayPortfolio = portfolio || previewPortfolio;
 
   // 총 자산 count-up
-  const animatedTotal = useCountUp(portfolio?.total_value || 0, 800);
-  const animatedPL = useCountUp(portfolio?.total_profit_loss || 0, 800);
+  const animatedTotal = useCountUp(displayPortfolio.total_value || 0, 800);
+  const animatedPL = useCountUp(displayPortfolio.total_profit_loss || 0, 800);
 
   // 거래 내역 로드
   useEffect(() => {
@@ -121,19 +139,13 @@ export default function Portfolio() {
     }
   }, [activeTab, userId]);
 
-  // 보상 내역 로드
-  useEffect(() => {
-    if (activeTab === 'rewards' && rewards.length === 0 && userId) {
-      portfolioApi.getRewards().then(data => setRewards(data.rewards || [])).catch(() => {});
-    }
-  }, [activeTab, userId]);
-
   // 자유매매 탭 - 랭킹 로드
   useEffect(() => {
     if (activeTab === 'trading' && ranking.length === 0) {
+      if (!userId) return;
       fetch(`${API_BASE_URL}/api/v1/trading/ranking?type=volume`).then(r => r.json()).then(d => setRanking(d.ranking || [])).catch(() => {});
     }
-  }, [activeTab]);
+  }, [activeTab, ranking.length, userId]);
 
   const handleStockSelect = (stock) => setStockDetail({ isOpen: true, stock });
   const handleTrade = (stock, type) => {
@@ -162,7 +174,12 @@ export default function Portfolio() {
   if (error) {
     return (
       <div className="min-h-screen bg-background pb-24">
-        <AppHeader title="포트폴리오" />
+        <header className="h-[45px] border-b border-border px-3 flex items-center">
+          <div className="flex items-center gap-2">
+            <img src="/images/penguin-3d.webp" alt="ADELIE" className="h-6 w-6 object-contain" />
+            <span className="text-[15px] font-bold tracking-tight">ADELIE</span>
+          </div>
+        </header>
         <main className="container py-6">
           <div className="card text-center py-12">
             <p className="text-text-primary font-medium mb-1">포트폴리오를 불러올 수 없습니다</p>
@@ -177,32 +194,37 @@ export default function Portfolio() {
     );
   }
 
-  const isPositive = portfolio.total_profit_loss > 0;
-  const isNegative = portfolio.total_profit_loss < 0;
+  const isPositive = displayPortfolio.total_profit_loss > 0;
+  const isNegative = displayPortfolio.total_profit_loss < 0;
 
   return (
     <div className="min-h-screen bg-background pb-24">
-      <AppHeader title="포트폴리오" />
-      <main className="container py-6 space-y-4">
+      <header className="h-[45px] bg-white border-b border-border px-3 flex items-center">
+        <div className="flex items-center gap-2">
+          <img src="/images/penguin-3d.webp" alt="ADELIE" className="h-6 w-6 object-contain" />
+          <span className="text-[15px] font-bold tracking-tight">ADELIE</span>
+        </div>
+      </header>
+      <main className="container py-2 space-y-2">
         {/* 총 자산 카드 */}
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="card text-center">
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="card text-center rounded-2xl">
           <p className="text-xs text-text-secondary mb-1">총 자산</p>
           <p className="text-2xl font-bold">{formatKRW(animatedTotal)}</p>
           <p className={`text-sm font-semibold mt-1 ${isPositive ? 'text-red-500' : isNegative ? 'text-blue-500' : 'text-text-secondary'}`}>
-            {isPositive ? '+' : ''}{formatKRW(animatedPL)} ({isPositive ? '+' : ''}{portfolio.total_profit_loss_pct}%)
+            {isPositive ? '+' : ''}{formatKRW(animatedPL)} ({isPositive ? '+' : ''}{displayPortfolio.total_profit_loss_pct}%)
           </p>
           <div className="flex justify-around mt-4 pt-3 border-t border-border">
-            <div><p className="text-xs text-text-secondary">보유 현금</p><p className="text-sm font-semibold">{formatKRW(portfolio.current_cash)}</p></div>
-            <div><p className="text-xs text-text-secondary">투자 금액</p><p className="text-sm font-semibold">{formatKRW(portfolio.total_value - portfolio.current_cash)}</p></div>
+            <div><p className="text-xs text-text-secondary">보유 현금</p><p className="text-sm font-semibold">{formatKRW(displayPortfolio.current_cash)}</p></div>
+            <div><p className="text-xs text-text-secondary">투자 금액</p><p className="text-sm font-semibold">{formatKRW(displayPortfolio.total_value - displayPortfolio.current_cash)}</p></div>
           </div>
         </motion.div>
 
         {/* 종목별 수익률 바 */}
-        {portfolio.holdings.length > 0 && (
+        {displayPortfolio.holdings.length > 0 && (
           <div className="card">
             <h3 className="text-xs font-semibold text-text-secondary mb-3">종목별 수익률</h3>
             <div className="space-y-2">
-              {portfolio.holdings.map(h => {
+              {displayPortfolio.holdings.map(h => {
                 const pct = h.profit_loss_pct || 0;
                 const barWidth = Math.min(Math.abs(pct) * 2, 100);
                 return (
@@ -224,13 +246,12 @@ export default function Portfolio() {
           </div>
         )}
 
-        {/* 4탭 전환 */}
+        {/* 3탭 전환 */}
         <div className="flex gap-2">
           {[
             { key: 'holdings', label: '보유 종목' },
             { key: 'trading', label: '자유 매매' },
-            { key: 'rewards', label: '보상 내역' },
-            { key: 'leaderboard', label: '랭킹' },
+            { key: 'leaderboard', label: '나의 랭킹' },
           ].map(tab => (
             <button
               key={tab.key}
@@ -247,13 +268,13 @@ export default function Portfolio() {
         {/* 보유 종목 탭 */}
         {activeTab === 'holdings' && (
           <div className="space-y-3">
-            {portfolio.holdings.length === 0 ? (
+            {displayPortfolio.holdings.length === 0 ? (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="card text-center py-8">
                 <PenguinMascot variant="empty" message="아직 보유 종목이 없습니다" />
                 <p className="text-text-muted text-xs mt-1">브리핑에서 투자하거나 자유 매매를 시작해보세요</p>
               </motion.div>
             ) : (
-              portfolio.holdings.map(h => (
+              displayPortfolio.holdings.map(h => (
                 <HoldingCard key={h.stock_code} holding={h} onClick={() => handleStockSelect({ stock_code: h.stock_code, stock_name: h.stock_name })} />
               ))
             )}
@@ -265,7 +286,12 @@ export default function Portfolio() {
         {/* 자유 매매 탭 */}
         {activeTab === 'trading' && (
           <div className="space-y-4">
-            <StockSearch onSelect={handleStockSelect} />
+            {!isGuest && <StockSearch onSelect={handleStockSelect} />}
+            {isGuest && (
+              <div className="card text-center py-8">
+                <p className="text-sm text-text-secondary">자유 매매는 로그인 후 사용할 수 있습니다.</p>
+              </div>
+            )}
             {ranking.length > 0 && (
               <div className="card">
                 <h3 className="font-bold text-sm mb-3">거래량 TOP</h3>
@@ -293,25 +319,6 @@ export default function Portfolio() {
                   ))}
                 </div>
               </div>
-            )}
-          </div>
-        )}
-
-        {/* 보상 내역 탭 */}
-        {activeTab === 'rewards' && (
-          <div className="space-y-3">
-            {rewards.length === 0 ? (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="card text-center py-8">
-                <div className="w-10 h-10 mx-auto mb-3 rounded-full bg-primary/10 flex items-center justify-center">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FF6B00" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="20 12 20 22 4 22 4 12" /><rect x="2" y="7" width="20" height="5" /><line x1="12" y1="22" x2="12" y2="7" /><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z" /><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z" />
-                  </svg>
-                </div>
-                <p className="text-text-secondary text-sm">아직 받은 보상이 없습니다</p>
-                <p className="text-text-muted text-xs mt-1">브리핑을 완독하면 보상을 받을 수 있어요</p>
-              </motion.div>
-            ) : (
-              rewards.map(r => <RewardCard key={r.id} reward={r} />)
             )}
           </div>
         )}

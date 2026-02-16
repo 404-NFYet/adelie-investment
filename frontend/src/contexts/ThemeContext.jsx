@@ -3,13 +3,7 @@ import { createContext, useContext, useState, useCallback, useMemo, useEffect } 
 const ThemeContext = createContext(null);
 
 export function ThemeProvider({ children }) {
-  const [isDarkMode, setIsDarkMode] = useState(() => {
-    // Check localStorage first
-    const saved = localStorage.getItem('theme');
-    if (saved) return saved === 'dark';
-    // Default to light mode (white mode)
-    return false;
-  });
+  const [isDarkMode, setIsDarkMode] = useState(false);
 
   useEffect(() => {
     // Apply theme to document
@@ -22,8 +16,8 @@ export function ThemeProvider({ children }) {
     }
   }, [isDarkMode]);
 
-  const toggleTheme = useCallback(() => setIsDarkMode((prev) => !prev), []);
-  const setTheme = useCallback((mode) => setIsDarkMode(mode === 'dark'), []);
+  const toggleTheme = useCallback(() => setIsDarkMode(false), []);
+  const setTheme = useCallback(() => setIsDarkMode(false), []);
 
   const value = useMemo(() => ({ isDarkMode, toggleTheme, setTheme }), [isDarkMode, toggleTheme, setTheme]);
 

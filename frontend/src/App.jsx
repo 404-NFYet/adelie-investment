@@ -17,8 +17,8 @@ import PenguinLoading from './components/common/PenguinLoading';
 import UpdatePrompt from './components/common/UpdatePrompt';
 
 // 코드 스플리팅: 각 페이지를 동적 import
-const Onboarding = lazy(() => import('./pages/Onboarding'));
 const Auth = lazy(() => import('./pages/Auth'));
+const Landing = lazy(() => import('./pages/Landing'));
 const Home = lazy(() => import('./pages/Home'));
 const Search = lazy(() => import('./pages/Search'));
 const Comparison = lazy(() => import('./pages/Comparison'));
@@ -35,7 +35,7 @@ const TutorChat = lazy(() => import('./pages/TutorChat'));
 function ProtectedRoute({ children }) {
   const { user, isLoading } = useUser();
   if (isLoading) return <PageLoader />;
-  if (!user?.isAuthenticated) return <Navigate to="/auth" replace />;
+  if (!user?.isAuthenticated) return <Navigate to="/" replace />;
   return children;
 }
 
@@ -51,9 +51,11 @@ function AppRoutes() {
   return (
     <Suspense fallback={<PageLoader />}>
       <Routes>
-        <Route path="/onboarding" element={<Onboarding />} />
+        <Route path="/" element={<Landing />} />
+        <Route path="/landing" element={<Navigate to="/" replace />} />
+        <Route path="/onboarding" element={<Navigate to="/" replace />} />
         <Route path="/auth" element={<Auth />} />
-        <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
+        <Route path="/home" element={<ProtectedRoute><Home /></ProtectedRoute>} />
         <Route path="/search" element={<ProtectedRoute><Search /></ProtectedRoute>} />
         <Route path="/comparison" element={<ProtectedRoute><Comparison /></ProtectedRoute>} />
         <Route path="/story" element={<ProtectedRoute><Story /></ProtectedRoute>} />

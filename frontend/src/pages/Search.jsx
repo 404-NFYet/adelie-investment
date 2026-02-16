@@ -7,7 +7,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { KeywordCard } from '../components';
 import AppHeader from '../components/layout/AppHeader';
-import { keywordsApi } from '../api';
+import { casesApi, keywordsApi } from '../api';
 
 const SEARCH_HISTORY_KEY = 'adelie_search_history';
 const MAX_HISTORY = 10;
@@ -30,21 +30,50 @@ export default function Search() {
   const [query, setQuery] = useState(searchParams.get('keyword') || '');
   const [searchHistory, setSearchHistory] = useState(getSearchHistory);
   const [popularKeywords, setPopularKeywords] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingKeywords, setLoadingKeywords] = useState(true);
+
+  const [results, setResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState('');
+  const [hasSearched, setHasSearched] = useState(false);
 
   useEffect(() => {
     keywordsApi.getToday()
       .then(data => setPopularKeywords(data.keywords || []))
       .catch(() => setPopularKeywords([]))
-      .finally(() => setLoading(false));
+      .finally(() => setLoadingKeywords(false));
   }, []);
+
+  const runSearch = async (rawQuery) => {
+    const trimmed = rawQuery.trim();
+    if (!trimmed) return;
+
+    setSearchLoading(true);
+    setSearchError('');
+    setHasSearched(true);
+
+    addSearchHistory(trimmed);
+    setSearchHistory(getSearchHistory());
+
+    try {
+      const response = await casesApi.search(trimmed, 'year', 8);
+      setResults(Array.isArray(response?.cases) ? response.cases : []);
+    } catch (err) {
+      setSearchError(err?.message || '검색 중 오류가 발생했습니다.');
+      setResults([]);
+    } finally {
+      setSearchLoading(false);
+    }
+  };
 
   const handleSearch = (e) => {
     e.preventDefault();
-    if (!query.trim()) return;
-    addSearchHistory(query.trim());
-    setSearchHistory(getSearchHistory());
-    navigate(`/comparison?keyword=${encodeURIComponent(query)}`);
+    runSearch(query);
+  };
+
+  const handleKeywordClick = (keyword) => {
+    setQuery(keyword);
+    runSearch(keyword);
   };
 
   const clearHistory = () => {
@@ -69,17 +98,81 @@ export default function Search() {
               <button onClick={clearHistory} className="text-sm text-text-tertiary">전체 삭제</button>
             </div>
             <div className="flex flex-wrap gap-2">
-              {searchHistory.map((term, i) => <button key={i} onClick={() => navigate(`/comparison?keyword=${encodeURIComponent(term)}`)} className="tag">{term}</button>)}
+              {searchHistory.map((term, i) => (
+                <button
+                  key={i}
+                  onClick={() => handleKeywordClick(term)}
+                  className="tag"
+                >
+                  {term}
+                </button>
+              ))}
             </div>
           </div>
         )}
+        <div className="mb-8">
+          <h2 className="text-lg font-semibold mb-3">검색 결과</h2>
+
+          {searchLoading && (
+            <p className="text-text-tertiary text-sm">검색 중...</p>
+          )}
+
+          {!searchLoading && searchError && (
+            <div className="rounded-xl border border-error/30 bg-error-light p-3 text-sm text-error">
+              {searchError}
+            </div>
+          )}
+
+          {!searchLoading && !searchError && hasSearched && results.length === 0 && (
+            <p className="text-text-tertiary text-sm">검색 결과가 없습니다.</p>
+          )}
+
+          {!searchLoading && !searchError && results.length > 0 && (
+            <div className="space-y-3">
+              {results.map((item) => {
+                const selectable = Number(item.id) > 0;
+                return (
+                  <button
+                    key={`${item.id}-${item.title}`}
+                    type="button"
+                    disabled={!selectable}
+                    onClick={() => navigate(`/comparison?caseId=${item.id}`)}
+                    className={`w-full rounded-2xl border p-4 text-left transition ${
+                      selectable
+                        ? 'border-border bg-surface-elevated hover:border-primary/50'
+                        : 'cursor-not-allowed border-border-light bg-surface text-text-muted'
+                    }`}
+                  >
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <h3 className="text-sm font-semibold text-text-primary">{item.title}</h3>
+                      <span className="text-xs text-text-secondary">{item.event_year || '-'}</span>
+                    </div>
+                    <p className="text-xs text-text-secondary">{item.summary}</p>
+                    {!selectable && (
+                      <p className="mt-2 text-[11px] text-warning">상세 케이스 데이터 준비 중</p>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
         <div>
           <h2 className="text-lg font-semibold mb-3">오늘의 키워드</h2>
-          {loading ? (
+          {loadingKeywords ? (
             <p className="text-text-tertiary text-sm">불러오는 중...</p>
           ) : popularKeywords.length > 0 ? (
             <div className="space-y-4">
-              {popularKeywords.map((kw) => <KeywordCard key={kw.id} category={kw.category} title={kw.title} description={kw.description} onClick={() => navigate(`/comparison?keyword=${encodeURIComponent(kw.title)}`)} />)}
+              {popularKeywords.map((kw) => (
+                <KeywordCard
+                  key={kw.id}
+                  category={kw.category}
+                  title={kw.title}
+                  description={kw.description}
+                  onClick={() => handleKeywordClick(kw.title)}
+                />
+              ))}
             </div>
           ) : (
             <p className="text-text-tertiary text-sm">키워드가 없습니다.</p>
