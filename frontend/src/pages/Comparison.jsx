@@ -6,7 +6,6 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { HighlightedText, OpinionPoll, NextStepButton } from '../components';
 import AppHeader from '../components/layout/AppHeader';
-import { useTheme } from '../contexts/ThemeContext';
 import { casesApi } from '../api';
 
 // PER 값에 따른 바 높이 비율 계산 (max 기준)
@@ -16,7 +15,7 @@ export default function Comparison() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const caseId = searchParams.get('caseId') || '';
-  const { isDarkMode, toggleTheme } = useTheme();
+  const hasCaseId = !!caseId;
 
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -24,11 +23,7 @@ export default function Comparison() {
 
   useEffect(() => {
     const fetchComparison = async () => {
-      if (!caseId) {
-        setError('케이스 ID가 없습니다.');
-        setIsLoading(false);
-        return;
-      }
+      if (!caseId) return;
       try {
         setIsLoading(true);
         setError(null);
@@ -66,6 +61,12 @@ export default function Comparison() {
         setIsLoading(false);
       }
     };
+    if (!caseId) {
+      setData(null);
+      setError(null);
+      setIsLoading(false);
+      return;
+    }
     fetchComparison();
   }, [caseId]);
 
@@ -78,15 +79,31 @@ export default function Comparison() {
 
       {/* Main Content */}
       <main className="container py-8 space-y-8">
+        {!hasCaseId && (
+          <div className="card text-center py-10">
+            <h2 className="text-lg font-bold mb-2">비교할 케이스를 먼저 선택해 주세요</h2>
+            <p className="text-sm text-text-secondary mb-5">
+              검색 결과에서 원하는 사례를 선택하면 비교 화면으로 이동합니다.
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate('/search')}
+              className="btn-primary"
+            >
+              검색으로 돌아가기
+            </button>
+          </div>
+        )}
+
         {/* Loading State */}
-        {isLoading && (
+        {hasCaseId && isLoading && (
           <div className="flex justify-center py-8">
             <div className="animate-pulse text-secondary">로딩 중...</div>
           </div>
         )}
 
         {/* Error State */}
-        {error && (
+        {hasCaseId && error && (
           <div className="flex justify-center py-8">
             <div className="text-red-500 text-sm">{error}</div>
           </div>
@@ -162,7 +179,7 @@ export default function Comparison() {
       </main>
 
       {/* NEXT STEP 버튼 */}
-      {data && <NextStepButton onClick={() => navigate(`/companies?caseId=${caseId}`)} />}
+      {hasCaseId && data && <NextStepButton onClick={() => navigate(`/companies?caseId=${caseId}`)} />}
     </div>
   );
 }

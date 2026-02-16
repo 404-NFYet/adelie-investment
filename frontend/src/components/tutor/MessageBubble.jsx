@@ -7,16 +7,9 @@ import { motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import PenguinLoading from '../common/PenguinLoading';
-
-// react-plotly.js 동적 로딩 (plotly.js-basic-dist-min으로 번들 최소화)
-const Plot = React.lazy(() =>
-  Promise.all([
-    import('react-plotly.js/factory'),
-    import('plotly.js-basic-dist-min'),
-  ]).then(([{ default: createPlotlyComponent }, Plotly]) => ({
-    default: createPlotlyComponent(Plotly.default || Plotly),
-  }))
-);
+import ResponsivePlotly from '../charts/ResponsivePlotly';
+import { normalizeLayout } from '../../utils/plotly/normalizeLayout';
+import { normalizeTraces } from '../../utils/plotly/normalizeTraces';
 
 // 출처 분류 체계
 const SOURCE_LABELS = {
@@ -120,39 +113,35 @@ function VisualizationMessage({ message }) {
     chartData = extractPlotlyDataFromHtml(message.content);
   }
 
-  const hasChart = chartData && Array.isArray(chartData.data) && chartData.data.length > 0;
-
-  // 모바일 최적화 레이아웃 (max-width 480px)
-  const layout = {
-    autosize: true,
-    margin: { l: 40, r: 20, t: 40, b: 40 },
-    paper_bgcolor: 'transparent',
-    plot_bgcolor: 'transparent',
-    font: { family: 'Pretendard, -apple-system, sans-serif', size: 11 },
-    ...(chartData?.layout || {}),
-    height: expanded ? 440 : 280,
-  };
+  const normalizedData = normalizeTraces(chartData?.data);
+  const hasChart = normalizedData.length > 0;
+  const hasPie = normalizedData.some((trace) => trace.type === 'pie');
+  const normalizedLayout = normalizeLayout(chartData?.layout || {}, { hasPie, clearTitle: false });
+  const fixedHeight = expanded ? 440 : 280;
 
   return (
     <motion.div className="mb-4" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
       <div className="flex items-center gap-1.5 mb-1.5">
-        <img src="/images/penguin-3d.png" alt="" className="w-5 h-5 rounded-full object-cover" />
+        <img src="/images/penguin-3d.webp" alt="" className="w-5 h-5 rounded-full object-cover" />
         <span className="text-xs text-text-secondary">차트</span>
         {message.executionTime && <span className="text-[10px] text-text-secondary ml-auto">{message.executionTime}ms</span>}
       </div>
-      <div className={`rounded-2xl border border-border overflow-hidden bg-white transition-all max-w-[480px] ${expanded ? 'h-[480px]' : 'h-[320px]'}`}>
+      <div className="max-w-[480px] overflow-hidden rounded-2xl border border-border bg-white p-2 transition-all">
         {hasChart ? (
-          <React.Suspense fallback={<div className="flex items-center justify-center h-full text-sm text-text-secondary animate-pulse">차트 로딩 중...</div>}>
-            <Plot
-              data={chartData.data}
-              layout={layout}
-              config={{ responsive: true, displayModeBar: false }}
-              style={{ width: '100%', height: '100%' }}
-              useResizeHandler
-            />
-          </React.Suspense>
+          <ResponsivePlotly
+            data={normalizedData}
+            layout={normalizedLayout}
+            mode="fixed"
+            fixedHeight={fixedHeight}
+            minHeight={fixedHeight}
+            maxHeight={fixedHeight}
+            loadingText="차트 로딩 중..."
+            emptyText="차트를 생성할 수 없습니다"
+          />
         ) : (
-          <div className="flex items-center justify-center h-full text-sm text-text-secondary">차트를 생성할 수 없습니다</div>
+          <div className="flex items-center justify-center text-sm text-text-secondary" style={{ height: fixedHeight }}>
+            차트를 생성할 수 없습니다
+          </div>
         )}
       </div>
       {hasChart && (
@@ -193,7 +182,7 @@ export default React.memo(function Message({ message }) {
     <motion.div className="flex justify-start mb-4" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
       <div className="max-w-[90%]">
         <div className="flex items-center gap-1.5 mb-1.5">
-          <img src="/images/penguin-3d.png" alt="" className="w-5 h-5 rounded-full object-cover" />
+          <img src="/images/penguin-3d.webp" alt="" className="w-5 h-5 rounded-full object-cover" />
           <span className="text-xs text-text-secondary font-medium">AI 튜터</span>
         </div>
         <div className={`px-4 py-3 rounded-2xl rounded-tl-md ${message.isError ? 'bg-error-light text-error border border-error/20' : 'bg-surface border border-border'}`}>

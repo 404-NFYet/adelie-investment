@@ -1,215 +1,208 @@
 /**
- * Narrative.jsx - 6페이지 골든케이스 브리핑 페이지
- * 순서: background → concept_explain → history → application → caution → summary
- * + 브리핑 완료 보상 + 페이지별 용어 + 출처
+ * Narrative.jsx - 콘텐츠1~6 스타일 기반 내러티브 화면
+ * 순서: background -> concept_explain -> history -> application -> caution -> summary
  */
-import React, { Component, useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { AnimatePresence, motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import { narrativeApi } from '../api';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import { useTermContext } from '../contexts/TermContext';
 import { formatKRW } from '../utils/formatNumber';
+import { buildNarrativePlot } from '../utils/narrativeChartAdapter';
+import ResponsiveEChart from '../components/charts/ResponsiveEChart';
+import ResponsivePlotly from '../components/charts/ResponsivePlotly';
+import { convertPlotlyToECharts } from '../utils/charts/plotlyToEcharts';
 
-/* ── Plotly 지연 로딩 (번들 최적화) ── */
-const Plot = React.lazy(() =>
-  import('react-plotly.js').then(mod => ({ default: mod.default }))
-);
-
-/* ── 차트 에러 바운더리 (Plotly 크래시 방지) ── */
-class ChartErrorBoundary extends Component {
-  state = { hasError: false };
-  static getDerivedStateFromError() { return { hasError: true }; }
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="h-[200px] flex items-center justify-center text-text-secondary text-sm">
-          차트를 표시할 수 없습니다
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
-
-/* ── 6페이지 스텝 정의 ── */
-const STEPS = [
-  { key: 'background',      title: '현재 배경',       subtitle: '지금 왜 이게 이슈인지',       color: '#FF6B35' },
-  { key: 'concept_explain',  title: '금융 개념 설명',  subtitle: '핵심 개념을 쉽게 풀어볼게요',  color: '#004E89' },
-  { key: 'history',          title: '과거 비슷한 사례', subtitle: '과거에도 비슷한 일이 있었어요', color: '#1A936F' },
-  { key: 'application',      title: '현재 상황에 적용', subtitle: '과거와 비교해 지금은 어떤지',  color: '#C5D86D' },
-  { key: 'caution',          title: '주의해야 할 점',   subtitle: '이건 꼭 체크해야 해요',       color: '#8B95A1' },
-  { key: 'summary',          title: '최종 정리',       subtitle: '핵심만 정리해 드릴게요',       color: '#FF6B00' },
+const STEP_CONFIGS = [
+  {
+    key: 'background',
+    tag: '#현재 배경',
+    title: '지금 왜 이 이슈가 중요한가요?',
+    template: 'content1',
+    showChart: true,
+  },
+  {
+    key: 'concept_explain',
+    tag: '#핵심 개념',
+    title: '핵심 금융 개념을 쉽게 풀어볼게요',
+    template: 'content2',
+    showChart: true,
+  },
+  {
+    key: 'history',
+    tag: '#과거 사례',
+    title: '과거에도 비슷한 일이 있었을까요?',
+    template: 'content3',
+    showChart: true,
+  },
+  {
+    key: 'application',
+    tag: '#현재 적용',
+    title: '그럼 지금 시장은 어떻게 봐야 할까요?',
+    template: 'content3',
+    showChart: true,
+  },
+  {
+    key: 'caution',
+    tag: '#주의 사항',
+    title: '투자 전에 꼭 확인할 포인트',
+    template: 'content4',
+    showChart: false,
+  },
+  {
+    key: 'summary',
+    tag: '#최종 정리',
+    title: '핵심만 짧게 정리합니다',
+    template: 'content5',
+    showChart: true,
+  },
 ];
 
-/* ── 슬라이드 애니메이션 variants ── */
 const slideVariants = {
-  enter: (dir) => ({ x: dir > 0 ? 300 : -300, opacity: 0 }),
-  center: { x: 0, opacity: 1 },
-  exit: (dir) => ({ x: dir > 0 ? -300 : 300, opacity: 0 }),
+  enter: (direction) => ({
+    x: direction > 0 ? 110 : -110,
+    opacity: 0,
+  }),
+  center: {
+    x: 0,
+    opacity: 1,
+  },
+  exit: (direction) => ({
+    x: direction > 0 ? -110 : 110,
+    opacity: 0,
+  }),
 };
 
-/* ── 깨진 bullet 텍스트 정제 ── */
-function cleanBullet(text) {
-  if (!text) return '';
-  return text.replace(/\(\s*\)/g, '').replace(/\s{2,}/g, ' ').trim();
-}
+const SWIPE_THRESHOLD = 70;
+const SWIPE_VELOCITY = 420;
 
-/* ── 스텝별 Placeholder SVG ── */
-function StepPlaceholder({ stepKey, color }) {
-  const placeholders = {
-    background: (
-      <svg viewBox="0 0 200 120" className="w-full h-full">
-        <defs><linearGradient id="bgGrad" x1="0" y1="1" x2="1" y2="0"><stop offset="0%" stopColor={color} stopOpacity="0.1"/><stop offset="100%" stopColor={color} stopOpacity="0.3"/></linearGradient></defs>
-        <path d="M20,90 Q50,70 80,60 T140,40 T180,30" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round"/>
-        <circle cx="180" cy="30" r="4" fill={color}/>
-        <text x="100" y="115" textAnchor="middle" fill="#8B95A1" fontSize="10">시장 추세</text>
-      </svg>
-    ),
-    concept_explain: (
-      <svg viewBox="0 0 200 120" className="w-full h-full">
-        <circle cx="100" cy="50" r="28" fill="none" stroke={color} strokeWidth="2" opacity="0.4"/>
-        <text x="100" y="58" textAnchor="middle" fill={color} fontSize="28" fontWeight="bold">?</text>
-        <text x="100" y="115" textAnchor="middle" fill="#8B95A1" fontSize="10">금융 개념</text>
-      </svg>
-    ),
-    history: (
-      <svg viewBox="0 0 200 120" className="w-full h-full">
-        <path d="M20,80 Q40,60 60,55 T100,45 T140,35 T180,30" fill="none" stroke="#8B95A1" strokeWidth="2" strokeDasharray="6,4"/>
-        <path d="M20,85 Q40,65 60,60 T100,50 T140,45 T180,35" fill="none" stroke={color} strokeWidth="2.5"/>
-        <text x="60" y="115" textAnchor="middle" fill="#8B95A1" fontSize="10">과거</text>
-        <text x="140" y="115" textAnchor="middle" fill={color} fontSize="10">현재</text>
-      </svg>
-    ),
-    application: (
-      <svg viewBox="0 0 200 120" className="w-full h-full">
-        <rect x="50" y="30" width="40" height="60" rx="6" fill="#FFE4CC" opacity="0.6"/>
-        <rect x="110" y="20" width="40" height="70" rx="6" fill="#DBEAFE" opacity="0.8"/>
-        <line x1="100" y1="40" x2="100" y2="80" stroke="#CBD5E1" strokeWidth="1.5" strokeDasharray="4,3"/>
-        <text x="70" y="115" textAnchor="middle" fill="#8B95A1" fontSize="10">과거</text>
-        <text x="130" y="115" textAnchor="middle" fill={color} fontSize="10">현재</text>
-      </svg>
-    ),
-    caution: (
-      <svg viewBox="0 0 200 120" className="w-full h-full">
-        <circle cx="100" cy="55" r="30" fill="none" stroke={color} strokeWidth="2" opacity="0.3"/>
-        <text x="100" y="62" textAnchor="middle" fill={color} fontSize="24" fontWeight="bold">!</text>
-        <text x="100" y="110" textAnchor="middle" fill="#8B95A1" fontSize="10">주의 사항</text>
-      </svg>
-    ),
-    summary: (
-      <svg viewBox="0 0 200 120" className="w-full h-full">
-        <rect x="50" y="25" width="100" height="65" rx="8" fill="none" stroke={color} strokeWidth="2" opacity="0.4"/>
-        <line x1="65" y1="45" x2="135" y2="45" stroke={color} strokeWidth="1.5" opacity="0.5"/>
-        <line x1="65" y1="58" x2="120" y2="58" stroke={color} strokeWidth="1.5" opacity="0.3"/>
-        <line x1="65" y1="71" x2="130" y2="71" stroke={color} strokeWidth="1.5" opacity="0.3"/>
-        <text x="100" y="115" textAnchor="middle" fill="#8B95A1" fontSize="10">최종 정리</text>
-      </svg>
-    ),
-  };
-  return (
-    <div className="h-[200px] flex items-center justify-center p-4">
-      {placeholders[stepKey] || placeholders.background}
-    </div>
-  );
-}
-
-/* ── Narrative 텍스트 카드 ── */
-function NarrativeCard({ content, stepConfig, onTermClick }) {
-  const sections = content.split(/(?=^### )/m).filter(Boolean);
-
-  return (
-    <div className="bg-surface-elevated rounded-[24px] p-4 shadow-card relative">
-      <div
-        className="absolute -top-2.5 left-5 px-2.5 py-0.5 text-[9px] font-bold tracking-widest bg-surface-elevated border border-border rounded-md"
-        style={{ color: stepConfig.color }}
-      >
-        {stepConfig.subtitle}
-      </div>
-      <div className="mt-1">
-        {sections.map((section, idx) => (
-          <div
-            key={idx}
-            className={idx > 0 ? 'mt-4 pt-4 border-t border-border' : ''}
-          >
-            <div className="text-sm leading-relaxed text-text-primary prose prose-sm max-w-none">
-              <ReactMarkdown
-                rehypePlugins={[rehypeRaw]}
-                components={{
-                  mark: ({ node, className, ...props }) => (
-                    <mark
-                      className="term-highlight cursor-pointer"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        onTermClick?.(e.target.textContent);
-                      }}
-                      {...props}
-                    />
-                  ),
-                  h3: ({ node, ...props }) => (
-                    <h3 className="text-[13px] font-bold mb-2" style={{ color: stepConfig.color }} {...props} />
-                  ),
-                  p: ({ node, ...props }) => (
-                    <p className="mb-3 last:mb-0" {...props} />
-                  ),
-                }}
-              >
-                {section}
-              </ReactMarkdown>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/* ── 출처 푸터 (summary 페이지) ── */
-function SourcesFooter({ sources, color }) {
-  if (!sources || sources.length === 0) return null;
-
-  return (
-    <div className="bg-surface-elevated rounded-2xl p-4 shadow-sm border border-border">
-      <p className="text-[10px] font-bold tracking-widest uppercase mb-2" style={{ color }}>
-        참고 출처
-      </p>
-      <div className="space-y-1.5">
-        {sources.map((src, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <span className="w-4 h-4 rounded-full bg-border flex items-center justify-center text-[8px] font-bold text-text-secondary flex-shrink-0">
-              {i + 1}
-            </span>
-            {src.url_domain || src.url ? (
-              <a
-                href={src.url || '#'}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-text-secondary hover:text-primary transition-colors truncate"
-              >
-                {src.name || src.url_domain || `출처 ${i + 1}`}
-              </a>
-            ) : (
-              <span className="text-xs text-text-secondary truncate">
-                {src.name || `출처 ${i + 1}`}
-              </span>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/* ── 브리핑 완료 보상 축하 오버레이 + 간단 피드백 ── */
 const FEEDBACK_OPTIONS = [
   { label: 'good', text: '유익했어요' },
   { label: 'neutral', text: '보통이에요' },
   { label: 'bad', text: '아쉬워요' },
 ];
 
-function RewardCelebration({ reward, onClose, caseId }) {
+function getPlainLines(content) {
+  if (!content) return [];
+  return content
+    .replace(/<[^>]+>/g, ' ')
+    .split('\n')
+    .map((line) => line.replace(/^#{1,6}\s*/, '').replace(/^[-*]\s*/, '').trim())
+    .filter(Boolean);
+}
+
+function MarkdownBody({ content, onTermClick, className = '' }) {
+  if (!content) return null;
+
+  return (
+    <div className={className}>
+      <ReactMarkdown
+        rehypePlugins={[rehypeRaw]}
+        components={{
+          mark: ({ node, ...props }) => (
+            <mark
+              className="term-highlight cursor-pointer"
+              onClick={(event) => {
+                event.preventDefault();
+                onTermClick?.(event.currentTarget.textContent || '');
+              }}
+              {...props}
+            />
+          ),
+          h1: ({ node, ...props }) => <h3 className="mb-2 text-base font-semibold text-text-primary" {...props} />,
+          h2: ({ node, ...props }) => <h3 className="mb-2 text-base font-semibold text-text-primary" {...props} />,
+          h3: ({ node, ...props }) => <h4 className="mb-2 text-sm font-semibold text-text-primary" {...props} />,
+          p: ({ node, ...props }) => <p className="mb-3 text-sm leading-relaxed text-text-secondary last:mb-0" {...props} />,
+          ul: ({ node, ...props }) => <ul className="mb-3 list-disc space-y-1 pl-5 text-sm text-text-secondary" {...props} />,
+          ol: ({ node, ...props }) => <ol className="mb-3 list-decimal space-y-1 pl-5 text-sm text-text-secondary" {...props} />,
+          li: ({ node, ...props }) => <li className="leading-relaxed" {...props} />,
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
+function NarrativeChartBlock({ stepKey, chart }) {
+  const plot = useMemo(() => buildNarrativePlot(stepKey, chart), [stepKey, chart]);
+  const chartRatio = stepKey === 'background' ? 1.38 : 1.16;
+  const converted = useMemo(
+    () => convertPlotlyToECharts(plot.data, plot.layout),
+    [plot.data, plot.layout],
+  );
+
+  return (
+    <section className="w-full">
+      {plot.title ? <h4 className="mb-2 text-xs font-semibold text-text-secondary">{plot.title}</h4> : null}
+      {plot.annotation ? <p className="mb-2 text-[11px] text-text-muted">{plot.annotation}</p> : null}
+
+      {converted.convertible ? (
+        <ResponsiveEChart
+          option={converted.option}
+          mode="ratio"
+          ratio={chartRatio}
+          minHeight={220}
+          maxHeight={460}
+          loadingText="차트 로딩 중..."
+          emptyText="차트를 표시할 수 없습니다"
+        />
+      ) : (
+        <ResponsivePlotly
+          data={plot.data}
+          layout={plot.layout}
+          mode="ratio"
+          ratio={chartRatio}
+          minHeight={220}
+          maxHeight={460}
+          loadingText="차트 로딩 중..."
+          emptyText="차트를 표시할 수 없습니다"
+        />
+      )}
+    </section>
+  );
+}
+
+function NarrativeSources({ sources = [] }) {
+  if (!Array.isArray(sources) || sources.length === 0) return null;
+
+  return (
+    <section className="rounded-2xl border border-border bg-surface-elevated p-4">
+      <p className="mb-2 text-[11px] font-semibold tracking-wide text-text-secondary">출처</p>
+      <div className="space-y-2">
+        {sources.slice(0, 6).map((src, idx) => {
+          const label = src?.name || src?.title || src?.url_domain || `출처 ${idx + 1}`;
+          const href = src?.url;
+
+          if (href) {
+            return (
+              <a
+                key={`${label}-${idx}`}
+                href={href}
+                target="_blank"
+                rel="noreferrer"
+                className="block text-xs text-text-secondary transition hover:text-primary"
+              >
+                {idx + 1}. {label}
+              </a>
+            );
+          }
+
+          return (
+            <p key={`${label}-${idx}`} className="text-xs text-text-secondary">
+              {idx + 1}. {label}
+            </p>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function NarrativeRewardScreen({ reward, onClose, caseId }) {
   const [feedbackSent, setFeedbackSent] = useState(false);
 
   const sendFeedback = async (label) => {
@@ -220,133 +213,242 @@ function RewardCelebration({ reward, onClose, caseId }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ page: 'narrative', rating_label: label, case_id: caseId }),
       });
-    } catch {}
+    } catch {
+      // feedback 실패는 화면 흐름을 막지 않음
+    }
   };
 
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center px-4"
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[2px]"
     >
-      <motion.div
-        initial={{ scale: 0.8, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ type: 'spring', damping: 20, stiffness: 300 }}
-        className="bg-surface-elevated rounded-[32px] p-8 max-w-sm w-full text-center shadow-card"
-      >
-        <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#FF6B00" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
-          </svg>
-        </div>
-        <h2 className="text-xl font-bold mb-2">브리핑 완료!</h2>
-        <p className="text-3xl font-bold text-primary mb-2">
-          +{formatKRW(reward.base_reward)}
-        </p>
-        <p className="text-sm text-text-secondary mb-1">
-          학습 자금이 지급되었습니다
-        </p>
-        <p className="text-xs text-text-muted mb-4">
-          7일 후 수익률이 양(+)이면 1.5배 보너스!
-        </p>
-
-        {/* 간단 피드백 */}
-        {!feedbackSent ? (
-          <div className="mb-4">
-            <p className="text-xs text-text-secondary mb-2">이 브리핑 어땠나요?</p>
-            <div className="flex justify-center gap-2">
-              {FEEDBACK_OPTIONS.map(fb => (
-                <button
-                  key={fb.label}
-                  onClick={() => sendFeedback(fb.label)}
-                  className="px-3 py-1.5 rounded-full text-xs font-medium border border-border hover:border-primary hover:text-primary transition-colors"
-                >
-                  {fb.text}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <p className="text-xs text-primary mb-4">감사합니다!</p>
-        )}
-
-        <button
-          onClick={onClose}
-          className="w-full py-3 rounded-xl bg-primary text-white font-semibold hover:bg-primary-hover transition-colors"
+      <div className="mx-auto flex min-h-screen w-full max-w-mobile items-center px-5 py-8">
+        <motion.section
+          initial={{ y: 24, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ type: 'spring', stiffness: 230, damping: 24 }}
+          className="w-full rounded-[30px] bg-white p-6 shadow-2xl"
         >
-          포트폴리오 확인
-        </button>
-      </motion.div>
+          <div className="mb-5 overflow-hidden rounded-2xl bg-[#f4f7ff]">
+            <img
+              src="/images/penguin-group.png"
+              alt="보상 축하"
+              className="h-[150px] w-full object-cover"
+            />
+          </div>
+
+          <p className="mb-2 text-center text-xs font-semibold tracking-wide text-primary">콘텐츠6</p>
+          <h2 className="text-center text-[clamp(1.4rem,5vw,1.8rem)] font-extrabold text-black">
+            브리핑 완료 보상
+          </h2>
+          <p className="mt-2 text-center text-[clamp(1.8rem,7vw,2.4rem)] font-black text-primary">
+            +{formatKRW(reward.base_reward)}
+          </p>
+          <p className="mt-2 text-center text-sm text-text-secondary">
+            학습 자금이 지급되었습니다
+          </p>
+          <p className="mb-5 mt-1 text-center text-xs text-text-muted">
+            7일 후 수익률이 양(+)이면 보너스가 추가됩니다
+          </p>
+
+          {!feedbackSent ? (
+            <div className="mb-5">
+              <p className="mb-2 text-center text-xs text-text-secondary">이번 내러티브는 어떠셨나요?</p>
+              <div className="flex justify-center gap-2">
+                {FEEDBACK_OPTIONS.map((fb) => (
+                  <button
+                    key={fb.label}
+                    type="button"
+                    onClick={() => sendFeedback(fb.label)}
+                    className="rounded-full border border-border px-3 py-1.5 text-xs text-text-secondary transition hover:border-primary hover:text-primary"
+                  >
+                    {fb.text}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p className="mb-5 text-center text-xs font-medium text-primary">피드백 감사합니다.</p>
+          )}
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full rounded-[16px] bg-primary py-3 text-sm font-semibold text-white transition hover:bg-primary-hover"
+          >
+            포트폴리오로 이동
+          </button>
+        </motion.section>
+      </div>
     </motion.div>
   );
 }
 
-/* ── 하단 네비게이션 바 ── */
-function BottomNavBar({ current, total, onPrev, onNext, isLast }) {
-  return (
-    <div
-      className="fixed bottom-0 left-0 right-0 z-30"
-      style={{
-        background: 'rgba(255,255,255,0.72)',
-        backdropFilter: 'blur(16px)',
-        WebkitBackdropFilter: 'blur(16px)',
-      }}
-    >
-      <div className="max-w-mobile mx-auto flex items-center justify-between px-4 py-4">
-        {/* 이전 버튼 */}
-        <button
-          onClick={onPrev}
-          disabled={current === 0}
-          className="w-10 h-10 rounded-full bg-surface border border-border flex items-center justify-center
-                     disabled:opacity-30 disabled:cursor-not-allowed hover:bg-border-light transition-colors"
-          aria-label="이전 단계"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M15 18l-6-6 6-6" />
-          </svg>
-        </button>
+function ContentTemplate({ stepConfig, stepData, oneLiner, onTermClick }) {
+  const contentLines = getPlainLines(stepData?.content || '');
+  const cautionItems = (stepData?.bullets && stepData.bullets.length > 0)
+    ? stepData.bullets
+    : contentLines.slice(0, 5);
 
-        {/* 도트 인디케이터 */}
-        <div className="flex items-center gap-1.5">
-          {Array.from({ length: total }).map((_, i) => (
-            <span
-              key={i}
-              className={`rounded-full transition-all duration-300 ${
-                i === current
-                  ? 'w-6 h-2.5 bg-primary'
-                  : i < current
-                    ? 'w-2.5 h-2.5 bg-primary/40'
-                    : 'w-2.5 h-2.5 bg-border'
-              }`}
-            />
-          ))}
+  if (stepConfig.template === 'content4') {
+    return (
+      <section className="space-y-4">
+        <div className="px-1 py-1">
+          <span className="inline-flex rounded-full bg-[#eef2f6] px-3 py-1 text-[11px] font-semibold text-[#4b5563]">
+            {stepConfig.tag}
+          </span>
+          <h2 className="line-limit-2 mt-3 text-[clamp(1.45rem,5.6vw,2rem)] font-extrabold leading-[1.2] text-black">
+            {stepConfig.title}
+          </h2>
+
+          <ul className="mt-5 space-y-3">
+            {cautionItems.slice(0, 5).map((item, idx) => (
+              <li key={`${item}-${idx}`} className="rounded-xl bg-[#f7f8fa] px-4 py-3 text-sm leading-relaxed text-text-secondary">
+                <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-xs font-semibold text-primary">
+                  {idx + 1}
+                </span>
+                {item}
+              </li>
+            ))}
+          </ul>
+
+          <MarkdownBody
+            content={stepData?.content}
+            onTermClick={onTermClick}
+            className="mt-4 border-t border-border pt-4"
+          />
         </div>
+      </section>
+    );
+  }
 
-        {/* 다음/완료 버튼 */}
-        <button
-          onClick={onNext}
-          className={`h-10 px-5 rounded-full font-semibold text-sm flex items-center gap-1 transition-colors ${
-            isLast
-              ? 'bg-primary text-white hover:bg-primary-hover'
-              : 'bg-surface border border-border hover:bg-border-light'
-          }`}
-        >
-          {isLast ? '완료' : '다음'}
-          {!isLast && (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M9 18l6-6-6-6" />
-            </svg>
-          )}
-        </button>
-      </div>
-    </div>
+  if (stepConfig.template === 'content1') {
+    return (
+      <section className="space-y-4">
+        <div className="px-1 py-1">
+          <span className="inline-flex rounded-full bg-[#ffeede] px-3 py-1 text-[11px] font-semibold text-primary">
+            {stepConfig.tag}
+          </span>
+          <h2 className="line-limit-2 mt-3 text-[clamp(1.75rem,7vw,2.55rem)] font-black leading-[1.15] tracking-[-0.02em] text-black">
+            {stepConfig.title}
+          </h2>
+          {oneLiner ? (
+            <p className="mt-3 text-sm leading-relaxed text-text-secondary">{oneLiner}</p>
+          ) : null}
+
+          {stepConfig.showChart ? (
+            <div className="mt-5">
+              <NarrativeChartBlock stepKey={stepConfig.key} chart={stepData?.chart} />
+            </div>
+          ) : null}
+
+          <MarkdownBody
+            content={stepData?.content}
+            onTermClick={onTermClick}
+            className="mt-5"
+          />
+        </div>
+      </section>
+    );
+  }
+
+  if (stepConfig.template === 'content2') {
+    return (
+      <section className="space-y-4">
+        <div className="px-1 py-1">
+          <span className="inline-flex rounded-full bg-[#e7eef7] px-3 py-1 text-[11px] font-semibold text-[#27507f]">
+            {stepConfig.tag}
+          </span>
+          <h2 className="line-limit-2 mt-3 text-[clamp(1.55rem,6vw,2.1rem)] font-extrabold leading-[1.2] text-black">
+            {stepConfig.title}
+          </h2>
+
+          <MarkdownBody
+            content={stepData?.content}
+            onTermClick={onTermClick}
+            className="mt-4"
+          />
+
+          {stepConfig.showChart ? (
+            <div className="mt-5">
+              <NarrativeChartBlock stepKey={stepConfig.key} chart={stepData?.chart} />
+            </div>
+          ) : null}
+        </div>
+      </section>
+    );
+  }
+
+  if (stepConfig.template === 'content3') {
+    return (
+      <section className="space-y-4">
+        <div className="px-1 py-1">
+          <span className="inline-flex rounded-full bg-[#eaf7ef] px-3 py-1 text-[11px] font-semibold text-[#1a7f54]">
+            {stepConfig.tag}
+          </span>
+          <h2 className="line-limit-2 mt-3 text-[clamp(1.5rem,5.9vw,2.05rem)] font-extrabold leading-[1.2] text-black">
+            {stepConfig.title}
+          </h2>
+
+          <MarkdownBody
+            content={stepData?.content}
+            onTermClick={onTermClick}
+            className="mt-4"
+          />
+
+          {stepConfig.showChart ? (
+            <div className="mt-5">
+              <NarrativeChartBlock stepKey={stepConfig.key} chart={stepData?.chart} />
+            </div>
+          ) : null}
+        </div>
+      </section>
+    );
+  }
+
+  if (stepConfig.template === 'content5') {
+    return (
+      <section className="space-y-4">
+        <div className="px-1 py-1">
+          <span className="inline-flex rounded-full bg-[#fff0e1] px-3 py-1 text-[11px] font-semibold text-primary">
+            {stepConfig.tag}
+          </span>
+          <h2 className="line-limit-2 mt-3 text-[clamp(1.55rem,6vw,2.1rem)] font-extrabold leading-[1.2] text-black">
+            {stepConfig.title}
+          </h2>
+
+          {stepConfig.showChart ? (
+            <div className="mt-5">
+              <NarrativeChartBlock stepKey={stepConfig.key} chart={stepData?.chart} />
+            </div>
+          ) : null}
+
+          {contentLines[0] ? (
+            <p className="mt-4 rounded-xl bg-[#fff7ed] px-4 py-3 text-sm font-medium leading-relaxed text-[#b45309]">
+              {contentLines[0]}
+            </p>
+          ) : null}
+
+          <MarkdownBody
+            content={stepData?.content}
+            onTermClick={onTermClick}
+            className="mt-4"
+          />
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="px-2 py-3">
+      <MarkdownBody content={stepData?.content} onTermClick={onTermClick} />
+    </section>
   );
 }
 
-/* ══════════════════════════════════════
-   메인 Narrative 페이지 컴포넌트
-   ══════════════════════════════════════ */
 export default function Narrative() {
   const { caseId } = useParams();
   const navigate = useNavigate();
@@ -360,254 +462,216 @@ export default function Narrative() {
   const [currentStep, setCurrentStep] = useState(0);
   const [direction, setDirection] = useState(0);
 
-  // 보상 관련 상태
   const [showReward, setShowReward] = useState(false);
   const [rewardData, setRewardData] = useState(null);
-  const [rewardError, setRewardError] = useState(null);
+  const [rewardError, setRewardError] = useState('');
 
-  // API에서 내러티브 데이터 가져오기
   useEffect(() => {
     if (!caseId) {
       setError('케이스 ID가 없습니다.');
       setIsLoading(false);
       return;
     }
+
     setIsLoading(true);
+    setError(null);
+
     narrativeApi.getNarrative(caseId)
-      .then((d) => {
-        if (!d || !d.steps) {
-          setError('내러티브 데이터가 없습니다.');
-          setIsLoading(false);
-          return;
+      .then((response) => {
+        if (!response || !response.steps) {
+          throw new Error('내러티브 데이터가 없습니다.');
         }
-        setData(d);
-        setIsLoading(false);
+        setData(response);
       })
-      .catch((e) => { console.error('Narrative fetch error:', e); setError(e.message); setIsLoading(false); });
+      .catch((fetchError) => {
+        setError(fetchError?.message || '내러티브 데이터를 불러오지 못했습니다.');
+      })
+      .finally(() => setIsLoading(false));
   }, [caseId]);
 
-  // 로딩/에러/빈 데이터 처리
-  if (isLoading) return <div className="min-h-screen flex items-center justify-center"><div className="animate-pulse text-secondary">로딩 중...</div></div>;
-  if (error) return <div className="min-h-screen flex items-center justify-center"><div className="text-red-500 text-sm">{error}</div></div>;
-  if (!data) return null;
+  const totalSteps = STEP_CONFIGS.length;
+  const stepConfig = STEP_CONFIGS[currentStep];
+  const stepData = data?.steps?.[stepConfig.key];
+  const isLastStep = currentStep === totalSteps - 1;
 
-  const stepMeta = STEPS[currentStep];
-  const stepData = data.steps?.[stepMeta.key];
-  const isFirstPage = currentStep === 0;
-  const isLastPage = currentStep === STEPS.length - 1;
+  const goToStep = (nextIndex) => {
+    if (nextIndex < 0 || nextIndex >= totalSteps) return;
+    setDirection(nextIndex > currentStep ? 1 : -1);
+    setCurrentStep(nextIndex);
+  };
 
-  /* 네비게이션 핸들러 */
   const goPrev = () => {
-    if (currentStep > 0) {
-      setDirection(-1);
-      setCurrentStep((s) => s - 1);
-    }
+    goToStep(currentStep - 1);
   };
 
   const goNext = async () => {
-    if (currentStep < STEPS.length - 1) {
-      setDirection(1);
-      setCurrentStep((s) => s + 1);
-    } else {
-      // 마지막 페이지: 브리핑 완료 보상 청구
-      try {
-        const reward = await claimReward(Number(caseId));
-        if (reward) {
-          setRewardData(reward);
-          setShowReward(true);
-        } else {
-          navigate('/auth');
-        }
-      } catch (e) {
-        const msg = e?.message || '';
-        if (msg.includes('이미')) {
-          // 이미 보상 받은 케이스 → 홈으로 이동
-          navigate('/');
-        } else {
-          setRewardError(msg || '보상 청구 실패');
-        }
+    if (!isLastStep) {
+      goToStep(currentStep + 1);
+      return;
+    }
+
+    try {
+      const reward = await claimReward(Number(caseId));
+      if (reward) {
+        setRewardData(reward);
+        setShowReward(true);
       }
+    } catch (claimError) {
+      const message = claimError?.message || '보상 청구에 실패했습니다.';
+      if (message.includes('이미')) {
+        navigate('/home');
+        return;
+      }
+      setRewardError(message);
     }
   };
 
-  const handleRewardClose = () => {
+  const handleDragEnd = (_, info) => {
+    const offsetX = info?.offset?.x ?? 0;
+    const velocityX = info?.velocity?.x ?? 0;
+
+    if (offsetX <= -SWIPE_THRESHOLD || velocityX <= -SWIPE_VELOCITY) {
+      if (!isLastStep) goToStep(currentStep + 1);
+      return;
+    }
+
+    if (offsetX >= SWIPE_THRESHOLD || velocityX >= SWIPE_VELOCITY) {
+      goToStep(currentStep - 1);
+    }
+  };
+
+  const closeReward = () => {
     setShowReward(false);
     navigate('/portfolio');
   };
 
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="animate-pulse text-sm text-text-secondary">내러티브 로딩 중...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <div className="w-full max-w-mobile rounded-2xl bg-surface-elevated p-6 text-center">
+          <p className="text-sm text-error">{error}</p>
+          <button
+            type="button"
+            onClick={() => navigate('/search')}
+            className="mt-4 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white"
+          >
+            검색으로 돌아가기
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!data) return null;
+
   return (
-    <div className="bg-background pb-24">
-      {/* ── 플로팅 헤더 ── */}
-      <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-md">
-        <div className="max-w-mobile mx-auto px-4 pt-4 pb-3">
-          {/* 상단: 뒤로가기 */}
-          <div className="flex items-center justify-between mb-3">
+    <div className="min-h-screen bg-background pb-28">
+      <header className="sticky top-0 z-30 border-b border-white/60 bg-white/80 backdrop-blur-md">
+        <div className="mx-auto w-full max-w-mobile px-4 pb-3 pt-4">
+          <div className="mb-3 flex items-center justify-between">
             <button
+              type="button"
               onClick={() => navigate(-1)}
-              className="flex items-center gap-1 text-sm text-text-secondary hover:text-text-primary transition-colors"
+              className="flex items-center gap-1 text-sm font-medium text-text-secondary transition hover:text-text-primary"
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M15 18l-6-6 6-6" />
-              </svg>
+              <span className="text-lg">‹</span>
               돌아가기
             </button>
+            <span className="text-xs font-semibold text-text-muted">{currentStep + 1}/{totalSteps}</span>
           </div>
 
-          {/* 6칸 프로그레스 바 */}
-          <div className="flex items-center gap-1 mb-3">
-            {STEPS.map((step, idx) => (
-              <div
-                key={idx}
-                className="h-[3px] flex-1 rounded-full transition-all duration-500"
-                style={{
-                  backgroundColor: idx <= currentStep ? stepMeta.color : '#E5E8EB',
-                  opacity: idx <= currentStep ? 1 : 0.4,
-                }}
+          <div className="flex items-center justify-center gap-2">
+            {STEP_CONFIGS.map((config, idx) => (
+              <button
+                key={config.key}
+                type="button"
+                onClick={() => goToStep(idx)}
+                className={`h-2.5 rounded-full transition-all ${
+                  idx === currentStep ? 'w-8 bg-primary' : 'w-2.5 bg-[#d3d8df]'
+                }`}
+                aria-label={`${idx + 1}번째 내러티브 단계로 이동`}
               />
             ))}
           </div>
-
-          {/* 스텝 라벨 + 제목 */}
-          <div className="flex items-center gap-3">
-            <span
-              className="text-[10px] font-bold tracking-widest px-3 py-1 rounded-full uppercase"
-              style={{ color: stepMeta.color, backgroundColor: `${stepMeta.color}15` }}
-            >
-              {currentStep + 1} / {STEPS.length}
-            </span>
-            <h1 className="text-base font-bold text-text-primary truncate">
-              {stepMeta.title}
-            </h1>
-          </div>
-
-          {/* 첫 페이지: one_liner 표시 */}
-          {isFirstPage && data.one_liner && (
-            <p className="mt-2 text-xs text-text-secondary leading-relaxed">
-              {data.one_liner}
-            </p>
-          )}
         </div>
       </header>
 
-      {/* ── 메인 콘텐츠 (애니메이션) ── */}
-      <main className="max-w-mobile mx-auto px-4 pt-2">
+      <main className="mx-auto w-full max-w-mobile px-4 pt-4">
         <AnimatePresence mode="wait" custom={direction}>
-          <motion.div
-            key={currentStep}
+          <motion.section
+            key={stepConfig.key}
             custom={direction}
             variants={slideVariants}
             initial="enter"
             animate="center"
             exit="exit"
-            transition={{ type: 'tween', ease: 'easeInOut', duration: 0.3 }}
-            className="space-y-4"
+            transition={{ duration: 0.24, ease: 'easeInOut' }}
+            drag="x"
+            dragConstraints={{ left: 0, right: 0 }}
+            dragElastic={0.12}
+            onDragEnd={handleDragEnd}
+            className="touch-pan-y"
           >
             {stepData ? (
-              <>
-                {/* 차트 영역: 제목 + Plotly (또는 Placeholder) */}
-                <div className="rounded-[20px] border border-border overflow-hidden bg-white/70 shadow-sm">
-                  {stepData.chart?.layout?.title && (
-                    <div className="px-4 pt-3 pb-1">
-                      <h4 className="text-xs font-bold text-text-primary">
-                        {typeof stepData.chart.layout.title === 'string'
-                          ? stepData.chart.layout.title
-                          : stepData.chart.layout.title?.text || ''}
-                      </h4>
-                    </div>
-                  )}
-                  {stepData.chart?.data && Array.isArray(stepData.chart.data) ? (() => {
-                    const hasPie = stepData.chart.data.some(t => t.type === 'pie');
-                    return (
-                    <ChartErrorBoundary>
-                      <React.Suspense fallback={<div className="h-[240px] flex items-center justify-center animate-pulse text-sm text-text-secondary">차트 로딩 중...</div>}>
-                        <Plot
-                          data={stepData.chart.data}
-                          layout={{
-                            ...(stepData.chart.layout || {}),
-                            title: undefined,
-                            autosize: true,
-                            height: 240,
-                            margin: hasPie ? { l: 10, r: 10, t: 10, b: 10 } : { l: 40, r: 20, t: 10, b: 40 },
-                            paper_bgcolor: 'transparent',
-                            plot_bgcolor: 'transparent',
-                            font: { family: 'IBM Plex Sans KR, sans-serif', size: 11 },
-                            legend: stepData.chart.data.length > 1
-                              ? { orientation: 'h', y: hasPie ? -0.1 : -0.2, x: 0.5, xanchor: 'center' }
-                              : undefined,
-                          }}
-                          config={{ responsive: true, displayModeBar: false }}
-                          style={{ width: '100%', height: '240px' }}
-                          useResizeHandler
-                        />
-                      </React.Suspense>
-                    </ChartErrorBoundary>
-                    );
-                  })() : (
-                    <StepPlaceholder stepKey={stepMeta.key} color={stepMeta.color} />
-                  )}
-                </div>
-
-                {/* 내러티브 텍스트 */}
-                {stepData.content && (
-                  <NarrativeCard content={stepData.content} stepConfig={stepMeta} onTermClick={openTermSheet} />
-                )}
-
-                {/* 페이지별 용어는 인라인 하이라이트 + TermBottomSheet로 대체 */}
-
-                {/* 출처 (인라인 소스 링크) */}
-                {stepData.sources && stepData.sources.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {stepData.sources.filter(s => s.url && s.url !== '#').slice(0, 3).map((src, i) => (
-                      <a
-                        key={i}
-                        href={src.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[10px] text-text-secondary hover:text-primary border border-border rounded-full px-2.5 py-1 transition-colors"
-                      >
-                        {src.name || src.title || `출처 ${i + 1}`} ↗
-                      </a>
-                    ))}
-                  </div>
-                )}
-
-                {/* 마지막 페이지: 전체 출처 */}
-                {isLastPage && data.sources && data.sources.length > 0 && (
-                  <SourcesFooter sources={data.sources} color={stepMeta.color} />
-                )}
-              </>
+              <ContentTemplate
+                stepConfig={stepConfig}
+                stepData={stepData}
+                oneLiner={data.one_liner}
+                onTermClick={openTermSheet}
+              />
             ) : (
-              /* 데이터 없는 페이지 fallback */
-              <div className="bg-surface-elevated rounded-[24px] p-6 shadow-card text-center">
+              <section className="px-3 py-5 text-center">
                 <p className="text-sm text-text-secondary">이 단계의 콘텐츠를 준비 중입니다.</p>
-              </div>
+              </section>
             )}
-          </motion.div>
+
+            <div className="mt-4 space-y-3">
+              <NarrativeSources sources={stepData?.sources} />
+              {isLastStep ? <NarrativeSources sources={data.sources} /> : null}
+            </div>
+
+            <div className="mt-6 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={goPrev}
+                disabled={currentStep === 0}
+                className="h-12 min-w-[96px] rounded-2xl border border-border bg-white px-4 text-sm font-semibold text-text-secondary transition disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                이전
+              </button>
+              <button
+                type="button"
+                onClick={goNext}
+                className="h-12 flex-1 rounded-2xl bg-primary px-4 text-sm font-semibold text-white transition hover:bg-primary-hover"
+              >
+                {isLastStep ? '보상 받기' : '다음'}
+              </button>
+            </div>
+          </motion.section>
         </AnimatePresence>
       </main>
 
-      {/* ── 하단 네비게이션 바 ── */}
-      <BottomNavBar
-        current={currentStep}
-        total={STEPS.length}
-        onPrev={goPrev}
-        onNext={goNext}
-        isLast={isLastPage}
-      />
-
-      {/* ── 보상 에러 표시 ── */}
-      {rewardError && (
-        <div className="fixed bottom-20 left-0 right-0 z-40 flex justify-center px-4">
-          <div className="bg-red-500/90 text-white text-sm font-medium px-4 py-3 rounded-xl max-w-mobile w-full text-center shadow-lg">
+      {rewardError ? (
+        <div className="fixed bottom-20 left-0 right-0 z-40 px-4">
+          <div className="mx-auto w-full max-w-mobile rounded-xl bg-error px-4 py-3 text-center text-sm font-medium text-white">
             {rewardError}
           </div>
         </div>
-      )}
+      ) : null}
 
-      {/* ── 보상 축하 오버레이 ── */}
-      {showReward && rewardData && (
-        <RewardCelebration reward={rewardData} onClose={handleRewardClose} caseId={caseId} />
-      )}
+      <AnimatePresence>
+        {showReward && rewardData ? (
+          <NarrativeRewardScreen reward={rewardData} onClose={closeReward} caseId={caseId} />
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }

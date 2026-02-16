@@ -4,6 +4,8 @@
  */
 
 export { default as PlotlyChart } from './PlotlyChart';
+export { default as ResponsiveEChart } from './ResponsiveEChart';
+export { default as ResponsivePlotly } from './ResponsivePlotly';
 export { default as ChartContainer } from './ChartContainer';
 export { default as StepPlaceholder } from './StepPlaceholder';
 

@@ -176,7 +176,7 @@ export default function Companies() {
                 syncRate: 0,
                 pastCase: '',
               });
-              navigate('/');
+              navigate('/home');
             }}
             className={`w-full max-w-xs py-4 rounded-full text-sm font-bold ${traded ? 'bg-surface border border-border text-text-secondary' : 'btn-primary'}`}
           >
