@@ -83,9 +83,13 @@
 | `OPENAI_MAIN_MODEL` | `gpt-4o-mini` | 기본 OpenAI 모델 | Backend (튜터) |
 | `OPENAI_VISION_MODEL` | `gpt-4o` | 비전 모델 | Backend |
 | `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | 임베딩 모델 | Backend |
+| `OPENAI_FALLBACK_MODEL` | `gpt-5.2` | Pipeline JSON 복구/Anthropic 대체 호출 시 사용하는 OpenAI 모델 | Pipeline |
 | `PERPLEXITY_MODEL` | `sonar-pro` | Perplexity 모델 | Pipeline |
-| `DEFAULT_MODEL` | `claude-sonnet-4-20250514` | Pipeline 기본 모델 (Interface 2/3) | Pipeline |
+| `DEFAULT_MODEL` | `claude-sonnet-4-20250514` | 레거시/일부 스크립트 기본 모델 (프롬프트 frontmatter가 우선) | Pipeline |
 | `CHART_MODEL` | `gpt-5-mini` | 차트 생성 모델 | Pipeline |
+
+> Interface 2/3 내러티브 생성 프롬프트(`page_purpose`, `historical_case`, `narrative_body`, `3_*`)는 현재 frontmatter 기준으로 `provider=openai`, `model=gpt-5.2`를 기본 사용한다.
+> OpenAI 호출 실패 시 동일 모델로 1회 재시도하며, 재시도도 실패하면 해당 호출은 실패로 처리한다.
 
 ### LangSmith (트레이싱)
 

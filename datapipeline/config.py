@@ -28,7 +28,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("CLAUDE_API_KEY", "")
 
-# ── 기본 모델 (Interface 2/3 내러티브 생성) ──
+# ── 기본 모델 (레거시/일부 스크립트) ──
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "claude-sonnet-4-20250514")
 CHART_MODEL = os.getenv("CHART_MODEL", "gpt-5-mini")
 CHART_AGENT_MODEL = os.getenv("CHART_AGENT_MODEL", "gpt-5-mini")

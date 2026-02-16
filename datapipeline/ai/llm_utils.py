@@ -35,7 +35,7 @@ _JSON_REPAIR_TEMPLATE = """다음 모델 응답은 JSON 파싱에 실패했습�
 {raw_text}
 """
 
-_OPENAI_FALLBACK_MODEL = os.getenv("OPENAI_FALLBACK_MODEL", "gpt-5-mini")
+_OPENAI_FALLBACK_MODEL = os.getenv("OPENAI_FALLBACK_MODEL", "gpt-5.2")
 
 
 class JSONResponseParseError(RuntimeError):
@@ -200,6 +200,46 @@ def _invoke_with_provider_fallback(
         )
         return result, content, provider, model
     except Exception as primary_exc:
+        if provider == "openai":
+            LOGGER.warning(
+                "OPENAI_RETRY_TRIGGERED prompt=%s provider=%s model=%s reason=%s",
+                prompt_name,
+                provider,
+                model,
+                _json_error_details(primary_exc),
+            )
+            try:
+                retry_result, retry_content = _invoke_chat_completion(
+                    client=client,
+                    prompt_name=prompt_name,
+                    provider=provider,
+                    model=model,
+                    messages=messages,
+                    thinking=thinking,
+                    thinking_effort=thinking_effort,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    response_format=response_format,
+                    attempt=attempt + 1,
+                )
+                LOGGER.info(
+                    "OPENAI_RETRY_SUCCESS prompt=%s provider=%s model=%s",
+                    prompt_name,
+                    provider,
+                    model,
+                )
+                return retry_result, retry_content, provider, model
+            except Exception as retry_exc:
+                LOGGER.error(
+                    "OPENAI_RETRY_FAILED prompt=%s provider=%s model=%s primary_error=%s retry_error=%s",
+                    prompt_name,
+                    provider,
+                    model,
+                    _json_error_details(primary_exc),
+                    _json_error_details(retry_exc),
+                )
+                raise retry_exc
+
         if not allow_fallback or provider != "anthropic" or not _is_anthropic_fallback_error(primary_exc):
             raise
 
@@ -344,6 +384,7 @@ def call_llm_with_prompt(
     # 2차: 동일 provider/model에 JSON 복구 요청
     repair_messages = _build_repair_messages(first_content)
     repaired_content = ""
+    repair_detail = ""
     try:
         _, repaired_content, active_provider, active_model = _invoke_with_provider_fallback(
             client=client,
@@ -367,18 +408,35 @@ def call_llm_with_prompt(
         )
         return repaired
     except Exception as repair_exc:
-        parse_detail = _json_error_details(repair_exc)
+        repair_detail = _json_error_details(repair_exc)
         snippet_source = repaired_content if repaired_content else str(repair_exc)
         LOGGER.warning(
             "JSON_RETRY_ATTEMPT prompt=%s provider=%s model=%s attempt=3 reason=%s snippet=%s",
             prompt_name,
             active_provider,
             active_model,
-            parse_detail,
+            repair_detail,
             _snippet_for_logs(snippet_source),
         )
 
-    # 3차: OpenAI JSON 복구 폴백 1회
+    if active_provider == "openai":
+        LOGGER.error(
+            "JSON_PARSE_FAILURE prompt=%s provider=%s model=%s detail=%s",
+            prompt_name,
+            active_provider,
+            active_model,
+            repair_detail or "same-provider JSON repair failed after retry",
+        )
+        raise JSONResponseParseError(
+            prompt_name=prompt_name,
+            provider=active_provider,
+            model=active_model,
+            detail=(
+                "모델 응답 JSON 불량: 동일 OpenAI 모델로 재시도/복구까지 실패했습니다."
+            ),
+        )
+
+    # 3차: OpenAI JSON 복구 폴백 1회 (비-OpenAI 시작 경로 전용)
     fallback_content = ""
     try:
         _, fallback_content, _, _ = _invoke_with_provider_fallback(
