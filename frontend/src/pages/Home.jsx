@@ -1,12 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { keywordsApi } from '../api';
-
-const CARD_IMAGES = [
-  '/images/figma/card-coin.png',
-  '/images/figma/card-cash.png',
-  '/images/figma/card-thumb.png',
-];
+import { DEFAULT_HOME_ICON_KEY, getHomeIconSrc } from '../constants/homeIconCatalog';
 
 export default function Home() {
   const navigate = useNavigate();
@@ -82,8 +77,11 @@ export default function Home() {
                 </button>
               </div>
               <img
-                src={CARD_IMAGES[index] || CARD_IMAGES[0]}
-                alt=""
+                src={getHomeIconSrc(keyword.icon_key)}
+                alt={`${keyword.title || '키워드'} 아이콘`}
+                onError={(e) => {
+                  e.currentTarget.src = getHomeIconSrc(DEFAULT_HOME_ICON_KEY);
+                }}
                 className="w-[96px] h-[96px] object-contain flex-shrink-0"
               />
             </article>

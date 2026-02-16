@@ -18,6 +18,7 @@ from datetime import datetime, date
 from typing import Any, Optional
 
 from ..config import kst_today
+from ..constants.home_icons import DEFAULT_HOME_ICON_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -249,6 +250,8 @@ def _build_top_keywords(curated: dict, final: dict) -> dict:
     keywords_list = []
     theme = final.get("theme") or curated.get("theme", "")
     one_liner = final.get("one_liner") or curated.get("one_liner", "")
+    home_icon = final.get("home_icon") if isinstance(final.get("home_icon"), dict) else {}
+    icon_key = home_icon.get("icon_key") or DEFAULT_HOME_ICON_KEY
     if theme:
         selected_stocks = curated.get("selected_stocks", [])
         concept = curated.get("concept", {})
@@ -280,6 +283,7 @@ def _build_top_keywords(curated: dict, final: dict) -> dict:
             "catalyst_url": catalyst.get("url") if catalyst else None,
             "catalyst_source": catalyst.get("source") if catalyst else None,
             "quality_score": _calc_quality_score(curated),
+            "icon_key": icon_key,
         })
     return {"keywords": keywords_list}
 

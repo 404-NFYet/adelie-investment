@@ -17,6 +17,11 @@ from langsmith import traceable
 
 from ..ai.llm_utils import call_llm_with_prompt
 from ..config import COLOR_PALETTE, OUTPUT_DIR, SECTION_MAP
+from ..constants.home_icons import (
+    DEFAULT_HOME_ICON_KEY,
+    HOME_ICON_CANDIDATES,
+    HOME_ICON_KEYS,
+)
 from ..schemas import (
     CuratedContext,
     FinalBriefing,
@@ -646,6 +651,68 @@ def run_tone_final_node(state: dict) -> dict:
 
 
 # ────────────────────────────────────────────
+# 7. run_home_icon_map — title/icon semantic mapping
+# ────────────────────────────────────────────
+
+@traceable(name="run_home_icon_map", run_type="llm",
+           metadata={"phase": "interface_3", "phase_name": "홈 아이콘 매핑", "step": 7})
+def run_home_icon_map_node(state: dict) -> dict:
+    """theme/one_liner 기반 홈 카드 아이콘 key 선택."""
+    if state.get("error"):
+        return {"error": state["error"]}
+
+    node_start = time.time()
+    logger.info("[Node] run_home_icon_map")
+
+    fallback_icon = {"icon_key": DEFAULT_HOME_ICON_KEY}
+    backend = state.get("backend", "live")
+    theme = _soften_text(str(state.get("theme", "")))
+    one_liner = _soften_text(str(state.get("one_liner", "")))
+
+    if backend == "mock":
+        logger.info("  run_home_icon_map done (mock): %s", DEFAULT_HOME_ICON_KEY)
+        return {
+            "home_icon": fallback_icon,
+            "metrics": _update_metrics(state, "run_home_icon_map", time.time() - node_start),
+        }
+
+    try:
+        payload = {
+            "theme": theme,
+            "one_liner": one_liner,
+            "icon_candidates": json.dumps(HOME_ICON_CANDIDATES, ensure_ascii=False),
+            "previous_icon_key": "",
+        }
+        result = call_llm_with_prompt("3_home_icon_map", payload)
+        icon_key = _soften_text(str((result or {}).get("icon_key", "")))
+
+        if icon_key not in HOME_ICON_KEYS:
+            logger.warning(
+                "  run_home_icon_map invalid icon_key=%s (1st pass), retrying once",
+                icon_key or "<empty>",
+            )
+            retry_payload = dict(payload)
+            retry_payload["previous_icon_key"] = icon_key
+            retry_result = call_llm_with_prompt("3_home_icon_map", retry_payload)
+            icon_key = _soften_text(str((retry_result or {}).get("icon_key", "")))
+
+        if icon_key not in HOME_ICON_KEYS:
+            raise ValueError(f"invalid icon_key after retry: {icon_key}")
+
+        logger.info("  run_home_icon_map done: %s", icon_key)
+        return {
+            "home_icon": {"icon_key": icon_key},
+            "metrics": _update_metrics(state, "run_home_icon_map", time.time() - node_start),
+        }
+    except Exception as e:
+        logger.warning("  run_home_icon_map fallback: %s", e)
+        return {
+            "home_icon": fallback_icon,
+            "metrics": _update_metrics(state, "run_home_icon_map", time.time() - node_start, "fallback"),
+        }
+
+
+# ────────────────────────────────────────────
 # 9. collect_sources — deterministic
 # ────────────────────────────────────────────
 
@@ -780,6 +847,7 @@ def assemble_output_node(state: dict) -> dict:
         charts = state.get("charts") or {}
         sources = state.get("sources", [])
         checklist = state.get("hallucination_checklist") or []
+        home_icon = state.get("home_icon") or {"icon_key": DEFAULT_HOME_ICON_KEY}
         crawl_news_status = state.get("crawl_news_status")
         crawl_research_status = state.get("crawl_research_status")
         theme = state.get("theme", raw_narrative["theme"])
@@ -805,6 +873,7 @@ def assemble_output_node(state: dict) -> dict:
             "one_liner": one_liner,
             "generated_at": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
             "pages": pages,
+            "home_icon": home_icon,
             "sources": sources,
             "hallucination_checklist": checklist,
         }
