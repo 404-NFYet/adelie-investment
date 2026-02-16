@@ -13,6 +13,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+KST = timezone(timedelta(hours=9))
+
 from app.core.auth import _get_jwt_key
 from app.core.config import get_settings
 from app.models.user import User
@@ -23,11 +25,7 @@ _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def _get_access_exp_seconds(settings) -> int:
-    if settings.JWT_ACCESS_EXPIRATION:
-        return max(int(settings.JWT_ACCESS_EXPIRATION // 1000), 1)
-    if settings.ACCESS_TOKEN_EXPIRE_MINUTES:
-        return max(int(settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60), 60)
-    return max(int(settings.JWT_EXPIRE_MINUTES * 60), 60)
+    return max(int(settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60), 60)
 
 
 def _get_refresh_exp_seconds(settings) -> int:
@@ -144,7 +142,7 @@ async def login_user(db: AsyncSession, *, email: str, password: str) -> dict:
             detail="이메일 또는 비밀번호가 올바르지 않습니다.",
         )
 
-    user.last_login_at = datetime.utcnow()
+    user.last_login_at = datetime.now(KST)
     await db.commit()
 
     settings = get_settings()

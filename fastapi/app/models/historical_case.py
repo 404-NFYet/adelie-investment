@@ -1,6 +1,8 @@
 """Historical cases models."""
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone, timedelta
+
+KST = timezone(timedelta(hours=9))
 from typing import Optional
 
 from sqlalchemy import String, Text, Date, Integer, Numeric, ForeignKey, Index
@@ -33,8 +35,8 @@ class HistoricalCase(Base):
     embedding: Mapped[Optional[list]] = mapped_column(
         Vector(1536) if Vector else None, nullable=True, comment="OpenAI text-embedding-3-small 벡터"
     )
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(KST))
+    updated_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(KST), onupdate=lambda: datetime.now(KST))
     
     # Relationships
     stock_relations: Mapped[list["CaseStockRelation"]] = relationship(back_populates="case", cascade="all, delete-orphan")
@@ -80,7 +82,7 @@ class CaseMatch(Base):
     matched_case_id: Mapped[int] = mapped_column(ForeignKey("historical_cases.id"), nullable=False)
     similarity_score: Mapped[Optional[float]] = mapped_column(Numeric(5, 4), comment="유사도 점수 (0~1)")
     match_reason: Mapped[Optional[str]] = mapped_column(Text, comment="매칭 이유")
-    matched_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    matched_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(KST))
     
     # Relationships
     case: Mapped["HistoricalCase"] = relationship(back_populates="matches")
