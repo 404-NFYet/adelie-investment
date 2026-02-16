@@ -20,7 +20,6 @@ _route_modules = {}
 for _mod_name in [
     "health",
     "auth",
-    "briefing",
     "glossary",
     "cases",
     "tutor",
@@ -194,7 +193,6 @@ async def global_rate_limit_middleware(request: Request, call_next):
 _router_config = {
     "health": ("health", "/api/v1"),
     "auth": ("auth", "/api/v1"),
-    "briefing": ("briefing", "/api/v1"),
     "glossary": ("glossary", "/api/v1"),
     "cases": ("cases", "/api/v1"),
     "tutor": ("AI tutor", "/api/v1"),
