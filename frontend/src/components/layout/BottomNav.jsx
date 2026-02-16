@@ -1,5 +1,4 @@
 import { useNavigate, useLocation } from 'react-router-dom';
-import { motion } from 'framer-motion';
 
 const HIDDEN_PREFIXES = [
   '/landing',
@@ -78,13 +77,6 @@ export default function BottomNav() {
                 isActive ? 'text-primary' : 'text-[#364153]'
               }`}
             >
-              {isActive && (
-                <motion.div
-                  layoutId="activeTab"
-                  className="absolute -top-2 left-1/2 -translate-x-1/2 w-5 h-0.5 rounded-full bg-primary"
-                  transition={{ type: 'spring', stiffness: 500, damping: 35 }}
-                />
-              )}
               {icons[tab.id]}
               <span className="text-[10px] font-medium">{tab.label}</span>
             </button>

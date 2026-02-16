@@ -112,9 +112,27 @@ export default function Auth() {
     }
   };
 
+  const handleGoBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    navigate('/');
+  };
+
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
       <div className="w-full max-w-mobile">
+        <button
+          type="button"
+          onClick={handleGoBack}
+          className="mb-5 inline-flex items-center gap-1 text-sm font-medium text-text-secondary transition hover:text-text-primary"
+          aria-label="이전 화면으로 돌아가기"
+        >
+          <span className="text-lg leading-none">‹</span>
+          뒤로가기
+        </button>
+
         {/* Logo */}
         <motion.div
           className="text-center mb-8 cursor-pointer"
@@ -123,7 +141,7 @@ export default function Auth() {
           onClick={() => navigate('/')}
         >
           <h1 className="text-4xl font-black tracking-[-0.03em] text-black">ADELIE</h1>
-          <p className="text-text-secondary text-sm mt-1">역사는 반복된다</p>
+          <p className="text-text-secondary text-sm mt-1">쉽고 깊은 금융이야기</p>
         </motion.div>
 
         {/* Card */}

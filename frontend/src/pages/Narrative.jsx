@@ -2,7 +2,7 @@
  * Narrative.jsx - 콘텐츠1~6 스타일 기반 내러티브 화면
  * 순서: background -> concept_explain -> history -> application -> caution -> summary
  */
-import React, { Component, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
@@ -12,30 +12,9 @@ import { usePortfolio } from '../contexts/PortfolioContext';
 import { useTermContext } from '../contexts/TermContext';
 import { formatKRW } from '../utils/formatNumber';
 import { buildNarrativePlot } from '../utils/narrativeChartAdapter';
-
-const Plot = React.lazy(() => import('react-plotly.js').then((mod) => ({ default: mod.default })));
-
-class ChartErrorBoundary extends Component {
-  constructor(props) {
-    super(props);
-    this.state = { hasError: false };
-  }
-
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="flex h-[220px] items-center justify-center text-sm text-text-secondary">
-          차트를 표시할 수 없습니다
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
+import ResponsiveEChart from '../components/charts/ResponsiveEChart';
+import ResponsivePlotly from '../components/charts/ResponsivePlotly';
+import { convertPlotlyToECharts } from '../utils/charts/plotlyToEcharts';
 
 const STEP_CONFIGS = [
   {
@@ -150,34 +129,39 @@ function MarkdownBody({ content, onTermClick, className = '' }) {
 
 function NarrativeChartBlock({ stepKey, chart }) {
   const plot = useMemo(() => buildNarrativePlot(stepKey, chart), [stepKey, chart]);
+  const chartRatio = stepKey === 'background' ? 1.38 : 1.16;
+  const converted = useMemo(
+    () => convertPlotlyToECharts(plot.data, plot.layout),
+    [plot.data, plot.layout],
+  );
 
   return (
-    <section className="w-full rounded-[24px] border border-white/60 bg-white/90 p-3 shadow-[0_10px_30px_rgba(0,0,0,0.06)]">
+    <section className="w-full">
       {plot.title ? <h4 className="mb-2 text-xs font-semibold text-text-secondary">{plot.title}</h4> : null}
       {plot.annotation ? <p className="mb-2 text-[11px] text-text-muted">{plot.annotation}</p> : null}
 
-      <ChartErrorBoundary>
-        <React.Suspense
-          fallback={(
-            <div className="flex h-[220px] items-center justify-center text-sm text-text-secondary">
-              차트 로딩 중...
-            </div>
-          )}
-        >
-          <div className="h-[220px] w-full md:h-[250px]">
-            <Plot
-              data={plot.data}
-              layout={{
-                ...plot.layout,
-                autosize: true,
-              }}
-              config={{ responsive: true, displayModeBar: false }}
-              style={{ width: '100%', height: '100%' }}
-              useResizeHandler
-            />
-          </div>
-        </React.Suspense>
-      </ChartErrorBoundary>
+      {converted.convertible ? (
+        <ResponsiveEChart
+          option={converted.option}
+          mode="ratio"
+          ratio={chartRatio}
+          minHeight={220}
+          maxHeight={460}
+          loadingText="차트 로딩 중..."
+          emptyText="차트를 표시할 수 없습니다"
+        />
+      ) : (
+        <ResponsivePlotly
+          data={plot.data}
+          layout={plot.layout}
+          mode="ratio"
+          ratio={chartRatio}
+          minHeight={220}
+          maxHeight={460}
+          loadingText="차트 로딩 중..."
+          emptyText="차트를 표시할 수 없습니다"
+        />
+      )}
     </section>
   );
 }
@@ -312,11 +296,11 @@ function ContentTemplate({ stepConfig, stepData, oneLiner, onTermClick }) {
   if (stepConfig.template === 'content4') {
     return (
       <section className="space-y-4">
-        <div className="rounded-[28px] bg-white px-5 py-6 shadow-[0_14px_32px_rgba(0,0,0,0.08)]">
+        <div className="px-1 py-1">
           <span className="inline-flex rounded-full bg-[#eef2f6] px-3 py-1 text-[11px] font-semibold text-[#4b5563]">
             {stepConfig.tag}
           </span>
-          <h2 className="mt-3 text-[clamp(1.45rem,5.6vw,2rem)] font-extrabold leading-[1.2] text-black">
+          <h2 className="line-limit-2 mt-3 text-[clamp(1.45rem,5.6vw,2rem)] font-extrabold leading-[1.2] text-black">
             {stepConfig.title}
           </h2>
 
@@ -344,11 +328,11 @@ function ContentTemplate({ stepConfig, stepData, oneLiner, onTermClick }) {
   if (stepConfig.template === 'content1') {
     return (
       <section className="space-y-4">
-        <div className="rounded-[30px] bg-white px-5 pb-6 pt-6 shadow-[0_16px_34px_rgba(0,0,0,0.09)]">
+        <div className="px-1 py-1">
           <span className="inline-flex rounded-full bg-[#ffeede] px-3 py-1 text-[11px] font-semibold text-primary">
             {stepConfig.tag}
           </span>
-          <h2 className="mt-3 text-[clamp(1.75rem,7vw,2.55rem)] font-black leading-[1.15] tracking-[-0.02em] text-black">
+          <h2 className="line-limit-2 mt-3 text-[clamp(1.75rem,7vw,2.55rem)] font-black leading-[1.15] tracking-[-0.02em] text-black">
             {stepConfig.title}
           </h2>
           {oneLiner ? (
@@ -374,11 +358,11 @@ function ContentTemplate({ stepConfig, stepData, oneLiner, onTermClick }) {
   if (stepConfig.template === 'content2') {
     return (
       <section className="space-y-4">
-        <div className="rounded-[28px] bg-white px-5 py-6 shadow-[0_14px_32px_rgba(0,0,0,0.08)]">
+        <div className="px-1 py-1">
           <span className="inline-flex rounded-full bg-[#e7eef7] px-3 py-1 text-[11px] font-semibold text-[#27507f]">
             {stepConfig.tag}
           </span>
-          <h2 className="mt-3 text-[clamp(1.55rem,6vw,2.1rem)] font-extrabold leading-[1.2] text-black">
+          <h2 className="line-limit-2 mt-3 text-[clamp(1.55rem,6vw,2.1rem)] font-extrabold leading-[1.2] text-black">
             {stepConfig.title}
           </h2>
 
@@ -401,11 +385,11 @@ function ContentTemplate({ stepConfig, stepData, oneLiner, onTermClick }) {
   if (stepConfig.template === 'content3') {
     return (
       <section className="space-y-4">
-        <div className="rounded-[28px] bg-white px-5 py-6 shadow-[0_14px_32px_rgba(0,0,0,0.08)]">
+        <div className="px-1 py-1">
           <span className="inline-flex rounded-full bg-[#eaf7ef] px-3 py-1 text-[11px] font-semibold text-[#1a7f54]">
             {stepConfig.tag}
           </span>
-          <h2 className="mt-3 text-[clamp(1.5rem,5.9vw,2.05rem)] font-extrabold leading-[1.2] text-black">
+          <h2 className="line-limit-2 mt-3 text-[clamp(1.5rem,5.9vw,2.05rem)] font-extrabold leading-[1.2] text-black">
             {stepConfig.title}
           </h2>
 
@@ -428,11 +412,11 @@ function ContentTemplate({ stepConfig, stepData, oneLiner, onTermClick }) {
   if (stepConfig.template === 'content5') {
     return (
       <section className="space-y-4">
-        <div className="rounded-[28px] bg-white px-5 py-6 shadow-[0_14px_32px_rgba(0,0,0,0.08)]">
+        <div className="px-1 py-1">
           <span className="inline-flex rounded-full bg-[#fff0e1] px-3 py-1 text-[11px] font-semibold text-primary">
             {stepConfig.tag}
           </span>
-          <h2 className="mt-3 text-[clamp(1.55rem,6vw,2.1rem)] font-extrabold leading-[1.2] text-black">
+          <h2 className="line-limit-2 mt-3 text-[clamp(1.55rem,6vw,2.1rem)] font-extrabold leading-[1.2] text-black">
             {stepConfig.title}
           </h2>
 
@@ -459,7 +443,7 @@ function ContentTemplate({ stepConfig, stepData, oneLiner, onTermClick }) {
   }
 
   return (
-    <section className="rounded-[24px] bg-white p-5 shadow-[0_14px_32px_rgba(0,0,0,0.08)]">
+    <section className="px-2 py-3">
       <MarkdownBody content={stepData?.content} onTermClick={onTermClick} />
     </section>
   );
@@ -589,7 +573,7 @@ export default function Narrative() {
   if (!data) return null;
 
   return (
-    <div className="min-h-screen bg-[#f5f6f8] pb-28">
+    <div className="min-h-screen bg-background pb-28">
       <header className="sticky top-0 z-30 border-b border-white/60 bg-white/80 backdrop-blur-md">
         <div className="mx-auto w-full max-w-mobile px-4 pb-3 pt-4">
           <div className="mb-3 flex items-center justify-between">
@@ -644,7 +628,7 @@ export default function Narrative() {
                 onTermClick={openTermSheet}
               />
             ) : (
-              <section className="rounded-[24px] bg-white p-6 text-center shadow-[0_14px_32px_rgba(0,0,0,0.08)]">
+              <section className="px-3 py-5 text-center">
                 <p className="text-sm text-text-secondary">이 단계의 콘텐츠를 준비 중입니다.</p>
               </section>
             )}

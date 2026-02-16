@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useUser } from '../contexts';
@@ -59,15 +59,34 @@ const LANDING_SLIDES = [
 ];
 
 const SWIPE_THRESHOLD = 70;
+const slideVariants = {
+  enter: (direction) => ({
+    x: direction > 0 ? 80 : -80,
+    opacity: 0,
+  }),
+  center: {
+    x: 0,
+    opacity: 1,
+  },
+  exit: (direction) => ({
+    x: direction > 0 ? -80 : 80,
+    opacity: 0,
+  }),
+};
 
 export default function Landing() {
   const navigate = useNavigate();
   const { user, isLoading } = useUser();
   const isAuthenticated = !!user?.isAuthenticated;
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [direction, setDirection] = useState(1);
+  const hasAutoAdvancedRef = useRef(false);
 
   const currentSlide = useMemo(() => LANDING_SLIDES[currentIndex], [currentIndex]);
   const totalSlides = LANDING_SLIDES.length;
+  const featureSlides = LANDING_SLIDES.slice(1);
+  const showControls = currentIndex > 0;
+  const isLastSlide = currentIndex === totalSlides - 1;
 
   useEffect(() => {
     if (isLoading || !isAuthenticated) return undefined;
@@ -84,17 +103,39 @@ export default function Landing() {
     });
   }, []);
 
-  const goToSlide = (index) => {
+  useEffect(() => {
+    if (isLoading || isAuthenticated) return undefined;
+    if (currentIndex !== 0 || hasAutoAdvancedRef.current) return undefined;
+
+    const timer = setTimeout(() => {
+      hasAutoAdvancedRef.current = true;
+      setDirection(1);
+      setCurrentIndex(1);
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [currentIndex, isAuthenticated, isLoading]);
+
+  useEffect(() => {
+    if (currentIndex > 0) {
+      hasAutoAdvancedRef.current = true;
+    }
+  }, [currentIndex]);
+
+  const goToSlide = (index, explicitDirection) => {
     const normalized = (index + totalSlides) % totalSlides;
+    if (normalized === currentIndex) return;
+    const nextDirection = explicitDirection ?? (normalized > currentIndex ? 1 : -1);
+    setDirection(nextDirection);
     setCurrentIndex(normalized);
   };
 
   const goPrev = () => {
-    goToSlide(currentIndex - 1);
+    goToSlide(currentIndex - 1, -1);
   };
 
   const goNext = () => {
-    goToSlide(currentIndex + 1);
+    goToSlide(currentIndex + 1, 1);
   };
 
   const handleDragEnd = (_, info) => {
@@ -112,15 +153,17 @@ export default function Landing() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f5f5f5]">
+    <div className="min-h-screen bg-background">
       <main className="relative mx-auto flex min-h-screen w-full max-w-[430px] flex-col overflow-hidden">
-        <AnimatePresence mode="wait">
+        <AnimatePresence mode="wait" custom={direction}>
           <motion.section
             key={currentSlide.id}
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -14 }}
-            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+            custom={direction}
+            variants={slideVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
             drag="x"
             dragConstraints={{ left: 0, right: 0 }}
             dragElastic={0.12}
@@ -148,7 +191,7 @@ export default function Landing() {
             ) : (
               <>
                 <section className="px-[37px] pt-[112px]">
-                  <h1 className="text-[40px] leading-[1.2] font-extrabold tracking-[-0.03em] whitespace-pre-wrap text-black">
+                  <h1 className="line-limit-2 text-[clamp(2rem,8.2vw,2.35rem)] leading-[1.2] font-extrabold tracking-[-0.03em] whitespace-pre-wrap text-black">
                     {currentSlide.title[0]}
                     {'\n'}
                     {currentSlide.title[1]}
@@ -180,47 +223,56 @@ export default function Landing() {
               </>
             )}
 
-            <footer className="relative z-20 px-[41px] pb-[48px]">
-              <div className="mb-[42px] flex justify-center gap-[10px]">
-                {LANDING_SLIDES.map((_, index) => (
+            {showControls ? (
+              <>
+                <footer className="relative z-20 px-[41px] pb-[48px]">
+                  <div className="mb-[42px] flex justify-center gap-[10px]">
+                    {featureSlides.map((slide, index) => {
+                      const slideIndex = index + 1;
+                      return (
+                        <button
+                          key={`landing-dot-${slide.id}`}
+                          type="button"
+                          onClick={() => goToSlide(slideIndex, slideIndex > currentIndex ? 1 : -1)}
+                          className={`h-[15px] rounded-full transition-all ${
+                            slideIndex === currentIndex ? 'w-[40px] bg-primary' : 'w-[15px] bg-[#d0d0d0]'
+                          }`}
+                          aria-label={`${index + 1}번째 랜딩 화면으로 이동`}
+                          aria-current={slideIndex === currentIndex ? 'true' : undefined}
+                        />
+                      );
+                    })}
+                  </div>
+
                   <button
-                    key={`landing-dot-${index}`}
                     type="button"
-                    onClick={() => goToSlide(index)}
-                    className={`h-[15px] rounded-full transition-all ${
-                      index === currentIndex ? 'w-[40px] bg-primary' : 'w-[15px] bg-[#d0d0d0]'
-                    }`}
-                    aria-label={`${index + 1}번째 랜딩 화면으로 이동`}
-                    aria-current={index === currentIndex ? 'true' : undefined}
-                  />
-                ))}
-              </div>
+                    onClick={() => navigate('/auth')}
+                    className="w-full rounded-[20px] bg-primary py-[16px] text-[24px] font-bold text-white transition-transform active:scale-[0.99]"
+                  >
+                    아델리 시작하기
+                  </button>
+                </footer>
 
-              <button
-                type="button"
-                onClick={() => navigate('/auth')}
-                className="w-full rounded-[20px] bg-primary py-[16px] text-[24px] font-bold text-white transition-transform active:scale-[0.99]"
-              >
-                아델리 시작하기
-              </button>
-            </footer>
-
-            <button
-              type="button"
-              onClick={goPrev}
-              aria-label="이전 랜딩 화면"
-              className="absolute left-4 top-1/2 z-10 h-10 w-10 -translate-y-1/2 rounded-full border border-white/40 bg-white/25 text-black backdrop-blur-md transition hover:bg-white/35"
-            >
-              <span className="text-lg leading-none">‹</span>
-            </button>
-            <button
-              type="button"
-              onClick={goNext}
-              aria-label="다음 랜딩 화면"
-              className="absolute right-4 top-1/2 z-10 h-10 w-10 -translate-y-1/2 rounded-full border border-white/40 bg-white/25 text-black backdrop-blur-md transition hover:bg-white/35"
-            >
-              <span className="text-lg leading-none">›</span>
-            </button>
+                <button
+                  type="button"
+                  onClick={goPrev}
+                  aria-label="이전 랜딩 화면"
+                  className="absolute left-4 top-1/2 z-10 h-10 w-10 -translate-y-1/2 rounded-full border border-white/40 bg-white/25 text-black backdrop-blur-md transition hover:bg-white/35"
+                >
+                  <span className="text-lg leading-none">‹</span>
+                </button>
+                {!isLastSlide ? (
+                  <button
+                    type="button"
+                    onClick={goNext}
+                    aria-label="다음 랜딩 화면"
+                    className="absolute right-4 top-1/2 z-10 h-10 w-10 -translate-y-1/2 rounded-full border border-white/40 bg-white/25 text-black backdrop-blur-md transition hover:bg-white/35"
+                  >
+                    <span className="text-lg leading-none">›</span>
+                  </button>
+                ) : null}
+              </>
+            ) : null}
           </motion.section>
         </AnimatePresence>
       </main>
