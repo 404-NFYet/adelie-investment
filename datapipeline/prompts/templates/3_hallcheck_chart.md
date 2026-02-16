@@ -34,10 +34,15 @@ response_format: json_object
       "note": "도구 출력값과 정확히 일치함."
     }
   ],
-  "is_safe": true
+  "is_safe": true,
+  "risk_summary": {
+    "max_risk": "낮음|중간|높음",
+    "reason": "string"
+  }
 }
 ```
 
 # Constraint (제약 사항)
 - 숫자에 대해서는 엄격하게 판단하십시오.
-- 차트 데이터가 '추정치(Estimated)'나 'Mock'으로 명시되어 있다면 위험도는 '낮음'입니다. 하지만 출처 없이 사실인 것처럼 제시되었다면 위험도는 '높음'입니다.
+- 차트 데이터가 추정치(`(E)`, `Est`, `Estimated`) 또는 Mock이면 기본 위험도는 `중간` 이상입니다.
+- 출처가 없거나 출처-수치 연결이 불명확하면 위험도는 `높음`입니다.

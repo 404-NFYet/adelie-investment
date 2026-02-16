@@ -106,10 +106,15 @@ async def _save(
             existing_kw = json.loads(existing_kw_raw) if existing_kw_raw else {"keywords": []}
 
             new_kw = _build_top_keywords(curated, final)
-            existing_titles = {k["title"] for k in existing_kw.get("keywords", [])}
-            for kw in new_kw.get("keywords", []):
-                if kw["title"] not in existing_titles:
-                    existing_kw["keywords"].append(kw)
+            existing_keywords = existing_kw.get("keywords", [])
+            existing_titles = {k.get("title", "") for k in existing_keywords}
+            latest_keywords = [
+                kw
+                for kw in new_kw.get("keywords", [])
+                if kw.get("title", "") and kw.get("title", "") not in existing_titles
+            ]
+            # 최신 생성 키워드를 앞에 배치해서 홈 카드가 가장 최근 주제를 우선 노출하도록 한다.
+            existing_kw["keywords"] = latest_keywords + existing_keywords
 
             # top_keywords만 업데이트 (market_summary 유지)
             await conn.execute(
@@ -200,7 +205,7 @@ async def _save(
             logger.info("historical_cases 저장: id=%d", case_id)
 
             # ── 4. case_matches ──
-            theme = curated.get("theme", "")
+            theme = final.get("theme") or curated.get("theme", "")
             if theme and case_id:
                 for s in stocks:
                     await conn.execute(

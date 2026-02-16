@@ -157,9 +157,13 @@ function NarrativeChartBlock({ stepKey, chart }) {
   const plot = useMemo(() => buildNarrativePlot(stepKey, chart), [stepKey, chart]);
   const chartRatio = stepKey === 'background' ? 1.38 : 1.16;
   const converted = useMemo(
-    () => convertPlotlyToECharts(plot.data, plot.layout),
-    [plot.data, plot.layout],
+    () => (plot.hasRenderable ? convertPlotlyToECharts(plot.data, plot.layout) : { convertible: false }),
+    [plot.data, plot.layout, plot.hasRenderable],
   );
+
+  if (!plot.hasRenderable) {
+    return null;
+  }
 
   return (
     <section className="w-full">

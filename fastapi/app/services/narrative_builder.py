@@ -244,15 +244,8 @@ def _build_application(comparison: dict, paragraphs: list[str]) -> dict:
     analysis = comparison.get("analysis", [])
     bullets = analysis[:3] if analysis else ["과거 사례를 현재에 적용해 볼게요."]
     content = highlight_terms(paragraphs[1]) if len(paragraphs) > 1 else ""
-    chart = ChartData(
-        title="과거 vs 현재 비교",
-        data=[
-            {"x": ["금리", "환율", "성장률"], "y": [2.5, 1100, 3.1], "type": "bar", "name": "과거", "marker": {"color": "#8B95A1"}},
-            {"x": ["금리", "환율", "성장률"], "y": [3.5, 1350, 1.8], "type": "bar", "name": "현재", "marker": {"color": "#3B82F6"}},
-        ],
-        layout={"barmode": "group", "yaxis": {"title": "수치"}, "showlegend": True},
-    )
-    return NarrativeSection(bullets=bullets, content=content, chart=chart).model_dump()
+    # fallback 모드에서는 근거 수치가 명확할 때만 차트를 노출한다.
+    return NarrativeSection(bullets=bullets, content=content, chart=None).model_dump()
 
 
 def _build_caution(comparison: dict, paragraphs: list[str]) -> dict:
@@ -264,13 +257,7 @@ def _build_caution(comparison: dict, paragraphs: list[str]) -> dict:
         f"단기 모멘텀에 과도하게 베팅하면 손실 위험이 있어요.",
     ]
     content = highlight_terms(paragraphs[2]) if len(paragraphs) > 2 else f"{title} 관련 주의사항을 꼭 체크해야 해요."
-    chart = ChartData(
-        title="리스크 시나리오별 예상 손실",
-        data=[{"x": ["금리 급등", "규제 강화", "글로벌 침체"], "y": [-15, -20, -30], "type": "bar",
-               "marker": {"color": ["#F59E0B", "#EF4444", "#991B1B"]}}],
-        layout={"yaxis": {"title": "예상 손실률 (%)"}},
-    )
-    return NarrativeSection(bullets=bullets, content=content, chart=chart).model_dump()
+    return NarrativeSection(bullets=bullets, content=content, chart=None).model_dump()
 
 
 def _build_summary(comparison: dict, case_stocks: list[CaseStockRelation]) -> dict:

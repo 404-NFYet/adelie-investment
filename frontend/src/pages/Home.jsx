@@ -32,7 +32,13 @@ export default function Home() {
     fetchKeywords();
   }, []);
 
-  const visibleCards = useMemo(() => keywords.slice(0, 3), [keywords]);
+  const visibleCards = useMemo(
+    () =>
+      [...keywords]
+        .sort((a, b) => (b.case_id || 0) - (a.case_id || 0))
+        .slice(0, 3),
+    [keywords],
+  );
 
   return (
     <div className="min-h-screen bg-background pb-24">

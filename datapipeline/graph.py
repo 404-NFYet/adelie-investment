@@ -27,6 +27,7 @@ import logging
 from typing import Annotated, Any, Optional, TypedDict
 
 from langgraph.graph import END, START, StateGraph
+from .config import SECTION_MAP
 
 from .nodes.crawlers import crawl_news_node, crawl_research_node
 from .nodes.curation import (
@@ -52,7 +53,7 @@ from .nodes.interface3 import (
     collect_sources_node,
     assemble_output_node,
 )
-from .nodes.chart_agent import run_chart_agent_node
+from .nodes.chart_agent import run_chart_agent_node, run_hallcheck_chart_node
 from .nodes.db_save import save_to_db_node
 from .nodes.screening import screen_stocks_node
 
@@ -170,8 +171,43 @@ async def glossary_and_chart_parallel_node(state: dict) -> dict:
         return {**g_result, **hg_result}
 
     async def _chart_pipeline():
-        # run_chart_agent_node는 async이므로 직접 await
-        return await run_chart_agent_node(state)
+        # 1) 차트 생성
+        chart_result = await run_chart_agent_node(state)
+        if chart_result.get("error"):
+            return chart_result
+
+        # 2) 차트 검증/게이트
+        hall_input = {**state, **chart_result}
+        hall_result = await asyncio.to_thread(run_hallcheck_chart_node, hall_input)
+
+        if hall_result.get("error"):
+            # 엄격 정책: 검증 실패 시 차트 노출 차단
+            safe_charts = {section_key: None for _, _, section_key in SECTION_MAP}
+            fallback_checklist = list(chart_result.get("hallucination_checklist", []) or [])
+            fallback_checklist.append({
+                "claim": "chart hallcheck failed",
+                "source": "chart_gate",
+                "risk": "높음",
+                "note": str(hall_result.get("error")),
+            })
+            return {
+                **chart_result,
+                "charts": safe_charts,
+                "hallucination_checklist": fallback_checklist,
+                "metrics": {
+                    **(chart_result.get("metrics") or {}),
+                    **(hall_result.get("metrics") or {}),
+                },
+            }
+
+        return {
+            **chart_result,
+            **hall_result,
+            "metrics": {
+                **(chart_result.get("metrics") or {}),
+                **(hall_result.get("metrics") or {}),
+            },
+        }
 
     glossary_result, chart_result = await asyncio.gather(
         _glossary_pipeline(), _chart_pipeline(),

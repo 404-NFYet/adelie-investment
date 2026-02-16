@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 import time
+import re
 from typing import Any, Callable
 
 from langsmith import traceable
@@ -27,11 +28,94 @@ AVAILABLE_TOOLS: dict[str, Callable] = {
     "search_web_for_chart_data": search_web_for_chart_data,
 }
 
+RISK_ORDER = {"낮음": 0, "low": 0, "중간": 1, "medium": 1, "높음": 2, "high": 2}
+ESTIMATION_PATTERN = re.compile(r"\b(est(?:imated)?|mock)\b|\(e\)|추정", re.IGNORECASE)
+
 
 def _update_metrics(state: dict, node_name: str, elapsed: float, status: str = "success") -> dict:
     metrics = dict(state.get("metrics") or {})
     metrics[node_name] = {"elapsed_s": round(elapsed, 2), "status": status}
     return metrics
+
+
+def _iter_chart_text_fields(chart: dict) -> list[str]:
+    texts: list[str] = []
+    if not isinstance(chart, dict):
+        return texts
+
+    layout = chart.get("layout")
+    if isinstance(layout, dict):
+        title = layout.get("title")
+        if isinstance(title, str):
+            texts.append(title)
+        elif isinstance(title, dict):
+            texts.append(str(title.get("text", "")))
+
+        for axis_name in ("xaxis", "yaxis"):
+            axis = layout.get(axis_name)
+            if isinstance(axis, dict):
+                axis_title = axis.get("title")
+                if isinstance(axis_title, str):
+                    texts.append(axis_title)
+                elif isinstance(axis_title, dict):
+                    texts.append(str(axis_title.get("text", "")))
+
+    for trace in chart.get("data", []) if isinstance(chart.get("data"), list) else []:
+        if not isinstance(trace, dict):
+            continue
+        for key in ("name",):
+            if trace.get(key):
+                texts.append(str(trace.get(key)))
+        for key in ("x", "labels", "text"):
+            values = trace.get(key)
+            if isinstance(values, list):
+                texts.extend(str(v) for v in values if v is not None)
+
+    return [t for t in texts if t]
+
+
+def _contains_estimation_marker(chart: dict) -> bool:
+    return any(ESTIMATION_PATTERN.search(text) for text in _iter_chart_text_fields(chart))
+
+
+def _count_numeric_points(chart: dict) -> int:
+    count = 0
+    traces = chart.get("data", []) if isinstance(chart, dict) else []
+    for trace in traces if isinstance(traces, list) else []:
+        if not isinstance(trace, dict):
+            continue
+        for key in ("y", "values"):
+            values = trace.get(key)
+            if not isinstance(values, list):
+                continue
+            for value in values:
+                try:
+                    if value is not None and float(value) == float(value):
+                        count += 1
+                except (TypeError, ValueError):
+                    continue
+    return count
+
+
+def _max_risk_label(items: list[dict]) -> str:
+    max_score = 0
+    max_label = "낮음"
+    for item in items:
+        risk = str(item.get("risk", "")).strip()
+        score = RISK_ORDER.get(risk, 0)
+        if score > max_score:
+            max_score = score
+            max_label = "중간" if score == 1 else "높음"
+    return max_label
+
+
+def _append_gate_item(checklist: list[dict], section_key: str, reason: str, risk: str = "높음") -> None:
+    checklist.append({
+        "claim": f"{section_key} 차트 비노출",
+        "source": "chart_gate",
+        "risk": risk,
+        "note": reason,
+    })
 
 
 def _execute_tools(tool_calls: list[dict]) -> list[dict]:
@@ -83,6 +167,19 @@ async def _process_single_section(
 
         tool_calls = reasoning_result.get("tool_calls", [])
         chart_type = reasoning_result.get("chart_type", "Unknown")
+        raw_should_generate = reasoning_result.get("should_generate", True)
+        if isinstance(raw_should_generate, bool):
+            should_generate = raw_should_generate
+        elif isinstance(raw_should_generate, str):
+            should_generate = raw_should_generate.strip().lower() not in {"false", "0", "no", "n"}
+        else:
+            should_generate = bool(raw_should_generate)
+        skip_reason = str(reasoning_result.get("skip_reason", "")).strip()
+
+        if not should_generate or str(chart_type).strip().lower() in {"none", "no_chart", "null"}:
+            logger.info(f"    [{section_key}] Skipped chart generation: {skip_reason or 'reasoning decided no chart'}")
+            return section_key, None, []
+
         logger.info(f"    [{section_key}] Reasoning: Type={chart_type}, Tools={len(tool_calls)}")
 
         # 2. Tool Execution
@@ -221,50 +318,62 @@ def run_hallcheck_chart_node(state: dict) -> dict:
     logger.info("[Node] run_hallcheck_chart")
     
     try:
-        charts = state.get("charts", {})
-        # Existing checklist from previous steps (Interface 2/3 hallchecks)
-        # Note: In the new flow, hallchecks might be accumulated.
-        # But let's check input state.
-        checklist = state.get("hallucination_checklist", [])
-        
+        charts = dict(state.get("charts", {}) or {})
+        checklist = list(state.get("hallucination_checklist", []) or [])
+        sources = state.get("sources", []) or []
         backend = state.get("backend", "live")
         if backend == "mock":
              return {
+                "charts": charts,
                 "hallucination_checklist": checklist, # Pass through
                 "metrics": _update_metrics(state, "run_hallcheck_chart", time.time() - node_start),
             }
 
         curated = state["curated_context"]
-        
+
         for step, title, section_key in SECTION_MAP:
             chart = charts.get(section_key)
             if not chart:
                 continue
-                
-            # Run verification
-            # We need to construct the context used for generation. 
-            # Re-creating exact context is hard without saving tool outputs in state.
-            # Ideally, state should have 'tool_outputs' from previous step if we want strict check.
-            # For now, we use 'curated_context' + 'chart itself' + 'sources' metadata.
-            # The prompt asks for 'source_context'.
-            # We can pass the chart data and ask the LLM to verify against common knowledge or consistency.
-            # Since we don't have the transient tool outputs here, we might miss some context.
-            # Limitation: Hallcheck might flag "Low Risk" if it can't verify, or "High" if data looks weird.
-            
-            # Improvement: We should probably store tool outputs in state["chart_logs"] or similar if we want deep verification.
-            # For this MVP, we'll verify consistency between Chart and Sources Metadata.
-            
+
+            step_sources = [
+                src for src in sources
+                if step in (src.get("used_in_pages") or [])
+            ]
+
+            # Rule gate: source linkage, estimate markers, data adequacy
+            if not step_sources:
+                charts[section_key] = None
+                _append_gate_item(checklist, section_key, "출처 연결이 없어 차트를 숨겼어요.")
+                continue
+
+            if _contains_estimation_marker(chart):
+                charts[section_key] = None
+                _append_gate_item(checklist, section_key, "추정치/Mock 표기가 있어 차트를 숨겼어요.")
+                continue
+
+            if _count_numeric_points(chart) < 3:
+                charts[section_key] = None
+                _append_gate_item(checklist, section_key, "유효 데이터 포인트가 부족해 차트를 숨겼어요.", risk="중간")
+                continue
+
             result = call_llm_with_prompt("3_hallcheck_chart", {
                 "chart_json": json.dumps(chart, ensure_ascii=False),
                 "source_context": json.dumps(curated, ensure_ascii=False)[:2000],
-                "sources_metadata": json.dumps(state.get("sources", []), ensure_ascii=False)
+                "sources_metadata": json.dumps(step_sources, ensure_ascii=False)
             })
-            
-            new_items = result.get("hallucination_checklist", [])
-            logger.info(f"  {section_key}: Found {len(new_items)} verification items.")
+
+            new_items = result.get("hallucination_checklist", []) or []
+            max_risk = _max_risk_label(new_items)
+            if max_risk in {"중간", "높음"}:
+                charts[section_key] = None
+                _append_gate_item(checklist, section_key, f"팩트체크 위험도({max_risk})로 차트를 숨겼어요.", risk=max_risk)
+
+            logger.info(f"  {section_key}: Found {len(new_items)} verification items. max_risk={max_risk}")
             checklist.extend(new_items)
 
         return {
+            "charts": charts,
             "hallucination_checklist": checklist,
             "metrics": _update_metrics(state, "run_hallcheck_chart", time.time() - node_start),
         }
