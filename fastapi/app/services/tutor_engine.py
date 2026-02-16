@@ -33,20 +33,11 @@ from app.services.chart_storage import save_chart_html
 logger = logging.getLogger("narrative_api.tutor_engine")
 
 # 시각화 도구 임포트
-import sys as _sys
-from pathlib import Path as _Path
-_CHATBOT_PATH = str(_Path(__file__).resolve().parent.parent.parent.parent / "chatbot")
-if _CHATBOT_PATH not in _sys.path:
-    _sys.path.insert(0, _CHATBOT_PATH)
 try:
     from chatbot.tools.visualization_tool import _generate_with_claude, _generate_with_openai
     _VIZ_AVAILABLE = True
 except ImportError:
-    try:
-        from tools.visualization_tool import _generate_with_claude, _generate_with_openai
-        _VIZ_AVAILABLE = True
-    except ImportError:
-        _VIZ_AVAILABLE = False
+    _VIZ_AVAILABLE = False
 
 
 # --- 난이도별 프롬프트 ---
@@ -318,7 +309,7 @@ async def generate_tutor_response(
 
     # 5) LLM 스트리밍 응답
     try:
-        client = AsyncOpenAI(api_key=api_key)
+        client = AsyncOpenAI(api_key=api_key, timeout=30.0)
         response = await client.chat.completions.create(
             model="gpt-4o-mini", messages=messages, max_tokens=1000, stream=True,
         )

@@ -41,7 +41,7 @@ async def get_term_explanation_from_llm(term: str, difficulty: str) -> str:
     if not api_key:
         raise HTTPException(status_code=500, detail="OpenAI API key not configured")
     
-    client = AsyncOpenAI(api_key=api_key)
+    client = AsyncOpenAI(api_key=api_key, timeout=30.0)
     
     difficulty_context = {
         "beginner": "주식 초보자도 이해할 수 있도록 아주 쉽게, 일상적인 비유를 사용해서",
@@ -240,7 +240,7 @@ async def generate_tutor_response(
     ]
     
     try:
-        client = AsyncOpenAI(api_key=api_key)
+        client = AsyncOpenAI(api_key=api_key, timeout=30.0)
         
         response = await client.chat.completions.create(
             model="gpt-4o-mini",
