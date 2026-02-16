@@ -197,6 +197,20 @@ def _build_hallucination_check_inputs(
     }
 
 
+def _build_unvalidated_interface2(
+    page_purpose: dict[str, Any],
+    historical_case_output: dict[str, Any],
+    narrative_output: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "theme": page_purpose.get("theme"),
+        "one_liner": page_purpose.get("one_liner"),
+        "concept": page_purpose.get("concept"),
+        "historical_case": historical_case_output.get("historical_case", historical_case_output),
+        "narrative": narrative_output.get("narrative", narrative_output),
+    }
+
+
 # ── Mock 함수들 (테스트용) ──
 
 def _mock_page_purpose(curated: dict) -> dict:
@@ -443,6 +457,7 @@ def validate_interface2_node(state: dict) -> dict:
         narr = state["narrative"]
         curated = state["curated_context"]
         backend = state.get("backend", "live")
+        fallback_validated = _build_unvalidated_interface2(pp, hc, narr)
 
         if backend == "mock":
             result = _mock_hallucination_check(pp, hc, narr)
@@ -459,16 +474,27 @@ def validate_interface2_node(state: dict) -> dict:
                 _json_size(raw_payload) / 1024,
                 _json_size(compact_payload) / 1024,
             )
-            result = call_llm_with_prompt("hallucination_check", compact_payload)
+            try:
+                result = call_llm_with_prompt("hallucination_check", compact_payload)
+            except Exception as hallcheck_exc:
+                err_text = str(hallcheck_exc).lower()
+                if "timed out" in err_text or "timeout" in err_text:
+                    logger.warning(
+                        "  validate_interface2 hallcheck timeout -> fallback 사용: %s",
+                        hallcheck_exc,
+                    )
+                    result = {
+                        "overall_risk": "medium",
+                        "summary": "hallucination_check timeout으로 검증을 건너뛰고 원본 출력을 사용했어요.",
+                        "issues": [],
+                        "consistency_checks": [],
+                        "validated_interface_2": fallback_validated,
+                    }
+                else:
+                    raise
 
         # validated_interface_2 추출
-        validated = result.get("validated_interface_2", {
-            "theme": pp["theme"],
-            "one_liner": pp["one_liner"],
-            "concept": pp["concept"],
-            "historical_case": hc.get("historical_case", hc),
-            "narrative": narr.get("narrative", narr),
-        })
+        validated = result.get("validated_interface_2", fallback_validated)
 
         # summary는 텍스트 체크리스트 섹션으로 고정 (차트 생성 방지)
         summary_section = validated.get("narrative", {}).get("summary")
