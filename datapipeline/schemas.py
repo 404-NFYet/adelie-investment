@@ -190,3 +190,4 @@ class FullBriefingOutput(BaseModel):
     interface_1_curated_context: CuratedContext
     interface_2_raw_narrative: RawNarrative
     interface_3_final_briefing: FinalBriefing
+    data_collection_status: Optional[dict[str, Any]] = None

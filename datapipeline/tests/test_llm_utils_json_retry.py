@@ -79,6 +79,22 @@ def test_json_prompt_success_without_retry(monkeypatch: pytest.MonkeyPatch) -> N
     assert "반드시 JSON object 하나만 반환" in client.calls[0]["messages"][0]["content"]
 
 
+def test_anthropic_credit_error_falls_back_to_openai(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = ScriptedClient([
+        ("anthropic", RuntimeError("Error code: 400 - credit balance is too low")),
+        ("openai", '{"ok": true, "fallback_used": true}'),
+    ])
+    _patch_prompt_and_client(monkeypatch, _json_prompt_spec(), client)
+
+    result = call_llm_with_prompt("3_glossary", {"x": 1})
+
+    assert result["ok"] is True
+    assert result["fallback_used"] is True
+    assert len(client.calls) == 2
+    assert client.calls[0]["provider"] == "anthropic"
+    assert client.calls[1]["provider"] == "openai"
+
+
 def test_json_prompt_repair_success_on_second_attempt(monkeypatch: pytest.MonkeyPatch) -> None:
     client = ScriptedClient([
         ("anthropic", '{"broken": true'),

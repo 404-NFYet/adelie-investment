@@ -99,6 +99,7 @@ function getChecklistItems(content, bullets) {
   const pushItem = (value) => {
     const cleaned = String(value || '').trim();
     if (!cleaned) return;
+    if (/투자 전에 꼭 확인할 포인트/.test(cleaned)) return;
     if (!items.includes(cleaned)) {
       items.push(cleaned);
     }
@@ -464,12 +465,6 @@ function ContentTemplate({ stepConfig, stepData, stepTitle, oneLiner, onTermClic
               ))}
             </ul>
           ) : null}
-
-          <MarkdownBody
-            content={stepData?.content}
-            onTermClick={onTermClick}
-            className="mt-4"
-          />
         </div>
       </section>
     );
