@@ -87,10 +87,12 @@ response_format: json_object
 3. `available_internal_data`를 확인하여 필요한 데이터가 이미 있는지 판단하십시오.
 4. 내부 데이터가 부족하거나 정확한 수치가 없다면, 적절한 **도구(Tool)**를 호출할 계획을 세우십시오.
 5. 차트 생성 필요성을 먼저 판단하십시오.
+   - **기본 정책**: 핵심 설명 섹션(배경/개념/사례/적용)은 가능한 한 `should_generate=true`로 두고, 관련 수치 근거를 도구 호출로 확보합니다.
    - 아래 조건이면 `should_generate=false`:
-     - 핵심 수치 근거가 부족함
-     - 텍스트만으로 충분한 섹션(리스크/요약)임
-     - 같은 데이터가 다른 섹션에서 이미 반복됨
+     - 섹션이 리스크/요약 성격(`caution`, `summary`)이라 텍스트만으로 충분함
+     - 법적/사실성 이슈로 시각화를 명시적으로 금지해야 함
+     - 관련 기업 공시/지표를 조회해도 정합한 수치 근거를 확보할 수 없음
+   - 수치가 부족하면 `get_corp_financials`, `search_web_for_chart_data`, 필요 시 `get_exchange_rate`를 활용해 관련 근거를 먼저 확보하세요.
 6. 결과를 JSON 형식으로 출력하십시오.
 
 # Output Format (JSON)
@@ -113,6 +115,7 @@ response_format: json_object
 **주의**:
 - 도구 호출이 필요 없다면 `tool_calls`를 빈 리스트 `[]`로 두십시오.
 - `should_generate=false`일 때는 `tool_calls=[]`, `chart_type=\"none\"`, `skip_reason`을 반드시 채우십시오.
+- 핵심 설명 섹션(배경/개념/사례/적용)은 관련 데이터 조회를 먼저 시도하고, 그래도 근거가 없을 때만 `should_generate=false`를 선택하십시오.
 
 # User Query / Viz Hint
 {{viz_hint}}

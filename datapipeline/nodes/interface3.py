@@ -662,6 +662,8 @@ def assemble_output_node(state: dict) -> dict:
         charts = state.get("charts") or {}
         sources = state.get("sources", [])
         checklist = state.get("hallucination_checklist") or []
+        crawl_news_status = state.get("crawl_news_status")
+        crawl_research_status = state.get("crawl_research_status")
         theme = state.get("theme", raw_narrative["theme"])
         one_liner = state.get("one_liner", raw_narrative["one_liner"])
 
@@ -688,6 +690,12 @@ def assemble_output_node(state: dict) -> dict:
             "sources": sources,
             "hallucination_checklist": checklist,
         }
+        data_collection_status = None
+        if isinstance(crawl_news_status, dict) or isinstance(crawl_research_status, dict):
+            data_collection_status = {
+                "crawl_news": crawl_news_status if isinstance(crawl_news_status, dict) else None,
+                "crawl_research": crawl_research_status if isinstance(crawl_research_status, dict) else None,
+            }
 
         # Pydantic 검증
         output = FullBriefingOutput(
@@ -695,6 +703,7 @@ def assemble_output_node(state: dict) -> dict:
             interface_1_curated_context=CuratedContext.model_validate(curated),
             interface_2_raw_narrative=RawNarrative.model_validate(raw_narrative),
             interface_3_final_briefing=FinalBriefing.model_validate(final_briefing_data),
+            data_collection_status=data_collection_status,
         )
 
         # 파일 저장

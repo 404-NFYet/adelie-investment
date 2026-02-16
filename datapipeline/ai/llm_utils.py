@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -33,6 +34,8 @@ _JSON_REPAIR_TEMPLATE = """다음 모델 응답은 JSON 파싱에 실패했습�
 원본 텍스트:
 {raw_text}
 """
+
+_OPENAI_FALLBACK_MODEL = os.getenv("OPENAI_FALLBACK_MODEL", "gpt-5-mini")
 
 
 class JSONResponseParseError(RuntimeError):
@@ -153,6 +156,96 @@ def _invoke_chat_completion(
     return result, content
 
 
+def _is_anthropic_fallback_error(exc: Exception) -> bool:
+    text = str(exc)
+    lower = text.lower()
+    return any([
+        "credit balance is too low" in lower,
+        "invalid_request_error" in lower,
+        "프로바이더 'anthropic'가 초기화되지 않았습니다." in text,
+        ("anthropic" in lower and "not initialized" in lower),
+        ("anthropic" in lower and "quota" in lower),
+        ("anthropic" in lower and "unavailable" in lower),
+    ])
+
+
+def _invoke_with_provider_fallback(
+    *,
+    client: Any,
+    prompt_name: str,
+    provider: str,
+    model: str,
+    messages: list[dict[str, str]],
+    thinking: bool,
+    thinking_effort: str,
+    temperature: float,
+    max_tokens: int,
+    response_format: dict[str, str] | None,
+    attempt: int,
+    allow_fallback: bool = True,
+) -> tuple[dict[str, Any], str, str, str]:
+    try:
+        result, content = _invoke_chat_completion(
+            client=client,
+            prompt_name=prompt_name,
+            provider=provider,
+            model=model,
+            messages=messages,
+            thinking=thinking,
+            thinking_effort=thinking_effort,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            response_format=response_format,
+            attempt=attempt,
+        )
+        return result, content, provider, model
+    except Exception as primary_exc:
+        if not allow_fallback or provider != "anthropic" or not _is_anthropic_fallback_error(primary_exc):
+            raise
+
+        LOGGER.warning(
+            "LLM_FALLBACK_TRIGGERED prompt=%s primary_provider=%s primary_model=%s fallback_provider=openai fallback_model=%s reason=%s",
+            prompt_name,
+            provider,
+            model,
+            _OPENAI_FALLBACK_MODEL,
+            _json_error_details(primary_exc),
+        )
+        try:
+            result, content = _invoke_chat_completion(
+                client=client,
+                prompt_name=prompt_name,
+                provider="openai",
+                model=_OPENAI_FALLBACK_MODEL,
+                messages=messages,
+                thinking=False,
+                thinking_effort="low",
+                temperature=temperature,
+                max_tokens=max_tokens,
+                response_format=response_format,
+                attempt=attempt,
+            )
+            LOGGER.info(
+                "LLM_FALLBACK_SUCCESS prompt=%s primary_provider=%s primary_model=%s fallback_provider=openai fallback_model=%s",
+                prompt_name,
+                provider,
+                model,
+                _OPENAI_FALLBACK_MODEL,
+            )
+            return result, content, "openai", _OPENAI_FALLBACK_MODEL
+        except Exception as fallback_exc:
+            LOGGER.error(
+                "LLM_FALLBACK_FAILED prompt=%s primary_provider=%s primary_model=%s fallback_provider=openai fallback_model=%s primary_error=%s fallback_error=%s",
+                prompt_name,
+                provider,
+                model,
+                _OPENAI_FALLBACK_MODEL,
+                _json_error_details(primary_exc),
+                _json_error_details(fallback_exc),
+            )
+            raise fallback_exc
+
+
 def extract_json_object(raw_text: str) -> dict[str, Any]:
     """응답에서 JSON 객체 추출 (코드블록 처리 포함)."""
     text = raw_text.strip()
@@ -218,7 +311,7 @@ def call_llm_with_prompt(
         enforce_json=json_mode,
     )
 
-    _, first_content = _invoke_chat_completion(
+    _, first_content, active_provider, active_model = _invoke_with_provider_fallback(
         client=client,
         prompt_name=prompt_name,
         provider=spec.provider,
@@ -242,8 +335,8 @@ def call_llm_with_prompt(
         LOGGER.warning(
             "JSON_RETRY_ATTEMPT prompt=%s provider=%s model=%s attempt=2 reason=%s snippet=%s",
             prompt_name,
-            spec.provider,
-            spec.model,
+            active_provider,
+            active_model,
             parse_detail,
             _snippet_for_logs(first_content),
         )
@@ -252,11 +345,11 @@ def call_llm_with_prompt(
     repair_messages = _build_repair_messages(first_content)
     repaired_content = ""
     try:
-        _, repaired_content = _invoke_chat_completion(
+        _, repaired_content, active_provider, active_model = _invoke_with_provider_fallback(
             client=client,
             prompt_name=prompt_name,
-            provider=spec.provider,
-            model=spec.model,
+            provider=active_provider,
+            model=active_model,
             messages=repair_messages,
             thinking=False,
             thinking_effort="low",
@@ -269,8 +362,8 @@ def call_llm_with_prompt(
         LOGGER.info(
             "JSON_REPAIR_SUCCESS prompt=%s provider=%s model=%s",
             prompt_name,
-            spec.provider,
-            spec.model,
+            active_provider,
+            active_model,
         )
         return repaired
     except Exception as repair_exc:
@@ -279,20 +372,20 @@ def call_llm_with_prompt(
         LOGGER.warning(
             "JSON_RETRY_ATTEMPT prompt=%s provider=%s model=%s attempt=3 reason=%s snippet=%s",
             prompt_name,
-            spec.provider,
-            spec.model,
+            active_provider,
+            active_model,
             parse_detail,
             _snippet_for_logs(snippet_source),
         )
 
-    # 3차: OpenAI gpt-5-mini 폴백 1회
+    # 3차: OpenAI JSON 복구 폴백 1회
     fallback_content = ""
     try:
-        _, fallback_content = _invoke_chat_completion(
+        _, fallback_content, _, _ = _invoke_with_provider_fallback(
             client=client,
             prompt_name=prompt_name,
             provider="openai",
-            model="gpt-5-mini",
+            model=_OPENAI_FALLBACK_MODEL,
             messages=_build_repair_messages(first_content),
             thinking=False,
             thinking_effort="low",
@@ -300,13 +393,15 @@ def call_llm_with_prompt(
             max_tokens=spec.max_tokens,
             response_format={"type": "json_object"},
             attempt=3,
+            allow_fallback=False,
         )
         fallback = extract_json_object(fallback_content)
         LOGGER.info(
-            "JSON_FALLBACK_OPENAI_SUCCESS prompt=%s original_provider=%s original_model=%s fallback_model=gpt-5-mini",
+            "JSON_FALLBACK_OPENAI_SUCCESS prompt=%s original_provider=%s original_model=%s fallback_model=%s",
             prompt_name,
-            spec.provider,
-            spec.model,
+            active_provider,
+            active_model,
+            _OPENAI_FALLBACK_MODEL,
         )
         return fallback
     except Exception as fallback_exc:
@@ -315,15 +410,15 @@ def call_llm_with_prompt(
         LOGGER.error(
             "JSON_PARSE_FAILURE prompt=%s provider=%s model=%s detail=%s snippet=%s",
             prompt_name,
-            spec.provider,
-            spec.model,
+            active_provider,
+            active_model,
             detail,
             _snippet_for_logs(snippet_source),
         )
         raise JSONResponseParseError(
             prompt_name=prompt_name,
-            provider=spec.provider,
-            model=spec.model,
+            provider=active_provider,
+            model=active_model,
             detail=(
                 "모델 응답 JSON 불량: 자동 복구/폴백까지 실패했습니다. "
                 f"detail={detail}"

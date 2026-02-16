@@ -7,6 +7,7 @@ Handles the creation of financial charts by actively fetching data.
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import json
 import logging
 import time
@@ -118,6 +119,125 @@ def _append_gate_item(checklist: list[dict], section_key: str, reason: str, risk
     })
 
 
+def _extract_selected_stock_names(curated_context: dict[str, Any], limit: int = 3) -> list[str]:
+    selected = curated_context.get("selected_stocks") if isinstance(curated_context, dict) else None
+    if not isinstance(selected, list):
+        return []
+
+    names: list[str] = []
+    for stock in selected:
+        if not isinstance(stock, dict):
+            continue
+        name = str(stock.get("name") or stock.get("ticker") or "").strip()
+        if not name or name in names:
+            continue
+        names.append(name)
+        if len(names) >= limit:
+            break
+    return names
+
+
+def _needs_fx_context(text: str) -> bool:
+    lower = text.lower()
+    keywords = (
+        "환율", "원달러", "원/달러", "usd", "dollar", "달러",
+        "수출", "금리", "dxy", "외환",
+    )
+    return any(keyword in lower for keyword in keywords)
+
+
+def _build_step_retry_tool_calls(
+    *,
+    section_title: str,
+    section_key: str,
+    section_content: str,
+    viz_hint: str,
+    curated_context: dict[str, Any],
+) -> list[dict[str, Any]]:
+    calls: list[dict[str, Any]] = []
+    stock_names = _extract_selected_stock_names(curated_context, limit=3)
+    current_year = dt.datetime.now().year
+
+    for name in stock_names[:2]:
+        calls.append({
+            "tool": "get_corp_financials",
+            "args": {"corp_name": name, "year": current_year},
+        })
+        calls.append({
+            "tool": "get_corp_financials",
+            "args": {"corp_name": name, "year": current_year - 1},
+        })
+
+    query_parts = [section_title.strip(), viz_hint.strip(), section_content.strip()[:140]]
+    if stock_names:
+        query_parts.append(f"관련 기업: {', '.join(stock_names)}")
+    query_parts.append("정량 지표 데이터")
+    query = " | ".join(part for part in query_parts if part)
+    calls.append({
+        "tool": "search_web_for_chart_data",
+        "args": {"query": query},
+    })
+
+    combined_text = " ".join([section_title, section_key, viz_hint, section_content])
+    if _needs_fx_context(combined_text):
+        calls.append({
+            "tool": "get_exchange_rate",
+            "args": {"target_date": dt.datetime.now().strftime("%Y%m%d")},
+        })
+
+    return calls
+
+
+def _dedupe_tool_calls(tool_calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[str] = set()
+    deduped: list[dict[str, Any]] = []
+    for call in tool_calls:
+        tool_name = str(call.get("tool", "")).strip()
+        args = call.get("args", {})
+        key = json.dumps({"tool": tool_name, "args": args}, ensure_ascii=False, sort_keys=True)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append({"tool": tool_name, "args": args})
+    return deduped
+
+
+def _normalize_sources_for_step(sources: list[dict[str, Any]], step: int) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    for src in sources or []:
+        if not isinstance(src, dict):
+            continue
+        normalized_src = dict(src)
+        if not normalized_src.get("used_in_pages"):
+            normalized_src["used_in_pages"] = [step]
+        normalized.append(normalized_src)
+    return normalized
+
+
+def _run_chart_generation(
+    *,
+    step: int,
+    section_title: str,
+    viz_hint: str,
+    chart_type: str,
+    internal_context_summary: str,
+    tool_outputs: list[dict[str, Any]],
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    generation_result = call_llm_with_prompt(
+        "3_chart_generation",
+        {
+            "section_title": section_title,
+            "step": step,
+            "viz_hint": viz_hint,
+            "chart_type": chart_type,
+            "internal_context_summary": internal_context_summary,
+            "tool_outputs": json.dumps(tool_outputs, ensure_ascii=False),
+            "color_palette": COLOR_PALETTE,
+        },
+    )
+    return generation_result.get("chart"), generation_result.get("sources", [])
+
+
 def _execute_tools(tool_calls: list[dict]) -> list[dict]:
     """tool_calls 리스트를 실행하고 결과를 반환 (동기)."""
     tool_outputs = []
@@ -152,6 +272,7 @@ async def _process_single_section(
     title: str,
     viz_hint: str,
     internal_context_summary: str,
+    curated_context: dict[str, Any],
 ) -> tuple[str, Any, list[dict]]:
     """단일 섹션 차트: reasoning → tool → generation (병렬 실행 단위)."""
     try:
@@ -183,33 +304,55 @@ async def _process_single_section(
         logger.info(f"    [{section_key}] Reasoning: Type={chart_type}, Tools={len(tool_calls)}")
 
         # 2. Tool Execution
-        tool_outputs = await asyncio.to_thread(_execute_tools, tool_calls)
+        tool_outputs = await asyncio.to_thread(_execute_tools, _dedupe_tool_calls(tool_calls))
 
         # 3. Generation
-        generation_result = await asyncio.to_thread(
-            call_llm_with_prompt, "3_chart_generation", {
-                "section_title": title,
-                "step": step,
-                "viz_hint": viz_hint,
-                "chart_type": chart_type,
-                "internal_context_summary": internal_context_summary,
-                "tool_outputs": json.dumps(tool_outputs, ensure_ascii=False),
-                "color_palette": COLOR_PALETTE,
-            },
+        generated_chart, generated_sources = await asyncio.to_thread(
+            _run_chart_generation,
+            step=step,
+            section_title=title,
+            viz_hint=viz_hint,
+            chart_type=str(chart_type),
+            internal_context_summary=internal_context_summary,
+            tool_outputs=tool_outputs,
         )
 
-        generated_chart = generation_result.get("chart")
-        generated_sources = generation_result.get("sources", [])
-
         if generated_chart:
-            # 소스에 used_in_pages 기본값 설정
-            for src in generated_sources:
-                if not src.get("used_in_pages"):
-                    src["used_in_pages"] = [step]
-            return section_key, generated_chart, generated_sources
-        else:
-            logger.warning(f"    [{section_key}] Chart generation returned empty")
-            return section_key, None, []
+            return section_key, generated_chart, _normalize_sources_for_step(generated_sources, step)
+        logger.warning(f"    [{section_key}] Chart generation returned empty")
+
+        if step <= 4:
+            retry_calls = _build_step_retry_tool_calls(
+                section_title=title,
+                section_key=section_key,
+                section_content=str(section.get("content") or ""),
+                viz_hint=viz_hint,
+                curated_context=curated_context,
+            )
+            retry_calls = _dedupe_tool_calls(retry_calls)
+            if retry_calls:
+                logger.info(
+                    "    [%s] Retry chart generation with enriched data (tools=%d)",
+                    section_key,
+                    len(retry_calls),
+                )
+                retry_outputs = await asyncio.to_thread(_execute_tools, retry_calls)
+                merged_outputs = tool_outputs + retry_outputs
+                retry_chart, retry_sources = await asyncio.to_thread(
+                    _run_chart_generation,
+                    step=step,
+                    section_title=title,
+                    viz_hint=viz_hint,
+                    chart_type=str(chart_type),
+                    internal_context_summary=internal_context_summary,
+                    tool_outputs=merged_outputs,
+                )
+                if retry_chart:
+                    logger.info(f"    [{section_key}] Retry chart generation succeeded")
+                    return section_key, retry_chart, _normalize_sources_for_step(retry_sources, step)
+                logger.warning(f"    [{section_key}] Retry chart generation still empty")
+
+        return section_key, None, []
 
     except Exception as e:
         logger.warning(f"    [{section_key}] Chart failed (non-fatal): {e}")
@@ -269,6 +412,7 @@ async def run_chart_agent_node(state: dict) -> dict:
                 tasks.append(_process_single_section(
                     section_key, section, step, title, viz_hint,
                     internal_context_summary,
+                    curated,
                 ))
 
             # viz_hint 없는 섹션은 None
@@ -354,7 +498,12 @@ def run_hallcheck_chart_node(state: dict) -> dict:
 
             if _count_numeric_points(chart) < 3:
                 charts[section_key] = None
-                _append_gate_item(checklist, section_key, "유효 데이터 포인트가 부족해 차트를 숨겼어요.", risk="중간")
+                _append_gate_item(
+                    checklist,
+                    section_key,
+                    "유효 데이터 포인트가 부족해 차트를 숨겼어요.",
+                    risk="중간",
+                )
                 continue
 
             result = call_llm_with_prompt("3_hallcheck_chart", {

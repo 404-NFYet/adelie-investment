@@ -20,7 +20,9 @@ response_format: json_object
 # Instructions (지침)
 1. **데이터 분석 (Analyze the Data)**:
    - 내부 문맥과 도구 출력값을 결합하여 데이터셋을 구성하십시오.
-   - 정확한 수치가 없으면 추정치를 만들지 말고 `chart: null`을 반환하십시오.
+   - 추정치를 만들지 마십시오.
+   - 내부 문맥(`selected_stocks.change_pct`, `volume_ratio`, `attention_score`) + 도구 조회 수치(기업 공시/거시 지표)를 우선 활용해 섹션에 맞는 차트를 구성하십시오.
+   - 데이터가 있어도 섹션 메시지와 정합성이 낮아 오해 가능성이 크면 `chart: null`을 반환하십시오.
    - **중요**: 도구 출력값(DART, ECOS 등)에 구체적인 금융 수치가 있다면 **반드시 정확하게 반영**하십시오.
 
 2. **Plotly JSON 생성 (Generate Plotly JSON)**:
@@ -57,5 +59,6 @@ response_format: json_object
 # Constraint (제약 사항)
 - 마크다운 코드 블록 없이 **순수 JSON 객체**만 출력하십시오.
 - JSON 문법이 유효해야 합니다.
-- 근거 수치가 부족하면 반드시 `{"chart": null, "sources": []}`를 반환하십시오.
+- 섹션 메시지와 수치 근거가 연결되면 Step 1~4는 가능한 한 차트를 생성하십시오.
+- 데이터가 있더라도 정합성이 낮으면 `{"chart": null, "sources": []}`를 반환하십시오.
 - 추정치 라벨(`(E)`, `Est`)을 사용한 차트는 만들지 마십시오.

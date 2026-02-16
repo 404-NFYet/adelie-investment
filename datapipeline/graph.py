@@ -74,6 +74,8 @@ class BriefingPipelineState(TypedDict):
     # Data Collection 중간 결과
     raw_news: Optional[list]
     raw_reports: Optional[list]
+    crawl_news_status: Optional[dict]
+    crawl_research_status: Optional[dict]
     screened_stocks: Optional[list]
     matched_stocks: Optional[list]
     news_summary: Optional[str]
