@@ -49,10 +49,10 @@ from app.services import get_redis_cache, close_redis_cache
 from app.core.scheduler import start_scheduler, stop_scheduler
 
 # --- 구조화된 로깅 설정 ---
-logging.basicConfig(
-    level=logging.DEBUG if settings.DEBUG else logging.INFO,
-    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
+from app.core.logging import setup_logging
+setup_logging(
+    level="DEBUG" if settings.DEBUG else "INFO",
+    json_format=not settings.DEBUG,
 )
 logger = logging.getLogger("narrative_api")
 

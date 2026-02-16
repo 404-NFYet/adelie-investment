@@ -260,6 +260,11 @@ async def get_trade_history(
     """거래 내역 조회. JWT 인증 필수."""
     user_id = current_user["id"]
     portfolio = await get_or_create_portfolio(db, user_id)
+
+    # 전체 건수 조회 (정확한 total_count)
+    count_stmt = select(func.count()).where(SimulationTrade.portfolio_id == portfolio.id)
+    total_count = (await db.execute(count_stmt)).scalar() or 0
+
     stmt = (
         select(SimulationTrade)
         .where(SimulationTrade.portfolio_id == portfolio.id)
@@ -285,7 +290,7 @@ async def get_trade_history(
             )
             for t in trades
         ],
-        total_count=len(trades),
+        total_count=total_count,
     )
 
 
