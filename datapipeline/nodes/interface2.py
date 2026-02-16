@@ -100,9 +100,9 @@ def _mock_narrative(curated: dict, pp: dict, hc: dict) -> dict:
             },
             "summary": {
                 "purpose": "핵심 요약과 관찰 포인트 제시",
-                "content": "핵심은 재고, 가격, 경쟁력 지표의 순서를 구분해서 보는 거예요.",
+                "content": "### 투자 전에 꼭 확인할 포인트\n- 재고 지표가 연속으로 개선되는지 확인해요.\n- 가격 반등이 단기 반짝인지 지속 신호인지 구분해요.\n- 핵심 고객과 제품 관련 일정 변화를 매일 체크해요.",
                 "bullets": ["재고 지표의 연속 개선 여부", "가격 반등의 지속성", "핵심 고객/제품 경쟁력 이벤트"],
-                "viz_hint": "horizontal_bar - 관찰 지표 우선순위",
+                "viz_hint": None,
             },
         }
     }
@@ -276,6 +276,11 @@ def validate_interface2_node(state: dict) -> dict:
             "historical_case": hc.get("historical_case", hc),
             "narrative": narr.get("narrative", narr),
         })
+
+        # summary는 텍스트 체크리스트 섹션으로 고정 (차트 생성 방지)
+        summary_section = validated.get("narrative", {}).get("summary")
+        if isinstance(summary_section, dict):
+            summary_section["viz_hint"] = None
 
         # Pydantic 검증
         raw_narr = RawNarrative.model_validate(validated)

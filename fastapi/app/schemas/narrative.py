@@ -81,6 +81,7 @@ class HistoricalCaseInfo(BaseModel):
 class NarrativeSection(BaseModel):
     """내러티브 한 섹션 (6페이지 골든케이스)."""
 
+    title: Optional[str] = None
     content: str = ""
     bullets: list[str] = []
     chart: Optional[Any] = None  # Plotly {data, layout} dict
