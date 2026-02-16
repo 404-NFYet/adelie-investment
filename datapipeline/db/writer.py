@@ -156,13 +156,18 @@ async def _save(
                     None,  # catalyst_published_at
                     first_catalyst.get("source") if first_catalyst else None,
                 ))
+            # UNIQUE 제약이 없는 환경에서도 중복 저장을 피하기 위해
+            # ON CONFLICT 대신 NOT EXISTS 패턴을 사용한다.
             await conn.executemany(
                 """INSERT INTO briefing_stocks
                    (briefing_id, stock_code, stock_name, change_rate, volume,
                     selection_reason, created_at, trend_days, trend_type,
                     catalyst, catalyst_url, catalyst_published_at, catalyst_source)
-                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-                   ON CONFLICT (briefing_id, stock_code) DO NOTHING""",
+                   SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13
+                   WHERE NOT EXISTS (
+                       SELECT 1 FROM briefing_stocks
+                       WHERE briefing_id = $1 AND stock_code = $2
+                   )""",
                 rows,
             )
             result["stocks_saved"] = len(rows)

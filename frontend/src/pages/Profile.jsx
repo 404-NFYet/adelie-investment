@@ -1,11 +1,10 @@
 /**
  * Profile.jsx - 프로필/설정 화면
- * 사용자 정보, 난이도 설정, 테마 전환, 로그아웃
+ * 사용자 정보, 난이도 설정, 로그아웃
  */
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUser, DIFFICULTY_LEVELS } from '../contexts';
-import { useTheme } from '../contexts/ThemeContext';
 import { motion } from 'framer-motion';
 import AppHeader from '../components/layout/AppHeader';
 
@@ -75,7 +74,6 @@ const DIFFICULTY_OPTIONS = [
 export default function Profile() {
   const navigate = useNavigate();
   const { user, settings, setDifficulty, logout } = useUser();
-  const { isDarkMode, toggleTheme } = useTheme();
 
   return (
     <div className="min-h-screen bg-background pb-24">
@@ -128,40 +126,11 @@ export default function Profile() {
           </div>
         </motion.div>
 
-        {/* 테마 설정 */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.2 }}
-          className="card"
-        >
-          <h2 className="text-lg font-bold mb-3">테마</h2>
-          <button
-            onClick={toggleTheme}
-            className="w-full flex items-center justify-between py-2"
-          >
-            <span className="text-text-primary text-sm">
-              {isDarkMode ? '다크 모드' : '라이트 모드'}
-            </span>
-            <div
-              className={`w-12 h-6 rounded-full relative transition-colors ${
-                isDarkMode ? 'bg-primary' : 'bg-border'
-              }`}
-            >
-              <div
-                className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
-                  isDarkMode ? 'translate-x-6' : 'translate-x-0.5'
-                }`}
-              />
-            </div>
-          </button>
-        </motion.div>
-
         {/* 로그아웃 버튼 */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.3 }}
+          transition={{ duration: 0.3, delay: 0.2 }}
           className="space-y-3"
         >
           <button
@@ -179,7 +148,7 @@ export default function Profile() {
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.35 }}
+          transition={{ duration: 0.3, delay: 0.25 }}
           className="card"
         >
           <ContactSection />
@@ -189,7 +158,7 @@ export default function Profile() {
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ duration: 0.3, delay: 0.4 }}
+          transition={{ duration: 0.3, delay: 0.3 }}
           className="text-center pt-4"
         >
           <p className="text-text-secondary text-xs">Narrative Investment v0.1.0</p>
