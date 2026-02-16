@@ -86,7 +86,12 @@ response_format: json_object
 2. 해당 차트를 그리기 위해 필요한 구체적인 **데이터 포인트(Data Needs)**를 파악하십시오.
 3. `available_internal_data`를 확인하여 필요한 데이터가 이미 있는지 판단하십시오.
 4. 내부 데이터가 부족하거나 정확한 수치가 없다면, 적절한 **도구(Tool)**를 호출할 계획을 세우십시오.
-5. 결과를 JSON 형식으로 출력하십시오.
+5. 차트 생성 필요성을 먼저 판단하십시오.
+   - 아래 조건이면 `should_generate=false`:
+     - 핵심 수치 근거가 부족함
+     - 텍스트만으로 충분한 섹션(리스크/요약)임
+     - 같은 데이터가 다른 섹션에서 이미 반복됨
+6. 결과를 JSON 형식으로 출력하십시오.
 
 # Output Format (JSON)
 ```json
@@ -94,6 +99,8 @@ response_format: json_object
   "chart_type": "1-4. Line Chart",
   "reasoning": "string",
   "data_needs": "string",
+  "should_generate": true,
+  "skip_reason": "",
   "tool_calls": [
     {
       "tool": "get_corp_financials",
@@ -103,7 +110,9 @@ response_format: json_object
   "internal_data_to_use": ["string"]
 }
 ```
-**주의**: 도구 호출이 필요 없다면 `tool_calls`를 빈 리스트 `[]`로 두십시오.
+**주의**:
+- 도구 호출이 필요 없다면 `tool_calls`를 빈 리스트 `[]`로 두십시오.
+- `should_generate=false`일 때는 `tool_calls=[]`, `chart_type=\"none\"`, `skip_reason`을 반드시 채우십시오.
 
 # User Query / Viz Hint
 {{viz_hint}}

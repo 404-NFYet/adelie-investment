@@ -51,9 +51,35 @@ DEFAULT_SECTION_HEADINGS: dict[int, tuple[str, str]] = {
     5: ("리스크 먼저 보기", "대응 포인트"),
 }
 
+JARGON_REPLACEMENTS: tuple[tuple[str, str], ...] = (
+    (r"\bCAPEX\b", "설비투자"),
+    (r"\bguidance\b", "실적 전망"),
+    (r"\bGUIDANCE\b", "실적 전망"),
+    (r"\b모멘텀\b", "흐름"),
+    (r"\b리레이팅\b", "재평가"),
+    (r"\b밸류체인\b", "공급망"),
+    (r"\b디스카운트\b", "저평가"),
+    (r"\b업사이드\b", "상승 여지"),
+    (r"\b다운사이드\b", "하락 위험"),
+    (r"\b타임 래그\b", "시차"),
+    (r"\bTime Lag\b", "시차"),
+)
+
+
+def _soften_text(text: str) -> str:
+    normalized = str(text or "").replace("\r\n", "\n")
+    if not normalized:
+        return normalized
+    for pattern, replacement in JARGON_REPLACEMENTS:
+        normalized = re.sub(pattern, replacement, normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r"[ \t]+", " ", normalized)
+    normalized = re.sub(r"\n{3,}", "\n\n", normalized)
+    normalized = "\n".join(line.strip() for line in normalized.split("\n"))
+    return normalized.strip()
+
 
 def _trim_title(title: str, step: int) -> str:
-    base = " ".join((title or "").split())
+    base = _soften_text(title)
     if not base or len(base) > 18 or base in LEGACY_STEP_TITLES:
         return DEFAULT_STEP_TITLES.get(step, "핵심 포인트")
     return base
@@ -70,7 +96,7 @@ def _extract_content_lines(content: str) -> list[str]:
 
 
 def _inject_markdown_sections(step: int, content: str) -> str:
-    text = (content or "").strip()
+    text = _soften_text(content)
     if re.search(r"^\s*###\s+", text, flags=re.MULTILINE):
         return text
 
@@ -93,13 +119,14 @@ def _normalize_summary_content(content: str, bullets: list[str]) -> str:
     collected: list[str] = []
     for item in bullets or []:
         if isinstance(item, str):
-            cleaned = item.strip()
+            cleaned = _soften_text(item)
             if cleaned and cleaned not in collected:
                 collected.append(cleaned)
 
     for line in _extract_content_lines(content):
-        if line not in collected:
-            collected.append(line)
+        softened = _soften_text(line)
+        if softened not in collected:
+            collected.append(softened)
         if len(collected) >= 3:
             break
 
@@ -136,6 +163,8 @@ def _normalize_pages(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         content = str(current.get("content", "") or "").strip()
         bullets = current.get("bullets", [])
         bullets = bullets if isinstance(bullets, list) else []
+        bullets = [_soften_text(str(item)) for item in bullets if str(item).strip()]
+        current["bullets"] = bullets
 
         current["title"] = _trim_title(str(current.get("title", "") or ""), step)
 
@@ -485,8 +514,8 @@ def run_tone_final_node(state: dict) -> dict:
 
         return {
             "pages": normalized_pages,
-            "theme": briefing.get("theme", validated_theme),
-            "one_liner": briefing.get("one_liner", validated_one_liner),
+            "theme": _soften_text(briefing.get("theme", validated_theme)),
+            "one_liner": _soften_text(briefing.get("one_liner", validated_one_liner)),
             "metrics": _update_metrics(state, "run_tone_final", time.time() - node_start),
         }
 
