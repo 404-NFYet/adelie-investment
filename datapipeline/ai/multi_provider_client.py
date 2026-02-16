@@ -12,23 +12,25 @@ from typing import Any, Optional
 
 from openai import OpenAI
 
-from ..config import OPENAI_API_KEY, PERPLEXITY_API_KEY, ANTHROPIC_API_KEY
+from ..config import OPENAI_API_KEY, PERPLEXITY_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY
 
 LOGGER = logging.getLogger(__name__)
 
 
 class MultiProviderClient:
-    """OpenAI, Perplexity, Anthropic을 통합 관리하는 AI 클라이언트."""
+    """OpenAI, Perplexity, Anthropic, Google을 통합 관리하는 AI 클라이언트."""
 
     def __init__(
         self,
         openai_key: str = "",
         perplexity_key: str = "",
         anthropic_key: str = "",
+        google_key: str = "",
     ) -> None:
         openai_key = openai_key or OPENAI_API_KEY
         perplexity_key = perplexity_key or PERPLEXITY_API_KEY
         anthropic_key = anthropic_key or ANTHROPIC_API_KEY
+        google_key = google_key or GOOGLE_API_KEY
 
         self.providers: dict[str, Any] = {}
 
@@ -56,6 +58,16 @@ class MultiProviderClient:
             except ImportError:
                 LOGGER.warning("anthropic 패키지 미설치 - pip install anthropic")
 
+        # Google Gemini (선택적)
+        if google_key:
+            try:
+                from google import genai
+                self._google_client = genai.Client(api_key=google_key)
+                self.providers["google"] = self._google_client
+                LOGGER.info("Google Gemini provider initialized")
+            except ImportError:
+                LOGGER.warning("google-genai 패키지 미설치 - pip install google-genai")
+
     def chat_completion(
         self,
         provider: str,
@@ -69,6 +81,10 @@ class MultiProviderClient:
         **kwargs: Any,
     ) -> dict[str, Any]:
         """프로바이더별 chat completion 호출 (최대 3회 재시도)."""
+        # "gemini"는 "google"의 별칭
+        if provider == "gemini":
+            provider = "google"
+
         if provider not in self.providers:
             raise ValueError(
                 f"프로바이더 '{provider}'가 초기화되지 않았습니다. "
@@ -88,6 +104,8 @@ class MultiProviderClient:
             try:
                 if provider == "anthropic":
                     result = self._call_anthropic(model, messages, temperature, max_tokens)
+                elif provider == "google":
+                    result = self._call_google(model, messages, temperature, max_tokens)
                 else:
                     result = self._call_openai_compatible(
                         provider, model, messages, thinking, thinking_effort,
@@ -214,6 +232,90 @@ class MultiProviderClient:
             "usage": {
                 "prompt_tokens": getattr(response.usage, 'input_tokens', 0),
                 "completion_tokens": getattr(response.usage, 'output_tokens', 0),
+            },
+        }
+
+    def _call_google(
+        self, model: str, messages: list[dict], temperature: float, max_tokens: int,
+    ) -> dict[str, Any]:
+        """Google Gemini API 호출.
+
+        OpenAI 메시지 형식을 Gemini 형식으로 변환한다:
+        - system → system_instruction 파라미터
+        - user → role: "user"
+        - assistant → role: "model"
+        """
+        from google.genai import types
+
+        client = self._google_client
+
+        # system 메시지 분리 + 나머지 메시지 role 변환
+        system_parts: list[str] = []
+        contents: list[types.Content] = []
+
+        for msg in messages:
+            role = msg["role"]
+            text = msg["content"]
+
+            if role == "system":
+                system_parts.append(text)
+            elif role == "assistant":
+                # Gemini는 assistant 대신 "model" role 사용
+                contents.append(types.Content(
+                    role="model",
+                    parts=[types.Part.from_text(text=text)],
+                ))
+            else:
+                # user (및 기타)
+                contents.append(types.Content(
+                    role="user",
+                    parts=[types.Part.from_text(text=text)],
+                ))
+
+        # 메시지가 비어 있으면 기본 user 메시지 추가
+        if not contents:
+            contents.append(types.Content(
+                role="user",
+                parts=[types.Part.from_text(text="위 지시사항을 수행해주세요.")],
+            ))
+
+        # GenerateContentConfig 구성
+        config = types.GenerateContentConfig(
+            temperature=temperature,
+            max_output_tokens=max_tokens,
+        )
+
+        # system instruction 설정
+        if system_parts:
+            config.system_instruction = "\n".join(system_parts)
+
+        response = client.models.generate_content(
+            model=model,
+            contents=contents,
+            config=config,
+        )
+
+        # 응답 텍스트 추출
+        content_text = response.text or ""
+
+        # 사용량 정보 추출
+        usage = getattr(response, "usage_metadata", None)
+        prompt_tokens = getattr(usage, "prompt_token_count", 0) if usage else 0
+        completion_tokens = getattr(usage, "candidates_token_count", 0) if usage else 0
+
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "content": content_text,
+                        "role": "assistant",
+                    }
+                }
+            ],
+            "model": model,
+            "usage": {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
             },
         }
 

@@ -48,7 +48,7 @@ class PromptSpec:
     """파싱된 프롬프트 템플릿 + 메타데이터."""
 
     body: str
-    provider: str = "openai"          # openai, perplexity, anthropic
+    provider: str = "openai"          # openai, perplexity, anthropic, google, gemini
     model: str = "gpt-4o-mini"        # 실제 모델명
     temperature: float = 0.7
     response_format: str | None = None  # "json_object" or None
@@ -173,6 +173,11 @@ def load_prompt(
         sys_msg = _substitute_vars(sys_msg, str_kwargs)
         meta["system_message"] = sys_msg
 
+    # 프로바이더 별칭 정규화 (gemini → google)
+    _PROVIDER_ALIASES = {"gemini": "google"}
+    raw_provider = meta.get("provider", "openai")
+    provider = _PROVIDER_ALIASES.get(raw_provider, raw_provider)
+
     # frontmatter에서 값 추출
     response_format = meta.get("response_format")
     try:
@@ -187,7 +192,7 @@ def load_prompt(
 
     return PromptSpec(
         body=body.strip(),
-        provider=meta.get("provider", "openai"),
+        provider=provider,
         model=meta.get("model", "gpt-4o-mini"),
         temperature=temperature,
         response_format=response_format if response_format else None,
