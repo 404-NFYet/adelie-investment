@@ -27,9 +27,7 @@ class Settings(BaseSettings):
     # JWT (반드시 .env에서 설정 필요)
     JWT_SECRET: str = "narrative-invest-jwt-secret-change-in-production"
     JWT_ALGORITHM: str = "HS256"
-    JWT_EXPIRE_MINUTES: int = 30
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(60, validation_alias="ACCESS_TOKEN_EXPIRE_MINUTES")
-    JWT_ACCESS_EXPIRATION: int = Field(0, validation_alias="JWT_ACCESS_EXPIRATION")  # ms
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     JWT_REFRESH_EXPIRATION: int = Field(0, validation_alias="JWT_REFRESH_EXPIRATION")  # ms
 
     # Registration guardrails
@@ -49,7 +47,7 @@ class Settings(BaseSettings):
     TARGET_SCENARIO_COUNT: int = 3
 
     # CORS
-    CORS_ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
+    CORS_ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:3001,http://localhost:5173"
 
     # Application
     DEBUG: bool = False
