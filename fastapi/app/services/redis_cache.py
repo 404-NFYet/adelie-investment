@@ -15,6 +15,7 @@ import logging
 from typing import Any, Optional
 
 import redis.asyncio as redis
+from redis.exceptions import ConnectionError as RedisConnectionError, RedisError, TimeoutError as RedisTimeoutError
 
 from ..core.config import settings
 
@@ -47,7 +48,8 @@ class RedisCacheService:
             self._client = redis.Redis(connection_pool=self._pool)
             await self._client.ping()
             logger.info(f"Redis connected: {settings.REDIS_URL}")
-        except Exception as e:
+        except (RedisConnectionError, RedisTimeoutError, RedisError) as e:
+            # Redis 연결 실패 시 캐시 없이 동작
             logger.warning(f"Redis connection failed: {e}")
             self._client = None
 
@@ -76,7 +78,7 @@ class RedisCacheService:
         key = f"term:{difficulty}:{term.lower()}"
         try:
             return await self._client.get(key)
-        except Exception as e:
+        except (RedisConnectionError, RedisTimeoutError, RedisError) as e:
             logger.warning(f"Redis get_term_explanation error: {e}")
             return None
 
@@ -90,7 +92,7 @@ class RedisCacheService:
         try:
             await self._client.setex(key, TTL_TERM_EXPLANATION, explanation)
             return True
-        except Exception as e:
+        except (RedisConnectionError, RedisTimeoutError, RedisError) as e:
             logger.warning(f"Redis set_term_explanation error: {e}")
             return False
 
@@ -104,7 +106,8 @@ class RedisCacheService:
         try:
             data = await self._client.get(key)
             return json.loads(data) if data else None
-        except Exception as e:
+        except (RedisConnectionError, RedisTimeoutError, RedisError, json.JSONDecodeError) as e:
+            # Redis 오류 또는 캐시된 JSON 파싱 실패
             logger.warning(f"Redis get_glossary error: {e}")
             return None
 
@@ -116,7 +119,8 @@ class RedisCacheService:
         try:
             await self._client.setex(key, TTL_GLOSSARY, json.dumps(data, ensure_ascii=False))
             return True
-        except Exception as e:
+        except (RedisConnectionError, RedisTimeoutError, RedisError, TypeError) as e:
+            # Redis 오류 또는 JSON 직렬화 실패 (TypeError)
             logger.warning(f"Redis set_glossary error: {e}")
             return False
 
@@ -128,7 +132,8 @@ class RedisCacheService:
         try:
             data = await self._client.get(key)
             return json.loads(data) if data else None
-        except Exception as e:
+        except (RedisConnectionError, RedisTimeoutError, RedisError, json.JSONDecodeError) as e:
+            # Redis 오류 또는 캐시된 JSON 파싱 실패
             logger.warning(f"Redis get_glossary_by_term error: {e}")
             return None
 
@@ -140,7 +145,8 @@ class RedisCacheService:
         try:
             await self._client.setex(key, TTL_GLOSSARY, json.dumps(data, ensure_ascii=False))
             return True
-        except Exception as e:
+        except (RedisConnectionError, RedisTimeoutError, RedisError, TypeError) as e:
+            # Redis 오류 또는 JSON 직렬화 실패 (TypeError)
             logger.warning(f"Redis set_glossary_by_term error: {e}")
             return False
 
@@ -154,7 +160,8 @@ class RedisCacheService:
         try:
             data = await self._client.get(key)
             return json.loads(data) if data else None
-        except Exception as e:
+        except (RedisConnectionError, RedisTimeoutError, RedisError, json.JSONDecodeError) as e:
+            # Redis 오류 또는 캐시된 JSON 파싱 실패
             logger.warning(f"Redis get_user_settings error: {e}")
             return None
 
@@ -166,7 +173,8 @@ class RedisCacheService:
         try:
             await self._client.setex(key, TTL_USER_SETTINGS, json.dumps(data, ensure_ascii=False))
             return True
-        except Exception as e:
+        except (RedisConnectionError, RedisTimeoutError, RedisError, TypeError) as e:
+            # Redis 오류 또는 JSON 직렬화 실패 (TypeError)
             logger.warning(f"Redis set_user_settings error: {e}")
             return False
 
@@ -178,7 +186,7 @@ class RedisCacheService:
         try:
             await self._client.delete(key)
             return True
-        except Exception as e:
+        except (RedisConnectionError, RedisTimeoutError, RedisError) as e:
             logger.warning(f"Redis invalidate_user_settings error: {e}")
             return False
 
@@ -191,7 +199,7 @@ class RedisCacheService:
         key = f"chat_messages:{session_id}"
         try:
             return await self._client.get(key)
-        except Exception as e:
+        except (RedisConnectionError, RedisTimeoutError, RedisError) as e:
             logger.warning(f"Redis get_chat_messages error: {e}")
             return None
 
@@ -203,7 +211,7 @@ class RedisCacheService:
         try:
             await self._client.setex(key, ttl, data)
             return True
-        except Exception as e:
+        except (RedisConnectionError, RedisTimeoutError, RedisError) as e:
             logger.warning(f"Redis set_chat_messages error: {e}")
             return False
 
@@ -215,7 +223,7 @@ class RedisCacheService:
         try:
             await self._client.delete(key)
             return True
-        except Exception as e:
+        except (RedisConnectionError, RedisTimeoutError, RedisError) as e:
             logger.warning(f"Redis invalidate_session_cache error: {e}")
             return False
 
@@ -248,7 +256,7 @@ class RedisCacheService:
                 deleted += result
 
             logger.info(f"파이프라인 캐시 무효화 완료: {deleted}개 키 삭제")
-        except Exception as e:
+        except (RedisConnectionError, RedisTimeoutError, RedisError) as e:
             logger.warning(f"Redis invalidate_pipeline_caches error: {e}")
 
         return deleted
@@ -261,7 +269,7 @@ class RedisCacheService:
             return None
         try:
             return await self._client.get(key)
-        except Exception as e:
+        except (RedisConnectionError, RedisTimeoutError, RedisError) as e:
             logger.warning(f"Redis get error: {e}")
             return None
 
@@ -272,7 +280,7 @@ class RedisCacheService:
         try:
             await self._client.setex(key, ttl, value)
             return True
-        except Exception as e:
+        except (RedisConnectionError, RedisTimeoutError, RedisError) as e:
             logger.warning(f"Redis set error: {e}")
             return False
 
@@ -283,7 +291,7 @@ class RedisCacheService:
         try:
             await self._client.delete(key)
             return True
-        except Exception as e:
+        except (RedisConnectionError, RedisTimeoutError, RedisError) as e:
             logger.warning(f"Redis delete error: {e}")
             return False
 

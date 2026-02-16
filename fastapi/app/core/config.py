@@ -24,8 +24,8 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
 
-    # JWT (반드시 .env에서 설정 필요)
-    JWT_SECRET: str = "narrative-invest-jwt-secret-change-in-production"
+    # JWT (반드시 .env에서 설정 필요 — 기본값 없음, 미설정 시 부팅 차단)
+    JWT_SECRET: str
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     JWT_REFRESH_EXPIRATION: int = Field(0, validation_alias="JWT_REFRESH_EXPIRATION")  # ms
