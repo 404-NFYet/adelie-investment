@@ -1,66 +1,5 @@
-function toFiniteNumber(value) {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-  if (typeof value === 'string') {
-    const parsed = Number(value.replace(/,/g, ''));
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function normalizeXYTrace(trace) {
-  const sourceY = Array.isArray(trace?.y) ? trace.y : [];
-  const sourceX = Array.isArray(trace?.x) ? trace.x : [];
-
-  if (!sourceY.length) return null;
-
-  const points = [];
-  for (let idx = 0; idx < sourceY.length; idx += 1) {
-    const y = toFiniteNumber(sourceY[idx]);
-    if (y === null) continue;
-    points.push({ x: sourceX[idx] ?? `${idx + 1}`, y });
-  }
-
-  if (!points.length) return null;
-
-  return {
-    ...trace,
-    x: points.map((p) => p.x),
-    y: points.map((p) => p.y),
-  };
-}
-
-function normalizePieTrace(trace) {
-  const values = Array.isArray(trace?.values) ? trace.values : [];
-  const labels = Array.isArray(trace?.labels) ? trace.labels : [];
-
-  const points = [];
-  for (let idx = 0; idx < values.length; idx += 1) {
-    const value = toFiniteNumber(values[idx]);
-    if (value === null) continue;
-    points.push({ label: labels[idx] ?? `${idx + 1}`, value });
-  }
-
-  if (!points.length) return null;
-
-  return {
-    ...trace,
-    labels: points.map((p) => p.label),
-    values: points.map((p) => p.value),
-  };
-}
-
-function normalizeIncomingTraces(data) {
-  if (!Array.isArray(data)) return [];
-
-  return data
-    .map((trace) => {
-      if (!trace || typeof trace !== 'object') return null;
-      if (trace.type === 'pie') return normalizePieTrace(trace);
-      return normalizeXYTrace(trace);
-    })
-    .filter(Boolean);
-}
+import { normalizeLayout } from './plotly/normalizeLayout';
+import { normalizeTraces, toFiniteNumber } from './plotly/normalizeTraces';
 
 function convertDataPointsToTrace(chart) {
   const type = (chart?.chart_type || '').toLowerCase();
@@ -132,57 +71,20 @@ function fallbackTrace(stepKey) {
   }];
 }
 
-function buildBaseLayout(layout = {}, { hasPie = false } = {}) {
-  const base = {
-    autosize: true,
-    paper_bgcolor: 'rgba(0,0,0,0)',
-    plot_bgcolor: 'rgba(0,0,0,0)',
-    margin: hasPie
-      ? { l: 8, r: 8, t: 22, b: 8 }
-      : { l: 36, r: 16, t: 24, b: 30 },
-    font: {
-      family: 'IBM Plex Sans KR, Inter, sans-serif',
-      size: 11,
-      color: '#1F2937',
-    },
-    xaxis: hasPie
-      ? undefined
-      : {
-          showgrid: false,
-          zeroline: false,
-          tickfont: { size: 10, color: '#6B7280' },
-        },
-    yaxis: hasPie
-      ? undefined
-      : {
-          showgrid: true,
-          gridcolor: 'rgba(107,114,128,0.16)',
-          zeroline: false,
-          tickfont: { size: 10, color: '#6B7280' },
-        },
-    legend: hasPie
-      ? { orientation: 'h', y: -0.12, x: 0.5, xanchor: 'center' }
-      : { orientation: 'h', y: -0.2, x: 0.5, xanchor: 'center' },
-    showlegend: hasPie,
-  };
-
-  return {
-    ...base,
-    ...layout,
-    title: undefined,
-  };
-}
-
 export function buildNarrativePlot(stepKey, chart) {
-  const traces = normalizeIncomingTraces(chart?.data);
-  const resolvedTraces = traces.length > 0 ? traces : convertDataPointsToTrace(chart);
-  const finalTraces = resolvedTraces.length > 0 ? resolvedTraces : fallbackTrace(stepKey);
+  const preferredTraces = normalizeTraces(chart?.data);
+  const convertedTraces = normalizeTraces(convertDataPointsToTrace(chart));
+  const fallbackTraces = normalizeTraces(fallbackTrace(stepKey));
+
+  const finalTraces = preferredTraces.length > 0
+    ? preferredTraces
+    : (convertedTraces.length > 0 ? convertedTraces : fallbackTraces);
 
   const hasPie = finalTraces.some((trace) => trace.type === 'pie');
 
   return {
     data: finalTraces,
-    layout: buildBaseLayout(chart?.layout || {}, { hasPie }),
+    layout: normalizeLayout(chart?.layout || {}, { hasPie, clearTitle: true }),
     title: chart?.title || chart?.layout?.title || '',
     annotation: chart?.annotation || '',
   };

@@ -176,8 +176,8 @@ export default function Portfolio() {
       <div className="min-h-screen bg-background pb-24">
         <header className="h-[45px] border-b border-border px-3 flex items-center">
           <div className="flex items-center gap-2">
-            <img src="/images/logo-icon.png" alt="Adelie" className="w-5 h-5" />
-            <span className="text-[15px] font-bold">Adelie</span>
+            <img src="/images/penguin-3d.png" alt="ADELIE" className="h-6 w-6 object-contain" />
+            <span className="text-[15px] font-bold tracking-tight">ADELIE</span>
           </div>
         </header>
         <main className="container py-6">
@@ -198,11 +198,11 @@ export default function Portfolio() {
   const isNegative = displayPortfolio.total_profit_loss < 0;
 
   return (
-    <div className="min-h-screen bg-[#f5f5f5] pb-24">
+    <div className="min-h-screen bg-background pb-24">
       <header className="h-[45px] bg-white border-b border-border px-3 flex items-center">
         <div className="flex items-center gap-2">
-          <img src="/images/logo-icon.png" alt="Adelie" className="w-5 h-5" />
-          <span className="text-[15px] font-bold">Adelie</span>
+          <img src="/images/penguin-3d.png" alt="ADELIE" className="h-6 w-6 object-contain" />
+          <span className="text-[15px] font-bold tracking-tight">ADELIE</span>
         </div>
       </header>
       <main className="container py-2 space-y-2">
