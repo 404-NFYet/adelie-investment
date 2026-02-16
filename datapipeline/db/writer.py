@@ -242,7 +242,8 @@ async def _save(
 def _build_top_keywords(curated: dict, final: dict) -> dict:
     """daily_briefings.top_keywords JSONB 구성 (keywords API 호환)."""
     keywords_list = []
-    theme = curated.get("theme", "")
+    theme = final.get("theme") or curated.get("theme", "")
+    one_liner = final.get("one_liner") or curated.get("one_liner", "")
     if theme:
         selected_stocks = curated.get("selected_stocks", [])
         concept = curated.get("concept", {})
@@ -264,7 +265,7 @@ def _build_top_keywords(curated: dict, final: dict) -> dict:
 
         keywords_list.append({
             "title": theme,
-            "description": curated.get("one_liner", ""),
+            "description": one_liner,
             "category": "ATTENTION",
             "sector": concept.get("name", ""),
             "stocks": stocks,
@@ -283,13 +284,15 @@ def _build_case_keywords(curated: dict, narrative: dict, final: dict) -> dict:
     hist_case = narrative.get("historical_case", {})
     narrative_sections = narrative.get("narrative", {})
     concept = narrative.get("concept", curated.get("concept", {}))
+    final_theme = final.get("theme") or curated.get("theme", "")
+    final_one_liner = final.get("one_liner") or curated.get("one_liner", "")
     pages = final.get("pages", [])
     sources = final.get("sources", [])
     checklist = final.get("hallucination_checklist", [])
     selected_stocks = curated.get("selected_stocks", [])
 
     # 키워드 리스트 (story API: kw_data.get("keywords", []))
-    kw_set = {curated.get("theme", ""), concept.get("name", "")}
+    kw_set = {final_theme, concept.get("name", "")}
     kw_set |= {s.get("name", "") for s in selected_stocks}
     kw_set.discard("")
 
@@ -299,10 +302,14 @@ def _build_case_keywords(curated: dict, narrative: dict, final: dict) -> dict:
     for i, key in enumerate(KEYS):
         section = narrative_sections.get(key, {})
         page = pages[i] if i < len(pages) else {}
+        page_title = page.get("title", "")
+        page_content = page.get("content", "")
+        page_bullets = page.get("bullets", [])
         merged_narrative[key] = {
-            "content": section.get("content", page.get("content", "")),
-            "bullets": section.get("bullets", page.get("bullets", [])),
-            "chart": page.get("chart"),
+            "title": page_title,
+            "content": page_content or section.get("content", ""),
+            "bullets": page_bullets or section.get("bullets", []),
+            "chart": None if key == "summary" else page.get("chart"),
             "glossary": page.get("glossary", []),
         }
 
@@ -311,20 +318,20 @@ def _build_case_keywords(curated: dict, narrative: dict, final: dict) -> dict:
         "sync_rate": 75,
         "past_label": hist_case.get("period", "과거"),
         "present_label": "2026",
-        "title": hist_case.get("title", curated.get("theme", "")),
-        "current_summary": curated.get("one_liner", ""),
+        "title": hist_case.get("title", final_theme),
+        "current_summary": final_one_liner,
         "points": [{
             "aspect": "핵심 이슈",
             "past": hist_case.get("summary", ""),
-            "present": curated.get("one_liner", ""),
+            "present": final_one_liner,
             "similarity": "부분 유사",
         }],
         "lessons": [hist_case.get("lesson", "")] if hist_case.get("lesson") else [],
     }
 
     return {
-        "theme": curated.get("theme", ""),
-        "one_liner": curated.get("one_liner", ""),
+        "theme": final_theme,
+        "one_liner": final_one_liner,
         "generated_at": final.get("generated_at", ""),
         "keywords": sorted(kw_set),
         "concept": concept,

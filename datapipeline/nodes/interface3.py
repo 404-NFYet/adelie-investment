@@ -33,6 +33,123 @@ def _update_metrics(state: dict, node_name: str, elapsed: float, status: str = "
     return metrics
 
 
+DEFAULT_STEP_TITLES: dict[int, str] = {
+    1: "왜 지금 중요할까",
+    2: "핵심 개념 한눈에",
+    3: "과거 패턴 되짚기",
+    4: "지금 시장에 대입",
+    5: "놓치면 위험한 점",
+    6: "투자 전 체크포인트",
+}
+LEGACY_STEP_TITLES = {"현재 배경", "금융 개념 설명", "과거 비슷한 사례", "현재 상황에 적용", "주의해야 할 점", "최종 정리"}
+
+DEFAULT_SECTION_HEADINGS: dict[int, tuple[str, str]] = {
+    1: ("지금 무슨 일이야?", "왜 중요할까?"),
+    2: ("개념 먼저 잡기", "지금 왜 필요할까?"),
+    3: ("과거에선 어땠을까?", "이번에 주는 힌트"),
+    4: ("닮은 점", "다른 점"),
+    5: ("리스크 먼저 보기", "대응 포인트"),
+}
+
+
+def _trim_title(title: str, step: int) -> str:
+    base = " ".join((title or "").split())
+    if not base or len(base) > 18 or base in LEGACY_STEP_TITLES:
+        return DEFAULT_STEP_TITLES.get(step, "핵심 포인트")
+    return base
+
+
+def _extract_content_lines(content: str) -> list[str]:
+    text = (content or "").replace("\r\n", "\n")
+    lines: list[str] = []
+    for line in text.split("\n"):
+        cleaned = re.sub(r"^\s*(#{1,6}\s*|[-*]\s*|\d+[.)]\s*)", "", line).strip()
+        if cleaned:
+            lines.append(cleaned)
+    return lines
+
+
+def _inject_markdown_sections(step: int, content: str) -> str:
+    text = (content or "").strip()
+    if re.search(r"^\s*###\s+", text, flags=re.MULTILINE):
+        return text
+
+    heading1, heading2 = DEFAULT_SECTION_HEADINGS.get(step, ("핵심 포인트", "체크 포인트"))
+    if not text:
+        text = "관련 내용을 정리 중이에요."
+
+    lines = _extract_content_lines(text)
+    if len(lines) >= 2:
+        first = lines[0]
+        second = " ".join(lines[1:3])
+    else:
+        first = text
+        second = "핵심 흐름을 짧게 나눠서 보면 더 쉽게 이해할 수 있어요."
+
+    return f"### {heading1}\n{first}\n\n### {heading2}\n{second}"
+
+
+def _normalize_summary_content(content: str, bullets: list[str]) -> str:
+    collected: list[str] = []
+    for item in bullets or []:
+        if isinstance(item, str):
+            cleaned = item.strip()
+            if cleaned and cleaned not in collected:
+                collected.append(cleaned)
+
+    for line in _extract_content_lines(content):
+        if line not in collected:
+            collected.append(line)
+        if len(collected) >= 3:
+            break
+
+    defaults = [
+        "핵심 지표가 같은 방향으로 움직이는지 확인해요.",
+        "실적 가이던스 변화가 실제 수치로 이어지는지 체크해요.",
+        "일정 지연이나 규제 변화 같은 변수 뉴스를 매일 확인해요.",
+    ]
+    for item in defaults:
+        if len(collected) >= 3:
+            break
+        if item not in collected:
+            collected.append(item)
+
+    checklist = "\n".join(f"- {item}" for item in collected[:3])
+    return f"### 투자 전에 꼭 확인할 포인트\n{checklist}"
+
+
+def _normalize_pages(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not isinstance(pages, list):
+        return []
+
+    normalized: list[dict[str, Any]] = []
+
+    for page in pages:
+        if not isinstance(page, dict):
+            continue
+        current = dict(page)
+        raw_step = current.get("step", 0)
+        try:
+            step = int(raw_step or 0)
+        except (TypeError, ValueError):
+            step = 0
+        content = str(current.get("content", "") or "").strip()
+        bullets = current.get("bullets", [])
+        bullets = bullets if isinstance(bullets, list) else []
+
+        current["title"] = _trim_title(str(current.get("title", "") or ""), step)
+
+        if step == 6:
+            current["content"] = _normalize_summary_content(content, bullets)
+            current["chart"] = None
+        else:
+            current["content"] = _inject_markdown_sections(step, content)
+
+        normalized.append(current)
+
+    return normalized
+
+
 # ────────────────────────────────────────────
 # 1. run_theme — refined theme + one_liner
 # ────────────────────────────────────────────
@@ -362,11 +479,12 @@ def run_tone_final_node(state: dict) -> dict:
             })
 
         briefing = result.get("interface_3_final_briefing", {})
-        page_count = len(briefing.get("pages", []))
+        normalized_pages = _normalize_pages(briefing.get("pages", []))
+        page_count = len(normalized_pages)
         logger.info("  run_tone_final done: %d pages merged", page_count)
 
         return {
-            "pages": briefing.get("pages", []),
+            "pages": normalized_pages,
             "theme": briefing.get("theme", validated_theme),
             "one_liner": briefing.get("one_liner", validated_one_liner),
             "metrics": _update_metrics(state, "run_tone_final", time.time() - node_start),
@@ -521,6 +639,9 @@ def assemble_output_node(state: dict) -> dict:
         # charts를 pages에 병합
         for page in pages:
             step = page["step"]
+            if step == 6:
+                page["chart"] = None
+                continue
             section_key = next(
                 (sk for s, _, sk in SECTION_MAP if s == step), None
             )

@@ -57,7 +57,7 @@ const STEP_CONFIGS = [
     tag: '#최종 정리',
     title: '핵심만 짧게 정리합니다',
     template: 'content5',
-    showChart: true,
+    showChart: false,
   },
 ];
 
@@ -92,6 +92,32 @@ function getPlainLines(content) {
     .split('\n')
     .map((line) => line.replace(/^#{1,6}\s*/, '').replace(/^[-*]\s*/, '').trim())
     .filter(Boolean);
+}
+
+function getChecklistItems(content, bullets) {
+  const items = [];
+  const pushItem = (value) => {
+    const cleaned = String(value || '').trim();
+    if (!cleaned) return;
+    if (!items.includes(cleaned)) {
+      items.push(cleaned);
+    }
+  };
+
+  if (Array.isArray(bullets)) {
+    bullets.forEach(pushItem);
+  }
+
+  String(content || '')
+    .split('\n')
+    .forEach((line) => {
+      const match = line.match(/^\s*(?:[-*]|\d+[.)])\s+(.+)$/);
+      if (match?.[1]) {
+        pushItem(match[1]);
+      }
+    });
+
+  return items.slice(0, 5);
 }
 
 function MarkdownBody({ content, onTermClick, className = '' }) {
@@ -287,11 +313,12 @@ function NarrativeRewardScreen({ reward, onClose, caseId }) {
   );
 }
 
-function ContentTemplate({ stepConfig, stepData, oneLiner, onTermClick }) {
+function ContentTemplate({ stepConfig, stepData, stepTitle, oneLiner, onTermClick }) {
   const contentLines = getPlainLines(stepData?.content || '');
   const cautionItems = (stepData?.bullets && stepData.bullets.length > 0)
     ? stepData.bullets
     : contentLines.slice(0, 5);
+  const summaryChecklist = getChecklistItems(stepData?.content, stepData?.bullets);
 
   if (stepConfig.template === 'content4') {
     return (
@@ -301,7 +328,7 @@ function ContentTemplate({ stepConfig, stepData, oneLiner, onTermClick }) {
             {stepConfig.tag}
           </span>
           <h2 className="line-limit-2 mt-3 text-[clamp(1.45rem,5.6vw,2rem)] font-extrabold leading-[1.2] text-black">
-            {stepConfig.title}
+            {stepTitle}
           </h2>
 
           <ul className="mt-5 space-y-3">
@@ -333,7 +360,7 @@ function ContentTemplate({ stepConfig, stepData, oneLiner, onTermClick }) {
             {stepConfig.tag}
           </span>
           <h2 className="line-limit-2 mt-3 text-[clamp(1.75rem,7vw,2.55rem)] font-black leading-[1.15] tracking-[-0.02em] text-black">
-            {stepConfig.title}
+            {stepTitle}
           </h2>
           {oneLiner ? (
             <p className="mt-3 text-sm leading-relaxed text-text-secondary">{oneLiner}</p>
@@ -363,7 +390,7 @@ function ContentTemplate({ stepConfig, stepData, oneLiner, onTermClick }) {
             {stepConfig.tag}
           </span>
           <h2 className="line-limit-2 mt-3 text-[clamp(1.55rem,6vw,2.1rem)] font-extrabold leading-[1.2] text-black">
-            {stepConfig.title}
+            {stepTitle}
           </h2>
 
           <MarkdownBody
@@ -390,7 +417,7 @@ function ContentTemplate({ stepConfig, stepData, oneLiner, onTermClick }) {
             {stepConfig.tag}
           </span>
           <h2 className="line-limit-2 mt-3 text-[clamp(1.5rem,5.9vw,2.05rem)] font-extrabold leading-[1.2] text-black">
-            {stepConfig.title}
+            {stepTitle}
           </h2>
 
           <MarkdownBody
@@ -417,19 +444,21 @@ function ContentTemplate({ stepConfig, stepData, oneLiner, onTermClick }) {
             {stepConfig.tag}
           </span>
           <h2 className="line-limit-2 mt-3 text-[clamp(1.55rem,6vw,2.1rem)] font-extrabold leading-[1.2] text-black">
-            {stepConfig.title}
+            {stepTitle}
           </h2>
 
-          {stepConfig.showChart ? (
-            <div className="mt-5">
-              <NarrativeChartBlock stepKey={stepConfig.key} chart={stepData?.chart} />
-            </div>
-          ) : null}
-
-          {contentLines[0] ? (
-            <p className="mt-4 rounded-xl bg-[#fff7ed] px-4 py-3 text-sm font-medium leading-relaxed text-[#b45309]">
-              {contentLines[0]}
-            </p>
+          <h3 className="mt-4 text-sm font-semibold text-[#b45309]">투자 전에 꼭 확인할 포인트</h3>
+          {summaryChecklist.length > 0 ? (
+            <ul className="mt-2 space-y-2">
+              {summaryChecklist.map((item, idx) => (
+                <li key={`${item}-${idx}`} className="rounded-xl bg-[#fff7ed] px-4 py-3 text-sm leading-relaxed text-[#b45309]">
+                  <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-xs font-semibold text-primary">
+                    {idx + 1}
+                  </span>
+                  {item}
+                </li>
+              ))}
+            </ul>
           ) : null}
 
           <MarkdownBody
@@ -492,6 +521,7 @@ export default function Narrative() {
   const totalSteps = STEP_CONFIGS.length;
   const stepConfig = STEP_CONFIGS[currentStep];
   const stepData = data?.steps?.[stepConfig.key];
+  const stepTitle = stepData?.title || stepConfig.title;
   const isLastStep = currentStep === totalSteps - 1;
 
   const goToStep = (nextIndex) => {
@@ -624,6 +654,7 @@ export default function Narrative() {
               <ContentTemplate
                 stepConfig={stepConfig}
                 stepData={stepData}
+                stepTitle={stepTitle}
                 oneLiner={data.one_liner}
                 onTermClick={openTermSheet}
               />
