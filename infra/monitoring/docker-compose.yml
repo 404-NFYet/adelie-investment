@@ -20,8 +20,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      GF_SECURITY_ADMIN_USER: mutsa1234
-      GF_SECURITY_ADMIN_PASSWORD: mutsa1234
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-changeme}
       GF_SERVER_ROOT_URL: https://monitoring.adelie-invest.com
       GF_AUTH_ANONYMOUS_ENABLED: "false"
     volumes:

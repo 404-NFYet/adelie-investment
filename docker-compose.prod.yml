@@ -11,6 +11,11 @@ services:
     image: pgvector/pgvector:pg16
     container_name: adelie-postgres
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-narative}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
@@ -32,7 +37,12 @@ services:
     image: redis:7-alpine
     container_name: adelie-redis
     restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    command: redis-server --appendonly yes --maxmemory 1gb --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
     deploy:
@@ -50,6 +60,11 @@ services:
     image: minio/minio:latest
     container_name: adelie-minio
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin123}
@@ -69,6 +84,11 @@ services:
     image: ${REGISTRY:-dorae222}/adelie-frontend:${TAG:-latest}
     container_name: adelie-frontend
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     ports:
       - "80:80"
     deploy:
@@ -84,6 +104,11 @@ services:
     image: ${REGISTRY:-dorae222}/adelie-backend-api:${TAG:-latest}
     container_name: adelie-backend-api
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     expose:
       - "8082"
     ports:
@@ -116,6 +141,11 @@ services:
   ai-pipeline:
     image: ${REGISTRY:-dorae222}/adelie-ai-pipeline:${TAG:-latest}
     container_name: adelie-ai-pipeline
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-narative}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-narrative_invest}

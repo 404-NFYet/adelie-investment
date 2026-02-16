@@ -1,0 +1,10 @@
+apiVersion: 1
+contactPoints:
+  - orgId: 1
+    name: default-email
+    receivers:
+      - uid: email-default
+        type: email
+        settings:
+          addresses: "admin@adelie-invest.com"
+          singleEmail: true

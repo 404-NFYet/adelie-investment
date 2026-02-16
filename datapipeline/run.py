@@ -23,9 +23,11 @@ import argparse
 import datetime as dt
 import json
 import logging
+import os
 import sys
 import time
 from pathlib import Path
+from uuid import uuid4
 
 logging.basicConfig(
     level=logging.INFO,
@@ -153,6 +155,11 @@ def _log_metrics(metrics: dict) -> None:
 
 
 async def async_main() -> int:
+    # LangSmith 트레이싱을 위한 고유 실행 ID
+    run_id = uuid4()
+    os.environ.setdefault("LANGCHAIN_RUN_ID", str(run_id))
+    logger.info("Pipeline run_id: %s", run_id)
+
     args = parse_args()
     backend = pick_backend(args.backend)
 
