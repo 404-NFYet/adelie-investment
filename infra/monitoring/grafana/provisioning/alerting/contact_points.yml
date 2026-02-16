@@ -8,3 +8,17 @@ contactPoints:
         settings:
           addresses: "admin@adelie-invest.com"
           singleEmail: true
+  - orgId: 1
+    name: discord-webhook
+    receivers:
+      - uid: discord-default
+        type: discord
+        settings:
+          url: "${GRAFANA_DISCORD_WEBHOOK_URL}"
+          use_discord_username: true
+          message: |
+            {{ if gt (len .Alerts.Firing) 0 }}🔴 **FIRING** ({{ len .Alerts.Firing }}건){{ end }}
+            {{ if gt (len .Alerts.Resolved) 0 }}🟢 **RESOLVED** ({{ len .Alerts.Resolved }}건){{ end }}
+            {{ range .Alerts }}
+            - **{{ .Labels.alertname }}**: {{ .Annotations.summary }}
+            {{ end }}
