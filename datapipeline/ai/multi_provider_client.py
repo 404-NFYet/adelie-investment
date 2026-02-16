@@ -68,38 +68,58 @@ class MultiProviderClient:
         response_format: Optional[dict[str, Any]] = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
-        """프로바이더별 chat completion 호출."""
+        """프로바이더별 chat completion 호출 (최대 3회 재시도)."""
         if provider not in self.providers:
             raise ValueError(
                 f"프로바이더 '{provider}'가 초기화되지 않았습니다. "
                 f"사용 가능: {list(self.providers.keys())}"
             )
 
-        started = time.perf_counter()
-        LOGGER.info(
-            "[%s] start model=%s messages=%d thinking=%s",
-            provider.upper(), model, len(messages), thinking,
-        )
+        max_retries = 3
+        last_exc = None
 
-        try:
-            if provider == "anthropic":
-                result = self._call_anthropic(model, messages, temperature, max_tokens)
-            else:
-                result = self._call_openai_compatible(
-                    provider, model, messages, thinking, thinking_effort,
-                    temperature, max_tokens, response_format, **kwargs,
-                )
-        except Exception as exc:
-            elapsed = time.perf_counter() - started
-            LOGGER.error(
-                "[%s] error model=%s elapsed=%.2fs: %s",
-                provider.upper(), model, elapsed, exc,
+        for attempt in range(max_retries):
+            started = time.perf_counter()
+            LOGGER.info(
+                "[%s] start model=%s messages=%d thinking=%s (attempt %d/%d)",
+                provider.upper(), model, len(messages), thinking, attempt + 1, max_retries,
             )
-            raise
 
-        elapsed = time.perf_counter() - started
-        LOGGER.info("[%s] done model=%s elapsed=%.2fs", provider.upper(), model, elapsed)
-        return result
+            try:
+                if provider == "anthropic":
+                    result = self._call_anthropic(model, messages, temperature, max_tokens)
+                else:
+                    result = self._call_openai_compatible(
+                        provider, model, messages, thinking, thinking_effort,
+                        temperature, max_tokens, response_format, **kwargs,
+                    )
+                elapsed = time.perf_counter() - started
+                LOGGER.info("[%s] done model=%s elapsed=%.2fs", provider.upper(), model, elapsed)
+                return result
+            except (TimeoutError, ConnectionError) as exc:
+                elapsed = time.perf_counter() - started
+                last_exc = exc
+                if attempt < max_retries - 1:
+                    wait = 2 ** attempt
+                    LOGGER.warning(
+                        "[%s] 재시도 가능 에러 (attempt %d/%d, %.1fs 후 재시도): %s",
+                        provider.upper(), attempt + 1, max_retries, wait, exc,
+                    )
+                    time.sleep(wait)
+                else:
+                    LOGGER.error(
+                        "[%s] 최대 재시도 초과 model=%s elapsed=%.2fs: %s",
+                        provider.upper(), model, elapsed, exc,
+                    )
+            except Exception as exc:
+                elapsed = time.perf_counter() - started
+                LOGGER.error(
+                    "[%s] error model=%s elapsed=%.2fs: %s",
+                    provider.upper(), model, elapsed, exc,
+                )
+                raise
+
+        raise last_exc
 
     def _call_openai_compatible(
         self, provider: str, model: str, messages: list[dict], thinking: bool,
