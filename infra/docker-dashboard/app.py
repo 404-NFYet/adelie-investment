@@ -33,6 +33,7 @@ ops_pages = [
     st.Page("pages/db_viewer.py", title="DB 뷰어", icon="🗄️"),
     st.Page("pages/api_tester.py", title="API 테스트", icon="🔌"),
     st.Page("pages/monitoring.py", title="모니터링", icon="📊"),
+    st.Page("pages/feedback.py", title="피드백 관리", icon="📬"),
 ]
 
 nav = st.navigation(
