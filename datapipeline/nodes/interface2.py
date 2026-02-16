@@ -28,6 +28,175 @@ def _update_metrics(state: dict, node_name: str, elapsed: float, status: str = "
     return metrics
 
 
+MAX_VALIDATION_STOCKS = 8
+MAX_VALIDATION_NEWS = 8
+MAX_VALIDATION_REPORTS = 6
+MAX_SHORT_TEXT = 280
+MAX_LONG_TEXT = 1600
+
+NARRATIVE_SECTION_KEYS = (
+    "background",
+    "concept_explain",
+    "history",
+    "application",
+    "caution",
+    "summary",
+)
+
+
+def _truncate_text(value: Any, max_chars: int = MAX_SHORT_TEXT) -> str:
+    text = str(value or "").strip()
+    if len(text) <= max_chars:
+        return text
+    return f"{text[: max_chars - 1].rstrip()}…"
+
+
+def _compact_concept(concept: Any) -> dict[str, str]:
+    if not isinstance(concept, dict):
+        return {"name": "", "definition": "", "relevance": ""}
+    return {
+        "name": _truncate_text(concept.get("name"), 120),
+        "definition": _truncate_text(concept.get("definition"), 320),
+        "relevance": _truncate_text(concept.get("relevance"), 320),
+    }
+
+
+def _compact_curated_context_for_validation(curated: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(curated, dict):
+        return {}
+
+    selected_stocks: list[dict[str, Any]] = []
+    for stock in (curated.get("selected_stocks") or [])[:MAX_VALIDATION_STOCKS]:
+        if not isinstance(stock, dict):
+            continue
+        selected_stocks.append({
+            "ticker": _truncate_text(stock.get("ticker"), 20),
+            "name": _truncate_text(stock.get("name"), 40),
+            "momentum": _truncate_text(stock.get("momentum"), 20),
+            "change_pct": stock.get("change_pct"),
+            "period_days": stock.get("period_days"),
+            "attention_score": stock.get("attention_score"),
+            "attention_percentile": stock.get("attention_percentile"),
+            "volume_ratio": stock.get("volume_ratio"),
+        })
+
+    verified_news: list[dict[str, str]] = []
+    for news in (curated.get("verified_news") or [])[:MAX_VALIDATION_NEWS]:
+        if not isinstance(news, dict):
+            continue
+        verified_news.append({
+            "title": _truncate_text(news.get("title"), 180),
+            "source": _truncate_text(news.get("source"), 60),
+            "published_date": _truncate_text(news.get("published_date"), 20),
+            "summary": _truncate_text(news.get("summary"), MAX_SHORT_TEXT),
+        })
+
+    reports: list[dict[str, str]] = []
+    for report in (curated.get("reports") or [])[:MAX_VALIDATION_REPORTS]:
+        if not isinstance(report, dict):
+            continue
+        reports.append({
+            "title": _truncate_text(report.get("title"), 180),
+            "source": _truncate_text(report.get("source"), 60),
+            "date": _truncate_text(report.get("date"), 20),
+            "summary": _truncate_text(report.get("summary"), MAX_SHORT_TEXT),
+        })
+
+    return {
+        "date": _truncate_text(curated.get("date"), 20),
+        "theme": _truncate_text(curated.get("theme"), 120),
+        "one_liner": _truncate_text(curated.get("one_liner"), 180),
+        "concept": _compact_concept(curated.get("concept")),
+        "selected_stocks": selected_stocks,
+        "verified_news": verified_news,
+        "reports": reports,
+        "source_ids": [
+            _truncate_text(source_id, 80)
+            for source_id in (curated.get("source_ids") or [])[:20]
+        ],
+    }
+
+
+def _compact_page_purpose_for_validation(page_purpose: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(page_purpose, dict):
+        return {}
+    return {
+        "theme": _truncate_text(page_purpose.get("theme"), 120),
+        "one_liner": _truncate_text(page_purpose.get("one_liner"), 180),
+        "concept": _compact_concept(page_purpose.get("concept")),
+    }
+
+
+def _compact_historical_case_for_validation(historical_case_output: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(historical_case_output, dict):
+        return {"historical_case": {}}
+
+    historical_case = historical_case_output.get("historical_case", historical_case_output)
+    if not isinstance(historical_case, dict):
+        return {"historical_case": {}}
+
+    return {
+        "historical_case": {
+            "period": _truncate_text(historical_case.get("period"), 80),
+            "title": _truncate_text(historical_case.get("title"), 160),
+            "summary": _truncate_text(historical_case.get("summary"), 420),
+            "outcome": _truncate_text(historical_case.get("outcome"), 420),
+            "lesson": _truncate_text(historical_case.get("lesson"), 420),
+        }
+    }
+
+
+def _compact_narrative_output_for_validation(narrative_output: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(narrative_output, dict):
+        return {"narrative": {}}
+
+    narrative = narrative_output.get("narrative", narrative_output)
+    if not isinstance(narrative, dict):
+        return {"narrative": {}}
+
+    compact_narrative: dict[str, Any] = {}
+    for key in NARRATIVE_SECTION_KEYS:
+        section = narrative.get(key, {})
+        if not isinstance(section, dict):
+            section = {}
+        compact_narrative[key] = {
+            "purpose": _truncate_text(section.get("purpose"), 220),
+            "content": _truncate_text(section.get("content"), MAX_LONG_TEXT),
+            "bullets": [
+                _truncate_text(bullet, 180)
+                for bullet in (section.get("bullets") or [])[:3]
+            ],
+            "viz_hint": (
+                _truncate_text(section.get("viz_hint"), 220)
+                if section.get("viz_hint") is not None
+                else None
+            ),
+        }
+
+    return {"narrative": compact_narrative}
+
+
+def _json_size(payload: Any) -> int:
+    try:
+        return len(json.dumps(payload, ensure_ascii=False))
+    except Exception:
+        return 0
+
+
+def _build_hallucination_check_inputs(
+    curated: dict[str, Any],
+    page_purpose: dict[str, Any],
+    historical_case_output: dict[str, Any],
+    narrative_output: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "curated_context": _compact_curated_context_for_validation(curated),
+        "page_purpose_output": _compact_page_purpose_for_validation(page_purpose),
+        "historical_case_output": _compact_historical_case_for_validation(historical_case_output),
+        "narrative_output": _compact_narrative_output_for_validation(narrative_output),
+    }
+
+
 # ── Mock 함수들 (테스트용) ──
 
 def _mock_page_purpose(curated: dict) -> dict:
@@ -278,12 +447,19 @@ def validate_interface2_node(state: dict) -> dict:
         if backend == "mock":
             result = _mock_hallucination_check(pp, hc, narr)
         else:
-            result = call_llm_with_prompt("hallucination_check", {
+            raw_payload = {
                 "curated_context": curated,
                 "page_purpose_output": pp,
                 "historical_case_output": hc,
                 "narrative_output": narr,
-            })
+            }
+            compact_payload = _build_hallucination_check_inputs(curated, pp, hc, narr)
+            logger.info(
+                "  validate_interface2 입력 축소: %.1fKB -> %.1fKB",
+                _json_size(raw_payload) / 1024,
+                _json_size(compact_payload) / 1024,
+            )
+            result = call_llm_with_prompt("hallucination_check", compact_payload)
 
         # validated_interface_2 추출
         validated = result.get("validated_interface_2", {
