@@ -123,6 +123,7 @@ def _build_initial_state(
         "pages": None,
         "sources": None,
         "hallucination_checklist": None,
+        "home_icon": None,
         # 출력
         "full_output": None,
         "output_path": None,

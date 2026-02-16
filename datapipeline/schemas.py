@@ -170,12 +170,17 @@ class HallucinationItem(BaseModel):
     note: str
 
 
+class HomeIcon(BaseModel):
+    icon_key: str
+
+
 class FinalBriefing(BaseModel):
     """Interface 3 출력 스키마."""
     theme: str
     one_liner: str
     generated_at: str
     pages: list[Page]
+    home_icon: Optional[HomeIcon] = None
     sources: list[SourceItem]
     hallucination_checklist: list[HallucinationItem]
 

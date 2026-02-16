@@ -12,7 +12,7 @@
     → glossary_and_chart_parallel
         ├── run_glossary → run_hallcheck_glossary
         └── run_chart_agent (6섹션 asyncio.gather)
-    → run_tone_final → collect_sources → assemble_output → save_to_db → END
+    → run_tone_final → run_home_icon_map → collect_sources → assemble_output → save_to_db → END
 
 병렬 분기 (asyncio.gather wrapper):
   1. collect_data_parallel: crawl_news + crawl_research 병렬
@@ -50,6 +50,7 @@ from .nodes.interface3 import (
     run_glossary_node,
     run_hallcheck_glossary_node,
     run_tone_final_node,
+    run_home_icon_map_node,
     collect_sources_node,
     assemble_output_node,
 )
@@ -104,6 +105,7 @@ class BriefingPipelineState(TypedDict):
     hallucination_checklist: Optional[list]
     theme: Optional[str]
     one_liner: Optional[str]
+    home_icon: Optional[dict]
 
     # 최종 출력
     full_output: Optional[dict]
@@ -270,12 +272,13 @@ def build_graph() -> Any:
     graph.add_node("run_narrative_body", run_narrative_body_node)
     graph.add_node("validate_interface2", validate_interface2_node)
 
-    # Interface 3 (병렬 최적화: 8노드)
+    # Interface 3 (병렬 최적화 + 홈 아이콘 매핑)
     graph.add_node("run_theme", run_theme_node)
     graph.add_node("run_pages", run_pages_node)
     graph.add_node("merge_theme_pages", merge_theme_pages_node)
     graph.add_node("glossary_and_chart_parallel", glossary_and_chart_parallel_node)
     graph.add_node("run_tone_final", run_tone_final_node)
+    graph.add_node("run_home_icon_map", run_home_icon_map_node)
     graph.add_node("collect_sources", collect_sources_node)
     graph.add_node("assemble_output", assemble_output_node)
     graph.add_node("save_to_db", save_to_db_node)
@@ -341,7 +344,8 @@ def build_graph() -> Any:
     graph.add_edge("run_pages", "merge_theme_pages")
     graph.add_edge("merge_theme_pages", "glossary_and_chart_parallel")
     graph.add_edge("glossary_and_chart_parallel", "run_tone_final")
-    graph.add_edge("run_tone_final", "collect_sources")
+    graph.add_edge("run_tone_final", "run_home_icon_map")
+    graph.add_edge("run_home_icon_map", "collect_sources")
     graph.add_edge("collect_sources", "assemble_output")
     graph.add_edge("assemble_output", "save_to_db")
     graph.add_edge("save_to_db", END)
