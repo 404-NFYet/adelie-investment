@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { useUser } from '../../contexts/UserContext';
 import { notificationApi } from '../../api';
 
+const BRAND_LABEL = 'ADELIE';
+const BRAND_LOGO_SRC = '/images/penguin-3d.png';
+
 export default function AppHeader({ showBack = false, title = null }) {
   const navigate = useNavigate();
   const { user } = useUser();
@@ -29,11 +32,11 @@ export default function AppHeader({ showBack = false, title = null }) {
             )}
             <div
               className="flex items-center gap-1.5 cursor-pointer"
-              onClick={() => navigate('/')}
+              onClick={() => navigate('/home')}
             >
-              <img src="/images/penguin-3d.png" alt="Adelie" className="w-7 h-7" />
-              <h1 className="text-lg font-bold tracking-tight text-text-primary">
-                ADELIE
+              <img src={BRAND_LOGO_SRC} alt={BRAND_LABEL} className="h-7 w-7 object-contain" />
+              <h1 className="text-[15px] font-bold tracking-tight text-text-primary">
+                {BRAND_LABEL}
               </h1>
             </div>
             {title && (
