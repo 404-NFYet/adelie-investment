@@ -1,8 +1,6 @@
 """Briefing API routes."""
 
-import sys
 from datetime import datetime, date, timedelta, timezone
-from pathlib import Path
 from typing import Optional
 
 KST = timezone(timedelta(hours=9))
@@ -10,9 +8,6 @@ KST = timezone(timedelta(hours=9))
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
-
-# Add datapipeline to path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent.parent / "datapipeline"))
 
 from app.core.database import get_db
 from app.models.briefing import DailyBriefing, BriefingStock
