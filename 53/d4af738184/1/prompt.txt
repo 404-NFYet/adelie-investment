@@ -1,0 +1,416 @@
+Implement the following plan:
+
+# 포트폴리오 수익률 수정 + AI 튜터 복구 + 용어 하이라이팅 + 챗봇 버튼 수정
+
+## Context
+
+5가지 작업 통합:
+1. **포트폴리오 수익률**: 보상 포인트가 수익률에 포함되는 버그 수정
+2. **AI 튜터 복구**: OpenAI 쿼터 초과 → Anthropic fallback 추가 + Auth 헤더 누락 수정
+3. **챗봇 응답 테스트**: 수정 후 실제 동작 검증
+4. **용어 하이라이팅 복구**: 용어 설명 API가 OpenAI 의존 → Anthropic fallback으로 해결 (파이프라인 재실행 불요)
+5. **챗봇 버튼 수정**: TermBottomSheet "AI 튜터 준비 중" 활성화 + BottomNav AI 튜터 탭 동작 수정
+
+**근본 원인**: OpenAI API 쿼터 초과(429)가 AI 튜터, 용어 설명을 모두 차단.
+**UI 디자인 점검 결과**: `origin/dev/frontend-ui-v1`은 develop보다 **뒤처진** 코드 (ChatFAB 비활성, PNG 롤백, 하드코딩 질문). develop이 모든 면에서 앞서 있어 ui-v1에서 가져올 변경사항 없음.
+**브랜치 통합 점검 결과**: `dev/frontend-e2e-narrative-content` (삭제됨), `dev/frontend-ui-v1` (원격) 모두 develop에 정상 통합 확인. 코드 손실 없음.
+
+---
+
+## Part A: 포트폴리오 수익률에서 보상 제외
+
+### 문제
+```python
+# 현재 (버그): 보상도 수익에 포함됨
+total_pl = total_value - initial_cash
+
+# 수정: 보상 차감
+total_pl = total_value - initial_cash - portfolio.total_rewards_received
+```
+
+### A-1. DB 모델 — `total_rewards_received` 컬럼 추가
+
+**파일**: `fastapi/app/models/portfolio.py` (UserPortfolio, line 21)
+
+```python
+total_rewards_received: Mapped[int] = mapped_column(
+    BigInteger, default=0, server_default="0",
+    comment="누적 보상 수령액 (수익률 계산에서 제외용)"
+)
+```
+
+### A-2. Alembic 마이그레이션
+
+**파일**: `database/alembic/versions/20260217_add_total_rewards_received.py`
+
+- `user_portfolios`에 `total_rewards_received BIGINT DEFAULT 0` 추가
+- backfill:
+```sql
+UPDATE user_portfolios p SET total_rewards_received =
+  COALESCE((SELECT SUM(final_reward) FROM briefing_rewards WHERE portfolio_id = p.id), 0)
+  + COALESCE((SELECT SUM(reward_amount) FROM dwell_rewards WHERE portfolio_id = p.id), 0)
+```
+
+### A-3. 보상 지급 시 누적 (4곳)
+
+| 위치 | 파일 | 변경 |
+|------|------|------|
+| 브리핑 보상 | `portfolio_service.py:162` | `+= BRIEFING_BASE_REWARD` |
+| 멀티플라이어 보너스 | `portfolio_service.py:221` | `+= bonus` |
+| 체류 보상 | `portfolio.py:423` | `+= DWELL_REWARD_AMOUNT` |
+| 퀴즈 보상 | `quiz_reward.py:53-57` | `+= reward_amount` |
+
+### A-4. 수익률 계산 수정 (4곳)
+
+| 엔드포인트 | 파일:라인 |
+|-----------|----------|
+| `get_portfolio` | `portfolio.py:169-171` |
+| `get_portfolio_summary` | `portfolio.py:204-206` |
+| `get_leaderboard` | `portfolio.py:86-88` |
+| `check_and_apply_multiplier` | `portfolio_service.py:213-214` |
+
+### A-5. 스키마
+
+`fastapi/app/schemas/portfolio.py` — `PortfolioResponse`에 `total_rewards_received: int = 0` 추가
+
+---
+
+## Part B: AI 튜터 복구
+
+### 문제 1: OpenAI API 쿼터 초과 (429 insufficient_quota)
+- 튜터의 `tutor.py`와 `tutor_engine.py` 모두 `gpt-4o-mini` 사용
+- Anthropic Claude API 키(`CLAUDE_API_KEY`)는 사용 가능
+- **해결**: Anthropic fallback 추가
+
+### 문제 2: TutorContext.jsx에 Authorization 헤더 누락
+- `fetch` 호출 시 `Authorization: Bearer <token>` 미포함 (line 94-96)
+- 백엔드 `get_current_user_optional`이므로 요청 자체는 성공하나, 포트폴리오 컨텍스트 주입 불가
+- **해결**: localStorage에서 토큰 읽어 헤더에 포함
+
+### B-1. 백엔드: Anthropic Claude fallback 추가
+
+**파일**: `fastapi/app/api/routes/tutor.py`
+
+`generate_tutor_response`와 `get_term_explanation_from_llm` 함수에:
+
+1. OpenAI 호출 시도
+2. `RateLimitError`/`APIError` 발생 시 Anthropic Claude로 fallback
+3. `CLAUDE_API_KEY` (= `ANTHROPIC_API_KEY`) 환경변수 사용
+
+```python
+# OpenAI 실패 → Anthropic fallback
+try:
+    # OpenAI 호출
+except (RateLimitError, APIError):
+    anthropic_key = get_settings().CLAUDE_API_KEY or get_settings().ANTHROPIC_API_KEY
+    if anthropic_key:
+        from anthropic import AsyncAnthropic
+        anthropic_client = AsyncAnthropic(api_key=anthropic_key)
+        # Claude로 동일 요청
+```
+
+**파일**: `fastapi/app/services/tutor_engine.py`
+- 동일한 fallback 패턴 적용 (line 340-343)
+
+**파일**: `fastapi/app/core/config.py`
+- `CLAUDE_API_KEY` 또는 `ANTHROPIC_API_KEY` 설정이 이미 있는지 확인, 없으면 추가
+
+### B-2. 프론트엔드: Authorization 헤더 추가
+
+**파일**: `frontend/src/contexts/TutorContext.jsx` (line 94-96)
+
+```javascript
+// Before:
+headers: { 'Content-Type': 'application/json' },
+
+// After:
+headers: {
+  'Content-Type': 'application/json',
+  ...(localStorage.getItem('token')
+    ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+    : {}),
+},
+```
+
+---
+
+## Part C: 챗봇 응답 테스트
+
+수정 완료 후 실제 API 호출로 검증:
+
+1. **로컬 서버 기동**: `make dev-api` 또는 `.venv/bin/uvicorn`
+2. **curl 테스트**:
+   ```bash
+   curl -N -X POST http://localhost:8082/api/v1/tutor/chat \
+     -H "Content-Type: application/json" \
+     -d '{"message":"PER이 뭔가요?","difficulty":"beginner"}'
+   ```
+3. **검증 항목**:
+   - SSE 스트리밍 응답이 오는지
+   - `event: text_delta` 이벤트에 한글 응답이 포함되는지
+   - `event: done` 이벤트로 정상 종료되는지
+   - OpenAI 실패 시 Anthropic fallback이 동작하는지
+4. **용어 설명 API**:
+   ```bash
+   curl http://localhost:8082/api/v1/tutor/explain/PER?difficulty=beginner
+   ```
+
+---
+
+## Part D: 용어 하이라이팅 복구
+
+### 현재 상태
+
+- **데이터 흐름**: 파이프라인 glossary 노드 → JSONB 저장 → `narrative_builder.py:_inject_glossary_marks()` → `<mark>` 태그 → Narrative.jsx 렌더링
+- **용어 클릭**: `TermBottomSheet.jsx` → `GET /api/v1/tutor/explain/{term}` → OpenAI (429 에러)
+- **config 키 불일치**: `.env`에 `CLAUDE_API_KEY` 있지만 `config.py`는 `ANTHROPIC_API_KEY` 필드만 존재
+
+### 해결
+
+- **용어 설명 API**: Part B의 Anthropic fallback으로 해결
+- **Config 키**: Part B-1에서 `CLAUDE_API_KEY` 필드 추가
+- **파이프라인 glossary 재생성**: 현재 불요 (사용자 확인)
+- **프론트엔드**: 수정 불요 — `MarkdownBody` + `HighlightedText` 모두 정상
+
+---
+
+## Part E: 챗봇 버튼 수정
+
+### 문제 1: TermBottomSheet "AI 튜터 준비 중" 비활성화
+
+**파일**: `frontend/src/components/domain/TermBottomSheet.jsx:112-121`
+
+```jsx
+// 현재: 하드코딩 disabled
+<button disabled className="... cursor-not-allowed opacity-60">
+  AI 튜터 준비 중
+</button>
+```
+
+**수정**: `openTutorWithTerm` 연결하여 활성화
+
+```jsx
+import { useTermContext } from '../../contexts/TermContext';
+// destructure에 openTutorWithTerm 추가 (line 23)
+const { selectedTerm, isTermSheetOpen, closeTermSheet, openTutorWithTerm } = useTermContext();
+
+// 버튼 활성화
+<button
+  onClick={() => openTutorWithTerm(selectedTerm)}
+  className="w-full py-3 bg-primary rounded-xl text-sm text-white font-medium
+             transition hover:bg-primary-hover"
+>
+  AI 튜터에게 더 물어보기
+</button>
+```
+
+### 문제 2: BottomNav "AI 튜터" 탭 → 플레이스홀더 페이지
+
+**현재 흐름**: BottomNav → `/tutor` → `TutorChat.jsx` (플레이스홀더 "AI 튜터 준비 중")
+
+**파일**: `frontend/src/components/layout/BottomNav.jsx:18` + `frontend/src/pages/TutorChat.jsx`
+
+**수정**: BottomNav에서 AI 튜터 탭 클릭 시 TutorModal을 열도록 변경
+
+```jsx
+// BottomNav.jsx — tutor 탭만 특수 처리
+import { useTutor } from '../../contexts/TutorContext';
+
+const { openTutor } = useTutor();
+
+// onClick 핸들러에서 tutor 탭이면 모달 열기
+onClick={() => {
+  if (tab.id === 'tutor') {
+    openTutor();
+  } else {
+    navigate(tab.path);
+  }
+}}
+```
+
+`TutorChat.jsx`는 별도 수정 불요 (직접 URL 접근 시 안내 페이지로 유지)
+
+---
+
+## 수정 파일 목록
+
+| # | 파일 | 변경 | Part |
+|---|------|------|------|
+| 1 | `fastapi/app/models/portfolio.py` | `total_rewards_received` 컬럼 추가 | A |
+| 2 | `database/alembic/versions/20260217_add_total_rewards_received.py` | 마이그레이션 + backfill | A |
+| 3 | `fastapi/app/services/portfolio_service.py` | 보상 누적 + 수익률 공식 수정 | A |
+| 4 | `fastapi/app/api/routes/portfolio.py` | 수익률 공식 수정 + 체류 보상 누적 | A |
+| 5 | `fastapi/app/api/routes/quiz_reward.py` | 퀴즈 보상 누적 | A |
+| 6 | `fastapi/app/schemas/portfolio.py` | `total_rewards_received` 필드 추가 | A |
+| 7 | `fastapi/app/api/routes/tutor.py` | Anthropic fallback 추가 | B |
+| 8 | `fastapi/app/services/tutor_engine.py` | Anthropic fallback 추가 | B |
+| 9 | `fastapi/app/core/config.py` | `CLAUDE_API_KEY` 필드 추가 | B+D |
+| 10 | `frontend/src/contexts/TutorContext.jsx` | Authorization 헤더 추가 | B |
+| 11 | `frontend/src/components/domain/TermBottomSheet.jsx` | "AI 튜터" 버튼 활성화 | E |
+| 12 | `frontend/src/components/layout/BottomNav.jsx` | AI 튜터 탭 → 모달 열기 | E |
+
+---
+
+## 검증
+
+### Part A 검증
+1. 마이그레이션: `cd database && ../.venv/bin/alembic upgrade head`
+2. API 테스트: 보상만 받은 상태 → 수익률 0%
+
+### Part B + C 검증
+1. 로컬 서버 기동 후 curl로 SSE 스트리밍 테스트
+2. OpenAI 실패 시 Anthropic fallback 동작 확인
+3. 프론트엔드에서 ChatFAB 클릭 → 질문 입력 → 응답 수신 E2E 확인
+
+### Part D 검증
+1. 용어 설명 API: `curl http://localhost:8082/api/v1/tutor/explain/PER?difficulty=beginner` → Anthropic fallback으로 응답
+2. 용어 클릭 → TermBottomSheet → 설명 정상 표시
+
+### Part E 검증
+1. TermBottomSheet에서 "AI 튜터에게 더 물어보기" 버튼 클릭 → 바텀시트 닫히고 TutorModal 열림
+2. BottomNav "AI 튜터" 탭 클릭 → TutorModal 열림 (플레이스홀더 페이지로 이동하지 않음)
+
+### 실행 순서
+1. Part A (포트폴리오 수익률) — 독립적, 먼저 완료
+2. Part B (AI 튜터 + config 수정) — Part D, E의 선행 조건
+3. Part E (챗봇 버튼 수정) — Part B와 병렬 가능
+4. Part C (챗봇 테스트) — Part B + E 완료 후
+5. Part D 검증 — Part B 완료 후 자동 해결
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+해결이 완료되었는가?
+
+---
+
+커밋하고 배포해줘
+
+---
+
+Base directory for this skill: /home/hj/2026/project/adelie-investment/.claude/skills/deploy
+
+# Deploy Skill
+
+서비스를 빌드하고 deploy-test 서버에 배포합니다.
+
+## 사용법
+
+`/deploy all`
+
+- `/deploy frontend` — 프론트엔드만 빌드 + 푸시 + 배포
+- `/deploy api` — FastAPI 백엔드만 빌드 + 푸시 + 배포
+- `/deploy all` — 전체 서비스 빌드 + 푸시 + 배포
+- `/deploy` (인자 없음) — 변경된 서비스 자동 감지 후 배포
+
+## 서버 경로 (중요)
+
+| 환경 | 프로젝트 경로 |
+|------|--------------|
+| **deploy-test (10.10.10.20)** | `~/adelie-investment` |
+| **로컬 개발** | `/home/hj/2026/project/adelie-investment` |
+
+## Docker 이미지 태깅 규칙
+
+### 이미지 목록
+
+| 서비스 | 이미지명 | 빌드 명령 |
+|--------|---------|-----------|
+| Frontend | `dorae222/adelie-frontend` | `make build-frontend` |
+| Backend API | `dorae222/adelie-backend-api` | `make build-api` |
+| AI Pipeline | `dorae222/adelie-ai-pipeline` | `make build-ai` |
+
+### 태그 규칙
+
+| 태그 | 용도 | 예시 |
+|------|------|------|
+| `latest` | 기본값, deploy-test 배포용 | `dorae222/adelie-frontend:latest` |
+| `YYYYMMDD` | 날짜 기반 스냅샷 (릴리스 시) | `dorae222/adelie-frontend:20260214` |
+| `v{N}` | 프로덕션 릴리스 버전 | `dorae222/adelie-frontend:v1` |
+
+- 일반 배포: `make build push` (latest 태그 자동 사용)
+- 태그 지정 배포: `TAG=20260214 make build push`
+- deploy-test의 docker-compose.prod.yml은 `latest` 태그를 참조
+
+## 실행 절차
+
+### 전체 배포 (`/deploy all`)
+```bash
+# 1. 빌드
+make build-frontend
+make build-api
+
+# 2. Docker Hub 푸시
+make push
+
+# 3. deploy-test 서버 배포
+ssh deploy-test "cd ~/adelie-investment && docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d"
+
+# 4. 상태 확인
+ssh deploy-test "docker ps --format 'table {{.Names}}\t{{.Status}}'"
+```
+
+### 단일 서비스 배포 (`/deploy frontend` 또는 `/deploy api`)
+```bash
+# frontend 예시
+make build-frontend
+docker push dorae222/adelie-frontend:latest
+ssh deploy-test "cd ~/adelie-investment && docker compose -f docker-compose.prod.yml pull frontend && docker compose -f docker-compose.prod.yml up -d frontend"
+```
+
+### 원스텝 배포 (Makefile)
+```bash
+make deploy-test        # 전체: build → push → 서버 pull → up
+SVC=frontend make deploy-test-service  # 단일 서비스
+```
+
+## 서비스 의존 순서
+
+```
+postgres (healthy) → redis (healthy) → backend-api (healthy) → frontend
+                                     → minio
+```
+
+`docker compose up -d`는 healthcheck 기반으로 순서를 자동 관리한다.
+
+## 배포 후 검증
+
+```bash
+# 1. 컨테이너 상태 확인
+ssh deploy-test "docker ps --format 'table {{.Names}}\t{{.Status}}'"
+
+# 2. API 헬스체크
+ssh deploy-test "curl -sf http://localhost:8082/api/v1/health || echo FAIL"
+
+# 3. 프론트엔드 접속 확인
+ssh deploy-test "curl -sf -o /dev/null -w '%{http_code}' http://localhost:80"
+
+# 4. 최근 로그 확인
+ssh deploy-test "docker logs adelie-backend-api --tail 20"
+ssh deploy-test "docker logs adelie-frontend --tail 20"
+```
+
+## 롤백
+
+```bash
+# 이전 이미지로 롤백 (Docker Hub에 이전 태그가 있는 경우)
+ssh deploy-test "cd ~/adelie-investment && \
+  docker compose -f docker-compose.prod.yml pull && \
+  docker compose -f docker-compose.prod.yml up -d"
+
+# 특정 태그로 롤백
+TAG=20260213 ssh deploy-test "cd ~/adelie-investment && \
+  REGISTRY=dorae222 TAG=20260213 docker compose -f docker-compose.prod.yml up -d"
+
+# 긴급: 서비스만 재시작 (이미지 변경 없이)
+ssh deploy-test "docker restart adelie-backend-api"
+```
+
+## 주의사항
+
+- 배포 전 `git status`로 커밋되지 않은 변경 확인
+- TAG를 명시하지 않으면 latest 태그 사용
+- **서버 경로**: `~/adelie-investment` (절대 `~/adelie`가 아님)
+- 에러 발생 시 `ssh deploy-test "docker logs adelie-{서비스} --tail 50"` 로 로그 확인
