@@ -43,3 +43,11 @@ Base directory for this skill: /home/hj/2026/project/adelie-investment/.claude/s
 
 ## 서버 경로 (�...
 
+### Prompt 5
+
+localstack과 관련되어 있던 계획들은 실행을 안 하는가? 사용하지 않을 것이라면 제거하고, IAM 사용자는 1명 담당인 나 혼자이다.
+
+### Prompt 6
+
+[Request interrupted by user for tool use]
+

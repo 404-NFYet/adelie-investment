@@ -3,7 +3,7 @@
   "checkpoint_id": "53d4af738184",
   "strategy": "manual-commit",
   "branch": "develop",
-  "checkpoints_count": 2,
+  "checkpoints_count": 1,
   "files_touched": [
     "database/alembic/versions/20260217_add_total_rewards_received.py",
     "fastapi/app/api/routes/portfolio.py",
@@ -35,10 +35,10 @@
     }
   ],
   "token_usage": {
-    "input_tokens": 66,
-    "cache_creation_tokens": 139527,
-    "cache_read_tokens": 4206638,
-    "output_tokens": 9720,
-    "api_call_count": 57
+    "input_tokens": 43,
+    "cache_creation_tokens": 112491,
+    "cache_read_tokens": 3015096,
+    "output_tokens": 11722,
+    "api_call_count": 37
   }
 }
