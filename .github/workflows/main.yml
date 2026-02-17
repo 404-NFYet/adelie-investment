@@ -12,7 +12,24 @@ jobs:
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
-          AUTHOR="${{ github.actor }}"
+          # 커밋 작성자 이름 (fallback: github.actor)
+          RAW_AUTHOR="${{ github.event.head_commit.author.name || github.actor }}"
+
+          # 이름→역할 매핑
+          case "$RAW_AUTHOR" in
+            YJ99Son)   ROLE="프론트엔드" ;;
+            J2hoon10)  ROLE="AI/챗봇" ;;
+            ryejinn)   ROLE="파이프라인 QA" ;;
+            jjjh02)    ROLE="백엔드" ;;
+            dorae222)  ROLE="인프라" ;;
+            *)         ROLE="" ;;
+          esac
+
+          if [ -n "$ROLE" ]; then
+            AUTHOR="${RAW_AUTHOR} (${ROLE})"
+          else
+            AUTHOR="${RAW_AUTHOR}"
+          fi
           REPO="${{ github.repository }}"
           BRANCH="${{ github.ref_name }}"
           COMMIT_MSG="${{ github.event.head_commit.message }}"

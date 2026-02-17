@@ -12,7 +12,7 @@
     → glossary_and_chart_parallel
         ├── run_glossary → run_hallcheck_glossary
         └── run_chart_agent (6섹션 asyncio.gather)
-    → run_tone_final → collect_sources → assemble_output → save_to_db → END
+    → run_tone_final → run_home_icon_map → collect_sources → assemble_output → save_to_db → END
 
 병렬 분기 (asyncio.gather wrapper):
   1. collect_data_parallel: crawl_news + crawl_research 병렬
@@ -27,6 +27,7 @@ import logging
 from typing import Annotated, Any, Optional, TypedDict
 
 from langgraph.graph import END, START, StateGraph
+from .config import SECTION_MAP
 
 from .nodes.crawlers import crawl_news_node, crawl_research_node
 from .nodes.curation import (
@@ -49,10 +50,11 @@ from .nodes.interface3 import (
     run_glossary_node,
     run_hallcheck_glossary_node,
     run_tone_final_node,
+    run_home_icon_map_node,
     collect_sources_node,
     assemble_output_node,
 )
-from .nodes.chart_agent import run_chart_agent_node
+from .nodes.chart_agent import run_chart_agent_node, run_hallcheck_chart_node
 from .nodes.db_save import save_to_db_node
 from .nodes.screening import screen_stocks_node
 
@@ -73,6 +75,8 @@ class BriefingPipelineState(TypedDict):
     # Data Collection 중간 결과
     raw_news: Optional[list]
     raw_reports: Optional[list]
+    crawl_news_status: Optional[dict]
+    crawl_research_status: Optional[dict]
     screened_stocks: Optional[list]
     matched_stocks: Optional[list]
     news_summary: Optional[str]
@@ -101,6 +105,7 @@ class BriefingPipelineState(TypedDict):
     hallucination_checklist: Optional[list]
     theme: Optional[str]
     one_liner: Optional[str]
+    home_icon: Optional[dict]
 
     # 최종 출력
     full_output: Optional[dict]
@@ -170,8 +175,43 @@ async def glossary_and_chart_parallel_node(state: dict) -> dict:
         return {**g_result, **hg_result}
 
     async def _chart_pipeline():
-        # run_chart_agent_node는 async이므로 직접 await
-        return await run_chart_agent_node(state)
+        # 1) 차트 생성
+        chart_result = await run_chart_agent_node(state)
+        if chart_result.get("error"):
+            return chart_result
+
+        # 2) 차트 검증/게이트
+        hall_input = {**state, **chart_result}
+        hall_result = await asyncio.to_thread(run_hallcheck_chart_node, hall_input)
+
+        if hall_result.get("error"):
+            # 엄격 정책: 검증 실패 시 차트 노출 차단
+            safe_charts = {section_key: None for _, _, section_key in SECTION_MAP}
+            fallback_checklist = list(chart_result.get("hallucination_checklist", []) or [])
+            fallback_checklist.append({
+                "claim": "chart hallcheck failed",
+                "source": "chart_gate",
+                "risk": "높음",
+                "note": str(hall_result.get("error")),
+            })
+            return {
+                **chart_result,
+                "charts": safe_charts,
+                "hallucination_checklist": fallback_checklist,
+                "metrics": {
+                    **(chart_result.get("metrics") or {}),
+                    **(hall_result.get("metrics") or {}),
+                },
+            }
+
+        return {
+            **chart_result,
+            **hall_result,
+            "metrics": {
+                **(chart_result.get("metrics") or {}),
+                **(hall_result.get("metrics") or {}),
+            },
+        }
 
     glossary_result, chart_result = await asyncio.gather(
         _glossary_pipeline(), _chart_pipeline(),
@@ -232,12 +272,13 @@ def build_graph() -> Any:
     graph.add_node("run_narrative_body", run_narrative_body_node)
     graph.add_node("validate_interface2", validate_interface2_node)
 
-    # Interface 3 (병렬 최적화: 8노드)
+    # Interface 3 (병렬 최적화 + 홈 아이콘 매핑)
     graph.add_node("run_theme", run_theme_node)
     graph.add_node("run_pages", run_pages_node)
     graph.add_node("merge_theme_pages", merge_theme_pages_node)
     graph.add_node("glossary_and_chart_parallel", glossary_and_chart_parallel_node)
     graph.add_node("run_tone_final", run_tone_final_node)
+    graph.add_node("run_home_icon_map", run_home_icon_map_node)
     graph.add_node("collect_sources", collect_sources_node)
     graph.add_node("assemble_output", assemble_output_node)
     graph.add_node("save_to_db", save_to_db_node)
@@ -303,7 +344,8 @@ def build_graph() -> Any:
     graph.add_edge("run_pages", "merge_theme_pages")
     graph.add_edge("merge_theme_pages", "glossary_and_chart_parallel")
     graph.add_edge("glossary_and_chart_parallel", "run_tone_final")
-    graph.add_edge("run_tone_final", "collect_sources")
+    graph.add_edge("run_tone_final", "run_home_icon_map")
+    graph.add_edge("run_home_icon_map", "collect_sources")
     graph.add_edge("collect_sources", "assemble_output")
     graph.add_edge("assemble_output", "save_to_db")
     graph.add_edge("save_to_db", END)
