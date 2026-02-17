@@ -6,6 +6,15 @@ import requests
 import streamlit as st
 
 from config import SERVERS, DEPLOY_SERVER
+from utils.ui_components import (
+    inject_custom_css,
+    render_section_header,
+    render_http_method_badge,
+    render_metric_card,
+)
+
+# CSS 주입
+inject_custom_css()
 
 # 테스트 대상 서버 목록
 TARGET_SERVERS = {}
@@ -41,18 +50,6 @@ def extract_endpoints(spec: dict) -> list[dict]:
     return endpoints
 
 
-def render_method_badge(method: str) -> str:
-    """HTTP 메서드 색상 배지"""
-    colors = {
-        "GET": "🟢",
-        "POST": "🔵",
-        "PUT": "🟡",
-        "DELETE": "🔴",
-        "PATCH": "🟠",
-    }
-    return f"{colors.get(method, '⚪')} **{method}**"
-
-
 st.title("🔌 API 테스트")
 
 # ── 서버 선택 ─────────────────────────────────────────────
@@ -66,7 +63,7 @@ with col2:
 
 # ── JWT 토큰 ─────────────────────────────────────────────
 
-with st.expander("🔐 인증 설정"):
+with st.expander("인증 설정"):
     st.caption("JWT 토큰을 입력하면 Authorization 헤더에 자동 포함됩니다.")
 
     auth_tab_login, auth_tab_manual = st.tabs(["로그인으로 발급", "수동 입력"])
@@ -78,7 +75,7 @@ with st.expander("🔐 인증 설정"):
         with lcol2:
             login_password = st.text_input("비밀번호", type="password", value="test1234", key="login_pw")
 
-        if st.button("🔑 로그인 → 토큰 발급"):
+        if st.button("로그인 -> 토큰 발급"):
             try:
                 resp = requests.post(
                     f"{base_url}/api/v1/auth/login",
@@ -130,11 +127,12 @@ if selected_tags:
 else:
     filtered = endpoints
 
-# 엔드포인트 목록
-st.subheader(f"엔드포인트 ({len(filtered)}개)")
+# 엔드포인트 목록 (HTTP 메서드 배지 포함)
+render_section_header(f"엔드포인트 ({len(filtered)}개)", "🔗")
 
+# 엔드포인트 선택 리스트 (배지 포함)
 endpoint_labels = [
-    f"{ep['method']} {ep['path']} — {ep['summary']}" for ep in filtered
+    f"{ep['method']} {ep['path']} -- {ep['summary']}" for ep in filtered
 ]
 selected_idx = st.selectbox(
     "엔드포인트 선택",
@@ -146,7 +144,9 @@ selected_idx = st.selectbox(
 if selected_idx is not None and filtered:
     ep = filtered[selected_idx]
 
-    st.markdown(f"### {render_method_badge(ep['method'])} `{ep['path']}`")
+    # 메서드 배지 + 경로 표시
+    badge_html = render_http_method_badge(ep["method"])
+    st.markdown(f"### {badge_html} `{ep['path']}`", unsafe_allow_html=True)
     if ep["summary"]:
         st.caption(ep["summary"])
 
@@ -215,7 +215,7 @@ if selected_idx is not None and filtered:
 
     # ── 요청 전송 ─────────────────────────────────────
 
-    if st.button("📤 요청 전송", type="primary"):
+    if st.button("요청 전송", type="primary"):
         # URL 조립
         url = base_url + ep["path"]
 
@@ -248,10 +248,23 @@ if selected_idx is not None and filtered:
 
             # 응답 표시
             st.divider()
+            render_section_header("응답 결과", "📨")
+
             col1, col2 = st.columns(2)
             with col1:
-                status_color = "🟢" if resp.status_code < 400 else "🔴"
-                st.markdown(f"### {status_color} {resp.status_code} {resp.reason}")
+                # 상태 코드 색상
+                if resp.status_code < 300:
+                    st.markdown(f'<span style="font-size:24px; font-weight:700; color:#28A745;">{resp.status_code}</span> '
+                                f'<span style="color:#6C757D;">{resp.reason}</span>',
+                                unsafe_allow_html=True)
+                elif resp.status_code < 400:
+                    st.markdown(f'<span style="font-size:24px; font-weight:700; color:#FFC107;">{resp.status_code}</span> '
+                                f'<span style="color:#6C757D;">{resp.reason}</span>',
+                                unsafe_allow_html=True)
+                else:
+                    st.markdown(f'<span style="font-size:24px; font-weight:700; color:#DC3545;">{resp.status_code}</span> '
+                                f'<span style="color:#6C757D;">{resp.reason}</span>',
+                                unsafe_allow_html=True)
             with col2:
                 st.text(f"소요 시간: {resp.elapsed.total_seconds():.3f}s")
 
@@ -263,39 +276,40 @@ if selected_idx is not None and filtered:
             st.markdown("**응답 바디**")
             try:
                 body = resp.json()
-                st.json(body)
+                # JSON 하이라이팅
+                st.code(json.dumps(body, indent=2, ensure_ascii=False), language="json")
             except Exception:
                 st.code(resp.text[:5000])
 
         except json.JSONDecodeError:
-            st.error("JSON Body 파싱 실패 — 올바른 JSON을 입력해주세요.")
+            st.error("JSON Body 파싱 실패 -- 올바른 JSON을 입력해주세요.")
         except Exception as e:
             st.error(f"요청 실패: {e}")
 
 # ── 프리셋 시나리오 ───────────────────────────────────────
 
 st.divider()
-st.subheader("🎯 프리셋 시나리오")
+render_section_header("프리셋 시나리오", "🎯")
 
-with st.expander("로그인 → 키워드 조회 → 케이스 조회"):
+with st.expander("로그인 -> 키워드 조회 -> 케이스 조회"):
     st.caption("순차적으로 API를 호출하여 전체 플로우를 테스트합니다.")
 
     preset_email = st.text_input("이메일", value="test@test.com", key="preset_email")
     preset_password = st.text_input("비밀번호", type="password", value="test1234", key="preset_pw")
 
-    if st.button("▶️ 시나리오 실행"):
+    if st.button("시나리오 실행"):
         # 1. 로그인
-        st.markdown("**1. 로그인**")
+        st.markdown(f"**1. 로그인** {render_http_method_badge('POST')}", unsafe_allow_html=True)
         try:
             resp = requests.post(
                 f"{base_url}/api/v1/auth/login",
                 json={"email": preset_email, "password": preset_password},
                 timeout=10,
             )
-            st.json({"status": resp.status_code, "body": resp.json() if resp.status_code == 200 else resp.text[:200]})
+            st.code(json.dumps({"status": resp.status_code, "body": resp.json() if resp.status_code == 200 else resp.text[:200]}, indent=2, ensure_ascii=False), language="json")
 
             if resp.status_code != 200:
-                st.error("로그인 실패 — 시나리오 중단")
+                st.error("로그인 실패 -- 시나리오 중단")
                 st.stop()
 
             token = resp.json().get("access_token", resp.json().get("token", ""))
@@ -305,7 +319,7 @@ with st.expander("로그인 → 키워드 조회 → 케이스 조회"):
             st.stop()
 
         # 2. 오늘의 키워드
-        st.markdown("**2. 오늘의 키워드**")
+        st.markdown(f"**2. 오늘의 키워드** {render_http_method_badge('GET')}", unsafe_allow_html=True)
         try:
             resp = requests.get(
                 f"{base_url}/api/v1/keywords/today",
@@ -313,12 +327,12 @@ with st.expander("로그인 → 키워드 조회 → 케이스 조회"):
                 timeout=10,
             )
             data = resp.json() if resp.status_code == 200 else resp.text[:300]
-            st.json({"status": resp.status_code, "body": data})
+            st.code(json.dumps({"status": resp.status_code, "body": data}, indent=2, ensure_ascii=False), language="json")
         except Exception as e:
             st.warning(f"키워드 조회 실패: {e}")
 
-        # 3. 케이스 조회 (첫 번째 키워드의 케이스)
-        st.markdown("**3. 케이스 조회**")
+        # 3. 케이스 조회
+        st.markdown(f"**3. 케이스 조회** {render_http_method_badge('GET')}", unsafe_allow_html=True)
         try:
             resp = requests.get(
                 f"{base_url}/api/v1/cases",
@@ -327,6 +341,6 @@ with st.expander("로그인 → 키워드 조회 → 케이스 조회"):
                 timeout=10,
             )
             data = resp.json() if resp.status_code == 200 else resp.text[:300]
-            st.json({"status": resp.status_code, "body": data})
+            st.code(json.dumps({"status": resp.status_code, "body": data}, indent=2, ensure_ascii=False), language="json")
         except Exception as e:
             st.warning(f"케이스 조회 실패: {e}")
