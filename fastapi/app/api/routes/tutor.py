@@ -37,37 +37,48 @@ router = APIRouter(prefix="/tutor", tags=["AI tutor"])
 
 
 async def get_term_explanation_from_llm(term: str, difficulty: str) -> str:
-    """Generate term explanation using LLM."""
-    api_key = get_settings().OPENAI_API_KEY
-    if not api_key:
-        raise HTTPException(status_code=500, detail="OpenAI API key not configured")
-    
-    client = AsyncOpenAI(api_key=api_key, timeout=30.0)
-    
+    """Generate term explanation using LLM (OpenAI → Anthropic fallback)."""
+    settings = get_settings()
+
     difficulty_context = {
         "beginner": "주식 초보자도 이해할 수 있도록 아주 쉽게, 일상적인 비유를 사용해서",
         "elementary": "기본적인 투자 용어를 아는 사람에게",
         "intermediate": "투자 경험이 있는 중급자에게",
     }
-    
     context = difficulty_context.get(difficulty, difficulty_context["beginner"])
-    
-    response = await client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {
-                "role": "system",
-                "content": f"주식/금융 용어를 {context} 설명하는 튜터입니다. 3-4문장으로 간결하게 설명해주세요."
-            },
-            {
-                "role": "user",
-                "content": f"'{term}'이(가) 무엇인지 설명해주세요."
-            }
-        ],
-        max_tokens=300,
-    )
-    
-    return response.choices[0].message.content
+    system_msg = f"주식/금융 용어를 {context} 설명하는 튜터입니다. 3-4문장으로 간결하게 설명해주세요."
+    user_msg = f"'{term}'이(가) 무엇인지 설명해주세요."
+
+    # 1) OpenAI 시도
+    if settings.OPENAI_API_KEY:
+        try:
+            client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY, timeout=30.0)
+            response = await client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": system_msg},
+                    {"role": "user", "content": user_msg},
+                ],
+                max_tokens=300,
+            )
+            return response.choices[0].message.content
+        except (RateLimitError, APIError) as e:
+            logger.warning("OpenAI 용어 설명 실패, Anthropic fallback: %s", e)
+
+    # 2) Anthropic fallback
+    anthropic_key = settings.CLAUDE_API_KEY or settings.ANTHROPIC_API_KEY
+    if anthropic_key:
+        from anthropic import AsyncAnthropic
+        anthropic_client = AsyncAnthropic(api_key=anthropic_key, timeout=30.0)
+        response = await anthropic_client.messages.create(
+            model="claude-sonnet-4-5-20250929",
+            max_tokens=300,
+            system=system_msg,
+            messages=[{"role": "user", "content": user_msg}],
+        )
+        return response.content[0].text
+
+    raise HTTPException(status_code=500, detail="LLM API key not configured")
 
 
 @router.get("/explain/{term}")
@@ -125,8 +136,7 @@ async def explain_term(
             "source": "ai",
             "cached": False,
         }
-    except (APIError, APITimeoutError, RateLimitError) as e:
-        # OpenAI API 호출 실패
+    except Exception as e:
         error_id = uuid.uuid4().hex[:8]
         logger.error("LLM 용어 설명 실패 [%s]: %s", error_id, e)
         raise HTTPException(status_code=502, detail=f"AI 서비스 오류 (ref: {error_id})")
@@ -144,11 +154,13 @@ async def generate_tutor_response(
     
     yield f"event: step\ndata: {json.dumps({'type': 'thinking', 'content': '질문을 분석하고 있습니다...'})}\n\n"
     
-    api_key = get_settings().OPENAI_API_KEY
-    if not api_key:
-        yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'OpenAI API key not configured'})}\n\n"
+    settings = get_settings()
+    openai_key = settings.OPENAI_API_KEY
+    anthropic_key = settings.CLAUDE_API_KEY or settings.ANTHROPIC_API_KEY
+    if not openai_key and not anthropic_key:
+        yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'LLM API key not configured'})}\n\n"
         return
-    
+
     # 컨텍스트 주입 (사용자가 보고 있는 페이지 기반)
     page_context = ""
     if request.context_type and request.context_id:
@@ -246,40 +258,73 @@ async def generate_tutor_response(
     ]
     
     try:
-        client = AsyncOpenAI(api_key=api_key, timeout=30.0)
-        
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=messages,
-            max_tokens=1000,
-            stream=True,
-        )
-        
         total_tokens = 0
         full_response = ""
         stream_start = time.monotonic()
         chunk_count = 0
-        
-        async for chunk in response:
-            chunk_count += 1
+        use_anthropic = False
 
-            # 매 10번째 청크마다 연결 상태 및 타임아웃 확인
-            if chunk_count % 10 == 0:
-                if time.monotonic() - stream_start > 300:
-                    logger.warning("SSE 스트리밍 타임아웃 (300초 초과)")
-                    yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'Stream timeout'})}\n\n"
-                    break
-                if await http_request.is_disconnected():
-                    logger.info("클라이언트 연결 해제 감지, 스트리밍 중단")
-                    break
+        # OpenAI 스트리밍 시도
+        if openai_key:
+            try:
+                client = AsyncOpenAI(api_key=openai_key, timeout=30.0)
+                response = await client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=messages,
+                    max_tokens=1000,
+                    stream=True,
+                )
 
-            if chunk.choices and chunk.choices[0].delta.content:
-                content = chunk.choices[0].delta.content
-                full_response += content
-                yield f"event: text_delta\ndata: {json.dumps({'content': content})}\n\n"
-            
-            if chunk.usage:
-                total_tokens = chunk.usage.total_tokens
+                async for chunk in response:
+                    chunk_count += 1
+                    if chunk_count % 10 == 0:
+                        if time.monotonic() - stream_start > 300:
+                            logger.warning("SSE 스트리밍 타임아웃 (300초 초과)")
+                            yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'Stream timeout'})}\n\n"
+                            break
+                        if await http_request.is_disconnected():
+                            logger.info("클라이언트 연결 해제 감지, 스트리밍 중단")
+                            break
+
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        content = chunk.choices[0].delta.content
+                        full_response += content
+                        yield f"event: text_delta\ndata: {json.dumps({'content': content})}\n\n"
+                    if chunk.usage:
+                        total_tokens = chunk.usage.total_tokens
+            except (RateLimitError, APIError) as e:
+                logger.warning("OpenAI 스트리밍 실패, Anthropic fallback: %s", e)
+                use_anthropic = True
+        else:
+            use_anthropic = True
+
+        # Anthropic fallback 스트리밍
+        if use_anthropic and not full_response:
+            if not anthropic_key:
+                yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'LLM API key not available'})}\n\n"
+                return
+
+            from anthropic import AsyncAnthropic
+            anthropic_client = AsyncAnthropic(api_key=anthropic_key, timeout=30.0)
+            system_content = messages[0]["content"] if messages and messages[0]["role"] == "system" else ""
+            anthropic_msgs = [m for m in messages if m["role"] != "system"]
+
+            async with anthropic_client.messages.stream(
+                model="claude-sonnet-4-5-20250929",
+                max_tokens=1000,
+                system=system_content,
+                messages=anthropic_msgs,
+            ) as stream:
+                async for text in stream.text_stream:
+                    chunk_count += 1
+                    if chunk_count % 10 == 0:
+                        if time.monotonic() - stream_start > 300:
+                            yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'Stream timeout'})}\n\n"
+                            break
+                        if await http_request.is_disconnected():
+                            break
+                    full_response += text
+                    yield f"event: text_delta\ndata: {json.dumps({'content': text})}\n\n"
         
         try:
             # 기존 세션이 있으면 재사용, 없으면 생성

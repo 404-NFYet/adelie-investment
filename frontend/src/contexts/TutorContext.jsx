@@ -91,9 +91,13 @@ export function TutorProvider({ children }) {
       }
 
       try {
+        const token = localStorage.getItem('token');
         const response = await fetch(`${API_BASE_URL}/api/v1/tutor/chat`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+          },
           body: JSON.stringify({
             session_id: sessionId,
             message,

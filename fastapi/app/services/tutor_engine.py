@@ -273,9 +273,11 @@ async def generate_tutor_response(
 
     yield f"event: step\ndata: {json.dumps({'type': 'thinking', 'content': '질문을 분석하고 있습니다...'})}\n\n"
 
-    api_key = get_settings().OPENAI_API_KEY
-    if not api_key:
-        yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'OpenAI API key not configured'})}\n\n"
+    settings = get_settings()
+    openai_key = settings.OPENAI_API_KEY
+    anthropic_key = settings.CLAUDE_API_KEY or settings.ANTHROPIC_API_KEY
+    if not openai_key and not anthropic_key:
+        yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'LLM API key not configured'})}\n\n"
         return
 
     # 1) 컨텍스트 수집
@@ -337,21 +339,51 @@ async def generate_tutor_response(
 
     # 5) LLM 스트리밍 응답
     try:
-        client = AsyncOpenAI(api_key=api_key, timeout=30.0)
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini", messages=messages, max_tokens=1000, stream=True,
-        )
-
         total_tokens = 0
         full_response = ""
+        use_anthropic = False
 
-        async for chunk in response:
-            if chunk.choices and chunk.choices[0].delta.content:
-                content = chunk.choices[0].delta.content
-                full_response += content
-                yield f"event: text_delta\ndata: {json.dumps({'content': content})}\n\n"
-            if chunk.usage:
-                total_tokens = chunk.usage.total_tokens
+        # OpenAI 시도
+        if openai_key:
+            try:
+                client = AsyncOpenAI(api_key=openai_key, timeout=30.0)
+                response = await client.chat.completions.create(
+                    model="gpt-4o-mini", messages=messages, max_tokens=1000, stream=True,
+                )
+
+                async for chunk in response:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        content = chunk.choices[0].delta.content
+                        full_response += content
+                        yield f"event: text_delta\ndata: {json.dumps({'content': content})}\n\n"
+                    if chunk.usage:
+                        total_tokens = chunk.usage.total_tokens
+            except (RateLimitError, APIError) as e:
+                logger.warning("OpenAI 스트리밍 실패, Anthropic fallback: %s", e)
+                use_anthropic = True
+        else:
+            use_anthropic = True
+
+        # Anthropic fallback 스트리밍
+        if use_anthropic and not full_response:
+            if not anthropic_key:
+                yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'LLM API key not available'})}\n\n"
+                return
+
+            from anthropic import AsyncAnthropic
+            anthropic_client = AsyncAnthropic(api_key=anthropic_key, timeout=30.0)
+            system_content = messages[0]["content"] if messages and messages[0]["role"] == "system" else ""
+            anthropic_msgs = [m for m in messages if m["role"] != "system"]
+
+            async with anthropic_client.messages.stream(
+                model="claude-sonnet-4-5-20250929",
+                max_tokens=1000,
+                system=system_content,
+                messages=anthropic_msgs,
+            ) as stream:
+                async for text in stream.text_stream:
+                    full_response += text
+                    yield f"event: text_delta\ndata: {json.dumps({'content': text})}\n\n"
 
         # 6) 세션/메시지 DB 저장
         session_db_id = None
@@ -411,7 +443,11 @@ async def generate_tutor_response(
         yield f"event: done\ndata: {json.dumps({'session_id': session_id, 'total_tokens': total_tokens})}\n\n"
 
     except (APIError, APITimeoutError, RateLimitError) as e:
-        # OpenAI API 오류
         error_id = uuid.uuid4().hex[:8]
-        logger.error("OpenAI API 오류 [%s]: %s", error_id, e)
+        logger.error("LLM API 오류 [%s]: %s", error_id, e)
+        yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': f'AI 서비스 오류 (ref: {error_id})'})}\n\n"
+    except Exception as e:
+        # Anthropic 등 기타 LLM 오류
+        error_id = uuid.uuid4().hex[:8]
+        logger.error("LLM 오류 [%s]: %s", error_id, e)
         yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': f'AI 서비스 오류 (ref: {error_id})'})}\n\n"

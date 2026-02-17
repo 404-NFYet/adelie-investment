@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     PERPLEXITY_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
+    CLAUDE_API_KEY: str = ""
 
     # Pipeline 설정
     TARGET_SCENARIO_COUNT: int = 3
