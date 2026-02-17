@@ -160,6 +160,7 @@ async def complete_briefing_reward(
 
     # 기본 보상 즉시 지급
     portfolio.current_cash += BRIEFING_BASE_REWARD
+    portfolio.total_rewards_received += BRIEFING_BASE_REWARD
 
     reward = BriefingReward(
         user_id=user_id,
@@ -211,7 +212,7 @@ async def check_and_apply_multiplier(
             total_holdings_value += cp * h.quantity
 
     total_value = portfolio.current_cash + total_holdings_value
-    profit = total_value - portfolio.initial_cash
+    profit = total_value - portfolio.initial_cash - portfolio.total_rewards_received
 
     if profit > 0:
         # 수익: 1.5배 보너스 (추가분만 지급)
@@ -219,6 +220,7 @@ async def check_and_apply_multiplier(
         reward.multiplier = PROFIT_MULTIPLIER
         reward.final_reward = reward.base_reward + bonus
         portfolio.current_cash += bonus
+        portfolio.total_rewards_received += bonus
         reward.status = "applied"
     else:
         # 손실: 보너스 소멸

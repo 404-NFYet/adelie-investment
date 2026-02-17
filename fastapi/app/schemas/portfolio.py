@@ -26,6 +26,7 @@ class PortfolioResponse(BaseModel):
     portfolio_name: str
     initial_cash: int
     current_cash: int
+    total_rewards_received: int = 0
     holdings: list[HoldingResponse] = []
     total_value: float = 0
     total_profit_loss: float = 0
