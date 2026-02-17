@@ -10,9 +10,7 @@ SERVICES = frontend backend-api ai-pipeline
 .PHONY: help build push push-local dev dev-down deploy deploy-down \
         dev-frontend-local dev-api-local \
         test test-backend test-e2e test-load test-pipeline test-frontend \
-        migrate logs clean \
-        localstack-up localstack-down \
-        terraform-init terraform-plan terraform-apply terraform-destroy
+        migrate logs clean
 
 # --- 도움말 ---
 help:
@@ -45,14 +43,6 @@ help:
 	@echo "    make migrate        DB 마이그레이션 (Alembic)"
 	@echo "    make logs           배포 환경 로그 조회"
 	@echo "    make clean          Docker 시스템 정리"
-	@echo ""
-	@echo "  인프라 (LocalStack + Terraform):"
-	@echo "    make localstack-up       LocalStack 시작"
-	@echo "    make localstack-down     LocalStack 중지"
-	@echo "    make terraform-init      Terraform 초기화 (ENV=localstack|dev)"
-	@echo "    make terraform-plan      Terraform 플랜 확인"
-	@echo "    make terraform-apply     Terraform 적용"
-	@echo "    make terraform-destroy   Terraform 리소스 삭제"
 	@echo ""
 	@echo "  변수:"
 	@echo "    REGISTRY=$(REGISTRY)  TAG=$(TAG)"
@@ -172,36 +162,3 @@ clean:
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	@echo "✨ 정리 완료"
 
-# ============================================================
-# LocalStack + Terraform
-# ENV: localstack (기본) | dev
-# ============================================================
-ENV ?= localstack
-TF_DIR = infra/terraform/environments/$(ENV)
-
-# --- LocalStack ---
-localstack-up:
-	@echo "🚀 Starting LocalStack..."
-	docker compose -f infra/localstack/docker-compose.yml up -d
-	@echo "✅ LocalStack ready at http://localhost:4566"
-
-localstack-down:
-	@echo "🛑 Stopping LocalStack..."
-	docker compose -f infra/localstack/docker-compose.yml down
-
-# --- Terraform ---
-terraform-init:
-	@echo "📦 Terraform init (ENV=$(ENV))..."
-	cd $(TF_DIR) && terraform init
-
-terraform-plan:
-	@echo "📋 Terraform plan (ENV=$(ENV))..."
-	cd $(TF_DIR) && terraform plan
-
-terraform-apply:
-	@echo "🚀 Terraform apply (ENV=$(ENV))..."
-	cd $(TF_DIR) && terraform apply -auto-approve
-
-terraform-destroy:
-	@echo "💥 Terraform destroy (ENV=$(ENV))..."
-	cd $(TF_DIR) && terraform destroy -auto-approve
