@@ -1,0 +1,259 @@
+Implement the following plan:
+
+# 포트폴리오 수익률 수정 + AI 튜터 복구 + 용어 하이라이팅
+
+## Context
+
+4가지 작업 통합:
+1. **포트폴리오 수익률**: 보상 포인트가 수익률에 포함되는 버그 수정
+2. **AI 튜터 복구**: OpenAI 쿼터 초과 → Anthropic fallback 추가 + Auth 헤더 누락 수정
+3. **챗봇 응답 테스트**: 수정 후 실제 동작 검증
+4. **용어 하이라이팅 복구**: 파이프라인 glossary 데이터 미생성 + 용어 설명 API (OpenAI 의존)
+
+**근본 원인**: OpenAI API 쿼터 초과(429)가 AI 튜터, 용어 설명, 파이프라인 glossary 생성을 모두 차단.
+**브랜치 통합 점검 결과**: `dev/frontend-e2e-narrative-content` (삭제됨), `dev/frontend-ui-v1` (원격) 모두 develop에 정상 통합 확인. 코드 손실 없음.
+
+---
+
+## Part A: 포트폴리오 수익률에서 보상 제외
+
+### 문제
+```python
+# 현재 (버그): 보상도 수익에 포함됨
+total_pl = total_value - initial_cash
+
+# 수정: 보상 차감
+total_pl = total_value - initial_cash - portfolio.total_rewards_received
+```
+
+### A-1. DB 모델 — `total_rewards_received` 컬럼 추가
+
+**파일**: `fastapi/app/models/portfolio.py` (UserPortfolio, line 21)
+
+```python
+total_rewards_received: Mapped[int] = mapped_column(
+    BigInteger, default=0, server_default="0",
+    comment="누적 보상 수령액 (수익률 계산에서 제외용)"
+)
+```
+
+### A-2. Alembic 마이그레이션
+
+**파일**: `database/alembic/versions/20260217_add_total_rewards_received.py`
+
+- `user_portfolios`에 `total_rewards_received BIGINT DEFAULT 0` 추가
+- backfill:
+```sql
+UPDATE user_portfolios p SET total_rewards_received =
+  COALESCE((SELECT SUM(final_reward) FROM briefing_rewards WHERE portfolio_id = p.id), 0)
+  + COALESCE((SELECT SUM(reward_amount) FROM dwell_rewards WHERE portfolio_id = p.id), 0)
+```
+
+### A-3. 보상 지급 시 누적 (4곳)
+
+| 위치 | 파일 | 변경 |
+|------|------|------|
+| 브리핑 보상 | `portfolio_service.py:162` | `+= BRIEFING_BASE_REWARD` |
+| 멀티플라이어 보너스 | `portfolio_service.py:221` | `+= bonus` |
+| 체류 보상 | `portfolio.py:423` | `+= DWELL_REWARD_AMOUNT` |
+| 퀴즈 보상 | `quiz_reward.py:53-57` | `+= reward_amount` |
+
+### A-4. 수익률 계산 수정 (4곳)
+
+| 엔드포인트 | 파일:라인 |
+|-----------|----------|
+| `get_portfolio` | `portfolio.py:169-171` |
+| `get_portfolio_summary` | `portfolio.py:204-206` |
+| `get_leaderboard` | `portfolio.py:86-88` |
+| `check_and_apply_multiplier` | `portfolio_service.py:213-214` |
+
+### A-5. 스키마
+
+`fastapi/app/schemas/portfolio.py` — `PortfolioResponse`에 `total_rewards_received: int = 0` 추가
+
+---
+
+## Part B: AI 튜터 복구
+
+### 문제 1: OpenAI API 쿼터 초과 (429 insufficient_quota)
+- 튜터의 `tutor.py`와 `tutor_engine.py` 모두 `gpt-4o-mini` 사용
+- Anthropic Claude API 키(`CLAUDE_API_KEY`)는 사용 가능
+- **해결**: Anthropic fallback 추가
+
+### 문제 2: TutorContext.jsx에 Authorization 헤더 누락
+- `fetch` 호출 시 `Authorization: Bearer <token>` 미포함 (line 94-96)
+- 백엔드 `get_current_user_optional`이므로 요청 자체는 성공하나, 포트폴리오 컨텍스트 주입 불가
+- **해결**: localStorage에서 토큰 읽어 헤더에 포함
+
+### B-1. 백엔드: Anthropic Claude fallback 추가
+
+**파일**: `fastapi/app/api/routes/tutor.py`
+
+`generate_tutor_response`와 `get_term_explanation_from_llm` 함수에:
+
+1. OpenAI 호출 시도
+2. `RateLimitError`/`APIError` 발생 시 Anthropic Claude로 fallback
+3. `CLAUDE_API_KEY` (= `ANTHROPIC_API_KEY`) 환경변수 사용
+
+```python
+# OpenAI 실패 → Anthropic fallback
+try:
+    # OpenAI 호출
+except (RateLimitError, APIError):
+    anthropic_key = get_settings().CLAUDE_API_KEY or get_settings().ANTHROPIC_API_KEY
+    if anthropic_key:
+        from anthropic import AsyncAnthropic
+        anthropic_client = AsyncAnthropic(api_key=anthropic_key)
+        # Claude로 동일 요청
+```
+
+**파일**: `fastapi/app/services/tutor_engine.py`
+- 동일한 fallback 패턴 적용 (line 340-343)
+
+**파일**: `fastapi/app/core/config.py`
+- `CLAUDE_API_KEY` 또는 `ANTHROPIC_API_KEY` 설정이 이미 있는지 확인, 없으면 추가
+
+### B-2. 프론트엔드: Authorization 헤더 추가
+
+**파일**: `frontend/src/contexts/TutorContext.jsx` (line 94-96)
+
+```javascript
+// Before:
+headers: { 'Content-Type': 'application/json' },
+
+// After:
+headers: {
+  'Content-Type': 'application/json',
+  ...(localStorage.getItem('token')
+    ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+    : {}),
+},
+```
+
+---
+
+## Part C: 챗봇 응답 테스트
+
+수정 완료 후 실제 API 호출로 검증:
+
+1. **로컬 서버 기동**: `make dev-api` 또는 `.venv/bin/uvicorn`
+2. **curl 테스트**:
+   ```bash
+   curl -N -X POST http://localhost:8082/api/v1/tutor/chat \
+     -H "Content-Type: application/json" \
+     -d '{"message":"PER이 뭔가요?","difficulty":"beginner"}'
+   ```
+3. **검증 항목**:
+   - SSE 스트리밍 응답이 오는지
+   - `event: text_delta` 이벤트에 한글 응답이 포함되는지
+   - `event: done` 이벤트로 정상 종료되는지
+   - OpenAI 실패 시 Anthropic fallback이 동작하는지
+4. **용어 설명 API**:
+   ```bash
+   curl http://localhost:8082/api/v1/tutor/explain/PER?difficulty=beginner
+   ```
+
+---
+
+## Part D: 용어 하이라이팅 복구
+
+### 현재 상태 분석
+
+**데이터 흐름**: 파이프라인 glossary 노드 → `historical_cases.keywords.narrative[key].glossary` JSONB 저장 → `narrative_builder.py:_inject_glossary_marks()` → `<mark class="term-highlight">` 태그 → Narrative.jsx `MarkdownBody` (rehypeRaw) 렌더링
+
+**문제 1: glossary 데이터 미생성**
+- `datapipeline/nodes/interface3.py`의 `run_glossary_node`가 LLM으로 페이지별 용어 생성
+- 파이프라인이 OpenAI 쿼터 초과로 실패 시 glossary가 빈 배열 `[]`
+- → `_inject_glossary_marks(content, [])` → 아무 `<mark>` 태그 없음 → 하이라이팅 없음
+
+**문제 2: 용어 클릭 시 설명 API 실패**
+- `TermBottomSheet.jsx` → `GET /api/v1/tutor/explain/{term}` → OpenAI 호출 → 429 에러
+- → Part B의 Anthropic fallback으로 해결됨
+
+**문제 3: config 키 불일치**
+- `.env`에 `CLAUDE_API_KEY=sk-ant-api03-...` 설정
+- `config.py`에 `ANTHROPIC_API_KEY: str = ""` 필드 → 빈 문자열
+- `case_sensitive=False` 설정이지만 **필드명이 다름** → 매핑 안 됨
+- → Part B-1에서 함께 수정
+
+### D-1. Config 키 매핑 수정 (Part B-1 통합)
+
+**파일**: `fastapi/app/core/config.py`
+
+```python
+# 추가: .env의 CLAUDE_API_KEY를 읽을 수 있도록
+CLAUDE_API_KEY: str = ""
+```
+
+`tutor.py`에서 fallback 시: `settings.CLAUDE_API_KEY or settings.ANTHROPIC_API_KEY`
+
+### D-2. TermBottomSheet 설명 API — Part B로 커버
+
+Anthropic fallback이 `get_term_explanation_from_llm`에도 적용되므로 별도 수정 불요.
+
+### D-3. 파이프라인 glossary 생성 — 재실행 필요
+
+기존 데이터의 glossary가 비어 있다면 파이프라인 재실행이 필요:
+- `datapipeline/ai/multi_provider_client.py`는 이미 Anthropic/Perplexity/OpenAI 멀티 프로바이더 지원
+- 파이프라인 프롬프트의 frontmatter에 `provider: anthropic` 지정 가능
+- **현재 차단**: Phase I (데이터 파이프라인 실행) — OpenAI 쿼터 초과
+
+**액션**: Part B 완료 후 Phase I 재시도 (`python -m datapipeline.run --backend live --market KR`)
+
+### D-4. 프론트엔드 — 수정 불요
+
+- `Narrative.jsx`의 `MarkdownBody`는 `rehypeRaw`로 `<mark>` HTML을 정상 파싱
+- `HighlightedText.jsx`는 `[[term]]`과 `<mark class='term'>` 패턴 모두 지원
+- 데이터만 있으면 정상 동작
+
+---
+
+## 수정 파일 목록
+
+| # | 파일 | 변경 | Part |
+|---|------|------|------|
+| 1 | `fastapi/app/models/portfolio.py` | `total_rewards_received` 컬럼 추가 | A |
+| 2 | `database/alembic/versions/20260217_add_total_rewards_received.py` | 마이그레이션 + backfill | A |
+| 3 | `fastapi/app/services/portfolio_service.py` | 보상 누적 + 수익률 공식 수정 | A |
+| 4 | `fastapi/app/api/routes/portfolio.py` | 수익률 공식 수정 + 체류 보상 누적 | A |
+| 5 | `fastapi/app/api/routes/quiz_reward.py` | 퀴즈 보상 누적 | A |
+| 6 | `fastapi/app/schemas/portfolio.py` | `total_rewards_received` 필드 추가 | A |
+| 7 | `fastapi/app/api/routes/tutor.py` | Anthropic fallback 추가 | B |
+| 8 | `fastapi/app/services/tutor_engine.py` | Anthropic fallback 추가 | B |
+| 9 | `fastapi/app/core/config.py` | `CLAUDE_API_KEY` 필드 추가 | B+D |
+| 10 | `frontend/src/contexts/TutorContext.jsx` | Authorization 헤더 추가 | B |
+
+**수정 불요 (정상 동작 확인됨)**:
+- `frontend/src/pages/Narrative.jsx` — `MarkdownBody`가 `<mark>` 정상 렌더링
+- `frontend/src/components/domain/HighlightedText.jsx` — `[[term]]` + `<mark>` 파싱 정상
+- `frontend/src/components/domain/TermBottomSheet.jsx` — API만 복구되면 정상 동작
+- `fastapi/app/services/narrative_builder.py` — `_inject_glossary_marks()` 정상
+- `datapipeline/nodes/interface3.py` — glossary 노드 로직 자체는 정상
+
+---
+
+## 검증
+
+### Part A 검증
+1. 마이그레이션: `cd database && ../.venv/bin/alembic upgrade head`
+2. API 테스트: 보상만 받은 상태 → 수익률 0%
+
+### Part B + C 검증
+1. 로컬 서버 기동 후 curl로 SSE 스트리밍 테스트
+2. OpenAI 실패 시 Anthropic fallback 동작 확인
+3. 프론트엔드에서 ChatFAB 클릭 → 질문 입력 → 응답 수신 E2E 확인
+
+### Part D 검증
+1. 용어 설명 API: `curl http://localhost:8082/api/v1/tutor/explain/PER?difficulty=beginner` → Anthropic fallback으로 응답
+2. DB 확인: 기존 케이스의 `keywords->'narrative'->'background'->'glossary'` JSONB 조회
+3. 파이프라인 재실행 후: Narrative 페이지에서 `<mark class="term-highlight">` 태그 존재 확인
+4. 용어 클릭 → TermBottomSheet → 설명 정상 표시
+
+### 실행 순서
+1. Part A (포트폴리오 수익률) — 독립적, 먼저 완료
+2. Part B (AI 튜터 + config 수정) — Part D의 선행 조건
+3. Part C (챗봇 테스트) — Part B 완료 후
+4. Part D 검증 — Part B 완료 후 자동 해결, 파이프라인 재실행은 별도
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
