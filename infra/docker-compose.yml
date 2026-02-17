@@ -79,6 +79,31 @@ services:
       timeout: 20s
       retries: 3
 
+  # =============================================
+  # Streamlit 인프라 대시보드
+  # =============================================
+  dashboard:
+    build:
+      context: ./docker-dashboard
+    container_name: adelie-dashboard
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    volumes:
+      - /home/ubuntu/.ssh/id_ed25519:/root/.ssh/id_ed25519:ro
+      - /home/ubuntu/.ssh/known_hosts:/root/.ssh/known_hosts:ro
+    environment:
+      DB_HOST: ${DB_HOST:-10.10.10.10}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_NAME: ${POSTGRES_DB:-narrative_invest}
+      DB_USER: ${POSTGRES_USER:-narative}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-password}
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1"
+
 networks:
   default:
     name: narrative-network

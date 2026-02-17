@@ -1,0 +1,14 @@
+.git
+.github
+.env
+.env.*
+frontend/node_modules
+frontend/dist
+tests/
+__pycache__
+*.pyc
+.venv
+lxd/
+infra/
+*.md
+!requirements*.txt

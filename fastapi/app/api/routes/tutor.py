@@ -11,8 +11,9 @@ from typing import AsyncGenerator, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, APIError, APITimeoutError, RateLimitError
 
 logger = logging.getLogger("narrative_api.tutor")
 
@@ -41,7 +42,7 @@ async def get_term_explanation_from_llm(term: str, difficulty: str) -> str:
     if not api_key:
         raise HTTPException(status_code=500, detail="OpenAI API key not configured")
     
-    client = AsyncOpenAI(api_key=api_key)
+    client = AsyncOpenAI(api_key=api_key, timeout=30.0)
     
     difficulty_context = {
         "beginner": "주식 초보자도 이해할 수 있도록 아주 쉽게, 일상적인 비유를 사용해서",
@@ -124,8 +125,11 @@ async def explain_term(
             "source": "ai",
             "cached": False,
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except (APIError, APITimeoutError, RateLimitError) as e:
+        # OpenAI API 호출 실패
+        error_id = uuid.uuid4().hex[:8]
+        logger.error("LLM 용어 설명 실패 [%s]: %s", error_id, e)
+        raise HTTPException(status_code=502, detail=f"AI 서비스 오류 (ref: {error_id})")
 
 
 async def generate_tutor_response(
@@ -163,7 +167,7 @@ async def generate_tutor_response(
                 ctx_row = ctx_result.fetchone()
                 if ctx_row:
                     page_context = f"\n\n[현재 보고 있는 사례]\n제목: {ctx_row[0]}\n요약: {ctx_row[1]}"
-        except Exception:
+        except SQLAlchemyError:
             pass  # 컨텍스트 로드 실패해도 대화는 계속
 
     # 포트폴리오 컨텍스트 주입 (개인화된 조언용)
@@ -181,8 +185,8 @@ async def generate_tutor_response(
                 holdings = holdings_result.fetchall()
                 holdings_text = ", ".join(f"{h[0]} {h[1]}주(평균 {int(h[2]):,}원)" for h in holdings) if holdings else "없음"
                 page_context += f"\n\n[사용자 포트폴리오]\n보유 현금: {int(pf_row[0]):,}원 / 초기 자본: {int(pf_row[1]):,}원\n보유 종목: {holdings_text}"
-        except Exception:
-            pass
+        except SQLAlchemyError:
+            pass  # 포트폴리오 로드 실패해도 대화는 계속
 
     # 출처 수집 (glossary, DB 사례/리포트, 주가/기업관계)
     sources = []
@@ -201,7 +205,8 @@ async def generate_tutor_response(
             extra_context += f"\n\n참고할 내부 데이터:{db_context}"
         if stock_context:
             extra_context += f"\n\n참고할 종목 데이터:{stock_context}"
-    except Exception as e:
+    except (SQLAlchemyError, ValueError, KeyError) as e:
+        # DB 조회 또는 데이터 파싱 실패 시 무시
         logger.warning("출처 수집 실패 (무시): %s", e)
 
     system_prompt = get_difficulty_prompt(request.difficulty)
@@ -230,8 +235,9 @@ async def generate_tutor_response(
                 )
                 for msg in prev_result.scalars():
                     prev_msgs.append({"role": msg.role, "content": msg.content})
-        except Exception as e:
-            logger.warning("Failed to load previous messages: %s", e)
+        except (SQLAlchemyError, ValueError) as e:
+            # DB 조회 또는 UUID 파싱 실패
+            logger.warning("이전 메시지 로드 실패: %s", e)
     
     messages = [
         {"role": "system", "content": system_prompt},
@@ -240,7 +246,7 @@ async def generate_tutor_response(
     ]
     
     try:
-        client = AsyncOpenAI(api_key=api_key)
+        client = AsyncOpenAI(api_key=api_key, timeout=30.0)
         
         response = await client.chat.completions.create(
             model="gpt-4o-mini",
@@ -316,8 +322,9 @@ async def generate_tutor_response(
             session_obj.last_message_at = datetime.utcnow()
 
             await db.commit()
-        except Exception as e:
-            logger.warning("Failed to save tutor session: %s", e)
+        except SQLAlchemyError as e:
+            # 세션 저장 실패해도 응답은 이미 전송됨
+            logger.warning("튜터 세션 저장 실패: %s", e)
         
         # 시각화 자동 감지: 사용자 메시지나 응답에 차트 키워드가 있으면 Plotly 생성
         viz_keywords = ["차트", "그래프", "시각화", "그려", "보여줘", "chart", "graph"]
@@ -358,7 +365,8 @@ async def generate_tutor_response(
                 chart_data = json.loads(json_content)
                 if "data" in chart_data and isinstance(chart_data["data"], list):
                     yield f"event: visualization\ndata: {json.dumps({'type': 'visualization', 'format': 'json', 'chartData': chart_data})}\n\n"
-            except Exception as viz_err:
+            except (APIError, APITimeoutError, json.JSONDecodeError, KeyError, ValueError) as viz_err:
+                # LLM 호출 또는 차트 JSON 파싱 실패
                 logger.warning(f"시각화 생성 실패: {viz_err}")
 
         done_data = {'session_id': session_id, 'total_tokens': total_tokens}
@@ -370,13 +378,19 @@ async def generate_tutor_response(
     except asyncio.TimeoutError:
         logger.warning("OpenAI API 호출 타임아웃")
         yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'AI 응답 시간 초과'})}\n\n"
-    except Exception as e:
-        yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+    except (APIError, APITimeoutError, RateLimitError) as e:
+        # OpenAI API 오류
+        error_id = uuid.uuid4().hex[:8]
+        logger.error("OpenAI API 오류 [%s]: %s", error_id, e)
+        yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': f'AI 서비스 오류 (ref: {error_id})'})}\n\n"
+    except (ConnectionError, asyncio.CancelledError) as e:
+        # SSE 스트리밍 연결 끊김
+        logger.info("SSE 연결 종료: %s", e)
     finally:
         # DB 세션 및 리소스 정리
         try:
             await db.close()
-        except Exception:
+        except SQLAlchemyError:
             pass
         logger.debug("SSE 스트리밍 리소스 정리 완료 (session=%s)", session_id)
 

@@ -90,7 +90,7 @@ export default function FeedbackWidget({ externalOpen = false, onExternalClose }
 
             {submitted ? (
               <div className="text-center py-8">
-                <img src="/images/penguin-3d.png" alt="Adelie" className="w-12 h-12 mx-auto mb-3" />
+                <img src="/images/penguin-3d.webp" alt="Adelie" className="w-12 h-12 mx-auto mb-3" />
                 <p className="font-bold text-lg">감사합니다!</p>
                 <p className="text-sm text-text-secondary mt-1">소중한 의견이 반영됩니다</p>
               </div>

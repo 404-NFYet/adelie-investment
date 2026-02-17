@@ -15,6 +15,15 @@ scrape_configs:
         labels:
           env: 'lxd'
 
+  # FastAPI 백엔드 API 메트릭
+  - job_name: 'fastapi'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets:
+          - '10.10.10.20:8082'   # deploy-test
+        labels:
+          service: 'backend-api'
+
   - job_name: 'cadvisor'
     static_configs:
       - targets:

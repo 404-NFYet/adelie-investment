@@ -35,6 +35,7 @@ groups:
 
       - alert: ContainerRestart
         expr: increase(container_restart_count{name=~"adelie-.*"}[5m]) > 0
+        for: 1m
         labels:
           severity: warning
         annotations:
