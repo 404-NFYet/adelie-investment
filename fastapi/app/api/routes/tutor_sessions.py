@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, desc
+from sqlalchemy import func, select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -60,13 +60,22 @@ async def list_sessions(
 @router.get("/sessions/{session_id}/messages")
 async def get_session_messages(
     session_id: str,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """특정 세션의 메시지 목록 조회 (Redis 캐시 우선)."""
-    cache = await get_redis_cache()
-    cached = await cache.get_chat_messages(session_id)
-    if cached:
-        return json.loads(cached)
+    """세션 메시지 히스토리 조회 (최신순 정렬, pagination 지원).
+
+    - limit/offset이 기본값(50/0)이면 Redis 캐시 우선 사용
+    - pagination 파라미터가 지정되면 DB 직접 조회
+    """
+    # 기본 pagination이면 캐시 활용
+    use_cache = (limit == 50 and offset == 0)
+    if use_cache:
+        cache = await get_redis_cache()
+        cached = await cache.get_chat_messages(session_id)
+        if cached:
+            return json.loads(cached)
 
     try:
         session_uuid = uuid.UUID(session_id)
@@ -80,8 +89,19 @@ async def get_session_messages(
     if not session:
         raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
 
+    # 전체 메시지 수 조회
+    total_result = await db.execute(
+        select(func.count(TutorMessage.id)).where(TutorMessage.session_id == session.id)
+    )
+    total = total_result.scalar() or 0
+
+    # pagination 적용하여 메시지 조회 (시간순 정렬)
     msg_result = await db.execute(
-        select(TutorMessage).where(TutorMessage.session_id == session.id).order_by(TutorMessage.created_at)
+        select(TutorMessage)
+        .where(TutorMessage.session_id == session.id)
+        .order_by(TutorMessage.created_at)
+        .offset(offset)
+        .limit(limit)
     )
     messages = msg_result.scalars().all()
 
@@ -110,9 +130,15 @@ async def get_session_messages(
         "session_id": str(session.session_uuid),
         "title": session.title or "새 대화",
         "messages": formatted_messages,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
     }
 
-    await cache.set_chat_messages(session_id, json.dumps(response_data, ensure_ascii=False))
+    # 기본 pagination인 경우에만 캐시 저장
+    if use_cache:
+        cache = await get_redis_cache()
+        await cache.set_chat_messages(session_id, json.dumps(response_data, ensure_ascii=False))
     return response_data
 
 

@@ -66,28 +66,38 @@ async def get_today_keywords(
     kw_data = briefing.top_keywords if isinstance(briefing.top_keywords, dict) else json.loads(briefing.top_keywords)
     keywords_raw = kw_data.get("keywords", [])
     
-    # For each keyword, find matched case
+    # 배치 조인으로 모든 키워드의 case_match를 한번에 조회 (N+1 해결)
+    keyword_titles = [kw.get("title", "") for kw in keywords_raw]
+    
+    match_stmt = (
+        select(CaseMatch, HistoricalCase)
+        .outerjoin(HistoricalCase, CaseMatch.matched_case_id == HistoricalCase.id)
+        .where(
+            and_(
+                CaseMatch.current_keyword.in_(keyword_titles),
+                CaseMatch.matched_at >= target_date,
+            )
+        )
+        .order_by(CaseMatch.matched_at.desc())
+    )
+    match_result = await db.execute(match_stmt)
+    match_rows = match_result.all()
+    
+    # keyword -> (CaseMatch, HistoricalCase) 매핑 (첫 매치만)
+    keyword_case_map = {}
+    for cm, hc in match_rows:
+        if cm.current_keyword not in keyword_case_map:
+            keyword_case_map[cm.current_keyword] = (cm, hc)
+    
+    # For each keyword, build response
     keywords_with_cases = []
     for i, kw in enumerate(keywords_raw):
         kw_title = kw.get("title", "")
         
-        # Find case match for this keyword (today)
-        match_stmt = select(CaseMatch).where(
-            and_(
-                CaseMatch.current_keyword == kw_title,
-                CaseMatch.matched_at >= target_date,
-            )
-        ).order_by(CaseMatch.matched_at.desc()).limit(1)
-        
-        match_result = await db.execute(match_stmt)
-        match = match_result.scalar_one_or_none()
-        
         case_info = None
-        if match:
-            case_stmt = select(HistoricalCase).where(HistoricalCase.id == match.matched_case_id)
-            case_result = await db.execute(case_stmt)
-            case = case_result.scalar_one_or_none()
-            
+        match_pair = keyword_case_map.get(kw_title)
+        if match_pair:
+            match, case = match_pair
             if case:
                 case_kw = case.keywords if isinstance(case.keywords, dict) else json.loads(case.keywords) if case.keywords else {}
                 comparison = case_kw.get("comparison", {})
@@ -123,7 +133,6 @@ async def get_today_keywords(
             "catalyst_source": kw.get("catalyst_source"),
             "mirroring_hint": kw.get("mirroring_hint"),
             "quality_score": kw.get("quality_score"),
-            # case_id를 명시적으로 반환 (null이면 프론트에서 버튼 비활성화)
             "case_id": case_info["case_id"] if case_info else None,
             "case_title": case_info["case_title"] if case_info else None,
             "event_year": case_info["event_year"] if case_info else None,

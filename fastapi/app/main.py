@@ -1,14 +1,16 @@
 """FastAPI application entry point."""
 
+import json
 import logging
 import traceback
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.responses import StreamingResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
@@ -20,7 +22,6 @@ _route_modules = {}
 for _mod_name in [
     "health",
     "auth",
-    "briefing",
     "glossary",
     "cases",
     "tutor",
@@ -46,13 +47,14 @@ for _mod_name in [
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.services import get_redis_cache, close_redis_cache
+from app.services.kis_service import close_kis_service
 from app.core.scheduler import start_scheduler, stop_scheduler
 
 # --- 구조화된 로깅 설정 ---
-logging.basicConfig(
-    level=logging.DEBUG if settings.DEBUG else logging.INFO,
-    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
+from app.core.logging import setup_logging
+setup_logging(
+    level="DEBUG" if settings.DEBUG else "INFO",
+    json_format=not settings.DEBUG,
 )
 logger = logging.getLogger("narrative_api")
 
@@ -73,6 +75,7 @@ async def lifespan(app: FastAPI):
     yield
     # Shutdown
     stop_scheduler()
+    await close_kis_service()
     await close_redis_cache()
     logger.info("%s shutting down...", settings.APP_NAME)
 
@@ -85,6 +88,16 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+# --- Prometheus 메트릭 ---
+from prometheus_fastapi_instrumentator import Instrumentator
+
+Instrumentator(
+    should_group_status_codes=False,
+    should_ignore_untemplated=True,
+    excluded_handlers=["/metrics", "/docs", "/redoc", "/openapi.json"],
+    should_instrument_requests_inprogress=True,
+).instrument(app).expose(app, include_in_schema=False)
 
 # --- Rate Limiter 등록 ---
 app.state.limiter = limiter
@@ -107,9 +120,33 @@ async def global_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
         status_code=500,
         content={
-            "error": "Internal server error",
-            "error_id": error_id,
-            "detail": "An unexpected error occurred. Please contact support with the error_id.",
+            "status": "error",
+            "message": "Internal server error",
+            "error": {
+                "code": "internal_error",
+                "error_id": error_id,
+                "detail": "An unexpected error occurred. Please contact support with the error_id.",
+            },
+        },
+    )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """HTTP 예외를 전역 에러 포맷으로 변환."""
+    detail = exc.detail
+    if isinstance(detail, dict):
+        message = detail.get("message") or detail.get("error") or "Request failed"
+        error = {k: v for k, v in detail.items() if k != "message"}
+    else:
+        message = str(detail) if detail else "Request failed"
+        error = None
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "status": "error",
+            "message": message,
+            "error": error,
         },
     )
 
@@ -126,15 +163,19 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     return JSONResponse(
         status_code=422,
         content={
-            "error": "Validation error",
-            "detail": [
-                {
-                    "loc": list(err.get("loc", [])),
-                    "msg": err.get("msg", ""),
-                    "type": err.get("type", ""),
-                }
-                for err in exc.errors()
-            ],
+            "status": "error",
+            "message": "Validation error",
+            "error": {
+                "code": "validation_error",
+                "detail": [
+                    {
+                        "loc": list(err.get("loc", [])),
+                        "msg": err.get("msg", ""),
+                        "type": err.get("type", ""),
+                    }
+                    for err in exc.errors()
+                ],
+            },
         },
     )
 
@@ -156,6 +197,9 @@ _RATE_LIMIT_WINDOW = 60
 @app.middleware("http")
 async def global_rate_limit_middleware(request: Request, call_next):
     """IP 기반 글로벌 레이트 리미팅 (100 req/min, Redis INCR 패턴)."""
+    # /metrics는 Prometheus 스크래핑용이므로 rate limit 제외
+    if request.url.path == "/metrics":
+        return await call_next(request)
     client_ip = request.client.host if request.client else "unknown"
     key = f"rate_limit:{client_ip}"
     try:
@@ -177,11 +221,44 @@ async def global_rate_limit_middleware(request: Request, call_next):
     return await call_next(request)
 
 
+@app.middleware("http")
+async def response_envelope_middleware(request: Request, call_next):
+    """응답을 전역 스키마로 래핑 (JSON만 적용)."""
+    response = await call_next(request)
+
+    # 문서/메트릭/스키마/스트리밍 응답은 제외
+    if request.url.path in {"/metrics", "/docs", "/redoc", "/openapi.json"}:
+        return response
+    if isinstance(response, StreamingResponse):
+        return response
+
+    content_type = response.headers.get("content-type", "")
+    if "application/json" not in content_type:
+        return response
+
+    try:
+        body = response.body
+        payload = json.loads(body.decode("utf-8")) if body else None
+    except Exception:
+        return response
+
+    # 이미 전역 포맷이면 그대로 반환
+    if isinstance(payload, dict) and payload.get("status") in {"success", "error"}:
+        return response
+
+    if response.status_code >= 400:
+        wrapped = {"status": "error", "message": "Request failed", "error": payload}
+    else:
+        wrapped = {"status": "success", "data": payload}
+    headers = dict(response.headers)
+    headers.pop("content-length", None)
+    return JSONResponse(content=wrapped, status_code=response.status_code, headers=headers)
+
+
 # Include routers (로드 성공한 모듈만 등록)
 _router_config = {
     "health": ("health", "/api/v1"),
     "auth": ("auth", "/api/v1"),
-    "briefing": ("briefing", "/api/v1"),
     "glossary": ("glossary", "/api/v1"),
     "cases": ("cases", "/api/v1"),
     "tutor": ("AI tutor", "/api/v1"),

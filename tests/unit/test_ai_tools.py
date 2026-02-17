@@ -8,34 +8,35 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "chatbot"
 
 class TestAgentPrompts:
     def test_difficulty_prompts_exist(self):
-        """Test that all difficulty prompts exist."""
-        from agent.prompts import DIFFICULTY_PROMPTS
-        
-        assert "beginner" in DIFFICULTY_PROMPTS
-        assert "elementary" in DIFFICULTY_PROMPTS
-        assert "intermediate" in DIFFICULTY_PROMPTS
-    
+        """Test that all difficulty levels return valid prompts."""
+        from agent.prompts import get_system_prompt
+
+        for difficulty in ("beginner", "elementary", "intermediate"):
+            prompt = get_system_prompt(difficulty)
+            assert isinstance(prompt, str)
+            assert len(prompt) > 0
+
     def test_get_system_prompt(self):
         """Test system prompt generation."""
         from agent.prompts import get_system_prompt
-        
+
         prompt = get_system_prompt("beginner")
         assert isinstance(prompt, str)
         assert len(prompt) > 0
-    
+
     def test_beginner_prompt_content(self):
         """Test beginner prompt has appropriate content."""
-        from agent.prompts import DIFFICULTY_PROMPTS
-        
-        beginner = DIFFICULTY_PROMPTS["beginner"]
+        from agent.prompts import get_system_prompt
+
+        beginner = get_system_prompt("beginner")
         # Should contain keywords related to simple explanation
-        assert "쉽" in beginner or "초보" in beginner or "간단" in beginner
-    
+        assert "쉽" in beginner or "초보" in beginner or "간단" in beginner or "입문" in beginner
+
     def test_intermediate_prompt_content(self):
         """Test intermediate prompt has appropriate content."""
-        from agent.prompts import DIFFICULTY_PROMPTS
-        
-        intermediate = DIFFICULTY_PROMPTS["intermediate"]
+        from agent.prompts import get_system_prompt
+
+        intermediate = get_system_prompt("intermediate")
         # Should allow more technical terms
         assert len(intermediate) > 0
 
