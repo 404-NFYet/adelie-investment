@@ -123,6 +123,7 @@ async def get_today_keywords(
             "category": kw.get("category", "GENERAL"),
             "title": kw_title,
             "description": kw.get("description", ""),
+            "icon_key": kw.get("icon_key"),
             "sector": kw.get("sector"),
             "stocks": stocks,
             "trend_days": kw.get("trend_days"),

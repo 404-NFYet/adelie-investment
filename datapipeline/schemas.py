@@ -170,12 +170,17 @@ class HallucinationItem(BaseModel):
     note: str
 
 
+class HomeIcon(BaseModel):
+    icon_key: str
+
+
 class FinalBriefing(BaseModel):
     """Interface 3 출력 스키마."""
     theme: str
     one_liner: str
     generated_at: str
     pages: list[Page]
+    home_icon: Optional[HomeIcon] = None
     sources: list[SourceItem]
     hallucination_checklist: list[HallucinationItem]
 
@@ -190,3 +195,4 @@ class FullBriefingOutput(BaseModel):
     interface_1_curated_context: CuratedContext
     interface_2_raw_narrative: RawNarrative
     interface_3_final_briefing: FinalBriefing
+    data_collection_status: Optional[dict[str, Any]] = None

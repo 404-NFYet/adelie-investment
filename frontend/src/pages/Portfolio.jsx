@@ -176,7 +176,7 @@ export default function Portfolio() {
       <div className="min-h-screen bg-background pb-24">
         <header className="h-[45px] border-b border-border px-3 flex items-center">
           <div className="flex items-center gap-2">
-            <img src="/images/penguin-3d.webp" alt="ADELIE" className="h-6 w-6 object-contain" />
+            <img src="/images/penguin-3d.png" alt="ADELIE" className="h-6 w-6 object-contain" />
             <span className="text-[15px] font-bold tracking-tight">ADELIE</span>
           </div>
         </header>
@@ -201,7 +201,7 @@ export default function Portfolio() {
     <div className="min-h-screen bg-background pb-24">
       <header className="h-[45px] bg-white border-b border-border px-3 flex items-center">
         <div className="flex items-center gap-2">
-          <img src="/images/penguin-3d.webp" alt="ADELIE" className="h-6 w-6 object-contain" />
+          <img src="/images/penguin-3d.png" alt="ADELIE" className="h-6 w-6 object-contain" />
           <span className="text-[15px] font-bold tracking-tight">ADELIE</span>
         </div>
       </header>

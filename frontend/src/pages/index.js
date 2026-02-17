@@ -2,6 +2,7 @@
  * Pages index - Export all pages
  */
 export { default as Onboarding } from './Onboarding';
+export { default as Landing } from './Landing';
 export { default as Home } from './Home';
 export { default as Search } from './Search';
 export { default as Comparison } from './Comparison';

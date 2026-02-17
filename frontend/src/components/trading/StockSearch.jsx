@@ -8,16 +8,31 @@ export default function StockSearch({ onSelect }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [hasSearched, setHasSearched] = useState(false);
   const timerRef = useRef(null);
 
   const search = useCallback(async (q) => {
-    if (!q.trim() || q.length < 2) { setResults([]); return; }
+    if (!q.trim() || q.length < 2) {
+      setResults([]);
+      setError('');
+      setHasSearched(false);
+      return;
+    }
     setLoading(true);
+    setError('');
+    setHasSearched(true);
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/trading/search?q=${encodeURIComponent(q)}`);
+      if (!res.ok) {
+        throw new Error(`검색 실패 (${res.status})`);
+      }
       const data = await res.json();
       setResults(data.results || []);
-    } catch { setResults([]); }
+    } catch {
+      setResults([]);
+      setError('검색 중 오류가 발생했습니다');
+    }
     finally { setLoading(false); }
   }, []);
 
@@ -29,6 +44,8 @@ export default function StockSearch({ onSelect }) {
       timerRef.current = setTimeout(() => search(val), 300);
     } else {
       setResults([]);
+      setError('');
+      setHasSearched(false);
     }
   };
 
@@ -68,6 +85,14 @@ export default function StockSearch({ onSelect }) {
             </button>
           ))}
         </div>
+      )}
+
+      {!loading && error && (
+        <p className="text-xs text-error mt-1">{error}</p>
+      )}
+
+      {!loading && !error && hasSearched && results.length === 0 && (
+        <p className="text-xs text-text-muted mt-1">검색 결과가 없습니다</p>
       )}
     </div>
   );

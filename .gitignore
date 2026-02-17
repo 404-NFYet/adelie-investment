@@ -172,3 +172,4 @@ playwright-report/
 *.plan.md
 .entire/
 data-gen/
+.config/

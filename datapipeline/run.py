@@ -104,6 +104,8 @@ def _build_initial_state(
         # Data Collection 중간 결과
         "raw_news": None,
         "raw_reports": None,
+        "crawl_news_status": None,
+        "crawl_research_status": None,
         "screened_stocks": None,
         "matched_stocks": None,
         "news_summary": None,
@@ -123,6 +125,7 @@ def _build_initial_state(
         "pages": None,
         "sources": None,
         "hallucination_checklist": None,
+        "home_icon": None,
         # 출력
         "full_output": None,
         "output_path": None,
@@ -152,6 +155,32 @@ def _log_metrics(metrics: dict) -> None:
         logger.info("--- 노드별 실행 시간 ---")
         for node_name, info in metrics.items():
             logger.info("  %s: %.2fs (%s)", node_name, info["elapsed_s"], info["status"])
+
+
+def _log_crawl_status(final_state: dict) -> None:
+    news_status = final_state.get("crawl_news_status")
+    if isinstance(news_status, dict):
+        logger.info(
+            "crawl_news_status: requested=%s used=%s attempts=%s count=%s fallback=%s error=%s",
+            news_status.get("requested_date"),
+            news_status.get("used_date"),
+            news_status.get("attempts"),
+            news_status.get("count"),
+            news_status.get("fallback_used"),
+            news_status.get("error"),
+        )
+
+    research_status = final_state.get("crawl_research_status")
+    if isinstance(research_status, dict):
+        logger.info(
+            "crawl_research_status: requested=%s used=%s attempts=%s count=%s fallback=%s error=%s",
+            research_status.get("requested_date"),
+            research_status.get("used_date"),
+            research_status.get("attempts"),
+            research_status.get("count"),
+            research_status.get("fallback_used"),
+            research_status.get("error"),
+        )
 
 
 async def async_main() -> int:
@@ -209,6 +238,7 @@ async def async_main() -> int:
         logger.info("=== 완료 ===")
         logger.info("출력 파일: %s", final_state.get("output_path", ""))
         logger.info("총 소요시간: %.2fs", elapsed)
+        _log_crawl_status(final_state)
         _log_metrics(final_state.get("metrics", {}))
         return 0
 
@@ -238,6 +268,7 @@ async def async_main() -> int:
                 break  # 1차 실패 시 중단 (curated_topics 없음)
 
             logger.info("Topic 1/%d 완료: %s (%.2fs)", topic_count, final_state.get("output_path", ""), elapsed)
+            _log_crawl_status(final_state)
             _log_metrics(final_state.get("metrics", {}))
             success_count += 1
 
@@ -273,6 +304,7 @@ async def async_main() -> int:
                     continue  # 실패해도 다음 토픽 진행
 
                 logger.info("Topic %d/%d 완료: %s (%.2fs)", idx + 1, topic_count, final_state.get("output_path", ""), elapsed)
+                _log_crawl_status(final_state)
                 _log_metrics(final_state.get("metrics", {}))
                 success_count += 1
             except Exception as e:

@@ -4,7 +4,7 @@ import { useUser } from '../../contexts/UserContext';
 import { notificationApi } from '../../api';
 
 const BRAND_LABEL = 'ADELIE';
-const BRAND_LOGO_SRC = '/images/penguin-3d.webp';
+const BRAND_LOGO_SRC = '/images/penguin-3d.png';
 
 export default function AppHeader({ showBack = false, title = null }) {
   const navigate = useNavigate();

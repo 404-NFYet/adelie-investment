@@ -19,6 +19,14 @@ from app.schemas.narrative import ChartData, ChartDataPoint, NarrativeSection
 _TERM_PATTERN = re.compile(r"\[\[(.+?)\]\]")
 
 PAGE_KEYS = ["background", "concept_explain", "history", "application", "caution", "summary"]
+STEP_TITLES = {
+    "background": "왜 지금 중요할까",
+    "concept_explain": "핵심 개념 한눈에",
+    "history": "과거 패턴 되짚기",
+    "application": "지금 시장에 대입",
+    "caution": "놓치면 위험한 점",
+    "summary": "투자 전 체크포인트",
+}
 
 
 def highlight_terms(content: str) -> str:
@@ -112,6 +120,7 @@ def _build_from_llm(narrative_data: dict) -> dict:
 
         content = section.get("content", "")
         glossary = section.get("glossary", [])
+        title = str(section.get("title", "") or "").strip() or STEP_TITLES.get(key, "")
 
         # glossary 용어를 content에 하이라이팅
         content = _inject_glossary_marks(content, glossary)
@@ -119,9 +128,10 @@ def _build_from_llm(narrative_data: dict) -> dict:
         content = highlight_terms(content)
 
         step_data = {
+            "title": title,
             "bullets": section.get("bullets", []),
             "content": content,
-            "chart": _sanitize_chart(section.get("chart")),
+            "chart": None if key == "summary" else _sanitize_chart(section.get("chart")),
             "glossary": glossary,
         }
         # sources/citations 전달 (Perplexity 출처)
@@ -139,8 +149,7 @@ def _build_fallback(
     case_stocks: list[CaseStockRelation],
 ) -> dict:
     """6페이지 fallback 빌더."""
-    title = comparison.get("title", "이 테마")
-    return {
+    steps = {
         "background": _build_background(briefing, briefing_stocks),
         "concept_explain": _build_concept_explain(comparison),
         "history": _build_history(comparison, paragraphs),
@@ -148,6 +157,13 @@ def _build_fallback(
         "caution": _build_caution(comparison, paragraphs),
         "summary": _build_summary(comparison, case_stocks),
     }
+    for key in PAGE_KEYS:
+        section = steps.get(key, {})
+        if isinstance(section, dict):
+            section.setdefault("title", STEP_TITLES.get(key, "핵심 포인트"))
+            if key == "summary":
+                section["chart"] = None
+    return steps
 
 
 # --- 개별 섹션 빌더 (fallback용) ---
@@ -228,15 +244,8 @@ def _build_application(comparison: dict, paragraphs: list[str]) -> dict:
     analysis = comparison.get("analysis", [])
     bullets = analysis[:3] if analysis else ["과거 사례를 현재에 적용해 볼게요."]
     content = highlight_terms(paragraphs[1]) if len(paragraphs) > 1 else ""
-    chart = ChartData(
-        title="과거 vs 현재 비교",
-        data=[
-            {"x": ["금리", "환율", "성장률"], "y": [2.5, 1100, 3.1], "type": "bar", "name": "과거", "marker": {"color": "#8B95A1"}},
-            {"x": ["금리", "환율", "성장률"], "y": [3.5, 1350, 1.8], "type": "bar", "name": "현재", "marker": {"color": "#3B82F6"}},
-        ],
-        layout={"barmode": "group", "yaxis": {"title": "수치"}, "showlegend": True},
-    )
-    return NarrativeSection(bullets=bullets, content=content, chart=chart).model_dump()
+    # fallback 모드에서는 근거 수치가 명확할 때만 차트를 노출한다.
+    return NarrativeSection(bullets=bullets, content=content, chart=None).model_dump()
 
 
 def _build_caution(comparison: dict, paragraphs: list[str]) -> dict:
@@ -248,26 +257,28 @@ def _build_caution(comparison: dict, paragraphs: list[str]) -> dict:
         f"단기 모멘텀에 과도하게 베팅하면 손실 위험이 있어요.",
     ]
     content = highlight_terms(paragraphs[2]) if len(paragraphs) > 2 else f"{title} 관련 주의사항을 꼭 체크해야 해요."
-    chart = ChartData(
-        title="리스크 시나리오별 예상 손실",
-        data=[{"x": ["금리 급등", "규제 강화", "글로벌 침체"], "y": [-15, -20, -30], "type": "bar",
-               "marker": {"color": ["#F59E0B", "#EF4444", "#991B1B"]}}],
-        layout={"yaxis": {"title": "예상 손실률 (%)"}},
-    )
-    return NarrativeSection(bullets=bullets, content=content, chart=chart).model_dump()
+    return NarrativeSection(bullets=bullets, content=content, chart=None).model_dump()
 
 
 def _build_summary(comparison: dict, case_stocks: list[CaseStockRelation]) -> dict:
     """summary 섹션: 최종 정리."""
-    title = comparison.get("title", "이 테마")
     bullets = [
-        f"{title} 분석 핵심 포인트를 정리했어요.",
+        "핵심 지표가 같은 방향으로 움직이는지 확인해요.",
+        "실적 가이던스가 실제 수치로 이어지는지 체크해요.",
+        "규제·일정 변화 뉴스를 짧게라도 매일 확인해요.",
     ]
     if case_stocks:
         stock_names = [r.stock_name for r in case_stocks[:3]]
-        bullets.append(f"관련 종목: {', '.join(stock_names)}")
+        bullets[2] = f"관련 종목({', '.join(stock_names)}) 뉴스 변화를 매일 확인해요."
 
     return NarrativeSection(
+        title=STEP_TITLES["summary"],
         bullets=bullets,
-        content=f"{title} 분석을 바탕으로 핵심 포인트를 정리하고, 리스크 관리 포인트를 체크하세요.",
+        content=(
+            "### 투자 전에 꼭 확인할 포인트\n"
+            f"- {bullets[0]}\n"
+            f"- {bullets[1]}\n"
+            f"- {bullets[2]}"
+        ),
+        chart=None,
     ).model_dump()
