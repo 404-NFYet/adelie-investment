@@ -1,22 +1,55 @@
 /**
  * Leaderboard.jsx - 수익률 리더보드
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { portfolioApi } from '../../api';
 import { formatKRW } from '../../utils/formatNumber';
 
+const PAGE_SIZE = 20;
+
 export default function Leaderboard({ userId }) {
-  const [data, setData] = useState(null);
+  const [rankings, setRankings] = useState([]);
+  const [myRank, setMyRank] = useState(null);
+  const [myEntry, setMyEntry] = useState(null);
+  const [totalUsers, setTotalUsers] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [offset, setOffset] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+  const fetchPage = useCallback(async (pageOffset, append = false) => {
+    const d = await portfolioApi.getLeaderboard(PAGE_SIZE, pageOffset);
+    if (append) {
+      setRankings(prev => [...prev, ...d.rankings]);
+    } else {
+      setRankings(d.rankings);
+      setMyRank(d.my_rank);
+      setMyEntry(d.my_entry);
+      setTotalUsers(d.total_users);
+    }
+    setHasMore(d.has_more);
+    setOffset(pageOffset);
+  }, []);
 
   useEffect(() => {
     setIsLoading(true);
-    portfolioApi.getLeaderboard()
-      .then(d => setData(d))
+    fetchPage(0)
       .catch(() => {})
       .finally(() => setIsLoading(false));
-  }, [userId]);
+  }, [userId, fetchPage]);
+
+  const loadMore = async () => {
+    const nextOffset = offset + PAGE_SIZE;
+    setIsLoadingMore(true);
+    try {
+      await fetchPage(nextOffset, true);
+    } catch {
+      // 에러 무시
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -26,7 +59,7 @@ export default function Leaderboard({ userId }) {
     );
   }
 
-  if (!data || data.rankings.length === 0) {
+  if (rankings.length === 0) {
     return (
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="card text-center py-8">
         <div className="w-10 h-10 mx-auto mb-3 rounded-full bg-primary/10 flex items-center justify-center text-primary">
@@ -43,7 +76,7 @@ export default function Leaderboard({ userId }) {
   return (
     <div className="space-y-3">
       {/* 내 순위 카드 */}
-      {data.my_entry && (
+      {myEntry && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -52,17 +85,17 @@ export default function Leaderboard({ userId }) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                <span className="text-sm font-bold text-primary">{data.my_rank}위</span>
+                <span className="text-sm font-bold text-primary">{myRank}위</span>
               </div>
               <div>
                 <p className="font-bold text-sm">내 순위</p>
-                <p className="text-xs text-text-secondary">{data.my_entry.username}</p>
+                <p className="text-xs text-text-secondary">{myEntry.username}</p>
               </div>
             </div>
             <div className="text-right">
-              <p className="font-bold text-sm">{formatKRW(data.my_entry.total_value)}</p>
-              <p className={`text-xs font-semibold ${data.my_entry.profit_loss_pct > 0 ? 'text-red-500' : data.my_entry.profit_loss_pct < 0 ? 'text-blue-500' : 'text-text-secondary'}`}>
-                {data.my_entry.profit_loss_pct > 0 ? '+' : ''}{data.my_entry.profit_loss_pct}%
+              <p className="font-bold text-sm">{formatKRW(myEntry.total_value)}</p>
+              <p className={`text-xs font-semibold ${myEntry.profit_loss_pct > 0 ? 'text-red-500' : myEntry.profit_loss_pct < 0 ? 'text-blue-500' : 'text-text-secondary'}`}>
+                {myEntry.profit_loss_pct > 0 ? '+' : ''}{Number(myEntry.profit_loss_pct).toFixed(2)}%
               </p>
             </div>
           </div>
@@ -73,12 +106,12 @@ export default function Leaderboard({ userId }) {
       <div className="card">
         <h3 className="font-bold text-sm mb-3">전체 순위</h3>
         <div className="space-y-1">
-          {data.rankings.map((entry, i) => (
+          {rankings.map((entry, i) => (
             <motion.div
               key={entry.user_id}
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.05 }}
+              transition={{ delay: Math.min(i, 19) * 0.05 }}
               className={`flex items-center justify-between py-2.5 px-2 rounded-lg transition-colors ${
                 entry.is_me ? 'bg-primary/5' : ''
               }`}
@@ -96,15 +129,27 @@ export default function Leaderboard({ userId }) {
                 </p>
               </div>
               <div className="text-right">
-                <p className="text-sm font-semibold">{formatKRW(entry.total_value)}</p>
+                <p className="text-sm font-semibold">{entry.is_me ? formatKRW(entry.total_value) : '-'}</p>
                 <p className={`text-xs font-medium ${entry.profit_loss_pct > 0 ? 'text-red-500' : entry.profit_loss_pct < 0 ? 'text-blue-500' : 'text-text-secondary'}`}>
-                  {entry.profit_loss_pct > 0 ? '+' : ''}{entry.profit_loss_pct}%
+                  {entry.profit_loss_pct > 0 ? '+' : ''}{Number(entry.profit_loss_pct).toFixed(2)}%
                 </p>
               </div>
             </motion.div>
           ))}
         </div>
-        <p className="text-xs text-text-muted text-center mt-3">총 {data.total_users}명 참여</p>
+
+        {/* 더보기 버튼 */}
+        {hasMore && (
+          <button
+            onClick={loadMore}
+            disabled={isLoadingMore}
+            className="w-full mt-3 py-2 text-sm font-medium text-primary hover:bg-primary/5 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {isLoadingMore ? '불러오는 중...' : '더보기'}
+          </button>
+        )}
+
+        <p className="text-xs text-text-muted text-center mt-3">총 {totalUsers}명 참여</p>
       </div>
     </div>
   );
