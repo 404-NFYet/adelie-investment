@@ -3,7 +3,7 @@
   "checkpoint_id": "53d4af738184",
   "strategy": "manual-commit",
   "branch": "develop",
-  "checkpoints_count": 14,
+  "checkpoints_count": 12,
   "files_touched": [
     "Makefile",
     "database/alembic/versions/20260217_add_total_rewards_received.py",
@@ -87,10 +87,10 @@
     }
   ],
   "token_usage": {
-    "input_tokens": 1717,
-    "cache_creation_tokens": 719500,
-    "cache_read_tokens": 24549750,
-    "output_tokens": 44362,
-    "api_call_count": 327
+    "input_tokens": 1075,
+    "cache_creation_tokens": 651979,
+    "cache_read_tokens": 20781508,
+    "output_tokens": 44242,
+    "api_call_count": 265
   }
 }

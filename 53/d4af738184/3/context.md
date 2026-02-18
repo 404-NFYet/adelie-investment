@@ -81,3 +81,11 @@ api/v1/auth/register:1  Failed to load resource: the server responded with a sta
 api/v1/auth/login:1  Failed to load resource: the server responded with a status of 404 ()
 로그인이 안되는데, 올바르게 해결해야 한다.
 
+### Prompt 8
+
+현재 랭킹에 있어서 카드를 보고 얻은 포인트는 수익률에 반영되면 안된다. 그리고 공통 등수도 있어야 하며, 전체 참여자를 20개씩 넘겨서 볼 수 있게 해라.
+
+### Prompt 9
+
+[Request interrupted by user for tool use]
+
