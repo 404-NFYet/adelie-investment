@@ -1,0 +1,532 @@
+Implement the following plan:
+
+# 전체 통합 수정 계획 (모의투자 버그 + 인프라 + 대시보드 + Redis)
+
+## Context
+
+이전 세션에서 Phase 1~6 코드 변경 완료. 이번 세션에서 추가 요청 사항을 통합하여 아래 8개 작업 그룹을 순서대로 실행한다.
+
+### 현재 인프라 상태 파악 결과
+- **deploy-test (10.10.10.20)**: main app (frontend:80, backend:8082) + monitoring (Grafana:3000, Prometheus:9090) + Redis/Postgres/MinIO 가동 중
+- **infra-server (10.10.10.10)**: SSH 접근 불가 (로컬에서). dashboard container **미가동**
+- **monitoring.adelie-invest.com** → Grafana on deploy-test port 3000 ✓
+- **dashboard.adelie-invest.com** → **아무것도 안 가리킴** (adelie-dashboard 컨테이너 없음)
+- **demo.adelie-invest.com** → Frontend on deploy-test port 80 ✓
+- 대시보드 코드(`infra/docker-dashboard/`)에 `inject_custom_css()`가 존재하지만 컨테이너가 없어 오류 발생
+
+---
+
+## Group A: Phase 0 — DB 중복 정리 + 전체 포트폴리오 리셋
+
+### A-1. 중복 포트폴리오 정리 (UNIQUE 제약 전 필수)
+
+deploy-test DB에 직접 psql로 접속해 실행:
+
+```sql
+-- 1. 중복 중 holdings/trades 없는 것 삭제
+DELETE FROM user_portfolios
+WHERE id IN (
+    SELECT p.id FROM user_portfolios p
+    LEFT JOIN portfolio_holdings h ON h.portfolio_id = p.id
+    LEFT JOIN simulation_trades t ON t.portfolio_id = p.id
+    WHERE p.user_id IN (SELECT user_id FROM user_portfolios GROUP BY user_id HAVING COUNT(*) > 1)
+    AND h.id IS NULL AND t.id IS NULL
+    AND p.id NOT IN (SELECT MIN(id) FROM user_portfolios GROUP BY user_id)
+);
+-- 2. 잔여 중복 확인 (0건이어야 함)
+SELECT user_id, COUNT(*) FROM user_portfolios GROUP BY user_id HAVING COUNT(*) > 1;
+```
+
+### A-2. 전체 포트폴리오 리셋 (중복 정리 후 실행)
+
+```sql
+-- 거래/보유 데이터 전체 초기화
+TRUNCATE TABLE simulation_trades RESTART IDENTITY CASCADE;
+TRUNCATE TABLE portfolio_holdings RESTART IDENTITY CASCADE;
+-- briefing/dwell 보상 초기화
+TRUNCATE TABLE briefing_rewards RESTART IDENTITY;
+TRUNCATE TABLE dwell_rewards RESTART IDENTITY;
+-- 포트폴리오 현금 1백만원 리셋
+UPDATE user_portfolios
+SET current_cash = 1000000,
+    initial_cash = 1000000,
+    total_rewards_received = 0,
+    updated_at = NOW();
+-- 확인
+SELECT id, user_id, current_cash, total_rewards_received FROM user_portfolios LIMIT 5;
+```
+
+실행 명령:
+```bash
+ssh deploy-test 'docker exec -i adelie-postgres psql -U narative -d narrative_invest'
+```
+
+---
+
+## Group B: Phase 7 — deploy-test git pull + 마이그레이션 + 배포
+
+### B-1. deploy-test git 최신화
+```bash
+ssh deploy-test 'cd ~/adelie-investment && git fetch origin && git pull origin develop'
+```
+
+### B-2. Alembic 마이그레이션 (unique index 적용)
+```bash
+# 로컬에서 이미지 빌드 후 마이그레이션 실행
+# 또는 deploy-test에서 기존 컨테이너로 실행
+ssh deploy-test 'docker exec adelie-backend-api sh -c "cd /app/database && alembic upgrade head"'
+```
+
+마이그레이션 파일 이미 존재: `database/alembic/versions/20260218_unique_user_portfolio.py`
+
+### B-3. 이미지 빌드 & 배포 (로컬에서)
+```bash
+# 로컬에서 빌드
+docker build -t dorae222/adelie-frontend:latest -f frontend/Dockerfile .
+docker build -t dorae222/adelie-backend-api:latest -f fastapi/Dockerfile .
+# Docker Hub push
+docker push dorae222/adelie-frontend:latest
+docker push dorae222/adelie-backend-api:latest
+# deploy-test 배포
+ssh deploy-test 'cd ~/adelie-investment && \
+  docker compose -f docker-compose.prod.yml pull frontend backend-api && \
+  docker compose -f docker-compose.prod.yml up -d frontend backend-api'
+# 마이그레이션 실행 (새 컨테이너에서)
+ssh deploy-test 'docker exec adelie-backend-api sh -c "cd /app/database && alembic upgrade head"'
+```
+
+---
+
+## Group C: 랜딩 페이지 수정
+
+### 버그 원인
+`frontend/src/pages/Landing.jsx:138`의 `goNext()` → `goToSlide(currentIndex + 1, 1)`:
+- `goToSlide` 내부: `normalized = (index + totalSlides) % totalSlides`
+- 마지막 슬라이드(index 4)에서 좌로 스와이프 시: `(5) % 5 = 0` → 히어로 슬라이드로 wrap-around
+- 히어로(index 0)로 돌아오면 1초 후 auto-advance가 다시 동작 (`hasAutoAdvancedRef`는 컴포넌트 unmount 없이 유지되지만, React StrictMode나 navigation 후 재마운트 시 리셋)
+
+### 수정: `frontend/src/pages/Landing.jsx`
+
+**goNext 수정** (마지막 슬라이드에서 wrap 방지):
+```jsx
+// Before
+const goNext = () => {
+  goToSlide(currentIndex + 1, 1);
+};
+
+// After — 마지막 슬라이드에서 순환 방지
+const goNext = () => {
+  if (currentIndex >= totalSlides - 1) return;
+  goToSlide(currentIndex + 1, 1);
+};
+```
+
+**goPrev 수정** (히어로 슬라이드에서 되돌아가기 방지, feature 슬라이드에서만 이전 가능):
+```jsx
+// After — feature 슬라이드에서만 이전 가능 (index 1 이상)
+const goPrev = () => {
+  if (currentIndex <= 1) return;
+  goToSlide(currentIndex - 1, -1);
+};
+```
+
+**goToSlide에서 wrap-around 제거**:
+```jsx
+// Before
+const normalized = (index + totalSlides) % totalSlides;
+
+// After
+const normalized = Math.max(0, Math.min(index, totalSlides - 1));
+```
+
+---
+
+## Group D: 대시보드 배포 (dashboard.adelie-invest.com)
+
+### 현재 상태
+- `adelie-dashboard` 컨테이너 deploy-test에 없음
+- `infra/docker-compose.yml`에 정의됐지만 infra-server 전용 (접근 불가)
+- `infra/monitoring/docker-compose.yml`에는 없음
+
+### 수정: `infra/monitoring/docker-compose.yml`에 dashboard 추가
+
+dashboard 서비스를 monitoring compose에 추가:
+
+```yaml
+# infra/monitoring/docker-compose.yml 하단에 추가
+  dashboard:
+    build:
+      context: ../docker-dashboard
+      dockerfile: Dockerfile
+    container_name: adelie-dashboard
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    volumes:
+      - /home/ubuntu/.ssh/id_ed25519:/root/.ssh/id_ed25519:ro
+      - /home/ubuntu/.ssh/known_hosts:/root/.ssh/known_hosts:ro
+    environment:
+      DB_HOST: ${DB_HOST:-10.10.10.20}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_NAME: ${DB_NAME:-narrative_invest}
+      DB_USER: ${DB_USER:-narative}
+      DB_PASSWORD: ${DB_PASSWORD:-password}
+      PROMETHEUS_URL: http://adelie-prometheus:9090
+      GRAFANA_URL: https://monitoring.adelie-invest.com
+    depends_on:
+      - prometheus
+
+volumes:
+  prometheus_data:
+  grafana_data:
+```
+
+**핵심 변경**: `DB_HOST=10.10.10.20` (deploy-test 자신), `PROMETHEUS_URL=http://adelie-prometheus:9090` (컨테이너 네트워크)
+
+### dashboard 이미지 빌드 & deploy-test 배포
+```bash
+# deploy-test에서 직접 빌드 (소스는 git pull로 이미 최신화)
+ssh deploy-test 'cd ~/adelie-investment/infra/monitoring && \
+  docker compose build dashboard && \
+  docker compose up -d dashboard'
+```
+
+---
+
+## Group E: 리더보드 변경
+
+### E-1. 공동 등수 제거 (순차 1,2,3 → 등수 = 정렬 순서)
+
+**파일**: `fastapi/app/api/routes/portfolio.py` (line 113~128)
+
+```python
+# Before — 공동 등수 (1,1,3...)
+prev_pct = None
+rank = 0
+for i, e in enumerate(entries):
+    if e["profit_loss_pct"] != prev_pct:
+        rank = i + 1
+        prev_pct = e["profit_loss_pct"]
+    ...
+
+# After — 순차 등수 (1,2,3...)
+for i, e in enumerate(entries):
+    rank = i + 1
+    ...
+```
+
+### E-2. 타인 총자산 비공개 (profit_loss_pct만 공개)
+
+**파일**: `fastapi/app/api/routes/portfolio.py` 리더보드 엔드포인트
+
+```python
+# LeaderboardEntry 생성 시: 본인 아닌 경우 total_value를 0으로
+entry = LeaderboardEntry(
+    rank=rank,
+    user_id=e["user_id"],
+    username=e["username"],
+    total_value=e["total_value"] if is_me else 0.0,  # 타인 총자산 비공개
+    profit_loss=e["profit_loss"] if is_me else 0.0,
+    profit_loss_pct=e["profit_loss_pct"],
+    is_me=is_me,
+)
+```
+
+**파일**: `frontend/src/components/trading/Leaderboard.jsx`
+
+```jsx
+// 타인 total_value 숨기기 (is_me가 아닌 경우 총자산 표시 안함)
+<p className="text-sm font-semibold">
+  {entry.is_me ? formatKRW(entry.total_value) : '-'}
+</p>
+```
+
+---
+
+## Group F: Redis 핵심 4개 개선
+
+### 현재 상태
+- `fastapi/app/services/redis_cache.py`: 기본 캐시 서비스 (term, glossary, chat, pipeline 무효화)
+- `fastapi/app/core/config.py:25`: `REDIS_URL` 환경변수
+- `fastapi/app/main.py:189-213`: IP 기반 rate limit (INCR/EXPIRE 방식)
+- `fastapi/app/middleware/` 디렉토리 없음
+
+### F-1. `fastapi/app/core/redis_keys.py` 신규 생성
+
+키 네임스페이스 통일:
+```python
+"""Redis 키 스키마 — 네임스페이스: {env}:{service}:{module}:..."""
+import os
+ENV = os.getenv("ENV", "dev")
+
+def key_term_explanation(difficulty: str, term: str) -> str:
+    return f"{ENV}:api:tutor:term:{difficulty}:{term.lower()}"
+
+def key_glossary_by_id(term_id: int) -> str:
+    return f"{ENV}:api:glossary:id:{term_id}"
+
+def key_glossary_by_name(term_name: str) -> str:
+    return f"{ENV}:api:glossary:name:{term_name.lower()}"
+
+def key_keywords_today(difficulty: str) -> str:
+    return f"{ENV}:api:keywords:today:{difficulty}"
+
+def key_rate_limit(scope: str, identifier: str) -> str:
+    return f"{ENV}:rl:{scope}:{identifier}"
+
+def key_user_settings(user_id: int) -> str:
+    return f"{ENV}:api:user:settings:{user_id}"
+
+def key_portfolio_summary(user_id: int) -> str:
+    return f"{ENV}:api:portfolio:summary:{user_id}"
+
+# TTL 상수 (초 단위)
+TTL_SHORT = 60          # 1분 (rate limit window)
+TTL_MEDIUM = 300        # 5분 (portfolio summary)
+TTL_LONG = 3600         # 1시간 (keywords)
+TTL_DAY = 86400         # 24시간 (term/glossary)
+```
+
+### F-2. `fastapi/app/services/cache.py` 신규 생성
+
+stampede 방지 get_or_set 헬퍼:
+```python
+"""캐시 헬퍼 — cache-aside + stampede 방지"""
+import json, random, logging
+from typing import Any, Callable, Optional
+from app.services.redis_cache import get_redis_cache
+
+logger = logging.getLogger(__name__)
+
+async def get_or_set(
+    key: str,
+    ttl: int,
+    loader_fn: Callable,
+    negative_ttl: int = 30,
+    jitter: float = 0.1,
+) -> Any:
+    """cache-aside with TTL jitter.
+
+    loader_fn이 None을 반환하면 negative_ttl 동안 '__null__' 캐시.
+    """
+    cache = await get_redis_cache()
+
+    # 1. 캐시 조회
+    raw = await cache.get(key)
+    if raw is not None:
+        return None if raw == '__null__' else json.loads(raw)
+
+    # 2. 캐시 미스 → DB/외부 호출
+    try:
+        result = await loader_fn()
+    except Exception as e:
+        logger.warning(f"cache loader_fn error [{key}]: {e}")
+        return None
+
+    # 3. 캐시 저장 (jitter 적용)
+    actual_ttl = int(ttl * (1 + random.uniform(-jitter, jitter)))
+    if result is None:
+        await cache.set(key, '__null__', negative_ttl)
+    else:
+        await cache.set(key, json.dumps(result, ensure_ascii=False), actual_ttl)
+
+    return result
+```
+
+### F-3. `fastapi/app/middleware/rate_limit.py` 신규 생성
+
+Lua 스크립트 기반 sliding window:
+```python
+"""Lua 기반 원자적 슬라이딩 윈도우 레이트리밋 미들웨어"""
+import time, logging
+from fastapi import Request, Response
+from starlette.middleware.base import BaseHTTPMiddleware
+from app.services.redis_cache import get_redis_cache
+from app.core.redis_keys import key_rate_limit
+
+logger = logging.getLogger(__name__)
+
+# Sliding window Lua script (원자적 처리)
+SLIDING_WINDOW_LUA = """
+local key = KEYS[1]
+local now = tonumber(ARGV[1])
+local window = tonumber(ARGV[2])
+local limit = tonumber(ARGV[3])
+
+redis.call('ZREMRANGEBYSCORE', key, 0, now - window)
+local count = redis.call('ZCARD', key)
+
+if count < limit then
+    redis.call('ZADD', key, now, now)
+    redis.call('EXPIRE', key, window)
+    return {1, limit - count - 1, 0}
+else
+    local oldest = redis.call('ZRANGE', key, 0, 0, 'WITHSCORES')
+    local reset = oldest[2] and (tonumber(oldest[2]) + window) or (now + window)
+    return {0, 0, reset}
+end
+"""
+
+RATE_LIMIT = 100  # 요청/분
+WINDOW_MS = 60_000  # 1분 (ms)
+
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        client_ip = request.client.host if request.client else "unknown"
+        try:
+            cache = await get_redis_cache()
+            if cache.client:
+                now_ms = int(time.time() * 1000)
+                k = key_rate_limit("ip", client_ip)
+                result = await cache.client.eval(
+                    SLIDING_WINDOW_LUA, 1, k,
+                    now_ms, WINDOW_MS, RATE_LIMIT
+                )
+                allowed, remaining, reset_ms = result
+                if not allowed:
+                    return Response(
+                        content='{"detail":"Too Many Requests"}',
+                        status_code=429,
+                        headers={
+                            "Content-Type": "application/json",
+                            "X-RateLimit-Limit": str(RATE_LIMIT),
+                            "X-RateLimit-Remaining": "0",
+                            "X-RateLimit-Reset": str(int(reset_ms / 1000)),
+                            "Retry-After": str(int((reset_ms - now_ms) / 1000)),
+                        }
+                    )
+        except Exception as e:
+            logger.warning(f"RateLimit Redis error (fallback=allow): {e}")
+
+        return await call_next(request)
+```
+
+### F-4. `fastapi/app/main.py` 기존 rate limit 교체 + 미들웨어 등록
+
+```python
+# 기존 slowapi 기반 rate limit 제거 후
+# app/middleware/rate_limit.py의 RateLimitMiddleware 등록
+from app.middleware.rate_limit import RateLimitMiddleware
+app.add_middleware(RateLimitMiddleware)
+```
+
+### F-5. cache.py 적용 (2개 엔드포인트)
+
+1. **keywords/today** (`fastapi/app/api/routes/keywords.py`): 오늘의 키워드 5분 캐시
+2. **portfolio/summary** (`fastapi/app/api/routes/portfolio.py`): summary 2분 캐시
+
+---
+
+## Group G: 참조 문서 업데이트
+
+### G-1. `/home/hj/.claude/projects/.../memory/infra-ops.md` 업데이트
+
+아래 내용 반영:
+- 서비스 URL 섹션 추가: demo/dashboard/monitoring 링크
+- 서버별 역할 명확화 (deploy-test = 모든 서비스, infra-server = DB/Redis/MinIO)
+- 대시보드 배포 방법: `infra/monitoring/docker-compose.yml`
+- 포트폴리오 리셋 SQL 명령
+
+### G-2. `lxd/inventory.md` 업데이트
+
+실제 배포 현황에 맞게 수정:
+- deploy-test (10.10.10.20): frontend + backend + monitoring + dashboard 통합 배포
+- infra-server 접근 불가 현황 메모
+
+### G-3. `CLAUDE.md` 서비스 URL 섹션 추가
+
+```markdown
+## 서비스 URL
+- demo.adelie-invest.com → deploy-test:80 (frontend)
+- monitoring.adelie-invest.com → deploy-test:3000 (Grafana)
+- dashboard.adelie-invest.com → deploy-test:8501 (Streamlit)
+```
+
+---
+
+## Group H: Git 커밋 분리
+
+아래 순서로 담당자 계정으로 커밋:
+
+| 커밋 | 파일 | 담당자 |
+|------|------|--------|
+| `fix: 랜딩 페이지 스와이프 루프 방지` | `frontend/src/pages/Landing.jsx` | 손영진 (YJ99Son) |
+| `feat: 리더보드 순차 등수 + 타인 총자산 비공개` | `portfolio.py`, `Leaderboard.jsx` | 정지훈 (J2hoon10) |
+| `feat: Redis 키 네임스페이스 통일 + 캐시/레이트리밋 개선` | `redis_keys.py`, `cache.py`, `rate_limit.py`, `main.py` | 정지훈 (J2hoon10) |
+| `chore: 대시보드 monitoring compose에 통합 + config 수정` | `infra/monitoring/docker-compose.yml`, `config.py` | 도형준 (dorae222) |
+| `docs: 인프라 문서 URL 및 배포 현황 업데이트` | `lxd/inventory.md`, `CLAUDE.md`, `infra-ops.md` | 도형준 (dorae222) |
+
+---
+
+## 실행 순서
+
+```
+A → B-1(git pull) → A-1(중복정리) → A-2(포트폴리오리셋) → B-2(마이그레이션)
+→ C(랜딩수정) → E(리더보드) → F(Redis) → G(문서)
+→ H(커밋) → B-3(빌드/푸시) → D(대시보드배포)
+```
+
+---
+
+## 검증
+
+1. **랜딩**: 마지막 슬라이드에서 좌 스와이프 → 히어로로 돌아가지 않음
+2. **리더보드**: 동일 사용자 중복 없음, 1/2/3... 순차, 타인 총자산 `-` 표시
+3. **포트폴리오**: 모든 사용자 현금 100만원, 거래내역 없음
+4. **대시보드**: `https://dashboard.adelie-invest.com` 접속 → Streamlit 정상 로드
+5. **모니터링**: Prometheus 연결 (컨테이너 네트워크 통해 쿼리 성공)
+6. **Redis**: `rate_limit.py` 100 req/min 제한 동작, Redis 장애 시 bypass
+7. **DB**: `SELECT user_id, COUNT(*) FROM user_portfolios GROUP BY user_id HAVING COUNT(*) > 1` → 0건
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+<task-notification>
+<task-id>b57f23e</task-id>
+<output-file>REDACTED.output</output-file>
+<status>completed</status>
+<summary>Background command "Build frontend Docker image" completed (exit code 0)</summary>
+</task-notification>
+Read the output file to retrieve the result: REDACTED.output
+
+---
+
+<task-notification>
+<task-id>b858fbf</task-id>
+<output-file>REDACTED.output</output-file>
+<status>completed</status>
+<summary>Background command "Build backend API Docker image" completed (exit code 0)</summary>
+</task-notification>
+Read the output file to retrieve the result: REDACTED.output
+
+---
+
+ImportError: cannot import name 'inject_custom_css' from 'utils.ui_components' (/app/utils/ui_components.py)
+Traceback:
+File "/app/app.py", line 46, in <module>
+    nav.run()
+File "/usr/local/lib/python3.11/site-packages/streamlit/navigation/page.py", line 310, in run
+    exec(code, module.__dict__)  # noqa: S102
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "/app/pages/feedback.py", line 8, in <module>
+    from utils.ui_components import (
+https://dashboard.adelie-invest.com/db_viewer
+
+ImportError: cannot import name 'inject_custom_css' from 'utils.ui_components' (/app/utils/ui_components.py)
+Traceback:
+File "/app/app.py", line 46, in <module>
+    nav.run()
+File "/usr/local/lib/python3.11/site-packages/streamlit/navigation/page.py", line 310, in run
+    exec(code, module.__dict__)  # noqa: S102
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "/app/pages/feedback.py", line 8, in <module>
+    from utils.ui_components import (
+https://dashboard.adelie-invest.com/feedback
+
+grafana에 데이터가 올바르게 보이지 않는데, 이를 수정하고 요소들을 디벨롭해라.
+
+---
+
+[Request interrupted by user for tool use]

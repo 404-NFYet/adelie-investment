@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "53d4af738184",
+  "session_id": "18261dbb-fbed-41e7-a228-c047b8d1c5ee",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-18T17:58:45.185692495Z",
+  "branch": "develop",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "CLAUDE.md",
+    "fastapi/app/api/routes/keywords.py",
+    "fastapi/app/api/routes/portfolio.py",
+    "fastapi/app/core/redis_keys.py",
+    "fastapi/app/main.py",
+    "fastapi/app/middleware/rate_limit.py",
+    "fastapi/app/services/cache.py",
+    "frontend/src/components/trading/Leaderboard.jsx",
+    "frontend/src/pages/Landing.jsx",
+    "frontend/src/utils/markdown.js",
+    "infra/monitoring/docker-compose.yml",
+    "lxd/inventory.md"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 83,
+    "cache_creation_tokens": 125096,
+    "cache_read_tokens": 6138151,
+    "output_tokens": 16757,
+    "api_call_count": 73
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-18T17:58:45.098130108Z",
+    "agent_lines": 0,
+    "human_added": 70,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 70,
+    "agent_percentage": 0
+  }
+}
