@@ -228,6 +228,16 @@ psql -h 10.10.10.20 -p 5432 -U narative -d narrative_invest
 - 브랜치 전략: `main` ← `develop` ← `feature/*`
 - worktree 생성: `git worktree add ../adelie-{feature} develop`
 
+## 서비스 URL
+
+| URL | 서비스 | 배포 위치 |
+|-----|--------|---------|
+| https://demo.adelie-invest.com | Frontend (nginx) | deploy-test:80 |
+| https://monitoring.adelie-invest.com | Grafana | deploy-test:3000 |
+| https://dashboard.adelie-invest.com | Streamlit 대시보드 | deploy-test:8501 |
+
+대시보드 배포: `ssh deploy-test 'cd ~/adelie-investment/infra/monitoring && docker compose up -d dashboard'`
+
 ## Skills (Claude Code CLI)
 
 | 명령 | 설명 |

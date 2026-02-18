@@ -30,6 +30,28 @@ services:
     depends_on:
       - prometheus
 
+  dashboard:
+    build:
+      context: ../docker-dashboard
+      dockerfile: Dockerfile
+    container_name: adelie-dashboard
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    volumes:
+      - /home/ubuntu/.ssh/id_ed25519:/root/.ssh/id_ed25519:ro
+      - /home/ubuntu/.ssh/known_hosts:/root/.ssh/known_hosts:ro
+    environment:
+      DB_HOST: ${DB_HOST:-10.10.10.20}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_NAME: ${DB_NAME:-narrative_invest}
+      DB_USER: ${DB_USER:-narative}
+      DB_PASSWORD: ${DB_PASSWORD:-password}
+      PROMETHEUS_URL: http://adelie-prometheus:9090
+      GRAFANA_URL: https://monitoring.adelie-invest.com
+    depends_on:
+      - prometheus
+
 volumes:
   prometheus_data:
   grafana_data:
