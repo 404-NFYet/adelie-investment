@@ -29,6 +29,8 @@ import time
 from pathlib import Path
 from uuid import uuid4
 
+from .ai.llm_observability import reset_llm_stats, snapshot_llm_stats
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
@@ -157,6 +159,51 @@ def _log_metrics(metrics: dict) -> None:
             logger.info("  %s: %.2fs (%s)", node_name, info["elapsed_s"], info["status"])
 
 
+def _log_llm_stats(stats: dict) -> None:
+    totals = stats.get("totals", {}) if isinstance(stats, dict) else {}
+    calls = int(totals.get("calls", 0) or 0)
+    if calls <= 0:
+        logger.info("--- LLM 사용량 요약 ---")
+        logger.info("  호출 없음")
+        return
+
+    prompt_tokens = int(totals.get("prompt_tokens", 0) or 0)
+    completion_tokens = int(totals.get("completion_tokens", 0) or 0)
+    elapsed_s = float(totals.get("elapsed_s", 0.0) or 0.0)
+    logger.info("--- LLM 사용량 요약 ---")
+    logger.info(
+        "  total calls=%d, prompt_tokens=%d, completion_tokens=%d, elapsed=%.2fs",
+        calls,
+        prompt_tokens,
+        completion_tokens,
+        elapsed_s,
+    )
+
+    by_prompt = stats.get("by_prompt", {}) if isinstance(stats, dict) else {}
+    ranked = sorted(
+        by_prompt.items(),
+        key=lambda item: (
+            int((item[1] or {}).get("prompt_tokens", 0))
+            + int((item[1] or {}).get("completion_tokens", 0))
+        ),
+        reverse=True,
+    )
+    for prompt_name, bucket in ranked:
+        events = bucket.get("events", {}) if isinstance(bucket, dict) else {}
+        event_text = ", ".join(
+            f"{k}={v}" for k, v in sorted(events.items()) if int(v or 0) > 0
+        ) or "-"
+        logger.info(
+            "  prompt=%s calls=%d tokens=%d/%d elapsed=%.2fs events=%s",
+            prompt_name,
+            int(bucket.get("calls", 0) or 0),
+            int(bucket.get("prompt_tokens", 0) or 0),
+            int(bucket.get("completion_tokens", 0) or 0),
+            float(bucket.get("elapsed_s", 0.0) or 0.0),
+            event_text,
+        )
+
+
 def _log_crawl_status(final_state: dict) -> None:
     news_status = final_state.get("crawl_news_status")
     if isinstance(news_status, dict):
@@ -220,6 +267,7 @@ async def async_main() -> int:
     # ── 파일 로드 모드: 단일 토픽 실행 (기존 동작 유지) ──
     if args.input:
         logger.info("Topic Index: %d", args.topic_index)
+        reset_llm_stats()
         initial_state = _build_initial_state(
             input_path=str(args.input.resolve()),
             topic_index=args.topic_index,
@@ -240,6 +288,7 @@ async def async_main() -> int:
         logger.info("총 소요시간: %.2fs", elapsed)
         _log_crawl_status(final_state)
         _log_metrics(final_state.get("metrics", {}))
+        _log_llm_stats(snapshot_llm_stats())
         return 0
 
     # ── 데이터 수집 모드: 멀티 토픽 루프 ──
@@ -251,6 +300,7 @@ async def async_main() -> int:
 
         if idx == 0:
             # 1차: 전체 파이프라인 (데이터 수집 → Interface 2/3 → DB)
+            reset_llm_stats()
             initial_state = _build_initial_state(
                 input_path=None,
                 topic_index=0,
@@ -270,6 +320,7 @@ async def async_main() -> int:
             logger.info("Topic 1/%d 완료: %s (%.2fs)", topic_count, final_state.get("output_path", ""), elapsed)
             _log_crawl_status(final_state)
             _log_metrics(final_state.get("metrics", {}))
+            _log_llm_stats(snapshot_llm_stats())
             success_count += 1
 
             # curated_topics 저장 (2차+ 재활용)
@@ -295,6 +346,7 @@ async def async_main() -> int:
 
             started = time.time()
             try:
+                reset_llm_stats()
                 final_state = await graph.ainvoke(initial_state)
                 elapsed = time.time() - started
 
@@ -306,6 +358,7 @@ async def async_main() -> int:
                 logger.info("Topic %d/%d 완료: %s (%.2fs)", idx + 1, topic_count, final_state.get("output_path", ""), elapsed)
                 _log_crawl_status(final_state)
                 _log_metrics(final_state.get("metrics", {}))
+                _log_llm_stats(snapshot_llm_stats())
                 success_count += 1
             except Exception as e:
                 elapsed = time.time() - started

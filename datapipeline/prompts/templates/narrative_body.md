@@ -2,7 +2,7 @@
 provider: openai
 model: gpt-5.2
 temperature: 0.4
-max_tokens: 8192
+max_tokens: 5000
 response_format: json_object
 system_message: >
   당신은 금융 에듀테인먼트 내러티브 작가입니다.

@@ -6,11 +6,14 @@ import json
 import logging
 import os
 import re
+import time
 from pathlib import Path
 from typing import Any
 
 from ..prompts.prompt_loader import load_prompt
 from ..config import PROMPTS_DIR
+from .llm_observability import record_llm_call, record_llm_event
+from .llm_response_cache import build_cache_key, get_cached_response, set_cached_response
 from .multi_provider_client import get_multi_provider_client
 
 LOGGER = logging.getLogger(__name__)
@@ -36,6 +39,25 @@ _JSON_REPAIR_TEMPLATE = """다음 모델 응답은 JSON 파싱에 실패했습�
 """
 
 _OPENAI_FALLBACK_MODEL = os.getenv("OPENAI_FALLBACK_MODEL", "gpt-5.2")
+_OPENAI_RETRY_KEYWORDS = (
+    "timeout",
+    "timed out",
+    "connection",
+    "temporarily unavailable",
+    "rate limit",
+    "429",
+    "server error",
+    "bad gateway",
+    "service unavailable",
+)
+_CRITICAL_JSON_PROMPTS = {
+    p.strip()
+    for p in os.getenv(
+        "CRITICAL_JSON_PROMPTS",
+        "page_purpose,historical_case,narrative_body,hallucination_check,3_theme,3_pages,3_tone_final,3_chart_reasoning,3_chart_generation",
+    ).split(",")
+    if p.strip()
+}
 
 
 class JSONResponseParseError(RuntimeError):
@@ -134,6 +156,7 @@ def _invoke_chat_completion(
     response_format: dict[str, str] | None,
     attempt: int,
 ) -> tuple[dict[str, Any], str]:
+    started = time.perf_counter()
     result = client.chat_completion(
         provider=provider,
         model=model,
@@ -144,7 +167,16 @@ def _invoke_chat_completion(
         max_tokens=max_tokens,
         response_format=response_format,
     )
+    elapsed = time.perf_counter() - started
     content = result["choices"][0]["message"]["content"]
+    usage = result.get("usage", {}) if isinstance(result, dict) else {}
+    record_llm_call(
+        prompt_name=prompt_name,
+        provider=provider,
+        model=model,
+        usage=usage if isinstance(usage, dict) else {},
+        elapsed_s=elapsed,
+    )
     LOGGER.info(
         "LLM call done: prompt=%s provider=%s model=%s attempt=%d tokens=%s",
         prompt_name,
@@ -167,6 +199,54 @@ def _is_anthropic_fallback_error(exc: Exception) -> bool:
         ("anthropic" in lower and "quota" in lower),
         ("anthropic" in lower and "unavailable" in lower),
     ])
+
+
+def _is_retryable_openai_error(exc: Exception) -> bool:
+    if isinstance(exc, (TimeoutError, ConnectionError)):
+        return True
+    lower = str(exc).lower()
+    return any(keyword in lower for keyword in _OPENAI_RETRY_KEYWORDS)
+
+
+def _try_local_json_repair(raw_text: str) -> dict[str, Any] | None:
+    text = str(raw_text or "").strip()
+    if not text:
+        return None
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+    start = text.find("{")
+    end = text.rfind("}")
+    candidate = text[start : end + 1] if (start != -1 and end != -1 and end > start) else text
+    candidate = candidate.strip()
+    if not candidate:
+        return None
+
+    candidate = candidate.replace("\u201c", '"').replace("\u201d", '"')
+    candidate = candidate.replace("\u2018", "'").replace("\u2019", "'")
+    candidate = re.sub(r",\s*([}\]])", r"\1", candidate)
+
+    open_curly = candidate.count("{")
+    close_curly = candidate.count("}")
+    if open_curly > close_curly:
+        candidate = candidate + ("}" * (open_curly - close_curly))
+
+    open_square = candidate.count("[")
+    close_square = candidate.count("]")
+    if open_square > close_square:
+        candidate = candidate + ("]" * (open_square - close_square))
+
+    try:
+        parsed = json.loads(candidate)
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception:
+        return None
+    return None
+
+
+def _should_use_openai_json_fallback(prompt_name: str) -> bool:
+    return str(prompt_name or "") in _CRITICAL_JSON_PROMPTS
 
 
 def _invoke_with_provider_fallback(
@@ -200,7 +280,7 @@ def _invoke_with_provider_fallback(
         )
         return result, content, provider, model
     except Exception as primary_exc:
-        if provider == "openai":
+        if provider == "openai" and _is_retryable_openai_error(primary_exc):
             LOGGER.warning(
                 "OPENAI_RETRY_TRIGGERED prompt=%s provider=%s model=%s reason=%s",
                 prompt_name,
@@ -208,6 +288,7 @@ def _invoke_with_provider_fallback(
                 model,
                 _json_error_details(primary_exc),
             )
+            record_llm_event(prompt_name=prompt_name, event="provider_retry_openai")
             try:
                 retry_result, retry_content = _invoke_chat_completion(
                     client=client,
@@ -239,6 +320,15 @@ def _invoke_with_provider_fallback(
                     _json_error_details(retry_exc),
                 )
                 raise retry_exc
+        elif provider == "openai":
+            LOGGER.info(
+                "OPENAI_RETRY_SKIPPED prompt=%s provider=%s model=%s reason=%s",
+                prompt_name,
+                provider,
+                model,
+                _json_error_details(primary_exc),
+            )
+            record_llm_event(prompt_name=prompt_name, event="provider_retry_openai_skipped")
 
         if not allow_fallback or provider != "anthropic" or not _is_anthropic_fallback_error(primary_exc):
             raise
@@ -251,6 +341,7 @@ def _invoke_with_provider_fallback(
             _OPENAI_FALLBACK_MODEL,
             _json_error_details(primary_exc),
         )
+        record_llm_event(prompt_name=prompt_name, event="provider_fallback_to_openai")
         try:
             result, content = _invoke_chat_completion(
                 client=client,
@@ -351,6 +442,29 @@ def call_llm_with_prompt(
         enforce_json=json_mode,
     )
 
+    cache_key = build_cache_key({
+        "prompt_name": prompt_name,
+        "provider": spec.provider,
+        "model": spec.model,
+        "temperature": spec.temperature,
+        "max_tokens": spec.max_tokens,
+        "thinking": spec.thinking,
+        "thinking_effort": spec.thinking_effort,
+        "json_mode": json_mode,
+        "response_format": response_format,
+        "messages": messages,
+    })
+    cached = get_cached_response(cache_key)
+    if cached is not None:
+        record_llm_event(prompt_name=prompt_name, event="cache_hit")
+        LOGGER.info(
+            "LLM_CACHE_HIT prompt=%s provider=%s model=%s",
+            prompt_name,
+            spec.provider,
+            spec.model,
+        )
+        return cached
+
     _, first_content, active_provider, active_model = _invoke_with_provider_fallback(
         client=client,
         prompt_name=prompt_name,
@@ -366,7 +480,10 @@ def call_llm_with_prompt(
     )
 
     try:
-        return extract_json_object(first_content)
+        parsed = extract_json_object(first_content)
+        set_cached_response(cache_key, parsed)
+        record_llm_event(prompt_name=prompt_name, event="cache_store")
+        return parsed
     except Exception as exc:
         if not json_mode:
             raise
@@ -380,6 +497,21 @@ def call_llm_with_prompt(
             parse_detail,
             _snippet_for_logs(first_content),
         )
+        record_llm_event(prompt_name=prompt_name, event="json_parse_retry")
+
+    # 1.5차: 로컬 JSON 복구 시도 (추가 API 호출 없이 복구)
+    locally_repaired = _try_local_json_repair(first_content)
+    if locally_repaired is not None:
+        LOGGER.info(
+            "JSON_LOCAL_REPAIR_SUCCESS prompt=%s provider=%s model=%s",
+            prompt_name,
+            active_provider,
+            active_model,
+        )
+        record_llm_event(prompt_name=prompt_name, event="json_local_repair_success")
+        set_cached_response(cache_key, locally_repaired)
+        record_llm_event(prompt_name=prompt_name, event="cache_store")
+        return locally_repaired
 
     # 2차: 동일 provider/model에 JSON 복구 요청
     repair_messages = _build_repair_messages(first_content)
@@ -406,6 +538,9 @@ def call_llm_with_prompt(
             active_provider,
             active_model,
         )
+        record_llm_event(prompt_name=prompt_name, event="json_repair_success")
+        set_cached_response(cache_key, repaired)
+        record_llm_event(prompt_name=prompt_name, event="cache_store")
         return repaired
     except Exception as repair_exc:
         repair_detail = _json_error_details(repair_exc)
@@ -418,6 +553,7 @@ def call_llm_with_prompt(
             repair_detail,
             _snippet_for_logs(snippet_source),
         )
+        record_llm_event(prompt_name=prompt_name, event="json_repair_retry")
 
     if active_provider == "openai":
         LOGGER.error(
@@ -427,6 +563,7 @@ def call_llm_with_prompt(
             active_model,
             repair_detail or "same-provider JSON repair failed after retry",
         )
+        record_llm_event(prompt_name=prompt_name, event="json_parse_failure")
         raise JSONResponseParseError(
             prompt_name=prompt_name,
             provider=active_provider,
@@ -437,6 +574,17 @@ def call_llm_with_prompt(
         )
 
     # 3차: OpenAI JSON 복구 폴백 1회 (비-OpenAI 시작 경로 전용)
+    if not _should_use_openai_json_fallback(prompt_name):
+        record_llm_event(prompt_name=prompt_name, event="json_fallback_openai_skipped")
+        raise JSONResponseParseError(
+            prompt_name=prompt_name,
+            provider=active_provider,
+            model=active_model,
+            detail=(
+                "모델 응답 JSON 불량: 비핵심 프롬프트라 OpenAI 3차 폴백을 건너뛰었습니다."
+            ),
+        )
+
     fallback_content = ""
     try:
         _, fallback_content, _, _ = _invoke_with_provider_fallback(
@@ -461,6 +609,9 @@ def call_llm_with_prompt(
             active_model,
             _OPENAI_FALLBACK_MODEL,
         )
+        record_llm_event(prompt_name=prompt_name, event="json_fallback_openai_success")
+        set_cached_response(cache_key, fallback)
+        record_llm_event(prompt_name=prompt_name, event="cache_store")
         return fallback
     except Exception as fallback_exc:
         detail = _json_error_details(fallback_exc)
@@ -473,6 +624,7 @@ def call_llm_with_prompt(
             detail,
             _snippet_for_logs(snippet_source),
         )
+        record_llm_event(prompt_name=prompt_name, event="json_parse_failure")
         raise JSONResponseParseError(
             prompt_name=prompt_name,
             provider=active_provider,

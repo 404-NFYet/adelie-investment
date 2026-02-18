@@ -10,8 +10,9 @@ import asyncio
 import datetime as dt
 import json
 import logging
-import time
+import os
 import re
+import time
 from typing import Any, Callable
 
 from langsmith import traceable
@@ -31,6 +32,21 @@ AVAILABLE_TOOLS: dict[str, Callable] = {
 
 RISK_ORDER = {"낮음": 0, "low": 0, "중간": 1, "medium": 1, "높음": 2, "high": 2}
 ESTIMATION_PATTERN = re.compile(r"\b(est(?:imated)?|mock)\b|\(e\)|추정", re.IGNORECASE)
+NON_ACTIONABLE_VIZ_HINTS = {
+    "none", "null", "n/a", "na", "no chart", "no_chart",
+    "없음", "해당 없음", "없어요", "불필요",
+}
+CHART_SKIP_CONTENT_MARKERS = (
+    "정량 데이터가 부족",
+    "정량 데이터 부족",
+    "수치가 부족",
+    "데이터가 부족",
+    "데이터 없음",
+    "수치 없음",
+    "차트 불필요",
+)
+MAX_RETRY_TOOL_CALLS = 4
+CHART_AGENT_MAX_PARALLEL = max(1, int(os.getenv("CHART_AGENT_MAX_PARALLEL", "3")))
 
 
 def _update_metrics(state: dict, node_name: str, elapsed: float, status: str = "success") -> dict:
@@ -214,6 +230,59 @@ def _normalize_sources_for_step(sources: list[dict[str, Any]], step: int) -> lis
     return normalized
 
 
+def _is_meaningful_text(value: str, min_len: int = 12) -> bool:
+    return len(str(value or "").strip()) >= min_len
+
+
+def _should_skip_chart_before_reasoning(
+    *,
+    step: int,
+    section_key: str,
+    content: str,
+    viz_hint: str,
+) -> tuple[bool, str]:
+    hint = str(viz_hint or "").strip()
+    hint_lower = hint.lower()
+    content_text = str(content or "").strip()
+    content_lower = content_text.lower()
+
+    if step == 6 or section_key == "summary":
+        return True, "summary 단계는 차트를 생성하지 않아요."
+
+    if not hint:
+        return True, "viz_hint가 비어 있어요."
+
+    if hint_lower in NON_ACTIONABLE_VIZ_HINTS:
+        return True, "viz_hint가 비정량/비활성 신호예요."
+
+    if any(marker in content_text for marker in CHART_SKIP_CONTENT_MARKERS):
+        return True, "본문에 정량 근거 부족 신호가 있어요."
+
+    if any(marker in hint_lower for marker in ("없음", "불필요", "none", "no chart")):
+        return True, "viz_hint가 차트 비생성을 지시해요."
+
+    if not _is_meaningful_text(content_text, min_len=40) and not _is_meaningful_text(hint, min_len=16):
+        return True, "본문/힌트 길이가 너무 짧아 근거가 부족해요."
+
+    if "추정" in content_lower and not any(keyword in hint_lower for keyword in ("추이", "비교", "변화", "증감")):
+        return True, "추정 위주 설명이며 정량 차트 의도가 약해요."
+
+    return False, ""
+
+
+def _has_retryable_tool_output(tool_outputs: list[dict[str, Any]]) -> bool:
+    for item in tool_outputs:
+        if not isinstance(item, dict):
+            continue
+        if item.get("error"):
+            continue
+        output = item.get("output")
+        if output in (None, "", [], {}):
+            continue
+        return True
+    return False
+
+
 def _run_chart_generation(
     *,
     step: int,
@@ -321,7 +390,7 @@ async def _process_single_section(
             return section_key, generated_chart, _normalize_sources_for_step(generated_sources, step)
         logger.warning(f"    [{section_key}] Chart generation returned empty")
 
-        if step <= 4:
+        if step <= 3 and _has_retryable_tool_output(tool_outputs):
             retry_calls = _build_step_retry_tool_calls(
                 section_title=title,
                 section_key=section_key,
@@ -329,7 +398,7 @@ async def _process_single_section(
                 viz_hint=viz_hint,
                 curated_context=curated_context,
             )
-            retry_calls = _dedupe_tool_calls(retry_calls)
+            retry_calls = _dedupe_tool_calls(retry_calls)[:MAX_RETRY_TOOL_CALLS]
             if retry_calls:
                 logger.info(
                     "    [%s] Retry chart generation with enriched data (tools=%d)",
@@ -357,6 +426,28 @@ async def _process_single_section(
     except Exception as e:
         logger.warning(f"    [{section_key}] Chart failed (non-fatal): {e}")
         return section_key, None, []
+
+
+async def _process_single_section_with_limit(
+    semaphore: asyncio.Semaphore,
+    section_key: str,
+    section: dict,
+    step: int,
+    title: str,
+    viz_hint: str,
+    internal_context_summary: str,
+    curated_context: dict[str, Any],
+) -> tuple[str, Any, list[dict]]:
+    async with semaphore:
+        return await _process_single_section(
+            section_key=section_key,
+            section=section,
+            step=step,
+            title=title,
+            viz_hint=viz_hint,
+            internal_context_summary=internal_context_summary,
+            curated_context=curated_context,
+        )
 
 
 @traceable(name="run_chart_agent", run_type="agent",
@@ -400,20 +491,35 @@ async def run_chart_agent_node(state: dict) -> dict:
                 })
         else:
             # live 모드: 6섹션 asyncio.gather 병렬
+            semaphore = asyncio.Semaphore(CHART_AGENT_MAX_PARALLEL)
             tasks = []
             no_viz_sections = []
             for step, title, section_key in SECTION_MAP:
                 section = narrative[section_key]
                 viz_hint = section.get("viz_hint")
-                if not viz_hint:
+                skip, skip_reason = _should_skip_chart_before_reasoning(
+                    step=step,
+                    section_key=section_key,
+                    content=str(section.get("content") or ""),
+                    viz_hint=str(viz_hint or ""),
+                )
+                if skip:
+                    logger.info("  Skip chart for %s: %s", section_key, skip_reason)
                     no_viz_sections.append(section_key)
                     continue
                 logger.info(f"  Queuing chart for {section_key}: {viz_hint[:50]}...")
-                tasks.append(_process_single_section(
-                    section_key, section, step, title, viz_hint,
-                    internal_context_summary,
-                    curated,
-                ))
+                tasks.append(
+                    _process_single_section_with_limit(
+                        semaphore=semaphore,
+                        section_key=section_key,
+                        section=section,
+                        step=step,
+                        title=title,
+                        viz_hint=viz_hint,
+                        internal_context_summary=internal_context_summary,
+                        curated_context=curated,
+                    )
+                )
 
             # viz_hint 없는 섹션은 None
             for sk in no_viz_sections:

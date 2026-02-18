@@ -1,8 +1,8 @@
 ---
 provider: openai
-model: gpt-5.2
+model: gpt-5-mini
 temperature: 0.1
-max_tokens: 4096
+max_tokens: 3000
 response_format: json_object
 system_message: >
   당신은 금융 콘텐츠 팩트체커입니다. 정확성과 일관성을 최우선으로 검증합니다.

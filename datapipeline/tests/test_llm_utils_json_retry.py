@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+from datapipeline.ai.llm_observability import reset_llm_stats
+from datapipeline.ai.llm_response_cache import reset_llm_cache
 from datapipeline.ai.llm_utils import JSONResponseParseError, call_llm_with_prompt
 from datapipeline.prompts.prompt_loader import PromptSpec
 
@@ -58,6 +60,14 @@ class ScriptedClient:
         if isinstance(payload, Exception):
             raise payload
 
+        if isinstance(payload, dict):
+            content = payload.get("content", "{}")
+            usage = payload.get("usage", {})
+            return {
+                "choices": [{"message": {"content": content}}],
+                "usage": usage if isinstance(usage, dict) else {},
+            }
+
         return {
             "choices": [{"message": {"content": payload}}],
             "usage": {},
@@ -67,6 +77,12 @@ class ScriptedClient:
 def _patch_prompt_and_client(monkeypatch: pytest.MonkeyPatch, spec: PromptSpec, client: ScriptedClient) -> None:
     monkeypatch.setattr("datapipeline.ai.llm_utils.load_prompt", lambda *args, **kwargs: spec)
     monkeypatch.setattr("datapipeline.ai.llm_utils.get_multi_provider_client", lambda: client)
+
+
+@pytest.fixture(autouse=True)
+def _reset_observability_and_cache() -> None:
+    reset_llm_stats()
+    reset_llm_cache()
 
 
 def test_json_prompt_success_without_retry(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -101,7 +117,7 @@ def test_anthropic_credit_error_falls_back_to_openai(monkeypatch: pytest.MonkeyP
 
 def test_json_prompt_repair_success_on_second_attempt(monkeypatch: pytest.MonkeyPatch) -> None:
     client = ScriptedClient([
-        ("anthropic", '{"broken": true'),
+        ("anthropic", "BROKEN_JSON_OUTPUT"),
         ("anthropic", '{"broken": false, "fixed": true}'),
     ])
     _patch_prompt_and_client(monkeypatch, _json_prompt_spec(), client)
@@ -116,8 +132,8 @@ def test_json_prompt_repair_success_on_second_attempt(monkeypatch: pytest.Monkey
 
 def test_json_prompt_openai_fallback_on_third_attempt(monkeypatch: pytest.MonkeyPatch) -> None:
     client = ScriptedClient([
-        ("anthropic", '{"broken": true'),
-        ("anthropic", '{"still_broken": true'),
+        ("anthropic", "BROKEN_JSON_OUTPUT_1"),
+        ("anthropic", "BROKEN_JSON_OUTPUT_2"),
         ("openai", '{"fallback": true, "engine": "gpt-5.2"}'),
     ])
     _patch_prompt_and_client(monkeypatch, _json_prompt_spec(), client)
@@ -133,9 +149,9 @@ def test_json_prompt_openai_fallback_on_third_attempt(monkeypatch: pytest.Monkey
 
 def test_json_prompt_raises_after_all_retries_fail(monkeypatch: pytest.MonkeyPatch) -> None:
     client = ScriptedClient([
-        ("anthropic", '{"broken": true'),
-        ("anthropic", '{"still_broken": true'),
-        ("openai", '{"openai_broken": true'),
+        ("anthropic", "BROKEN_JSON_OUTPUT_1"),
+        ("anthropic", "BROKEN_JSON_OUTPUT_2"),
+        ("openai", "BROKEN_JSON_OUTPUT_3"),
     ])
     _patch_prompt_and_client(monkeypatch, _json_prompt_spec(), client)
 
@@ -179,8 +195,8 @@ def test_openai_provider_retries_once_on_transport_error(monkeypatch: pytest.Mon
 
 def test_openai_provider_does_not_use_third_fallback_for_json_repair(monkeypatch: pytest.MonkeyPatch) -> None:
     client = ScriptedClient([
-        ("openai", '{"broken": true'),
-        ("openai", '{"still_broken": true'),
+        ("openai", "BROKEN_JSON_OUTPUT_1"),
+        ("openai", "BROKEN_JSON_OUTPUT_2"),
     ])
     _patch_prompt_and_client(monkeypatch, _json_prompt_spec_for("openai", "gpt-5.2"), client)
 
@@ -219,3 +235,60 @@ def test_narrative_body_node_marks_json_parse_failure(monkeypatch: pytest.Monkey
     assert "모델 응답 JSON 불량" in result["error"]
     assert "prompt=narrative_body" in result["error"]
     assert "provider=anthropic" in result["error"]
+
+
+def test_cache_reuses_same_prompt_and_reduces_call_count(monkeypatch: pytest.MonkeyPatch) -> None:
+    from datapipeline.ai.llm_observability import snapshot_llm_stats
+
+    client = ScriptedClient([
+        ("openai", '{"ok": true, "cached": false}'),
+    ])
+    _patch_prompt_and_client(monkeypatch, _json_prompt_spec_for("openai", "gpt-5.2"), client)
+
+    first = call_llm_with_prompt("narrative_body", {"x": 1})
+    second = call_llm_with_prompt("narrative_body", {"x": 1})
+    stats = snapshot_llm_stats()
+    prompt_stats = stats["by_prompt"]["narrative_body"]
+
+    assert first["ok"] is True and second["ok"] is True
+    assert len(client.calls) == 1
+    assert prompt_stats["calls"] <= 1
+    assert prompt_stats["events"].get("cache_hit", 0) >= 1
+
+
+def test_retry_path_has_call_count_guardrail(monkeypatch: pytest.MonkeyPatch) -> None:
+    from datapipeline.ai.llm_observability import snapshot_llm_stats
+
+    client = ScriptedClient([
+        ("openai", RuntimeError("upstream timeout")),
+        ("openai", '{"ok": true, "retried": true}'),
+    ])
+    _patch_prompt_and_client(monkeypatch, _json_prompt_spec_for("openai", "gpt-5.2"), client)
+
+    result = call_llm_with_prompt("3_theme", {"x": 1})
+    stats = snapshot_llm_stats()
+    prompt_stats = stats["by_prompt"]["3_theme"]
+
+    assert result["retried"] is True
+    assert 1 <= len(client.calls) <= 2
+    assert 1 <= prompt_stats["calls"] <= 2
+
+
+def test_token_budget_guardrail_for_single_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
+    from datapipeline.ai.llm_observability import snapshot_llm_stats
+
+    client = ScriptedClient([
+        ("openai", {
+            "content": '{"ok": true, "value": 1}',
+            "usage": {"prompt_tokens": 220, "completion_tokens": 140},
+        }),
+    ])
+    _patch_prompt_and_client(monkeypatch, _json_prompt_spec_for("openai", "gpt-5-mini"), client)
+
+    result = call_llm_with_prompt("page_purpose", {"x": 1})
+    stats = snapshot_llm_stats()
+    prompt_stats = stats["by_prompt"]["page_purpose"]
+
+    assert result["ok"] is True
+    assert prompt_stats["prompt_tokens"] <= 300
+    assert prompt_stats["completion_tokens"] <= 200

@@ -1,7 +1,7 @@
 ---
 provider: openai
 model: gpt-5.2
-max_tokens: 8192
+max_tokens: 5000
 temperature: 0.2
 response_format: json_object
 ---

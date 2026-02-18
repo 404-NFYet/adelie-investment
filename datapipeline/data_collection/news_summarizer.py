@@ -8,12 +8,14 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import requests
 
+from ..ai.llm_observability import record_llm_call, record_llm_event
 from ..config import (
     OPENAI_PHASE1_CHUNK_TARGET_INPUT_TOKENS,
     OPENAI_PHASE1_MAX_COMPLETION_TOKENS,
@@ -96,13 +98,19 @@ def _chunk_blocks(
     return chunks
 
 
-def _call_chat_summary(prompt: str, api_key: str, max_retries: int) -> dict:
+def _call_chat_summary(
+    prompt: str,
+    api_key: str,
+    max_retries: int,
+    prompt_name: str,
+) -> dict:
     """요약 호출. 빈 content/length 종료 시 재시도."""
     retries = max(0, max_retries)
     last_error = "unknown_error"
 
     for attempt in range(1, retries + 2):
         payload = _build_payload(prompt)
+        started = time.perf_counter()
         try:
             resp = requests.post(
                 OPENAI_API_URL,
@@ -111,6 +119,7 @@ def _call_chat_summary(prompt: str, api_key: str, max_retries: int) -> dict:
                 timeout=90,
             )
         except requests.exceptions.RequestException as e:
+            record_llm_event(prompt_name=prompt_name, event="request_error_retry")
             last_error = f"request_error: {e}"
             if attempt <= retries:
                 continue
@@ -129,13 +138,16 @@ def _call_chat_summary(prompt: str, api_key: str, max_retries: int) -> dict:
                 )
                 if retry_resp.ok:
                     resp = retry_resp
+                    record_llm_event(prompt_name=prompt_name, event="temperature_retry_success")
                 else:
                     last_error = f"OpenAI API error {resp.status_code}: {err_body}"
+                    record_llm_event(prompt_name=prompt_name, event="http_error_retry")
                     if attempt <= retries:
                         continue
                     raise RuntimeError(last_error)
             else:
                 last_error = f"OpenAI API error {resp.status_code}: {err_body}"
+                record_llm_event(prompt_name=prompt_name, event="http_error_retry")
                 if attempt <= retries:
                     continue
                 raise RuntimeError(last_error)
@@ -145,6 +157,13 @@ def _call_chat_summary(prompt: str, api_key: str, max_retries: int) -> dict:
         content = choice.get("message", {}).get("content", "")
         finish_reason = choice.get("finish_reason")
         usage = data.get("usage", {})
+        record_llm_call(
+            prompt_name=prompt_name,
+            provider="openai",
+            model=OPENAI_PHASE1_MODEL,
+            usage=usage if isinstance(usage, dict) else {},
+            elapsed_s=time.perf_counter() - started,
+        )
 
         if isinstance(content, str) and content.strip():
             return {
@@ -155,6 +174,7 @@ def _call_chat_summary(prompt: str, api_key: str, max_retries: int) -> dict:
             }
 
         last_error = f"empty_content (finish_reason={finish_reason})"
+        record_llm_event(prompt_name=prompt_name, event="empty_content_retry")
         if attempt <= retries:
             continue
 
@@ -224,7 +244,12 @@ def _summarize_with_map_reduce(
         prompt = prompt_template.replace(f"{{{prompt_key}}}", chunk_text)
 
         try:
-            result = _call_chat_summary(prompt, api_key, retries)
+            result = _call_chat_summary(
+                prompt,
+                api_key,
+                retries,
+                prompt_name=f"phase1_{kind}_map",
+            )
             successful_chunks.append({
                 "chunk_index": chunk_index,
                 "summary": result["summary"],
@@ -242,7 +267,12 @@ def _summarize_with_map_reduce(
     reduce_prompt = _build_reduce_prompt(kind, merged_input)
 
     try:
-        reduced = _call_chat_summary(reduce_prompt, api_key, retries)
+        reduced = _call_chat_summary(
+            reduce_prompt,
+            api_key,
+            retries,
+            prompt_name=f"phase1_{kind}_reduce",
+        )
         final_summary = reduced["summary"]
     except Exception:
         final_summary = "\n\n".join(c["summary"] for c in successful_chunks)

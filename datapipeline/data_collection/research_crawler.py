@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Optional
@@ -19,6 +20,7 @@ from urllib.parse import urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
 
+from ..ai.llm_observability import record_llm_call, record_llm_event
 from ..config import (
     OPENAI_API_KEY,
     OPENAI_RESEARCH_MAX_OUTPUT_TOKENS,
@@ -196,14 +198,28 @@ def _summarize_pdf_bytes(
         "max_output_tokens": max_output_tokens,
     }
 
+    started = time.perf_counter()
     resp = requests.post(
         OPENAI_API_URL,
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
         json=payload,
         timeout=120,
     )
-    resp.raise_for_status()
-    output_text = _extract_output_text(resp.json())
+    try:
+        resp.raise_for_status()
+    except Exception:
+        record_llm_event(prompt_name="research_pdf_summary", event="http_error")
+        raise
+    response_json = resp.json()
+    usage = response_json.get("usage", {}) if isinstance(response_json, dict) else {}
+    record_llm_call(
+        prompt_name="research_pdf_summary",
+        provider="openai",
+        model=model,
+        usage=usage if isinstance(usage, dict) else {},
+        elapsed_s=time.perf_counter() - started,
+    )
+    output_text = _extract_output_text(response_json)
 
     normalized = _normalize_json_text(output_text)
     if normalized:
