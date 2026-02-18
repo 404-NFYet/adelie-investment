@@ -147,23 +147,20 @@ async def _save(
         if stocks:
             rows = []
             for s in stocks:
-                # asyncpg executemany는 첫 행에서 타입을 추론하므로
-                # 모든 행에서 동일한 타입을 보장해야 함
-                period_days = s.get("period_days")
                 rows.append((
                     briefing_id,
-                    str(s.get("ticker", "")),
-                    str(s.get("name", "")),
-                    float(s.get("change_pct", 0.0)),
+                    s.get("ticker", ""),
+                    s.get("name", ""),
+                    s.get("change_pct", 0.0),
                     None,  # volume (curated context에 없음)
-                    str(s.get("momentum", "")),
+                    s.get("momentum", ""),
                     datetime.utcnow(),
-                    int(period_days) if period_days is not None else None,
-                    str(s.get("momentum", "")),
-                    str(first_catalyst.get("title", "")) if first_catalyst else None,
-                    str(first_catalyst.get("url", "")) if first_catalyst else None,
+                    s.get("period_days"),
+                    s.get("momentum", ""),
+                    first_catalyst.get("title") if first_catalyst else None,
+                    first_catalyst.get("url") if first_catalyst else None,
                     None,  # catalyst_published_at
-                    str(first_catalyst.get("source", "")) if first_catalyst else None,
+                    first_catalyst.get("source") if first_catalyst else None,
                 ))
             # UNIQUE 제약이 없는 환경에서도 중복 저장을 피하기 위해
             # ON CONFLICT 대신 NOT EXISTS 패턴을 사용한다.
@@ -172,12 +169,10 @@ async def _save(
                    (briefing_id, stock_code, stock_name, change_rate, volume,
                     selection_reason, created_at, trend_days, trend_type,
                     catalyst, catalyst_url, catalyst_published_at, catalyst_source)
-                   SELECT $1::integer, $2::varchar, $3::varchar, $4::real,
-                          $5::bigint, $6::text, $7::timestamp, $8::integer,
-                          $9::varchar, $10::text, $11::text, $12::timestamp, $13::varchar
+                   SELECT $1,$2::text,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13
                    WHERE NOT EXISTS (
                        SELECT 1 FROM briefing_stocks
-                       WHERE briefing_id = $1::integer AND stock_code = $2::varchar
+                       WHERE briefing_id = $1 AND stock_code::text = $2::text
                    )""",
                 rows,
             )
@@ -200,11 +195,6 @@ async def _save(
                    (title, event_year, summary, full_content, keywords,
                     difficulty, view_count, created_at, updated_at)
                    VALUES ($1, $2, $3, $4, $5::jsonb, 'beginner', 0, NOW(), NOW())
-                   ON CONFLICT (title, event_year) DO UPDATE SET
-                       summary = EXCLUDED.summary,
-                       full_content = EXCLUDED.full_content,
-                       keywords = EXCLUDED.keywords,
-                       updated_at = NOW()
                    RETURNING id""",
                 hist.get("title", curated.get("theme", "")),
                 event_year,
