@@ -123,18 +123,22 @@ export default function Landing() {
   }, [currentIndex]);
 
   const goToSlide = (index, explicitDirection) => {
-    const normalized = (index + totalSlides) % totalSlides;
+    const normalized = Math.max(0, Math.min(index, totalSlides - 1));
     if (normalized === currentIndex) return;
     const nextDirection = explicitDirection ?? (normalized > currentIndex ? 1 : -1);
     setDirection(nextDirection);
     setCurrentIndex(normalized);
   };
 
+  // feature 슬라이드(index 1 이상)에서만 이전 가능
   const goPrev = () => {
+    if (currentIndex <= 1) return;
     goToSlide(currentIndex - 1, -1);
   };
 
+  // 마지막 슬라이드에서 순환 방지
   const goNext = () => {
+    if (currentIndex >= totalSlides - 1) return;
     goToSlide(currentIndex + 1, 1);
   };
 
