@@ -84,7 +84,7 @@ async def get_leaderboard(
             total_holdings += (cp if cp else float(h.avg_buy_price)) * h.quantity
 
         total_value = portfolio.current_cash + total_holdings
-        profit_loss = total_value - portfolio.initial_cash - portfolio.total_rewards_received
+        profit_loss = total_value - portfolio.initial_cash
         profit_loss_pct = (profit_loss / portfolio.initial_cash * 100) if portfolio.initial_cash > 0 else 0
 
         entries.append({
@@ -167,7 +167,7 @@ async def get_portfolio(
         ))
 
     total_value = portfolio.current_cash + total_holdings_value
-    total_pl = total_value - portfolio.initial_cash - portfolio.total_rewards_received
+    total_pl = total_value - portfolio.initial_cash
     total_pl_pct = (total_pl / portfolio.initial_cash * 100) if portfolio.initial_cash > 0 else 0
 
     return PortfolioResponse(
@@ -175,7 +175,6 @@ async def get_portfolio(
         portfolio_name=portfolio.portfolio_name,
         initial_cash=portfolio.initial_cash,
         current_cash=portfolio.current_cash,
-        total_rewards_received=portfolio.total_rewards_received,
         holdings=holdings_response,
         total_value=total_value,
         total_profit_loss=total_pl,
@@ -203,7 +202,7 @@ async def get_portfolio_summary(
             total_holdings += cp * h.quantity
 
     total_value = portfolio.current_cash + total_holdings
-    total_pl = total_value - portfolio.initial_cash - portfolio.total_rewards_received
+    total_pl = total_value - portfolio.initial_cash
     total_pl_pct = (total_pl / portfolio.initial_cash * 100) if portfolio.initial_cash > 0 else 0
 
     return PortfolioSummary(
@@ -261,11 +260,6 @@ async def get_trade_history(
     """거래 내역 조회. JWT 인증 필수."""
     user_id = current_user["id"]
     portfolio = await get_or_create_portfolio(db, user_id)
-
-    # 전체 건수 조회 (정확한 total_count)
-    count_stmt = select(func.count()).where(SimulationTrade.portfolio_id == portfolio.id)
-    total_count = (await db.execute(count_stmt)).scalar() or 0
-
     stmt = (
         select(SimulationTrade)
         .where(SimulationTrade.portfolio_id == portfolio.id)
@@ -291,7 +285,7 @@ async def get_trade_history(
             )
             for t in trades
         ],
-        total_count=total_count,
+        total_count=len(trades),
     )
 
 
@@ -422,7 +416,6 @@ async def claim_dwell_reward(
 
     # 보상 지급
     portfolio.current_cash += DWELL_REWARD_AMOUNT
-    portfolio.total_rewards_received += DWELL_REWARD_AMOUNT
     reward = DwellReward(
         user_id=user_id,
         portfolio_id=portfolio.id,

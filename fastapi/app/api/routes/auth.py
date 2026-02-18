@@ -24,7 +24,6 @@ async def register(
         email=payload.email,
         password=payload.password,
         username=payload.username,
-        difficulty_level=payload.difficulty_level,
     )
 
 

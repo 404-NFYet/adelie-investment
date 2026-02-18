@@ -10,11 +10,20 @@ from app.services.code_executor import get_executor
 logger = logging.getLogger("narrative_api.visualization")
 
 # 시각화 도구 임포트
+import sys as _sys
+from pathlib import Path as _Path
+_CHATBOT_PATH = str(_Path(__file__).resolve().parent.parent.parent.parent.parent / "chatbot")
+if _CHATBOT_PATH not in _sys.path:
+    _sys.path.insert(0, _CHATBOT_PATH)
 try:
     from chatbot.tools.visualization_tool import _generate_with_claude, _generate_with_openai
     _VIZ_AVAILABLE = True
 except ImportError:
-    _VIZ_AVAILABLE = False
+    try:
+        from tools.visualization_tool import _generate_with_claude, _generate_with_openai
+        _VIZ_AVAILABLE = True
+    except ImportError:
+        _VIZ_AVAILABLE = False
 
 router = APIRouter(prefix="/tutor", tags=["visualization"])
 
