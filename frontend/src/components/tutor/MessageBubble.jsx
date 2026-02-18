@@ -10,7 +10,6 @@ import PenguinLoading from '../common/PenguinLoading';
 import ResponsivePlotly from '../charts/ResponsivePlotly';
 import { normalizeLayout } from '../../utils/plotly/normalizeLayout';
 import { normalizeTraces } from '../../utils/plotly/normalizeTraces';
-import { useTutor } from '../../contexts/TutorContext';
 
 // 출처 분류 체계
 const SOURCE_LABELS = {
@@ -123,7 +122,7 @@ function VisualizationMessage({ message }) {
   return (
     <motion.div className="mb-4" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
       <div className="flex items-center gap-1.5 mb-1.5">
-        <img src="/images/penguin-3d.webp" alt="" className="w-5 h-5 rounded-full object-cover" />
+        <img src="/images/penguin-3d.png" alt="" className="w-5 h-5 rounded-full object-cover" />
         <span className="text-xs text-text-secondary">차트</span>
         {message.executionTime && <span className="text-[10px] text-text-secondary ml-auto">{message.executionTime}ms</span>}
       </div>
@@ -183,16 +182,11 @@ export default React.memo(function Message({ message }) {
     <motion.div className="flex justify-start mb-4" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
       <div className="max-w-[90%]">
         <div className="flex items-center gap-1.5 mb-1.5">
-          <img src="/images/penguin-3d.webp" alt="" className="w-5 h-5 rounded-full object-cover" />
+          <img src="/images/penguin-3d.png" alt="" className="w-5 h-5 rounded-full object-cover" />
           <span className="text-xs text-text-secondary font-medium">AI 튜터</span>
         </div>
         <div className={`px-4 py-3 rounded-2xl rounded-tl-md ${message.isError ? 'bg-error-light text-error border border-error/20' : 'bg-surface border border-border'}`}>
-          {message.isError ? (
-            <>
-              <p className="text-sm">{message.content}</p>
-              {message.canRetry && <RetryButton />}
-            </>
-          ) : (
+          {message.isError ? <p className="text-sm">{message.content}</p> : (
             <div className="text-sm leading-relaxed text-text-primary prose prose-sm prose-headings:text-text-primary prose-strong:text-text-primary prose-code:text-primary prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs max-w-none dark:prose-invert">
               <ReactMarkdown rehypePlugins={[rehypeRaw]}>{message.content}</ReactMarkdown>
             </div>
@@ -204,17 +198,3 @@ export default React.memo(function Message({ message }) {
     </motion.div>
   );
 })
-
-/** SSE 실패 후 재시도 버튼 */
-function RetryButton() {
-  const { retryLastMessage, isLoading } = useTutor();
-  return (
-    <button
-      onClick={retryLastMessage}
-      disabled={isLoading}
-      className="mt-2 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-white hover:bg-primary-hover transition-colors disabled:opacity-50"
-    >
-      다시 시도
-    </button>
-  );
-}
