@@ -20,8 +20,10 @@ load_dotenv(PROJECT_ROOT / ".env", override=False)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("CLAUDE_API_KEY", "")
+
 DART_API_KEY = os.getenv("DART_API_KEY", "")
 ECOS_API_KEY = os.getenv("ECOS_API_KEY", "")
+
 
 # ── 기본 모델 (Interface 2/3 내러티브 생성) ──
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "claude-sonnet-4-20250514")

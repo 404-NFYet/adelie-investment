@@ -1,6 +1,6 @@
 # LXD 서버 인벤토리
 
-## 인스턴스 현황 (2026-02-14 업데이트)
+## 인스턴스 현황 (2026-02-17 업데이트)
 
 | 인스턴스 | IP | 역할 | 담당자 | CPU/RAM | 프로파일 |
 |----------|-----|------|--------|---------|---------|
@@ -11,7 +11,8 @@
 | dev-ryejinn | 10.10.10.13 | Data Pipeline (LangGraph 파이프라인) | 안례진 | 4/12GB | `dev-ai.yml` |
 | dev-jjjh02 | 10.10.10.12 | Backend (FastAPI, DB) | 허진서 | 4/8GB | `dev-standard.yml` |
 | dev-hj | 10.10.10.15 | Infra (Docker, CI/CD) | 도형준 | 4/8GB | `dev-standard.yml` |
-| **합계** | - | - | - | **34/84GB** | - |
+| localstack | 10.10.10.16 | LocalStack (AWS 로컬 테스트) | 도형준 | 4/8GB | `dev-standard.yml` |
+| **합계** | - | - | - | **38/92GB** | - |
 
 > 디스크: 전체 인스턴스가 **1개의 1.8TB NVMe**를 공유하는 구조.
 
@@ -22,7 +23,8 @@
 | infra-server | 300GB | PostgreSQL, Redis, MinIO 데이터 |
 | deploy-test | 200GB | Docker 이미지 + 컨테이너 |
 | dev-* (각각) | 150GB | 소스코드, Docker, node_modules |
-| 예비 | 550GB | 향후 확장용 |
+| localstack | 100GB | Docker 이미지, Terraform state, LocalStack 데이터 |
+| 예비 | 450GB | 향후 확장용 |
 
 ## 역할 변경 이력 (2026-02-14)
 
@@ -51,6 +53,10 @@ lxc config set dev-ryejinn limits.memory 12GB
 # dev-yj99son (Frontend)
 lxc config set dev-yj99son limits.cpu 4
 lxc config set dev-yj99son limits.memory 8GB
+
+# localstack (AWS 로컬 테스트)
+lxc config set localstack limits.cpu 4
+lxc config set localstack limits.memory 8GB
 
 # deploy-test (prod 배포)
 lxc config set deploy-test limits.memory 32GB

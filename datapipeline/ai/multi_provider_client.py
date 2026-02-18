@@ -83,6 +83,7 @@ class MultiProviderClient:
         try:
             if provider == "anthropic":
                 result = self._call_anthropic(model, messages, temperature, max_tokens)
+
             else:
                 result = self._call_openai_compatible(
                     provider, model, messages, thinking, thinking_effort,

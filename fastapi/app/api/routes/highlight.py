@@ -1,9 +1,16 @@
 """Term highlighting API routes."""
 
+import sys
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+
+# Add chatbot to path
+_chatbot_path = str(Path(__file__).resolve().parent.parent.parent.parent.parent / "chatbot")
+if _chatbot_path not in sys.path:
+    sys.path.insert(0, _chatbot_path)
 
 try:
     from chatbot.services.term_highlighter import (

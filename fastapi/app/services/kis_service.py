@@ -4,7 +4,6 @@
 Rate limit: 초당 2건 (모의투자) -> Redis 캐싱 + 백그라운드 갱신으로 대응.
 """
 
-import asyncio
 import json
 import logging
 import os
@@ -18,7 +17,6 @@ from app.services.redis_cache import get_redis_cache
 logger = logging.getLogger(__name__)
 
 # 캐시 TTL 전략
-# KIS 응답 캐시 TTL (초)
 CACHE_TTL = {
     "price": 30,         # 개별 종목 현재가: 30초
     "search": 300,       # 종목 검색 결과: 5분
@@ -36,15 +34,9 @@ class KISService:
         # HANTU_* 키 또는 KIS_* 키 모두 지원
         self.app_key = os.getenv("KIS_APP_KEY") or os.getenv("HANTU_APP_KEY", "")
         self.app_secret = os.getenv("KIS_APP_SECRET") or os.getenv("HANTU_APP_SECRET", "")
-        # 모의투자 API 엔드포인트
-        self.base_url = "https://openapivts.koreainvestment.com:29443"
-        self.client = httpx.AsyncClient(
-            timeout=10,
-            limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
-        )
+        self.base_url = "https://openapivts.koreainvestment.com:29443"  # 모의투자
         self._token: Optional[str] = None
         self._token_expires: Optional[datetime] = None
-        self._token_lock = asyncio.Lock()
 
     @property
     def is_configured(self) -> bool:
@@ -56,25 +48,20 @@ class KISService:
         if self._token and self._token_expires and datetime.now() < self._token_expires:
             return self._token
 
-        async with self._token_lock:
-            # 락 획득 후 재확인 (다른 코루틴이 갱신했을 수 있음)
-            if self._token and self._token_expires and datetime.now() < self._token_expires:
+        # Redis 캐시 확인
+        cache = await get_redis_cache()
+        if cache.client:
+            cached = await cache.client.get("kis:token")
+            if cached:
+                self._token = cached
+                self._token_expires = datetime.now() + timedelta(hours=23)
                 return self._token
 
-            # Redis 캐시 확인 (멀티 인스턴스에서 재사용)
-            cache = await get_redis_cache()
-            if cache.client:
-                cached = await cache.client.get("kis:token")
-                if cached:
-                    self._token = cached
-                    self._token_expires = datetime.now() + timedelta(hours=23)
-                    return self._token
+        if not self.is_configured:
+            raise ValueError("KIS API 키가 설정되지 않았습니다")
 
-            if not self.is_configured:
-                raise ValueError("KIS API 키가 설정되지 않았습니다")
-
-            # 토큰 발급 API 호출 (재사용 클라이언트)
-            response = await self.client.post(
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
                 f"{self.base_url}/oauth2/tokenP",
                 json={
                     "grant_type": "client_credentials",
@@ -103,11 +90,11 @@ class KISService:
         }
         kwargs.setdefault("headers", {}).update(headers)
 
-        # 실제 KIS API 호출 (재사용 클라이언트)
-        response = await self.client.request(method, f"{self.base_url}{path}", **kwargs)
-        if response.status_code >= 400:
-            logger.error("KIS API error (%s): %s", response.status_code, response.text[:200])
-        return response.json()
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.request(method, f"{self.base_url}{path}", **kwargs)
+            if response.status_code >= 400:
+                logger.error("KIS API error (%s): %s", response.status_code, response.text[:200])
+            return response.json()
 
     async def get_current_price(self, stock_code: str) -> Optional[dict]:
         """실시간 현재가 조회 (캐싱 적용)."""
@@ -123,12 +110,10 @@ class KISService:
             except Exception:
                 pass
 
-        # API 키가 없으면 KIS 호출 불가
         if not self.is_configured:
             return None
 
         try:
-            # KIS 현재가 API 호출
             data = await self._request(
                 "GET",
                 "/uapi/domestic-stock/v1/quotations/inquire-price",
@@ -173,7 +158,7 @@ class KISService:
             except Exception:
                 pass
 
-        # KIS 종목 검색이 제한적이므로 pykrx ticker list 기반 로컬 검색
+        # KIS API 종목 검색이 제한적이므로 pykrx ticker list 기반 로컬 검색
         try:
             from pykrx import stock
             tickers = stock.get_market_ticker_list(datetime.now().strftime("%Y%m%d"))
@@ -211,7 +196,6 @@ class KISService:
                 pass
 
         try:
-            # pykrx로 일봉 데이터 조회 후 정렬
             from pykrx import stock
             today = datetime.now().strftime("%Y%m%d")
 
@@ -259,10 +243,3 @@ def get_kis_service() -> KISService:
     if _kis_service is None:
         _kis_service = KISService()
     return _kis_service
-
-
-async def close_kis_service() -> None:
-    """KIS 서비스 클라이언트 종료."""
-    global _kis_service
-    if _kis_service and getattr(_kis_service, "client", None):
-        await _kis_service.client.aclose()

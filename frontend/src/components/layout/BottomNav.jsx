@@ -1,4 +1,5 @@
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useTutor } from '../../contexts/TutorContext';
 
 const HIDDEN_PREFIXES = [
   '/landing',
@@ -55,6 +56,7 @@ function isActivePath(tabPath, pathname) {
 export default function BottomNav() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { openTutor } = useTutor();
 
   if (
     HIDDEN_EXACT.includes(location.pathname) ||
@@ -72,7 +74,13 @@ export default function BottomNav() {
           return (
             <button
               key={tab.id}
-              onClick={() => navigate(tab.path)}
+              onClick={() => {
+                if (tab.id === 'tutor') {
+                  openTutor();
+                } else {
+                  navigate(tab.path);
+                }
+              }}
               className={`relative flex flex-col items-center gap-0.5 py-1 px-2 transition-colors ${
                 isActive ? 'text-primary' : 'text-[#364153]'
               }`}

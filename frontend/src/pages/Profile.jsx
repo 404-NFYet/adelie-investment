@@ -31,7 +31,7 @@ function ContactSection() {
   if (submitted) {
     return (
       <div className="text-center py-4">
-        <img src="/images/penguin-3d.webp" alt="Adelie" className="w-10 h-10 mx-auto mb-1" />
+        <img src="/images/penguin-3d.png" alt="Adelie" className="w-10 h-10 mx-auto mb-1" />
         <p className="text-sm font-medium">문의가 접수되었습니다!</p>
         <p className="text-xs text-text-secondary mt-1">빠른 시일 내에 답변드리겠습니다.</p>
       </div>

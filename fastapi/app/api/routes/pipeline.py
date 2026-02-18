@@ -1,12 +1,17 @@
 """Pipeline API routes."""
 
+import sys
 import time
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+
+# Add datapipeline to path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent.parent / "datapipeline"))
 
 from app.core.database import get_db
 from app.schemas.pipeline import (

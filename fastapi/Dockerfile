@@ -3,7 +3,6 @@
 # ============================================================
 FROM python:3.11-slim
 WORKDIR /app
-ENV PYTHONPATH=/app
 
 # 시스템 의존성 설치
 RUN apt-get update && \

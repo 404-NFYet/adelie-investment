@@ -23,7 +23,12 @@ def _get_minio():
     if _minio_service is not None:
         return _minio_service
     try:
-        from datapipeline.services.minio_service import get_minio_service
+        import sys
+        from pathlib import Path
+        pipeline_path = str(Path(__file__).resolve().parent.parent.parent.parent / "datapipeline")
+        if pipeline_path not in sys.path:
+            sys.path.insert(0, pipeline_path)
+        from services.minio_service import get_minio_service
         _minio_service = get_minio_service()
         _MINIO_AVAILABLE = True
         return _minio_service

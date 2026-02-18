@@ -95,7 +95,7 @@ export default function Onboarding() {
         {/* Hero 섹션 - 펭귄 + 태그라인 */}
         <Section className="min-h-[70vh] flex flex-col items-center justify-center text-center">
           <motion.img
-            src="/images/penguin-3d.webp"
+            src="/images/penguin-3d.png"
             alt="Adelie"
             className="w-32 h-32 mb-8"
             initial={{ scale: 0.6, opacity: 0 }}

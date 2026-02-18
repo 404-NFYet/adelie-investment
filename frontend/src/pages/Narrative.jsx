@@ -121,7 +121,6 @@ function getChecklistItems(content, bullets) {
   return items.slice(0, 5);
 }
 
-
 function MarkdownBody({ content, onTermClick, className = '' }) {
   if (!content) return null;
 
@@ -166,7 +165,6 @@ function NarrativeChartBlock({ stepKey, chart }) {
   if (!plot.hasRenderable) {
     return null;
   }
-
 
   return (
     <section className="w-full">
