@@ -11,9 +11,8 @@ from typing import AsyncGenerator, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select, text
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
-from openai import AsyncOpenAI, APIError, APITimeoutError, RateLimitError
+from openai import AsyncOpenAI
 
 logger = logging.getLogger("narrative_api.tutor")
 
@@ -37,48 +36,37 @@ router = APIRouter(prefix="/tutor", tags=["AI tutor"])
 
 
 async def get_term_explanation_from_llm(term: str, difficulty: str) -> str:
-    """Generate term explanation using LLM (OpenAI → Anthropic fallback)."""
-    settings = get_settings()
-
+    """Generate term explanation using LLM."""
+    api_key = get_settings().OPENAI_API_KEY
+    if not api_key:
+        raise HTTPException(status_code=500, detail="OpenAI API key not configured")
+    
+    client = AsyncOpenAI(api_key=api_key)
+    
     difficulty_context = {
         "beginner": "주식 초보자도 이해할 수 있도록 아주 쉽게, 일상적인 비유를 사용해서",
         "elementary": "기본적인 투자 용어를 아는 사람에게",
         "intermediate": "투자 경험이 있는 중급자에게",
     }
+    
     context = difficulty_context.get(difficulty, difficulty_context["beginner"])
-    system_msg = f"주식/금융 용어를 {context} 설명하는 튜터입니다. 3-4문장으로 간결하게 설명해주세요."
-    user_msg = f"'{term}'이(가) 무엇인지 설명해주세요."
-
-    # 1) OpenAI 시도
-    if settings.OPENAI_API_KEY:
-        try:
-            client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY, timeout=30.0)
-            response = await client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": system_msg},
-                    {"role": "user", "content": user_msg},
-                ],
-                max_tokens=300,
-            )
-            return response.choices[0].message.content
-        except (RateLimitError, APIError) as e:
-            logger.warning("OpenAI 용어 설명 실패, Anthropic fallback: %s", e)
-
-    # 2) Anthropic fallback
-    anthropic_key = settings.CLAUDE_API_KEY or settings.ANTHROPIC_API_KEY
-    if anthropic_key:
-        from anthropic import AsyncAnthropic
-        anthropic_client = AsyncAnthropic(api_key=anthropic_key, timeout=30.0)
-        response = await anthropic_client.messages.create(
-            model="claude-sonnet-4-5-20250929",
-            max_tokens=300,
-            system=system_msg,
-            messages=[{"role": "user", "content": user_msg}],
-        )
-        return response.content[0].text
-
-    raise HTTPException(status_code=500, detail="LLM API key not configured")
+    
+    response = await client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {
+                "role": "system",
+                "content": f"주식/금융 용어를 {context} 설명하는 튜터입니다. 3-4문장으로 간결하게 설명해주세요."
+            },
+            {
+                "role": "user",
+                "content": f"'{term}'이(가) 무엇인지 설명해주세요."
+            }
+        ],
+        max_tokens=300,
+    )
+    
+    return response.choices[0].message.content
 
 
 @router.get("/explain/{term}")
@@ -137,9 +125,7 @@ async def explain_term(
             "cached": False,
         }
     except Exception as e:
-        error_id = uuid.uuid4().hex[:8]
-        logger.error("LLM 용어 설명 실패 [%s]: %s", error_id, e)
-        raise HTTPException(status_code=502, detail=f"AI 서비스 오류 (ref: {error_id})")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 async def generate_tutor_response(
@@ -154,13 +140,11 @@ async def generate_tutor_response(
     
     yield f"event: step\ndata: {json.dumps({'type': 'thinking', 'content': '질문을 분석하고 있습니다...'})}\n\n"
     
-    settings = get_settings()
-    openai_key = settings.OPENAI_API_KEY
-    anthropic_key = settings.CLAUDE_API_KEY or settings.ANTHROPIC_API_KEY
-    if not openai_key and not anthropic_key:
-        yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'LLM API key not configured'})}\n\n"
+    api_key = get_settings().OPENAI_API_KEY
+    if not api_key:
+        yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'OpenAI API key not configured'})}\n\n"
         return
-
+    
     # 컨텍스트 주입 (사용자가 보고 있는 페이지 기반)
     page_context = ""
     if request.context_type and request.context_id:
@@ -179,7 +163,7 @@ async def generate_tutor_response(
                 ctx_row = ctx_result.fetchone()
                 if ctx_row:
                     page_context = f"\n\n[현재 보고 있는 사례]\n제목: {ctx_row[0]}\n요약: {ctx_row[1]}"
-        except SQLAlchemyError:
+        except Exception:
             pass  # 컨텍스트 로드 실패해도 대화는 계속
 
     # 포트폴리오 컨텍스트 주입 (개인화된 조언용)
@@ -197,8 +181,8 @@ async def generate_tutor_response(
                 holdings = holdings_result.fetchall()
                 holdings_text = ", ".join(f"{h[0]} {h[1]}주(평균 {int(h[2]):,}원)" for h in holdings) if holdings else "없음"
                 page_context += f"\n\n[사용자 포트폴리오]\n보유 현금: {int(pf_row[0]):,}원 / 초기 자본: {int(pf_row[1]):,}원\n보유 종목: {holdings_text}"
-        except SQLAlchemyError:
-            pass  # 포트폴리오 로드 실패해도 대화는 계속
+        except Exception:
+            pass
 
     # 출처 수집 (glossary, DB 사례/리포트, 주가/기업관계)
     sources = []
@@ -217,8 +201,7 @@ async def generate_tutor_response(
             extra_context += f"\n\n참고할 내부 데이터:{db_context}"
         if stock_context:
             extra_context += f"\n\n참고할 종목 데이터:{stock_context}"
-    except (SQLAlchemyError, ValueError, KeyError) as e:
-        # DB 조회 또는 데이터 파싱 실패 시 무시
+    except Exception as e:
         logger.warning("출처 수집 실패 (무시): %s", e)
 
     system_prompt = get_difficulty_prompt(request.difficulty)
@@ -247,9 +230,8 @@ async def generate_tutor_response(
                 )
                 for msg in prev_result.scalars():
                     prev_msgs.append({"role": msg.role, "content": msg.content})
-        except (SQLAlchemyError, ValueError) as e:
-            # DB 조회 또는 UUID 파싱 실패
-            logger.warning("이전 메시지 로드 실패: %s", e)
+        except Exception as e:
+            logger.warning("Failed to load previous messages: %s", e)
     
     messages = [
         {"role": "system", "content": system_prompt},
@@ -258,73 +240,40 @@ async def generate_tutor_response(
     ]
     
     try:
+        client = AsyncOpenAI(api_key=api_key)
+        
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages,
+            max_tokens=1000,
+            stream=True,
+        )
+        
         total_tokens = 0
         full_response = ""
         stream_start = time.monotonic()
         chunk_count = 0
-        use_anthropic = False
+        
+        async for chunk in response:
+            chunk_count += 1
 
-        # OpenAI 스트리밍 시도
-        if openai_key:
-            try:
-                client = AsyncOpenAI(api_key=openai_key, timeout=30.0)
-                response = await client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=messages,
-                    max_tokens=1000,
-                    stream=True,
-                )
+            # 매 10번째 청크마다 연결 상태 및 타임아웃 확인
+            if chunk_count % 10 == 0:
+                if time.monotonic() - stream_start > 300:
+                    logger.warning("SSE 스트리밍 타임아웃 (300초 초과)")
+                    yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'Stream timeout'})}\n\n"
+                    break
+                if await http_request.is_disconnected():
+                    logger.info("클라이언트 연결 해제 감지, 스트리밍 중단")
+                    break
 
-                async for chunk in response:
-                    chunk_count += 1
-                    if chunk_count % 10 == 0:
-                        if time.monotonic() - stream_start > 300:
-                            logger.warning("SSE 스트리밍 타임아웃 (300초 초과)")
-                            yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'Stream timeout'})}\n\n"
-                            break
-                        if await http_request.is_disconnected():
-                            logger.info("클라이언트 연결 해제 감지, 스트리밍 중단")
-                            break
-
-                    if chunk.choices and chunk.choices[0].delta.content:
-                        content = chunk.choices[0].delta.content
-                        full_response += content
-                        yield f"event: text_delta\ndata: {json.dumps({'content': content})}\n\n"
-                    if chunk.usage:
-                        total_tokens = chunk.usage.total_tokens
-            except (RateLimitError, APIError) as e:
-                logger.warning("OpenAI 스트리밍 실패, Anthropic fallback: %s", e)
-                use_anthropic = True
-        else:
-            use_anthropic = True
-
-        # Anthropic fallback 스트리밍
-        if use_anthropic and not full_response:
-            if not anthropic_key:
-                yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'LLM API key not available'})}\n\n"
-                return
-
-            from anthropic import AsyncAnthropic
-            anthropic_client = AsyncAnthropic(api_key=anthropic_key, timeout=30.0)
-            system_content = messages[0]["content"] if messages and messages[0]["role"] == "system" else ""
-            anthropic_msgs = [m for m in messages if m["role"] != "system"]
-
-            async with anthropic_client.messages.stream(
-                model="claude-sonnet-4-5-20250929",
-                max_tokens=1000,
-                system=system_content,
-                messages=anthropic_msgs,
-            ) as stream:
-                async for text in stream.text_stream:
-                    chunk_count += 1
-                    if chunk_count % 10 == 0:
-                        if time.monotonic() - stream_start > 300:
-                            yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'Stream timeout'})}\n\n"
-                            break
-                        if await http_request.is_disconnected():
-                            break
-                    full_response += text
-                    yield f"event: text_delta\ndata: {json.dumps({'content': text})}\n\n"
+            if chunk.choices and chunk.choices[0].delta.content:
+                content = chunk.choices[0].delta.content
+                full_response += content
+                yield f"event: text_delta\ndata: {json.dumps({'content': content})}\n\n"
+            
+            if chunk.usage:
+                total_tokens = chunk.usage.total_tokens
         
         try:
             # 기존 세션이 있으면 재사용, 없으면 생성
@@ -367,9 +316,8 @@ async def generate_tutor_response(
             session_obj.last_message_at = datetime.utcnow()
 
             await db.commit()
-        except SQLAlchemyError as e:
-            # 세션 저장 실패해도 응답은 이미 전송됨
-            logger.warning("튜터 세션 저장 실패: %s", e)
+        except Exception as e:
+            logger.warning("Failed to save tutor session: %s", e)
         
         # 시각화 자동 감지: 사용자 메시지나 응답에 차트 키워드가 있으면 Plotly 생성
         viz_keywords = ["차트", "그래프", "시각화", "그려", "보여줘", "chart", "graph"]
@@ -410,8 +358,7 @@ async def generate_tutor_response(
                 chart_data = json.loads(json_content)
                 if "data" in chart_data and isinstance(chart_data["data"], list):
                     yield f"event: visualization\ndata: {json.dumps({'type': 'visualization', 'format': 'json', 'chartData': chart_data})}\n\n"
-            except (APIError, APITimeoutError, json.JSONDecodeError, KeyError, ValueError) as viz_err:
-                # LLM 호출 또는 차트 JSON 파싱 실패
+            except Exception as viz_err:
                 logger.warning(f"시각화 생성 실패: {viz_err}")
 
         done_data = {'session_id': session_id, 'total_tokens': total_tokens}
@@ -423,19 +370,13 @@ async def generate_tutor_response(
     except asyncio.TimeoutError:
         logger.warning("OpenAI API 호출 타임아웃")
         yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'AI 응답 시간 초과'})}\n\n"
-    except (APIError, APITimeoutError, RateLimitError) as e:
-        # OpenAI API 오류
-        error_id = uuid.uuid4().hex[:8]
-        logger.error("OpenAI API 오류 [%s]: %s", error_id, e)
-        yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': f'AI 서비스 오류 (ref: {error_id})'})}\n\n"
-    except (ConnectionError, asyncio.CancelledError) as e:
-        # SSE 스트리밍 연결 끊김
-        logger.info("SSE 연결 종료: %s", e)
+    except Exception as e:
+        yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
     finally:
         # DB 세션 및 리소스 정리
         try:
             await db.close()
-        except SQLAlchemyError:
+        except Exception:
             pass
         logger.debug("SSE 스트리밍 리소스 정리 완료 (session=%s)", session_id)
 

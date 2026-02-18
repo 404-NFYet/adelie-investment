@@ -24,7 +24,7 @@ async def _is_trading_day() -> bool:
 
 
 async def _run_datapipeline_subprocess() -> bool:
-    """datapipeline.run을 subprocess로 실행 (10분 타임아웃)."""
+    """datapipeline.run을 subprocess로 실행 (30분 타임아웃)."""
     # Docker: /app, 로컬: 프로젝트 루트
     cwd = Path("/app") if Path("/app/datapipeline").exists() else Path(__file__).resolve().parents[3]
     logger.info("datapipeline subprocess 시작 (cwd=%s)", cwd)
@@ -38,11 +38,11 @@ async def _run_datapipeline_subprocess() -> bool:
             cwd=str(cwd),
         )
         try:
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=600)
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=1800)
         except asyncio.TimeoutError:
             proc.kill()
             await proc.wait()
-            logger.error("datapipeline 타임아웃 (10분)")
+            logger.error("datapipeline 타임아웃 (30분)")
             return False
 
         if proc.returncode == 0:
@@ -102,20 +102,6 @@ async def _run_script(script_name: str) -> bool:
 
 async def run_morning_pipeline():
     """모닝 파이프라인: KST 09:00, 영업일만 실행."""
-    # Redis 분산 락 (중복 실행 방지)
-    try:
-        from app.services.redis_cache import get_redis_cache
-        from datetime import datetime, timezone, timedelta
-        KST = timezone(timedelta(hours=9))
-        lock_key = f"pipeline:morning:{datetime.now(KST).strftime('%Y%m%d')}"
-        cache = await get_redis_cache()
-        acquired = await cache.client.set(lock_key, "1", nx=True, ex=3600)
-        if not acquired:
-            logger.info("=== 모닝 파이프라인 스킵 (이미 실행 중/완료) ===")
-            return
-    except Exception as e:
-        logger.warning("Redis 락 획득 실패 (실행 진행): %s", e)
-
     if not await _is_trading_day():
         logger.info("=== 모닝 파이프라인 스킵 (휴장일) ===")
         return

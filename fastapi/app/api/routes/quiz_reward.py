@@ -48,13 +48,12 @@ async def process_quiz_reward(
     if not portfolio:
         raise HTTPException(404, "Portfolio not found")
 
-    # 포트폴리오 현금 추가 + 보상 누적 기록
+    # 포트폴리오 현금 추가
     new_cash = portfolio.current_cash + reward_amount
-    new_rewards = portfolio.total_rewards_received + reward_amount
     await db.execute(
         update(UserPortfolio)
         .where(UserPortfolio.user_id == user_id)
-        .values(current_cash=new_cash, total_rewards_received=new_rewards)
+        .values(current_cash=new_cash)
     )
 
     # 보상 기록 (BriefingReward 필수 컬럼 포함)

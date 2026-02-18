@@ -12,6 +12,14 @@ from typing import Optional
 logger = logging.getLogger("narrative_api.stock_resolver")
 
 # --- 외부 모듈 임포트 (선택적) ---
+import sys as _sys
+from pathlib import Path as _Path
+
+_PROJECT_ROOT = _Path(__file__).resolve().parent.parent.parent.parent
+_PIPELINE_PATH = str(_PROJECT_ROOT / "datapipeline")
+if _PIPELINE_PATH not in _sys.path:
+    _sys.path.insert(0, _PIPELINE_PATH)
+
 try:
     from collectors.stock_collector import get_stock_history
     _PYKRX_AVAILABLE = True

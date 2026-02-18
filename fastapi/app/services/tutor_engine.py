@@ -11,9 +11,8 @@ from datetime import datetime
 from typing import AsyncGenerator
 
 from sqlalchemy import select
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
-from openai import AsyncOpenAI, APIError, APITimeoutError, RateLimitError
+from openai import AsyncOpenAI
 
 from app.core.config import get_settings
 from app.models.tutor import TutorSession, TutorMessage
@@ -34,61 +33,45 @@ from app.services.chart_storage import save_chart_html
 logger = logging.getLogger("narrative_api.tutor_engine")
 
 # 시각화 도구 임포트
+import sys as _sys
+from pathlib import Path as _Path
+_CHATBOT_PATH = str(_Path(__file__).resolve().parent.parent.parent.parent / "chatbot")
+if _CHATBOT_PATH not in _sys.path:
+    _sys.path.insert(0, _CHATBOT_PATH)
 try:
     from chatbot.tools.visualization_tool import _generate_with_claude, _generate_with_openai
     _VIZ_AVAILABLE = True
 except ImportError:
-    _VIZ_AVAILABLE = False
+    try:
+        from tools.visualization_tool import _generate_with_claude, _generate_with_openai
+        _VIZ_AVAILABLE = True
+    except ImportError:
+        _VIZ_AVAILABLE = False
 
 
 # --- 난이도별 프롬프트 ---
 
-_FALLBACK_DIFFICULTY_PROMPTS = {
-    "beginner": (
-        "당신은 친절한 주식 투자 튜터입니다. "
-        "주식 초보자에게 설명하듯이 아주 쉽게, 일상적인 비유를 사용해서 답변해주세요. "
-        "전문 용어는 최대한 피하고, 사용해야 할 때는 간단히 설명해주세요. "
-        "답변은 짧고 명확하게 해주세요."
-    ),
-    "elementary": (
-        "당신은 주식 투자 튜터입니다. "
-        "기본적인 투자 용어를 알고 있는 초급자에게 설명하듯이 답변해주세요. "
-        "주요 개념은 설명하되, 너무 상세한 기술적 분석은 피해주세요."
-    ),
-    "intermediate": (
-        "당신은 주식 투자 전문가입니다. "
-        "어느 정도 투자 경험이 있는 중급자에게 설명하듯이 답변해주세요. "
-        "기술적 분석, 재무제표 분석 등 심화된 내용도 포함해도 됩니다."
-    ),
-}
-
-
 def get_difficulty_prompt(difficulty: str) -> str:
-    """난이도별 시스템 프롬프트 반환.
-
-    마크다운 기반 프롬프트 템플릿을 우선 로드하고,
-    찾을 수 없으면 내장 폴백 프롬프트를 사용한다.
-    """
-    try:
-        from chatbot.prompts import load_prompt
-
-        spec = load_prompt("tutor_system", difficulty=difficulty)
-        prompt = spec.body
-
-        # 난이도별 프롬프트 추가
-        try:
-            diff_spec = load_prompt(f"tutor_{difficulty}")
-            prompt += "\n\n" + diff_spec.body
-        except FileNotFoundError:
-            pass
-
-        return prompt
-    except (ImportError, FileNotFoundError):
-        logger.debug("마크다운 프롬프트 로드 실패, 폴백 사용 (difficulty=%s)", difficulty)
-
-    return _FALLBACK_DIFFICULTY_PROMPTS.get(
-        difficulty, _FALLBACK_DIFFICULTY_PROMPTS["beginner"]
-    )
+    """난이도별 시스템 프롬프트 반환."""
+    prompts = {
+        "beginner": (
+            "당신은 친절한 주식 투자 튜터입니다. "
+            "주식 초보자에게 설명하듯이 아주 쉽게, 일상적인 비유를 사용해서 답변해주세요. "
+            "전문 용어는 최대한 피하고, 사용해야 할 때는 간단히 설명해주세요. "
+            "답변은 짧고 명확하게 해주세요."
+        ),
+        "elementary": (
+            "당신은 주식 투자 튜터입니다. "
+            "기본적인 투자 용어를 알고 있는 초급자에게 설명하듯이 답변해주세요. "
+            "주요 개념은 설명하되, 너무 상세한 기술적 분석은 피해주세요."
+        ),
+        "intermediate": (
+            "당신은 주식 투자 전문가입니다. "
+            "어느 정도 투자 경험이 있는 중급자에게 설명하듯이 답변해주세요. "
+            "기술적 분석, 재무제표 분석 등 심화된 내용도 포함해도 됩니다."
+        ),
+    }
+    return prompts.get(difficulty, prompts["beginner"])
 
 
 # --- 컨텍스트 수집 ---
@@ -144,7 +127,7 @@ async def _collect_db_context(
                         stype = "dart" if "dart" in url.lower() else "news"
                         sources.append({"type": stype, "title": "DART 공시" if stype == "dart" else "뉴스 기사", "url": url})
             sources.append({"type": "case", "title": case.title, "content": f"{case.event_year}년 — {(case.summary or '')[:80]}", "url": f"/narrative?caseId={case.id}"})
-    except SQLAlchemyError as e:
+    except Exception as e:
         logger.debug("사례 검색 실패: %s", e)
 
     # 리포트 검색
@@ -163,7 +146,7 @@ async def _collect_db_context(
                 "content": f"{report.report_date}",
                 "url": report.pdf_url or "",
             })
-    except SQLAlchemyError as e:
+    except Exception as e:
         logger.debug("리포트 검색 실패: %s", e)
 
     return db_context, sources
@@ -251,13 +234,12 @@ async def _auto_generate_chart(
             )
             db.add(viz_msg)
             await db.commit()
-        except SQLAlchemyError:
-            pass  # 시각화 메시지 DB 저장 실패 무시
+        except Exception:
+            pass
 
         return f"data: {json.dumps({'type': 'visualization', 'format': 'html', 'content': result.output_html, 'execution_time_ms': result.execution_time_ms})}\n\n"
 
-    except (APIError, APITimeoutError, json.JSONDecodeError, KeyError, ValueError, SQLAlchemyError) as e:
-        # LLM 호출, 데이터 파싱, 또는 DB 오류
+    except Exception as e:
         logger.warning("자동 시각화 생성 실패: %s", e)
         return None
 
@@ -273,11 +255,9 @@ async def generate_tutor_response(
 
     yield f"event: step\ndata: {json.dumps({'type': 'thinking', 'content': '질문을 분석하고 있습니다...'})}\n\n"
 
-    settings = get_settings()
-    openai_key = settings.OPENAI_API_KEY
-    anthropic_key = settings.CLAUDE_API_KEY or settings.ANTHROPIC_API_KEY
-    if not openai_key and not anthropic_key:
-        yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'LLM API key not configured'})}\n\n"
+    api_key = get_settings().OPENAI_API_KEY
+    if not api_key:
+        yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'OpenAI API key not configured'})}\n\n"
         return
 
     # 1) 컨텍스트 수집
@@ -327,8 +307,7 @@ async def generate_tutor_response(
                 )
                 for msg in prev_result.scalars():
                     prev_msgs.append({"role": msg.role, "content": msg.content})
-        except (SQLAlchemyError, ValueError) as e:
-            # DB 조회 또는 UUID 파싱 실패
+        except Exception as e:
             logger.warning("이전 메시지 로드 실패: %s", e)
 
     messages = [
@@ -339,51 +318,21 @@ async def generate_tutor_response(
 
     # 5) LLM 스트리밍 응답
     try:
+        client = AsyncOpenAI(api_key=api_key)
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini", messages=messages, max_tokens=1000, stream=True,
+        )
+
         total_tokens = 0
         full_response = ""
-        use_anthropic = False
 
-        # OpenAI 시도
-        if openai_key:
-            try:
-                client = AsyncOpenAI(api_key=openai_key, timeout=30.0)
-                response = await client.chat.completions.create(
-                    model="gpt-4o-mini", messages=messages, max_tokens=1000, stream=True,
-                )
-
-                async for chunk in response:
-                    if chunk.choices and chunk.choices[0].delta.content:
-                        content = chunk.choices[0].delta.content
-                        full_response += content
-                        yield f"event: text_delta\ndata: {json.dumps({'content': content})}\n\n"
-                    if chunk.usage:
-                        total_tokens = chunk.usage.total_tokens
-            except (RateLimitError, APIError) as e:
-                logger.warning("OpenAI 스트리밍 실패, Anthropic fallback: %s", e)
-                use_anthropic = True
-        else:
-            use_anthropic = True
-
-        # Anthropic fallback 스트리밍
-        if use_anthropic and not full_response:
-            if not anthropic_key:
-                yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'LLM API key not available'})}\n\n"
-                return
-
-            from anthropic import AsyncAnthropic
-            anthropic_client = AsyncAnthropic(api_key=anthropic_key, timeout=30.0)
-            system_content = messages[0]["content"] if messages and messages[0]["role"] == "system" else ""
-            anthropic_msgs = [m for m in messages if m["role"] != "system"]
-
-            async with anthropic_client.messages.stream(
-                model="claude-sonnet-4-5-20250929",
-                max_tokens=1000,
-                system=system_content,
-                messages=anthropic_msgs,
-            ) as stream:
-                async for text in stream.text_stream:
-                    full_response += text
-                    yield f"event: text_delta\ndata: {json.dumps({'content': text})}\n\n"
+        async for chunk in response:
+            if chunk.choices and chunk.choices[0].delta.content:
+                content = chunk.choices[0].delta.content
+                full_response += content
+                yield f"event: text_delta\ndata: {json.dumps({'content': content})}\n\n"
+            if chunk.usage:
+                total_tokens = chunk.usage.total_tokens
 
         # 6) 세션/메시지 DB 저장
         session_db_id = None
@@ -395,8 +344,8 @@ async def generate_tutor_response(
                         select(TutorSession).where(TutorSession.session_uuid == uuid.UUID(request.session_id))
                     )
                     existing = res.scalar_one_or_none()
-                except (SQLAlchemyError, ValueError):
-                    pass  # DB 조회 또는 UUID 파싱 실패
+                except Exception:
+                    pass
 
             if existing:
                 session = existing
@@ -424,9 +373,9 @@ async def generate_tutor_response(
             try:
                 cache = await get_redis_cache()
                 await cache.invalidate_session_cache(str(session.session_uuid))
-            except (ConnectionError, OSError):
-                pass  # Redis 캐시 무효화 실패 무시
-        except SQLAlchemyError as e:
+            except Exception:
+                pass
+        except Exception as e:
             logger.warning("세션 저장 실패: %s", e)
 
         # 7) 출처 전송
@@ -442,12 +391,5 @@ async def generate_tutor_response(
 
         yield f"event: done\ndata: {json.dumps({'session_id': session_id, 'total_tokens': total_tokens})}\n\n"
 
-    except (APIError, APITimeoutError, RateLimitError) as e:
-        error_id = uuid.uuid4().hex[:8]
-        logger.error("LLM API 오류 [%s]: %s", error_id, e)
-        yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': f'AI 서비스 오류 (ref: {error_id})'})}\n\n"
     except Exception as e:
-        # Anthropic 등 기타 LLM 오류
-        error_id = uuid.uuid4().hex[:8]
-        logger.error("LLM 오류 [%s]: %s", error_id, e)
-        yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': f'AI 서비스 오류 (ref: {error_id})'})}\n\n"
+        yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"

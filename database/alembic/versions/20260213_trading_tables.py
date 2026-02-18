@@ -52,19 +52,16 @@ def upgrade() -> None:
         CREATE INDEX IF NOT EXISTS ix_watchlists_user_id ON watchlists(user_id)
     """)
 
-    # briefing_rewards에 중복 방지 UNIQUE 제약 (테이블/제약 없으면 무시)
+    # briefing_rewards에 중복 방지 UNIQUE 제약 (이미 있으면 무시)
     op.execute("""
         DO $$
         BEGIN
-            -- briefing_rewards 테이블이 존재하는지 먼저 확인
-            IF to_regclass('public.briefing_rewards') IS NOT NULL THEN
-                IF NOT EXISTS (
-                    SELECT 1 FROM pg_constraint
-                    WHERE conname = 'uq_briefing_rewards_user_case'
-                ) THEN
-                    ALTER TABLE briefing_rewards
-                    ADD CONSTRAINT uq_briefing_rewards_user_case UNIQUE (user_id, case_id);
-                END IF;
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'uq_briefing_rewards_user_case'
+            ) THEN
+                ALTER TABLE briefing_rewards
+                ADD CONSTRAINT uq_briefing_rewards_user_case UNIQUE (user_id, case_id);
             END IF;
         END $$;
     """)

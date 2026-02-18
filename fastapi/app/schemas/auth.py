@@ -11,10 +11,6 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8)
     username: Optional[str] = Field(default=None, min_length=2, max_length=10)
-    difficulty_level: Optional[str] = Field(
-        default="beginner",
-        description="beginner, elementary, intermediate",
-    )
 
 
 class LoginRequest(BaseModel):
@@ -36,7 +32,6 @@ class AuthUserInfo(BaseModel):
     id: int
     email: EmailStr
     username: str
-    difficulty_level: str
 
 
 class AuthResponse(BaseModel):

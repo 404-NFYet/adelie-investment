@@ -1,13 +1,19 @@
 """Historical cases API routes."""
 
+import sys
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from openai import AsyncOpenAI
+from openai import OpenAI
 
 from app.core.config import get_settings
+
+# chatbot 모듈 경로 추가
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent.parent / "chatbot"))
+
 from app.core.database import get_db
 from app.models.historical_case import HistoricalCase
 from app.schemas.case import (
@@ -64,10 +70,9 @@ async def search_cases(
         if not perplexity_key:
             raise ValueError("PERPLEXITY_API_KEY not set")
         
-        client = AsyncOpenAI(
+        client = OpenAI(
             api_key=perplexity_key,
-            base_url="https://api.perplexity.ai",
-            timeout=30.0,
+            base_url="https://api.perplexity.ai"
         )
         
         # Search for historical Korean stock market cases
@@ -75,7 +80,7 @@ async def search_cases(
         
         recency_map = {"year": "year", "month": "month", "week": "week"}
         
-        response = await client.chat.completions.create(
+        response = client.chat.completions.create(
             model="sonar-pro",
             messages=[
                 {
