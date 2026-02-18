@@ -1,24 +1,33 @@
 """LangGraph StateGraph 정의: 데이터 수집 + 내러티브 생성 + 최종 조립 파이프라인.
 
-노드 흐름 (22개):
+노드 흐름:
   START → [라우터: input_path 유무]
     ├─ 파일 로드: load_curated_context → run_page_purpose ...
-    └─ 데이터 수집: crawl_news → crawl_research → screen_stocks
-        → summarize_news → summarize_research → curate_topics
+    └─ 데이터 수집: [crawl_news || crawl_research] → screen_stocks
+        → [summarize_news || summarize_research] → curate_topics
         → build_curated_context → run_page_purpose ...
   ... → run_page_purpose → run_historical_case → run_narrative_body
     → validate_interface2
-    → run_theme → run_pages → run_hallcheck_pages
-    → run_glossary → run_hallcheck_glossary → run_tone_final
-    → run_chart_agent → run_hallcheck_chart
-    → collect_sources → assemble_output → END
+    → run_theme → run_pages → merge_theme_pages
+    → glossary_and_chart_parallel
+        ├── run_glossary → run_hallcheck_glossary
+        └── run_chart_agent (6섹션 asyncio.gather)
+    → run_tone_final → run_home_icon_map → collect_sources → assemble_output → save_to_db → END
+
+병렬 분기 (asyncio.gather wrapper):
+  1. collect_data_parallel: crawl_news + crawl_research 병렬
+  2. summarize_parallel: summarize_news + summarize_research 병렬
+  3. glossary_and_chart_parallel: glossary pipeline + chart_agent 병렬
 """
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from typing import Annotated, Any, Optional, TypedDict
 
 from langgraph.graph import END, START, StateGraph
+from .config import SECTION_MAP
 
 from .nodes.crawlers import crawl_news_node, crawl_research_node
 from .nodes.curation import (
@@ -37,39 +46,19 @@ from .nodes.interface2 import (
 from .nodes.interface3 import (
     run_theme_node,
     run_pages_node,
-    run_hallcheck_pages_node,
+    merge_theme_pages_node,
     run_glossary_node,
     run_hallcheck_glossary_node,
     run_tone_final_node,
+    run_home_icon_map_node,
     collect_sources_node,
     assemble_output_node,
 )
 from .nodes.chart_agent import run_chart_agent_node, run_hallcheck_chart_node
+from .nodes.db_save import save_to_db_node
 from .nodes.screening import screen_stocks_node
 
-
-def merge_metrics(a: dict, b: dict) -> dict:
-    """메트릭 병합 (기존 값 + 새로운 값)."""
-    if not a:
-        a = {}
-    if not b:
-        b = {}
-    return {**a, **b}
-
-
-def merge_list(a: Optional[list], b: Optional[list]) -> list:
-    """리스트 병합 (중복 제거 포함)."""
-    # LangGraph는 a가 None일 수 있습니다.
-    res = list(a or [])
-    for item in (b or []):
-        if item not in res:
-            res.append(item)
-    return res
-
-
-def merge_last(a: Any, b: Any) -> Any:
-    """마지막 값 선택 (병렬 노드 충돌 시 나중 것 선택)."""
-    return b if b is not None else a
+logger = logging.getLogger(__name__)
 
 
 # ── State 정의 ──
@@ -86,6 +75,8 @@ class BriefingPipelineState(TypedDict):
     # Data Collection 중간 결과
     raw_news: Optional[list]
     raw_reports: Optional[list]
+    crawl_news_status: Optional[dict]
+    crawl_research_status: Optional[dict]
     screened_stocks: Optional[list]
     matched_stocks: Optional[list]
     news_summary: Optional[str]
@@ -107,25 +98,138 @@ class BriefingPipelineState(TypedDict):
     i3_pages: Optional[list]
     i3_validated: Optional[dict]
     i3_glossaries: Optional[list]
-    i3_glossary_search_context: Optional[str]
     i3_validated_glossaries: Optional[list]
     charts: Optional[dict]
     pages: Optional[list]
-    sources: Annotated[list, merge_list]
-    hallucination_checklist: Annotated[list, merge_list]
+    sources: Optional[list]
+    hallucination_checklist: Optional[list]
     theme: Optional[str]
     one_liner: Optional[str]
+    home_icon: Optional[dict]
 
     # 최종 출력
     full_output: Optional[dict]
     output_path: Optional[str]
 
+    # DB 저장 결과
+    db_result: Optional[dict]
+
     # 메타
-    error: Annotated[Optional[str], merge_last]
-    metrics: Annotated[dict, merge_metrics]
+    error: Optional[str]
+    metrics: Annotated[dict, lambda a, b: {**a, **b}]
 
 
+# ── 병렬 wrapper 노드 ──
 
+async def collect_data_parallel_node(state: dict) -> dict:
+    """crawl_news + crawl_research 병렬 실행."""
+    if state.get("error"):
+        return {"error": state["error"]}
+
+    logger.info("[Node] collect_data_parallel (crawl_news || crawl_research)")
+    news_result, research_result = await asyncio.gather(
+        asyncio.to_thread(crawl_news_node, state),
+        asyncio.to_thread(crawl_research_node, state),
+    )
+    merged = {}
+    merged.update(news_result)
+    merged.update(research_result)
+    news_metrics = news_result.get("metrics", {})
+    research_metrics = research_result.get("metrics", {})
+    merged["metrics"] = {**news_metrics, **research_metrics}
+    return merged
+
+
+async def summarize_parallel_node(state: dict) -> dict:
+    """summarize_news + summarize_research 병렬 실행."""
+    if state.get("error"):
+        return {"error": state["error"]}
+
+    logger.info("[Node] summarize_parallel (summarize_news || summarize_research)")
+    news_result, research_result = await asyncio.gather(
+        asyncio.to_thread(summarize_news_node, state),
+        asyncio.to_thread(summarize_research_node, state),
+    )
+    merged = {}
+    merged.update(news_result)
+    merged.update(research_result)
+    news_metrics = news_result.get("metrics", {})
+    research_metrics = research_result.get("metrics", {})
+    merged["metrics"] = {**news_metrics, **research_metrics}
+    return merged
+
+
+async def glossary_and_chart_parallel_node(state: dict) -> dict:
+    """glossary pipeline(glossary→hallcheck_glossary)과 chart_agent를 병렬 실행."""
+    if state.get("error"):
+        return {"error": state["error"]}
+
+    logger.info("[Node] glossary_and_chart_parallel (glossary pipeline || chart_agent)")
+
+    async def _glossary_pipeline():
+        g_result = await asyncio.to_thread(run_glossary_node, state)
+        if g_result.get("error"):
+            return g_result
+        merged_state = {**state, **g_result}
+        hg_result = await asyncio.to_thread(run_hallcheck_glossary_node, merged_state)
+        return {**g_result, **hg_result}
+
+    async def _chart_pipeline():
+        # 1) 차트 생성
+        chart_result = await run_chart_agent_node(state)
+        if chart_result.get("error"):
+            return chart_result
+
+        # 2) 차트 검증/게이트
+        hall_input = {**state, **chart_result}
+        hall_result = await asyncio.to_thread(run_hallcheck_chart_node, hall_input)
+
+        if hall_result.get("error"):
+            # 엄격 정책: 검증 실패 시 차트 노출 차단
+            safe_charts = {section_key: None for _, _, section_key in SECTION_MAP}
+            fallback_checklist = list(chart_result.get("hallucination_checklist", []) or [])
+            fallback_checklist.append({
+                "claim": "chart hallcheck failed",
+                "source": "chart_gate",
+                "risk": "높음",
+                "note": str(hall_result.get("error")),
+            })
+            return {
+                **chart_result,
+                "charts": safe_charts,
+                "hallucination_checklist": fallback_checklist,
+                "metrics": {
+                    **(chart_result.get("metrics") or {}),
+                    **(hall_result.get("metrics") or {}),
+                },
+            }
+
+        return {
+            **chart_result,
+            **hall_result,
+            "metrics": {
+                **(chart_result.get("metrics") or {}),
+                **(hall_result.get("metrics") or {}),
+            },
+        }
+
+    glossary_result, chart_result = await asyncio.gather(
+        _glossary_pipeline(), _chart_pipeline(),
+    )
+
+    # glossary에서 에러 발생 시 전파
+    if glossary_result.get("error"):
+        return glossary_result
+
+    merged = {}
+    merged.update(glossary_result)
+    merged.update(chart_result)
+
+    # metrics 병합
+    g_metrics = glossary_result.get("metrics", {})
+    c_metrics = chart_result.get("metrics", {})
+    merged["metrics"] = {**g_metrics, **c_metrics}
+    return merged
 
 
 # ── 조건부 라우팅 ──
@@ -144,37 +248,18 @@ def check_error(state: BriefingPipelineState) -> str:
     return "continue"
 
 
-def check_join_readiness(state: BriefingPipelineState) -> str:
-    """Interface 3 병렬 브랜치(Glossary, Chart) 종료 확인."""
-    metrics = state.get("metrics", {})
-    
-    # 두 브랜치의 마지막 노드가 모두 완료되었는지 확인
-    # run_hallcheck_glossary 완료 여부
-    glossary_done = "run_hallcheck_glossary" in metrics
-    
-    # run_hallcheck_chart 완료 여부
-    # chart_agent가 실행되지 않는 경우(차트 필요 없음)도 고려해야 하므로
-    # metrics에 기록된 것으로 판단하거나, i3_validated_glossaries와 charts 유무로 판단.
-    # 하지만 가장 확실한 건 metrics에 기록된 노드 이름.
-    chart_done = "run_hallcheck_chart" in metrics
-
-    if glossary_done and chart_done:
-        return "ready"
-    return "wait"
-
-
 # ── 그래프 빌더 ──
 
 def build_graph() -> Any:
     """브리핑 파이프라인 LangGraph 컴파일."""
     graph = StateGraph(BriefingPipelineState)
 
-    # Data Collection 노드 (7개)
-    graph.add_node("crawl_news", crawl_news_node)
-    graph.add_node("crawl_research", crawl_research_node)
+    # 병렬 wrapper 노드 (2개)
+    graph.add_node("collect_data_parallel", collect_data_parallel_node)
+    graph.add_node("summarize_parallel", summarize_parallel_node)
+
+    # Data Collection 노드
     graph.add_node("screen_stocks", screen_stocks_node)
-    graph.add_node("summarize_news", summarize_news_node)
-    graph.add_node("summarize_research", summarize_research_node)
     graph.add_node("curate_topics", curate_topics_node)
     graph.add_node("build_curated_context", build_curated_context_node)
 
@@ -187,24 +272,23 @@ def build_graph() -> Any:
     graph.add_node("run_narrative_body", run_narrative_body_node)
     graph.add_node("validate_interface2", validate_interface2_node)
 
-    # Interface 3 (10노드 순차)
+    # Interface 3 (병렬 최적화 + 홈 아이콘 매핑)
     graph.add_node("run_theme", run_theme_node)
     graph.add_node("run_pages", run_pages_node)
-    graph.add_node("run_hallcheck_pages", run_hallcheck_pages_node)
-    graph.add_node("run_glossary", run_glossary_node)
-    graph.add_node("run_hallcheck_glossary", run_hallcheck_glossary_node)
+    graph.add_node("merge_theme_pages", merge_theme_pages_node)
+    graph.add_node("glossary_and_chart_parallel", glossary_and_chart_parallel_node)
     graph.add_node("run_tone_final", run_tone_final_node)
-    graph.add_node("run_chart_agent", run_chart_agent_node)
-    graph.add_node("run_hallcheck_chart", run_hallcheck_chart_node)
+    graph.add_node("run_home_icon_map", run_home_icon_map_node)
     graph.add_node("collect_sources", collect_sources_node)
     graph.add_node("assemble_output", assemble_output_node)
+    graph.add_node("save_to_db", save_to_db_node)
 
     # ── 엣지 ──
 
     # START → 라우터
     graph.add_conditional_edges(START, route_data_source, {
         "load_from_file": "load_curated_context",
-        "collect_data": "crawl_news",
+        "collect_data": "collect_data_parallel",
     })
 
     # 파일 로드 → Interface 2
@@ -214,16 +298,14 @@ def build_graph() -> Any:
         {"continue": "run_page_purpose", "end": END},
     )
 
-    # 데이터 수집 체인 (순차)
-    graph.add_edge("crawl_news", "crawl_research")
-    graph.add_edge("crawl_research", "screen_stocks")
+    # 데이터 수집 체인 (병렬 분기 적용)
+    graph.add_edge("collect_data_parallel", "screen_stocks")
     graph.add_conditional_edges(
         "screen_stocks",
         check_error,
-        {"continue": "summarize_news", "end": END},
+        {"continue": "summarize_parallel", "end": END},
     )
-    graph.add_edge("summarize_news", "summarize_research")
-    graph.add_edge("summarize_research", "curate_topics")
+    graph.add_edge("summarize_parallel", "curate_topics")
     graph.add_conditional_edges(
         "curate_topics",
         check_error,
@@ -252,38 +334,20 @@ def build_graph() -> Any:
         {"continue": "validate_interface2", "end": END},
     )
 
-    # Interface 2 → Interface 3 (Parallel Execution)
+    # Interface 2 → Interface 3 (병렬 최적화)
     graph.add_conditional_edges(
         "validate_interface2",
         check_error,
         {"continue": "run_theme", "end": END},
     )
     graph.add_edge("run_theme", "run_pages")
-
-    # Branch 1. Hallucination Check -> Glossary -> HallCheck Glossary
-    graph.add_edge("run_pages", "run_hallcheck_pages")
-    graph.add_edge("run_hallcheck_pages", "run_glossary")
-    graph.add_edge("run_glossary", "run_hallcheck_glossary")
-
-    # Branch 2. Chart Generation -> HallCheck Chart
-    graph.add_edge("run_pages", "run_chart_agent")
-    graph.add_edge("run_chart_agent", "run_hallcheck_chart")
-
-    # Convergence: Branch 1 & 2가 모두 끝나면 Tone Final로 모임 (Join Pattern)
-    # 두 브랜치 중 마지막에 끝나는 쪽만 run_tone_final을 호출하도록 함.
-    graph.add_conditional_edges(
-        "run_hallcheck_glossary",
-        check_join_readiness,
-        {"ready": "run_tone_final", "wait": END}
-    )
-    graph.add_conditional_edges(
-        "run_hallcheck_chart",
-        check_join_readiness,
-        {"ready": "run_tone_final", "wait": END}
-    )
-
-    graph.add_edge("run_tone_final", "collect_sources")
+    graph.add_edge("run_pages", "merge_theme_pages")
+    graph.add_edge("merge_theme_pages", "glossary_and_chart_parallel")
+    graph.add_edge("glossary_and_chart_parallel", "run_tone_final")
+    graph.add_edge("run_tone_final", "run_home_icon_map")
+    graph.add_edge("run_home_icon_map", "collect_sources")
     graph.add_edge("collect_sources", "assemble_output")
-    graph.add_edge("assemble_output", END)
+    graph.add_edge("assemble_output", "save_to_db")
+    graph.add_edge("save_to_db", END)
 
     return graph.compile()

@@ -4,7 +4,7 @@
 """
 
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -15,6 +15,13 @@ PROJECT_ROOT = INTERFACE_DIR.parent
 # interface/.env 우선, 없으면 프로젝트 루트 .env
 load_dotenv(INTERFACE_DIR / ".env", override=True)
 load_dotenv(PROJECT_ROOT / ".env", override=False)
+
+# KST 기준 날짜 헬퍼 (writer/crawlers/run에서 공통 사용)
+KST = timezone(timedelta(hours=9))
+
+
+def kst_today():
+    return datetime.now(KST).date()
 
 # ── API Keys ──
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
