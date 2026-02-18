@@ -1182,6 +1182,161 @@
           }
         }
       ]
+    },
+    {
+      "id": 6,
+      "type": "row",
+      "title": "API 상세 메트릭",
+      "collapsed": true,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 40 },
+      "panels": [
+        {
+          "id": 60,
+          "type": "barchart",
+          "title": "엔드포인트별 요청 수 (Top 10)",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 10, "w": 12, "x": 0, "y": 41 },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "topk(10, sum by(handler) (rate(http_request_duration_seconds_count{job=\"fastapi\"}[5m])))",
+              "refId": "A",
+              "legendFormat": "{{handler}}",
+              "instant": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps",
+              "color": { "mode": "palette-classic" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "xTickLabelRotation": -45,
+            "xTickLabelMaxLength": 30,
+            "groupWidth": 0.7,
+            "barWidth": 0.97,
+            "fillOpacity": 80,
+            "tooltip": { "mode": "single", "sort": "none" },
+            "legend": { "displayMode": "list", "placement": "bottom", "calcs": [] }
+          }
+        },
+        {
+          "id": 61,
+          "type": "timeseries",
+          "title": "P50 / P95 / P99 레이턴시",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 10, "w": 12, "x": 12, "y": 41 },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{job=\"fastapi\"}[5m])) by (le))",
+              "refId": "A",
+              "legendFormat": "p50"
+            },
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job=\"fastapi\"}[5m])) by (le))",
+              "refId": "B",
+              "legendFormat": "p95"
+            },
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{job=\"fastapi\"}[5m])) by (le))",
+              "refId": "C",
+              "legendFormat": "p99"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 5,
+                "gradientMode": "none",
+                "spanNulls": false,
+                "showPoints": "auto",
+                "pointSize": 5,
+                "stacking": { "mode": "none", "group": "A" },
+                "axisPlacement": "auto",
+                "axisLabel": "",
+                "scaleDistribution": { "type": "linear" },
+                "thresholdsStyle": { "mode": "off" }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 0.5 },
+                  { "color": "red", "value": 2 }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "tooltip": { "mode": "multi", "sort": "none" },
+            "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["lastNotNull"] }
+          }
+        },
+        {
+          "id": 62,
+          "type": "timeseries",
+          "title": "엔드포인트별 5xx 오류율",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 51 },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by(handler) (rate(http_request_duration_seconds_count{job=\"fastapi\", status=~\"5..\"}[5m])) > 0",
+              "refId": "A",
+              "legendFormat": "{{handler}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps",
+              "color": { "mode": "palette-classic" },
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 20,
+                "gradientMode": "none",
+                "spanNulls": false,
+                "showPoints": "auto",
+                "pointSize": 5,
+                "stacking": { "mode": "none", "group": "A" },
+                "axisPlacement": "auto",
+                "axisLabel": "",
+                "scaleDistribution": { "type": "linear" },
+                "thresholdsStyle": { "mode": "area" }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "red", "value": 0.01 }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "tooltip": { "mode": "multi", "sort": "desc" },
+            "legend": { "displayMode": "list", "placement": "bottom", "calcs": [] }
+          }
+        }
+      ]
     }
   ]
 }
