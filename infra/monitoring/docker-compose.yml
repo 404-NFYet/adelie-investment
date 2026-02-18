@@ -68,21 +68,8 @@ services:
     devices:
       - /dev/kmsg
 
-  node-exporter:
-    image: prom/node-exporter:latest
-    container_name: adelie-node-exporter
-    restart: unless-stopped
-    network_mode: host
-    pid: host
-    volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/rootfs:ro
-    command:
-      - --path.procfs=/host/proc
-      - --path.sysfs=/host/sys
-      - --path.rootfs=/rootfs
-      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+  # node-exporter: deploy-test 서버에 systemd 서비스로 이미 설치/운행 중 (포트 9100)
+  # 별도 컨테이너 불필요 — prometheus.yml이 10.10.10.20:9100 직접 스크레이핑
 
 volumes:
   prometheus_data:
