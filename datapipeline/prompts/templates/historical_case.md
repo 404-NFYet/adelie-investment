@@ -1,6 +1,6 @@
 ---
-provider: openai
-model: gpt-5.2
+provider: anthropic
+model: claude-sonnet-4-20250514
 temperature: 0.3
 response_format: json_object
 system_message: >
