@@ -3,10 +3,11 @@
   "checkpoint_id": "53d4af738184",
   "strategy": "manual-commit",
   "branch": "develop",
-  "checkpoints_count": 6,
+  "checkpoints_count": 8,
   "files_touched": [
     "Makefile",
     "database/alembic/versions/20260217_add_total_rewards_received.py",
+    "database/alembic/versions/20260218_unique_user_portfolio.py",
     "datapipeline/nodes/screening.py",
     "docs/aws/aws-iam-permissions.md",
     "fastapi/app/api/routes/portfolio.py",
@@ -21,7 +22,10 @@
     "fastapi/requirements.txt",
     "frontend/src/components/domain/TermBottomSheet.jsx",
     "frontend/src/components/layout/BottomNav.jsx",
+    "frontend/src/components/trading/Leaderboard.jsx",
     "frontend/src/contexts/TutorContext.jsx",
+    "frontend/src/pages/Portfolio.jsx",
+    "frontend/src/utils/markdown.js",
     "infra/docker-dashboard/pages/feedback.py",
     "infra/terraform/environments/localstack/main.tf",
     "infra/terraform/modules/s3/main.tf",
@@ -63,13 +67,20 @@
       "context": "/53/d4af738184/4/context.md",
       "content_hash": "/53/d4af738184/4/content_hash.txt",
       "prompt": "/53/d4af738184/4/prompt.txt"
+    },
+    {
+      "metadata": "/53/d4af738184/5/metadata.json",
+      "transcript": "/53/d4af738184/5/full.jsonl",
+      "context": "/53/d4af738184/5/context.md",
+      "content_hash": "/53/d4af738184/5/content_hash.txt",
+      "prompt": "/53/d4af738184/5/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 802,
-    "cache_creation_tokens": 354815,
-    "cache_read_tokens": 15364760,
-    "output_tokens": 23038,
-    "api_call_count": 204
+    "input_tokens": 887,
+    "cache_creation_tokens": 606279,
+    "cache_read_tokens": 21496448,
+    "output_tokens": 34276,
+    "api_call_count": 284
   }
 }
