@@ -90,6 +90,18 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+# Prometheus 메트릭 — /metrics 엔드포인트 자동 노출
+try:
+    from prometheus_fastapi_instrumentator import Instrumentator
+    Instrumentator(
+        should_group_status_codes=True,
+        should_ignore_untemplated=True,
+        should_instrument_requests_inprogress=True,
+        excluded_handlers=["/metrics", "/docs", "/redoc", "/openapi.json", "/"],
+    ).instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+except ImportError:
+    logger.warning("prometheus-fastapi-instrumentator 미설치 — /metrics 비활성화")
+
 
 # --- Rate Limiter 등록 ---
 app.state.limiter = limiter
