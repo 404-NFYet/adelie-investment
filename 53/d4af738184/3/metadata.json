@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "53d4af738184",
+  "session_id": "3e19aef2-5d84-46d2-84fe-e6b416c0b495",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-18T11:59:09.12463152Z",
+  "branch": "develop",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "datapipeline/nodes/screening.py",
+    "fastapi/app/services/auth_service.py",
+    "fastapi/requirements.txt"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 654,
+    "cache_creation_tokens": 90881,
+    "cache_read_tokens": 4709570,
+    "output_tokens": 1955,
+    "api_call_count": 70
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-18T11:59:08.755380857Z",
+    "agent_lines": 19,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 19,
+    "agent_percentage": 100
+  }
+}

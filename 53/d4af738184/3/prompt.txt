@@ -1,0 +1,296 @@
+Implement the following plan:
+
+# 배포 서버 최신 코드 업데이트 플랜
+
+## Context
+
+deploy-test 서버(`prod` 브랜치, `54ee8f2`)가 `origin/develop`(`c530147`)보다 **18커밋 뒤처져 있음**.
+`origin/dev/backend`에 1커밋 추가(auth 복원), 마이그레이션 파일 3개 삭제 이슈 있음.
+모든 것을 최신으로 맞추고 배포하는 작업.
+
+---
+
+## 브랜치 판단 근거
+
+### origin/dev/backend → **머지** (jjjh02, auth 복원 1커밋)
+- 가장 최신 커밋 (`d29e4c5`, 2/18 18:27)
+- origin/develop 포함 + auth 변경 재적용 1커밋 추가
+- merge-tree 검증 완료: 충돌 없음
+
+### pipeline-prompt-content-sync-interface → **무시** (superseded)
+- YJ99Son이 **먼저** 이 브랜치 작업 (04:25, 06:13) → **이후** 더 완성된 core + local-compat 작업 (07:26, 07:30)
+- 후자는 PR #9, #10으로 develop에 정식 머지됨
+- 이 브랜치는 초기 시도본, PR 미생성 상태로 방치
+- 전체 머지 시 인프라 분리 전 코드가 복원되는 문제도 있음
+
+### 마이그레이션 파일 3개 → **복원**
+- `20260216_fix_fk_cascades.py`, `20260216_unique_historical_cases.py`, `20260217_add_total_rewards_received.py`
+- deploy-test DB HEAD가 `20260217_rewards`로 이 파일들에 의존
+- origin/develop에서 e2e 동기화 과정 중 실수로 삭제된 것으로 판단
+- 복원하지 않으면 향후 `alembic upgrade head`나 새 마이그레이션 생성 시 chain 깨짐
+
+---
+
+## 실행 단계
+
+### 1단계: 마이그레이션 파일 백업 (pull 전)
+```bash
+# 로컬 develop에 아직 존재하는 3개 파일을 /tmp에 백업
+cp database/alembic/versions/20260216_fix_fk_cascades.py /tmp/
+cp database/alembic/versions/20260216_unique_historical_cases.py /tmp/
+cp database/alembic/versions/20260217_add_total_rewards_received.py /tmp/
+```
+
+### 2단계: 로컬 develop 업데이트
+```bash
+git pull origin develop    # 2b463ef → c530147 (14커밋)
+```
+
+### 3단계: 마이그레이션 파일 복원 + 커밋
+```bash
+cp /tmp/20260216_fix_fk_cascades.py database/alembic/versions/
+cp /tmp/20260216_unique_historical_cases.py database/alembic/versions/
+cp /tmp/20260217_add_total_rewards_received.py database/alembic/versions/
+git add database/alembic/versions/2026021{6,7}*.py
+git commit -m "fix: 삭제된 alembic 마이그레이션 파일 3개 복원 (DB 히스토리 일관성)"
+```
+- 커밋 작성자: 현재 git config 담당자 확인 필요
+
+### 4단계: origin/dev/backend 머지
+```bash
+git merge origin/dev/backend -m "merge: dev/backend auth 복원 통합"
+```
+- 변경 파일 6개: auth.py, main.py, auth/common schema, auth_service, kis_service
+- 충돌 없음 (merge-tree 검증 완료)
+
+### 5단계: push
+```bash
+git push origin develop
+```
+
+### 6단계: Docker 빌드 + 배포
+```bash
+/deploy all
+```
+또는 수동:
+```bash
+make build-frontend && make build-api && make push
+ssh deploy-test 'cd ~/adelie-investment && git pull origin develop && docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d'
+```
+
+### 7단계: 배포 검증
+```bash
+# 헬스체크
+curl http://10.10.10.20/api/v1/health
+# 로그 확인
+ssh deploy-test 'docker logs adelie-backend-api --tail 30'
+# alembic 상태 확인 (upgrade 실행하지 않음 — DB는 이미 최신)
+ssh deploy-test 'docker exec adelie-backend-api sh -c "cd /app/database && alembic current"'
+```
+
+### 8단계: 데이터 파이프라인 실행
+```bash
+# deploy-test에서 파이프라인 실행 (2/18 오늘 데이터 생성)
+ssh deploy-test 'docker exec adelie-backend-api python -m datapipeline.run --backend live --market KR'
+```
+
+**중복 방지 현황:**
+- `daily_briefings`: briefing_date UNIQUE → 안전 (2/18은 새 날짜)
+- `briefing_stocks`: NOT EXISTS 패턴 → 안전
+- `historical_cases`: (title, event_year) UPSERT → 안전
+- `case_matches`: ⚠️ duplicate prevention 없음 → 기존 케이스 재upsert 시 중복 가능
+- `case_stock_relations`: ⚠️ duplicate prevention 없음 → 동일 이슈
+
+**대응**: 파이프라인 실행 후 중복 case_matches/case_stock_relations 정리
+```sql
+-- 중복 case_matches 제거 (최신 1건만 유지)
+DELETE FROM case_matches a USING case_matches b
+WHERE a.id < b.id
+  AND a.current_keyword = b.current_keyword
+  AND a.matched_case_id = b.matched_case_id
+  AND a.current_stock_code = b.current_stock_code;
+
+-- 중복 case_stock_relations 제거
+DELETE FROM case_stock_relations a USING case_stock_relations b
+WHERE a.id < b.id
+  AND a.case_id = b.case_id
+  AND a.stock_code = b.stock_code;
+```
+
+### 9단계: 파이프라인 결과 검증
+```bash
+ssh deploy-test 'docker exec adelie-postgres psql -U narative -d narrative_invest -c "
+SELECT briefing_date, created_at FROM daily_briefings ORDER BY briefing_date DESC LIMIT 5;
+"'
+```
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+Base directory for this skill: /home/hj/2026/project/adelie-investment/.claude/skills/deploy
+
+# Deploy Skill
+
+서비스를 빌드하고 deploy-test 서버에 배포합니다.
+
+## 사용법
+
+`/deploy all`
+
+- `/deploy frontend` — 프론트엔드만 빌드 + 푸시 + 배포
+- `/deploy api` — FastAPI 백엔드만 빌드 + 푸시 + 배포
+- `/deploy all` — 전체 서비스 빌드 + 푸시 + 배포
+- `/deploy` (인자 없음) — 변경된 서비스 자동 감지 후 배포
+
+## 서버 경로 (중요)
+
+| 환경 | 프로젝트 경로 |
+|------|--------------|
+| **deploy-test (10.10.10.20)** | `~/adelie-investment` |
+| **로컬 개발** | `/home/hj/2026/project/adelie-investment` |
+
+## Docker 이미지 태깅 규칙
+
+### 이미지 목록
+
+| 서비스 | 이미지명 | 빌드 명령 |
+|--------|---------|-----------|
+| Frontend | `dorae222/adelie-frontend` | `make build-frontend` |
+| Backend API | `dorae222/adelie-backend-api` | `make build-api` |
+| AI Pipeline | `dorae222/adelie-ai-pipeline` | `make build-ai` |
+
+### 태그 규칙
+
+| 태그 | 용도 | 예시 |
+|------|------|------|
+| `latest` | 기본값, deploy-test 배포용 | `dorae222/adelie-frontend:latest` |
+| `YYYYMMDD` | 날짜 기반 스냅샷 (릴리스 시) | `dorae222/adelie-frontend:20260214` |
+| `v{N}` | 프로덕션 릴리스 버전 | `dorae222/adelie-frontend:v1` |
+
+- 일반 배포: `make build push` (latest 태그 자동 사용)
+- 태그 지정 배포: `TAG=20260214 make build push`
+- deploy-test의 docker-compose.prod.yml은 `latest` 태그를 참조
+
+## 실행 절차
+
+### 전체 배포 (`/deploy all`)
+```bash
+# 1. 빌드
+make build-frontend
+make build-api
+
+# 2. Docker Hub 푸시
+make push
+
+# 3. deploy-test 서버 배포
+ssh deploy-test "cd ~/adelie-investment && docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d"
+
+# 4. 상태 확인
+ssh deploy-test "docker ps --format 'table {{.Names}}\t{{.Status}}'"
+```
+
+### 단일 서비스 배포 (`/deploy frontend` 또는 `/deploy api`)
+```bash
+# frontend 예시
+make build-frontend
+docker push dorae222/adelie-frontend:latest
+ssh deploy-test "cd ~/adelie-investment && docker compose -f docker-compose.prod.yml pull frontend && docker compose -f docker-compose.prod.yml up -d frontend"
+```
+
+### 원스텝 배포 (Makefile)
+```bash
+make deploy-test        # 전체: build → push → 서버 pull → up
+SVC=frontend make deploy-test-service  # 단일 서비스
+```
+
+## 서비스 의존 순서
+
+```
+postgres (healthy) → redis (healthy) → backend-api (healthy) → frontend
+                                     → minio
+```
+
+`docker compose up -d`는 healthcheck 기반으로 순서를 자동 관리한다.
+
+## 배포 후 검증
+
+```bash
+# 1. 컨테이너 상태 확인
+ssh deploy-test "docker ps --format 'table {{.Names}}\t{{.Status}}'"
+
+# 2. API 헬스체크
+ssh deploy-test "curl -sf http://localhost:8082/api/v1/health || echo FAIL"
+
+# 3. 프론트엔드 접속 확인
+ssh deploy-test "curl -sf -o /dev/null -w '%{http_code}' http://localhost:80"
+
+# 4. 최근 로그 확인
+ssh deploy-test "docker logs adelie-backend-api --tail 20"
+ssh deploy-test "docker logs adelie-frontend --tail 20"
+```
+
+## 롤백
+
+```bash
+# 이전 이미지로 롤백 (Docker Hub에 이전 태그가 있는 경우)
+ssh deploy-test "cd ~/adelie-investment && \
+  docker compose -f docker-compose.prod.yml pull && \
+  docker compose -f docker-compose.prod.yml up -d"
+
+# 특정 태그로 롤백
+TAG=20260213 ssh deploy-test "cd ~/adelie-investment && \
+  REGISTRY=dorae222 TAG=20260213 docker compose -f docker-compose.prod.yml up -d"
+
+# 긴급: 서비스만 재시작 (이미지 변경 없이)
+ssh deploy-test "docker restart adelie-backend-api"
+```
+
+## 주의사항
+
+- 배포 전 `git status`로 커밋되지 않은 변경 확인
+- TAG를 명시하지 않으면 latest 태그 사용
+- **서버 경로**: `~/adelie-investment` (절대 `~/adelie`가 아님)
+- 에러 발생 시 `ssh deploy-test "docker logs adelie-{서비스} --tail 50"` 로 로그 확인
+
+---
+
+<task-notification>
+<task-id>b583e90</task-id>
+<output-file>REDACTED.output</output-file>
+<status>completed</status>
+<summary>Background command "Build backend API Docker image" completed (exit code 0)</summary>
+</task-notification>
+Read the output file to retrieve the result: REDACTED.output
+
+---
+
+<task-notification>
+<task-id>b54fccc</task-id>
+<output-file>/tmp/claude-1000/-home-hj-2026-project-adelie-investment/tasks/b54fccc.output</output-file>
+<status>completed</status>
+<summary>Background command "Build frontend Docker image" completed (exit code 0)</summary>
+</task-notification>
+Read the output file to retrieve the result: /tmp/claude-1000/-home-hj-2026-project-adelie-investment/tasks/b54fccc.output
+
+---
+
+충전했다
+
+---
+
+<task-notification>
+<task-id>b1f4acd</task-id>
+<output-file>/tmp/claude-1000/-home-hj-2026-project-adelie-investment/tasks/b1f4acd.output</output-file>
+<status>completed</status>
+<summary>Background command "Run data pipeline after OpenAI quota refill" completed (exit code 0)</summary>
+</task-notification>
+Read the output file to retrieve the result: /tmp/claude-1000/-home-hj-2026-project-adelie-investment/tasks/b1f4acd.output
+
+---
+
+Failed to load resource: the server responded with a status of 404 ()Understand this error
+api/v1/auth/register:1  Failed to load resource: the server responded with a status of 404 ()Understand this error
+api/v1/auth/login:1  Failed to load resource: the server responded with a status of 404 ()
+로그인이 안되는데, 올바르게 해결해야 한다.
