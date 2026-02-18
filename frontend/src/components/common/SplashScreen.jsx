@@ -29,7 +29,7 @@ export default function SplashScreen({ onComplete }) {
         >
           {/* 펭귄 3D 이미지 */}
           <motion.img
-            src="/images/penguin-3d.webp"
+            src="/images/penguin-3d.png"
             alt="Adelie Penguin"
             className="w-28 h-28 mb-6"
             initial={{ scale: 0.5, opacity: 0 }}

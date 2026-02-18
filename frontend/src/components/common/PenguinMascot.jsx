@@ -139,7 +139,7 @@ export default function PenguinMascot({ variant = 'empty', message = null, actio
         <PenguinSnowScene />
       ) : (
         <img
-          src="/images/penguin-3d.webp"
+          src="/images/penguin-3d.png"
           alt="펭귄 마스코트"
           className={`w-20 h-20 object-contain mb-3 ${animationClass}`}
         />

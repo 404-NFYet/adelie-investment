@@ -115,11 +115,10 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: false,
+    sourcemap: true,
     rollupOptions: {
       output: {
         manualChunks: {
-          vendor: ['react', 'react-dom', 'react-router-dom'],
           plotly: ['react-plotly.js', 'plotly.js-basic-dist-min'],
           'framer-motion': ['framer-motion'],
           chartjs: ['chart.js', 'react-chartjs-2'],
