@@ -56,14 +56,11 @@ def screen_stocks_node(state: dict) -> dict:
 
     try:
         from ..data_collection.intersection import screened_to_matched
-        from ..mcp_client import call_mcp_tool
+        from ..data_collection.screener import screen_stocks
         from ..config import TOP_N
 
-        # MCP 도구 호출 (기존 screen_stocks 대체)
-        screened = call_mcp_tool("get_top_gainers", {
-            "market": market,
-            "limit": TOP_N
-        })
+        # 직접 screen_stocks 호출 (MCP 시뮬레이션 레이어 우회)
+        screened = screen_stocks(market)[:TOP_N]
         if not screened:
             return {
                 "error": "스크리닝 결과가 없습니다. 시장 데이터를 확인하세요.",
