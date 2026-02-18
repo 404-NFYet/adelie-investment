@@ -7,7 +7,6 @@ config 의존을 제거하고 환경변수를 직접 참조한다.
 from __future__ import annotations
 
 import logging
-import os
 import time
 from typing import Any, Optional
 
@@ -16,8 +15,6 @@ from openai import OpenAI
 from ..config import OPENAI_API_KEY, PERPLEXITY_API_KEY, ANTHROPIC_API_KEY
 
 LOGGER = logging.getLogger(__name__)
-OPENAI_TIMEOUT_SECONDS = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "180"))
-PERPLEXITY_TIMEOUT_SECONDS = float(os.getenv("PERPLEXITY_TIMEOUT_SECONDS", "60"))
 
 
 class MultiProviderClient:
@@ -37,10 +34,7 @@ class MultiProviderClient:
 
         # OpenAI
         if openai_key:
-            self.providers["openai"] = OpenAI(
-                api_key=openai_key,
-                timeout=OPENAI_TIMEOUT_SECONDS,
-            )
+            self.providers["openai"] = OpenAI(api_key=openai_key)
             LOGGER.info("OpenAI provider initialized")
 
         # Perplexity (OpenAI 호환 API)
@@ -48,7 +42,6 @@ class MultiProviderClient:
             self.providers["perplexity"] = OpenAI(
                 api_key=perplexity_key,
                 base_url="https://api.perplexity.ai",
-                timeout=PERPLEXITY_TIMEOUT_SECONDS,
             )
             LOGGER.info("Perplexity provider initialized")
 
@@ -89,13 +82,8 @@ class MultiProviderClient:
 
         try:
             if provider == "anthropic":
-                result = self._call_anthropic(
-                    model=model,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    response_format=response_format,
-                )
+                result = self._call_anthropic(model, messages, temperature, max_tokens)
+
             else:
                 result = self._call_openai_compatible(
                     provider, model, messages, thinking, thinking_effort,
@@ -161,12 +149,7 @@ class MultiProviderClient:
         }
 
     def _call_anthropic(
-        self,
-        model: str,
-        messages: list[dict],
-        temperature: float,
-        max_tokens: int,
-        response_format: Optional[dict[str, Any]] = None,
+        self, model: str, messages: list[dict], temperature: float, max_tokens: int,
     ) -> dict[str, Any]:
         """Anthropic Claude API 호출."""
         client = self._anthropic_client
@@ -190,10 +173,6 @@ class MultiProviderClient:
         }
         if system_msg.strip():
             call_kwargs["system"] = system_msg.strip()
-
-        # Anthropic SDK의 strict JSON mode 지원 여부가 모델/버전별로 달라
-        # 현재는 프롬프트 강제와 상위 파서 재시도 로직에 의존한다.
-        _ = response_format
 
         response = client.messages.create(**call_kwargs)
 

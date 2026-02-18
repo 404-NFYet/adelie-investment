@@ -19,14 +19,10 @@ class ScreenedStockItem(BaseModel):
     """가격 스크리닝 결과 (screener → intersection 입력)."""
     symbol: str
     name: str
-    signal: str  # attention_hot|short_surge|short_drop|volume_spike|mid_term_up
+    signal: str  # short_surge|short_drop|volume_spike|mid_term_up
     return_pct: float
     volume_ratio: float
     period_days: int
-    attention_score: Optional[float] = None
-    attention_percentile: Optional[float] = None
-    market: Optional[str] = None
-    recency_days: Optional[int] = None
 
 
 class MatchedStockItem(BaseModel):
@@ -40,10 +36,6 @@ class MatchedStockItem(BaseModel):
     narrative_headlines: list[str] = Field(default_factory=list)
     narrative_sources: list[str] = Field(default_factory=list)
     has_narrative: bool = False
-    attention_score: Optional[float] = None
-    attention_percentile: Optional[float] = None
-    market: Optional[str] = None
-    recency_days: Optional[int] = None
 
 
 # ────────────────────────────────────────────
@@ -56,9 +48,6 @@ class StockItem(BaseModel):
     momentum: str  # 급등|급락|상승|하락|횡보
     change_pct: float
     period_days: int
-    attention_score: Optional[float] = None
-    attention_percentile: Optional[float] = None
-    volume_ratio: Optional[float] = None
 
 
 class NewsItem(BaseModel):
@@ -147,6 +136,21 @@ class GlossaryItem(BaseModel):
     domain: str
 
 
+class QuizOption(BaseModel):
+    id: str
+    label: str
+    explanation: str
+
+
+class Quiz(BaseModel):
+    context: str
+    question: str
+    options: list[QuizOption]
+    correct_answer: str
+    actual_result: str
+    lesson: str
+
+
 class Page(BaseModel):
     step: int
     title: str
@@ -155,6 +159,7 @@ class Page(BaseModel):
     bullets: list[str]
     chart: Optional[PlotlyChart] = None
     glossary: list[GlossaryItem] = Field(default_factory=list)
+    quiz: Optional[Quiz] = None
 
 
 class SourceItem(BaseModel):
@@ -170,17 +175,12 @@ class HallucinationItem(BaseModel):
     note: str
 
 
-class HomeIcon(BaseModel):
-    icon_key: str
-
-
 class FinalBriefing(BaseModel):
     """Interface 3 출력 스키마."""
     theme: str
     one_liner: str
     generated_at: str
     pages: list[Page]
-    home_icon: Optional[HomeIcon] = None
     sources: list[SourceItem]
     hallucination_checklist: list[HallucinationItem]
 
@@ -195,4 +195,3 @@ class FullBriefingOutput(BaseModel):
     interface_1_curated_context: CuratedContext
     interface_2_raw_narrative: RawNarrative
     interface_3_final_briefing: FinalBriefing
-    data_collection_status: Optional[dict[str, Any]] = None

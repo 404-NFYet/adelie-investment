@@ -5,7 +5,7 @@ import pytest
 
 class TestIntersection:
     def test_screened_to_matched(self):
-        from datapipeline.data_collection.intersection import screened_to_matched
+        from interface.data_collection.intersection import screened_to_matched
 
         stock = {
             "symbol": "005930",
@@ -24,7 +24,7 @@ class TestIntersection:
         assert matched["narrative_sources"] == []
 
     def test_screened_to_matched_preserves_fields(self):
-        from datapipeline.data_collection.intersection import screened_to_matched
+        from interface.data_collection.intersection import screened_to_matched
 
         stock = {
             "symbol": "000660",
@@ -39,68 +39,29 @@ class TestIntersection:
         assert matched["volume_ratio"] == 1.8
         assert matched["period_days"] == 126
 
-    def test_screened_to_matched_attention(self):
-        """attention 필드가 있으면 pass-through 확인."""
-        from datapipeline.data_collection.intersection import screened_to_matched
-
-        stock = {
-            "symbol": "005930",
-            "name": "삼성전자",
-            "signal": "attention_hot",
-            "return_pct": 0.8234,
-            "volume_ratio": 2.1,
-            "period_days": 7,
-            "attention_score": 0.8234,
-            "attention_percentile": 98.0,
-            "market": "KR",
-            "recency_days": 7,
-        }
-        matched = screened_to_matched(stock)
-        assert matched["signal"] == "attention_hot"
-        assert matched["attention_score"] == 0.8234
-        assert matched["attention_percentile"] == 98.0
-        assert matched["market"] == "KR"
-        assert matched["recency_days"] == 7
-
-    def test_screened_to_matched_no_attention(self):
-        """attention 필드 없는 레거시 데이터도 정상 동작."""
-        from datapipeline.data_collection.intersection import screened_to_matched
-
-        stock = {
-            "symbol": "035420",
-            "name": "NAVER",
-            "signal": "volume_spike",
-            "return_pct": 0.0,
-            "volume_ratio": 3.2,
-            "period_days": 1,
-        }
-        matched = screened_to_matched(stock)
-        assert "attention_score" not in matched
-        assert "attention_percentile" not in matched
-
 
 class TestNewsSummarizerUtils:
     def test_estimate_tokens(self):
-        from datapipeline.data_collection.news_summarizer import _estimate_tokens
+        from interface.data_collection.news_summarizer import _estimate_tokens
         assert _estimate_tokens("") == 1
         assert _estimate_tokens("1234") == 1
         assert _estimate_tokens("12345678") == 2
 
     def test_chunk_blocks_single(self):
-        from datapipeline.data_collection.news_summarizer import _chunk_blocks
+        from interface.data_collection.news_summarizer import _chunk_blocks
         blocks = [(1, "short text")]
         chunks = _chunk_blocks(blocks, 1000)
         assert len(chunks) == 1
         assert len(chunks[0]) == 1
 
     def test_chunk_blocks_split(self):
-        from datapipeline.data_collection.news_summarizer import _chunk_blocks
+        from interface.data_collection.news_summarizer import _chunk_blocks
         blocks = [(i, "x" * 200) for i in range(10)]
         chunks = _chunk_blocks(blocks, 200)
         assert len(chunks) > 1
 
     def test_format_news_blocks(self):
-        from datapipeline.data_collection.news_summarizer import _format_news_blocks
+        from interface.data_collection.news_summarizer import _format_news_blocks
         items = [
             {"title": "제목1", "source": "소스1", "summary": "요약1", "published_date": "2026-01-01"},
             {"title": "제목2", "source": "소스2", "summary": "요약2", "published_date": "2026-01-02"},
@@ -111,7 +72,7 @@ class TestNewsSummarizerUtils:
         assert "제목1" in blocks[0][1]
 
     def test_format_report_blocks(self):
-        from datapipeline.data_collection.news_summarizer import _format_report_blocks
+        from interface.data_collection.news_summarizer import _format_report_blocks
         items = [
             {"title": "리포트1", "source": "증권사1", "summary": "요약1", "date": "2026-01-01"},
         ]
@@ -122,7 +83,7 @@ class TestNewsSummarizerUtils:
 
 class TestNewsCrawlerUtils:
     def test_to_news_items(self):
-        from datapipeline.data_collection.news_crawler import to_news_items
+        from interface.data_collection.news_crawler import to_news_items
         raw = [
             {"title": "뉴스", "link": "https://test.com", "source_name": "한경",
              "summary": "요약", "published": "2026-01-01"},
@@ -134,13 +95,13 @@ class TestNewsCrawlerUtils:
         assert items[0]["source"] == "한경"
 
     def test_to_news_items_empty(self):
-        from datapipeline.data_collection.news_crawler import to_news_items
+        from interface.data_collection.news_crawler import to_news_items
         assert to_news_items([]) == []
 
 
 class TestResearchCrawlerUtils:
     def test_to_report_items(self):
-        from datapipeline.data_collection.research_crawler import to_report_items
+        from interface.data_collection.research_crawler import to_report_items
         raw = [
             {"title": "리포트", "firm": "삼성증권", "summary": "요약", "date": "2026-01-01"},
         ]
@@ -150,7 +111,7 @@ class TestResearchCrawlerUtils:
         assert items[0]["source"] == "삼성증권"
 
     def test_to_report_items_none_summary(self):
-        from datapipeline.data_collection.research_crawler import to_report_items
+        from interface.data_collection.research_crawler import to_report_items
         raw = [{"title": "리포트", "firm": "증권사", "summary": None, "date": "2026-01-01"}]
         items = to_report_items(raw)
         assert items[0]["summary"] == ""
@@ -158,7 +119,7 @@ class TestResearchCrawlerUtils:
 
 class TestSchemaExtensions:
     def test_screened_stock_item(self):
-        from datapipeline.schemas import ScreenedStockItem
+        from interface.schemas import ScreenedStockItem
         s = ScreenedStockItem(
             symbol="005930", name="삼성전자", signal="short_surge",
             return_pct=8.5, volume_ratio=2.1, period_days=5,
@@ -166,7 +127,7 @@ class TestSchemaExtensions:
         assert s.symbol == "005930"
 
     def test_matched_stock_item_defaults(self):
-        from datapipeline.schemas import MatchedStockItem
+        from interface.schemas import MatchedStockItem
         m = MatchedStockItem(
             symbol="005930", name="삼성전자", signal="short_surge",
             return_pct=8.5, volume_ratio=2.1, period_days=5,
@@ -174,33 +135,8 @@ class TestSchemaExtensions:
         assert m.narrative_headlines == []
         assert m.has_narrative is False
 
-    def test_screened_stock_item_attention(self):
-        """attention Optional 필드 검증."""
-        from datapipeline.schemas import ScreenedStockItem
-        s = ScreenedStockItem(
-            symbol="005930", name="삼성전자", signal="attention_hot",
-            return_pct=0.8234, volume_ratio=2.1, period_days=7,
-            attention_score=0.8234, attention_percentile=98.0,
-            market="KR", recency_days=7,
-        )
-        assert s.attention_score == 0.8234
-        assert s.attention_percentile == 98.0
-        assert s.market == "KR"
-        assert s.recency_days == 7
-
-    def test_screened_stock_item_legacy_compat(self):
-        """기존 signal도 attention 필드 없이 동작."""
-        from datapipeline.schemas import ScreenedStockItem
-        s = ScreenedStockItem(
-            symbol="005930", name="삼성전자", signal="short_surge",
-            return_pct=8.5, volume_ratio=2.1, period_days=5,
-        )
-        assert s.attention_score is None
-        assert s.attention_percentile is None
-        assert s.market is None
-
     def test_curated_context_v2_fields(self):
-        from datapipeline.schemas import CuratedContext
+        from interface.schemas import CuratedContext
         ctx = CuratedContext(
             date="2026-01-01", theme="테마", one_liner="한줄",
             selected_stocks=[
@@ -219,7 +155,7 @@ class TestSchemaExtensions:
 
     def test_curated_context_v2_fields_default(self):
         """v1 JSON에 v2 필드 없어도 하위 호환."""
-        from datapipeline.schemas import CuratedContext
+        from interface.schemas import CuratedContext
         ctx = CuratedContext(
             date="2026-01-01", theme="테마", one_liner="한줄",
             selected_stocks=[
