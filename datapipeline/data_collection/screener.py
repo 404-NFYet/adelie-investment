@@ -1,143 +1,177 @@
-"""Attention 기반 스크리닝: 시가총액 top 유니버스에서 6-proxy z-score로 hot 종목 선별.
+"""가격 변동 스크리닝: 단기(급등/급락/거래량) + 중장기(6-1 수익률).
 
-v3: 4-signal threshold → 6-proxy attention scoring으로 교체.
+FinanceDataReader로 OHLCV 데이터를 가져와 4가지 시그널을 감지한다.
 """
 
 from __future__ import annotations
 
 import logging
+from typing import Any
+
+import FinanceDataReader as fdr
+import pandas as pd
+from tqdm import tqdm
 
 from ..config import (
-    ATTENTION_ALL_TARGET_PER_MARKET,
-    ATTENTION_BENCHMARK_TOP_N,
-    ATTENTION_HISTORICAL_YEARS,
-    ATTENTION_NEWS_WORKERS,
-    ATTENTION_PERCENTILE_MIN,
-    ATTENTION_RECALC_MIN_COUNT,
-    ATTENTION_RECALC_RECENCY_DAYS,
-    ATTENTION_RECENCY_DAYS,
-    ATTENTION_SHOW_PROGRESS,
-    ATTENTION_SINGLE_MARKET_TARGET,
-    ATTENTION_USE_GOOGLE_NEWS,
+    MID_TERM_FORMATION_DAYS,
+    MID_TERM_RETURN_MIN,
+    MID_TERM_SKIP_DAYS,
+    MID_TERM_TOTAL_DAYS,
+    SCAN_LIMIT,
+    SHORT_TERM_DAYS,
+    SHORT_TERM_RETURN_MIN,
+    TOP_N,
+    VOLUME_RATIO_MIN,
+    get_price_period,
 )
-from .attention.scoring import compute_attention_scores
-from .attention.universe import load_universe_top_marketcap
 
 logger = logging.getLogger(__name__)
 
-_LAST_SCREENING_META: dict = {}
+
+def _get_col(df: pd.DataFrame, primary: str, fallback: str) -> str | None:
+    if primary in df.columns:
+        return primary
+    if fallback in df.columns:
+        return fallback
+    return None
 
 
-def _to_screened_rows(rows: list[dict], market: str, recency_days: int) -> list[dict]:
-    """attention score 결과를 screened stock 형태로 변환."""
-    screened: list[dict] = []
-    for row in rows:
-        score_raw = row.get("attention_score")
-        pct_raw = row.get("attention_percentile")
-        if score_raw is None or pct_raw is None:
+def _get_symbol_col(df: pd.DataFrame) -> str:
+    for c in ("Code", "Symbol"):
+        if c in df.columns:
+            return c
+    raise ValueError("No symbol column")
+
+
+def _get_name_col(df: pd.DataFrame) -> str:
+    for c in ("Name", "company_name", "Security"):
+        if c in df.columns:
+            return c
+    raise ValueError("No name column")
+
+
+def _scan_stock(closes: pd.Series, volumes: pd.Series | None) -> list[dict]:
+    """단일 종목에 대해 여러 시그널 판별."""
+    signals: list[dict] = []
+    price_now = closes.iloc[-1]
+
+    vol_ratio = 1.0
+    if volumes is not None and len(volumes) >= 20:
+        vol_avg = volumes.tail(20).mean()
+        vol_last = volumes.iloc[-1]
+        vol_ratio = vol_last / vol_avg if vol_avg > 0 else 0
+        if vol_ratio >= VOLUME_RATIO_MIN:
+            signals.append({
+                "signal": "volume_spike",
+                "return_pct": 0.0,
+                "volume_ratio": round(vol_ratio, 2),
+                "period_days": 1,
+            })
+
+    if len(closes) >= SHORT_TERM_DAYS + 1:
+        price_before = closes.iloc[-(SHORT_TERM_DAYS + 1)]
+        if price_before > 0:
+            short_ret = (price_now - price_before) / price_before * 100
+            if short_ret >= SHORT_TERM_RETURN_MIN:
+                signals.append({
+                    "signal": "short_surge",
+                    "return_pct": round(short_ret, 2),
+                    "volume_ratio": round(vol_ratio, 2),
+                    "period_days": SHORT_TERM_DAYS,
+                })
+            elif short_ret <= -SHORT_TERM_RETURN_MIN:
+                signals.append({
+                    "signal": "short_drop",
+                    "return_pct": round(short_ret, 2),
+                    "volume_ratio": round(vol_ratio, 2),
+                    "period_days": SHORT_TERM_DAYS,
+                })
+
+    if len(closes) >= MID_TERM_TOTAL_DAYS:
+        p_start = closes.iloc[-(MID_TERM_SKIP_DAYS + MID_TERM_FORMATION_DAYS)]
+        p_end = closes.iloc[-(MID_TERM_SKIP_DAYS + 1)]
+        if p_start > 0:
+            mid_ret = (p_end - p_start) / p_start * 100
+            if mid_ret >= MID_TERM_RETURN_MIN:
+                signals.append({
+                    "signal": "mid_term_up",
+                    "return_pct": round(mid_ret, 2),
+                    "volume_ratio": round(vol_ratio, 2),
+                    "period_days": MID_TERM_FORMATION_DAYS,
+                })
+
+    return signals
+
+
+def _get_min_price(market: str) -> float:
+    return 1000.0 if market == "KR" else 5.0
+
+
+def _screen_single_market(market: str) -> list[dict]:
+    """단일 시장 가격 스크리닝."""
+    start, end = get_price_period()
+    min_price = _get_min_price(market)
+
+    listing = fdr.StockListing("KRX") if market == "KR" else fdr.StockListing("S&P500")
+    symbol_col = _get_symbol_col(listing)
+    name_col = _get_name_col(listing)
+
+    rows = list(listing.iterrows())
+    if SCAN_LIMIT > 0:
+        rows = rows[:SCAN_LIMIT]
+
+    results: list[dict] = []
+
+    for _, row in tqdm(rows, desc=f"가격 스크리닝 ({market})", unit="종목"):
+        sym = str(row[symbol_col]).strip()
+        name = str(row.get(name_col, sym))
+        if not sym or sym == "nan":
             continue
 
-        score = float(score_raw)
-        pct = float(pct_raw)
-        vol_ratio = row.get("abnormal_volume_ratio")
-        screened.append({
-            "symbol": str(row.get("symbol", "")),
-            "name": str(row.get("name", "")),
-            "signal": "attention_hot",
-            "return_pct": round(score, 4),
-            "volume_ratio": round(float(vol_ratio), 2) if isinstance(vol_ratio, (int, float)) else 0.0,
-            "period_days": recency_days,
-            "attention_score": round(score, 4),
-            "attention_percentile": round(pct, 1),
-            "market": market,
-            "recency_days": recency_days,
-        })
-    return screened
+        try:
+            df = fdr.DataReader(sym, start, end)
+        except Exception:
+            continue
+        if df is None or len(df) < SHORT_TERM_DAYS + 1:
+            continue
 
+        df = df.sort_index()
+        close_col = _get_col(df, "Close", "close")
+        vol_col = _get_col(df, "Volume", "volume")
+        if not close_col:
+            continue
 
-def _run_attention_market(market: str, target_count: int) -> tuple[list[dict], dict]:
-    """단일 시장 attention scoring 실행."""
-    universe = load_universe_top_marketcap(market=market, top_n=ATTENTION_BENCHMARK_TOP_N)
-    logger.info("  유니버스 로딩 완료: %s %d종목", market, len(universe))
+        closes = df[close_col]
+        volumes = df[vol_col] if vol_col else None
 
-    rows = compute_attention_scores(
-        universe,
-        market=market,
-        recency_days=ATTENTION_RECENCY_DAYS,
-        historical_years=ATTENTION_HISTORICAL_YEARS,
-        use_google_news=ATTENTION_USE_GOOGLE_NEWS,
-        news_workers=ATTENTION_NEWS_WORKERS,
-        show_progress=ATTENTION_SHOW_PROGRESS,
-    )
+        if closes.iloc[-1] < min_price:
+            continue
 
-    screened = _to_screened_rows(rows, market, ATTENTION_RECENCY_DAYS)
-    filtered = [r for r in screened if r["attention_percentile"] >= ATTENTION_PERCENTILE_MIN]
-    filtered.sort(key=lambda r: r["attention_score"], reverse=True)
+        for sig in _scan_stock(closes, volumes):
+            results.append({"symbol": sym, "name": name, **sig})
 
-    # 후보가 너무 적으면 recency 확장 재계산
-    recalc_applied = False
-    if len(filtered) < ATTENTION_RECALC_MIN_COUNT:
-        recalc_applied = True
-        logger.info("  후보 부족 (%d < %d), recency %d일로 재계산",
-                     len(filtered), ATTENTION_RECALC_MIN_COUNT, ATTENTION_RECALC_RECENCY_DAYS)
-        rows = compute_attention_scores(
-            universe,
-            market=market,
-            recency_days=ATTENTION_RECALC_RECENCY_DAYS,
-            historical_years=ATTENTION_HISTORICAL_YEARS,
-            use_google_news=ATTENTION_USE_GOOGLE_NEWS,
-            news_workers=ATTENTION_NEWS_WORKERS,
-            show_progress=ATTENTION_SHOW_PROGRESS,
-        )
-        screened = _to_screened_rows(rows, market, ATTENTION_RECALC_RECENCY_DAYS)
-        filtered = [r for r in screened if r["attention_percentile"] >= ATTENTION_PERCENTILE_MIN]
-        filtered.sort(key=lambda r: r["attention_score"], reverse=True)
+    results.sort(key=lambda x: abs(x["return_pct"]), reverse=True)
 
-    selected = filtered[:max(0, target_count)]
-    meta = {
-        "market": market,
-        "benchmark_top_n": ATTENTION_BENCHMARK_TOP_N,
-        "percentile_threshold": ATTENTION_PERCENTILE_MIN,
-        "target_count": target_count,
-        "candidate_count": len(screened),
-        "filtered_count": len(filtered),
-        "selected_count": len(selected),
-        "recalc_applied": recalc_applied,
-        "base_recency_days": ATTENTION_RECENCY_DAYS,
-        "recalc_recency_days": ATTENTION_RECALC_RECENCY_DAYS,
-        "recalc_min_count": ATTENTION_RECALC_MIN_COUNT,
-        "news_enabled": ATTENTION_USE_GOOGLE_NEWS,
-    }
-    return selected, meta
+    seen: set[str] = set()
+    top: list[dict] = []
+    for r in results:
+        if r["symbol"] not in seen:
+            seen.add(r["symbol"])
+            top.append(r)
+        elif len([t for t in top if t["symbol"] == r["symbol"]]) < 3:
+            top.append(r)
+        if len(seen) >= TOP_N:
+            break
 
-
-def get_last_screening_meta() -> dict:
-    """마지막 screen_stocks 실행 메타 정보."""
-    return dict(_LAST_SCREENING_META)
+    return top
 
 
 def screen_stocks(market: str = "KR") -> list[dict]:
-    """Attention 점수 기반 hot 종목 선별. market=ALL이면 KR+US 통합."""
-    global _LAST_SCREENING_META
-
+    """가격 변동 기준 종목 스크리닝. market=ALL이면 KR+US 통합."""
     if market == "ALL":
-        kr_rows, kr_meta = _run_attention_market("KR", ATTENTION_ALL_TARGET_PER_MARKET)
-        us_rows, us_meta = _run_attention_market("US", ATTENTION_ALL_TARGET_PER_MARKET)
-        combined = kr_rows + us_rows
-        _LAST_SCREENING_META = {
-            "method": "attention_score",
-            "market": "ALL",
-            "markets": {"KR": kr_meta, "US": us_meta},
-            "total_selected": len(combined),
-        }
+        kr = _screen_single_market("KR")
+        us = _screen_single_market("US")
+        combined = kr + us
+        combined.sort(key=lambda x: abs(x["return_pct"]), reverse=True)
         return combined
-
-    target = ATTENTION_SINGLE_MARKET_TARGET
-    selected, meta = _run_attention_market(market, target)
-    _LAST_SCREENING_META = {
-        "method": "attention_score",
-        "market": market,
-        "markets": {market: meta},
-        "total_selected": len(selected),
-    }
-    return selected
+    return _screen_single_market(market)

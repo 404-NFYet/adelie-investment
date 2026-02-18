@@ -1,52 +1,41 @@
-"""데이터 파이프라인 설정.
+"""Interface 파이프라인 설정.
 
 환경변수 기반으로 API 키, 모델, 경로를 관리한다.
 """
 
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
 
-DATAPIPELINE_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = DATAPIPELINE_DIR.parent
+INTERFACE_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = INTERFACE_DIR.parent
 
-# 프로젝트 루트 .env만 로드
-load_dotenv(PROJECT_ROOT / ".env")
-
-# ── KST 타임존 ──
-KST = timezone(timedelta(hours=9))
-
-
-def kst_today():
-    """KST 기준 오늘 날짜 반환."""
-    return datetime.now(KST).date()
+# interface/.env 우선, 없으면 프로젝트 루트 .env
+load_dotenv(INTERFACE_DIR / ".env", override=True)
+load_dotenv(PROJECT_ROOT / ".env", override=False)
 
 # ── API Keys ──
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("CLAUDE_API_KEY", "")
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
-
-# ── 기본 모델 (레거시/일부 스크립트) ──
-DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "claude-sonnet-4-20250514")
-CHART_MODEL = os.getenv("CHART_MODEL", "gpt-5-mini")
-CHART_AGENT_MODEL = os.getenv("CHART_AGENT_MODEL", "gpt-5-mini")
-GOOGLE_DEFAULT_MODEL = os.getenv("GOOGLE_DEFAULT_MODEL", "gemini-2.5-flash")
-
-# ── 경로 ──
-OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", str(DATAPIPELINE_DIR / "output")))
-PROMPTS_DIR = DATAPIPELINE_DIR / "prompts" / "templates"
-
-# ── 외부 API 키 ──
 DART_API_KEY = os.getenv("DART_API_KEY", "")
 ECOS_API_KEY = os.getenv("ECOS_API_KEY", "")
+
+# ── 기본 모델 (Interface 2/3 내러티브 생성) ──
+DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "claude-sonnet-4-20250514")
+CHART_MODEL = os.getenv("CHART_MODEL", "gpt-4o-mini")
+CHART_AGENT_MODEL = os.getenv("CHART_AGENT_MODEL", "gpt-5-mini")
+
+# ── 경로 ──
+OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", str(Path(__file__).parent / "output")))
+PROMPTS_DIR = Path(__file__).parent / "prompts" / "templates"
 
 # ── 색상 팔레트 ──
 COLOR_PALETTE = ["#FF6B35", "#004E89", "#1A936F", "#C5D86D", "#8B95A1"]
 
-# ── 6페이지 스텝 정의 ──
+# ── Interface 3 섹션 매핑 (interface3.py + chart_agent.py 공유) ──
 SECTION_MAP = [
     (1, "현재 배경", "background"),
     (2, "금융 개념 설명", "concept_explain"),
@@ -77,19 +66,6 @@ VOLUME_RATIO_MIN = float(os.getenv("VOLUME_RATIO_MIN", "1.5"))
 TOP_N = int(os.getenv("TOP_N", "20"))
 SCAN_LIMIT = int(os.getenv("SCAN_LIMIT", "500"))
 
-# ── Attention Scoring (v3) ──
-ATTENTION_BENCHMARK_TOP_N = int(os.getenv("ATTENTION_BENCHMARK_TOP_N", "100"))
-ATTENTION_PERCENTILE_MIN = float(os.getenv("ATTENTION_PERCENTILE_MIN", "80"))
-ATTENTION_SINGLE_MARKET_TARGET = int(os.getenv("ATTENTION_SINGLE_MARKET_TARGET", "20"))
-ATTENTION_ALL_TARGET_PER_MARKET = int(os.getenv("ATTENTION_ALL_TARGET_PER_MARKET", "10"))
-ATTENTION_RECENCY_DAYS = int(os.getenv("ATTENTION_RECENCY_DAYS", "7"))
-ATTENTION_RECALC_RECENCY_DAYS = int(os.getenv("ATTENTION_RECALC_RECENCY_DAYS", "14"))
-ATTENTION_RECALC_MIN_COUNT = int(os.getenv("ATTENTION_RECALC_MIN_COUNT", "3"))
-ATTENTION_HISTORICAL_YEARS = int(os.getenv("ATTENTION_HISTORICAL_YEARS", "5"))
-ATTENTION_NEWS_WORKERS = int(os.getenv("ATTENTION_NEWS_WORKERS", "1"))
-ATTENTION_USE_GOOGLE_NEWS = os.getenv("ATTENTION_USE_GOOGLE_NEWS", "true").lower() == "true"
-ATTENTION_SHOW_PROGRESS = os.getenv("ATTENTION_SHOW_PROGRESS", "true").lower() == "true"
-
 # ── Phase 1: GPT-5 mini Map/Reduce 요약 ──
 OPENAI_PHASE1_MODEL = os.getenv("OPENAI_PHASE1_MODEL", "gpt-5-mini")
 OPENAI_PHASE1_TEMPERATURE = float(os.getenv("OPENAI_PHASE1_TEMPERATURE", "0.3"))
@@ -112,14 +88,13 @@ CURATED_TOPICS_MAX = int(os.getenv("CURATED_TOPICS_MAX", "5"))
 SELECTED_STOCKS_MAX = int(os.getenv("SELECTED_STOCKS_MAX", "10"))
 
 # ── 데이터 경로 ──
-NEWS_DATA_DIR = Path(os.getenv("NEWS_DATA_DIR", str(DATAPIPELINE_DIR / "data" / "news")))
-RESEARCH_DATA_DIR = Path(os.getenv("RESEARCH_DATA_DIR", str(DATAPIPELINE_DIR / "data" / "research")))
+NEWS_DATA_DIR = Path(os.getenv("NEWS_DATA_DIR", str(INTERFACE_DIR / "data" / "news")))
+RESEARCH_DATA_DIR = Path(os.getenv("RESEARCH_DATA_DIR", str(INTERFACE_DIR / "data" / "research")))
 
 
 def get_price_period() -> tuple[str, str]:
     """가격 데이터 수집에 필요한 기간 (start, end) 반환."""
     end = datetime.now()
-    # Attention 계산용 OHLCV 조회 범위 (거래일 누락 대비 버퍼 포함)
-    cal_days_needed = ATTENTION_HISTORICAL_YEARS * 365 + 45
+    cal_days_needed = int(MID_TERM_TOTAL_DAYS / 0.7) + 30
     start = end - timedelta(days=cal_days_needed)
     return start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")

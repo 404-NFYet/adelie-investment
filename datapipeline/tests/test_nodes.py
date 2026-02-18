@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from datapipeline.schemas import CuratedContext, RawNarrative
+from interface.schemas import CuratedContext, RawNarrative
 
-GOLDEN_CASE = Path(__file__).resolve().parent.parent / "golden_case" / "03_k_defense.json"
+GOLDEN_CASE = Path(__file__).resolve().parent.parent.parent / "golden_case" / "03_k_defense.json"
 
 
 @pytest.fixture
@@ -22,7 +22,7 @@ def curated_context(golden_data: dict) -> dict:
 
 class TestInterface1Node:
     def test_load_curated_context(self, golden_data: dict, tmp_path: Path):
-        from datapipeline.nodes.interface1 import load_curated_context_node
+        from interface.nodes.interface1 import load_curated_context_node
 
         # golden case를 임시 파일로 저장
         input_file = tmp_path / "test_input.json"
@@ -41,7 +41,7 @@ class TestInterface1Node:
         CuratedContext.model_validate(result["curated_context"])
 
     def test_load_missing_path(self):
-        from datapipeline.nodes.interface1 import load_curated_context_node
+        from interface.nodes.interface1 import load_curated_context_node
 
         state = {"input_path": None, "metrics": {}}
         result = load_curated_context_node(state)
@@ -50,7 +50,7 @@ class TestInterface1Node:
 
 class TestInterface2Nodes:
     def test_page_purpose_mock(self, curated_context: dict):
-        from datapipeline.nodes.interface2 import run_page_purpose_node
+        from interface.nodes.interface2 import run_page_purpose_node
 
         state = {
             "curated_context": curated_context,
@@ -64,7 +64,7 @@ class TestInterface2Nodes:
         assert result["page_purpose"]["theme"]
 
     def test_historical_case_mock(self, curated_context: dict):
-        from datapipeline.nodes.interface2 import run_historical_case_node, _mock_page_purpose
+        from interface.nodes.interface2 import run_historical_case_node, _mock_page_purpose
 
         pp = _mock_page_purpose(curated_context)
         state = {
@@ -79,7 +79,7 @@ class TestInterface2Nodes:
         assert "historical_case" in result
 
     def test_narrative_body_mock(self, curated_context: dict):
-        from datapipeline.nodes.interface2 import (
+        from interface.nodes.interface2 import (
             _mock_historical_case,
             _mock_page_purpose,
             run_narrative_body_node,
@@ -100,7 +100,7 @@ class TestInterface2Nodes:
         assert "narrative" in result
 
     def test_validate_interface2_mock(self, curated_context: dict):
-        from datapipeline.nodes.interface2 import (
+        from interface.nodes.interface2 import (
             _mock_historical_case,
             _mock_narrative,
             _mock_page_purpose,
@@ -126,40 +126,129 @@ class TestInterface2Nodes:
 
 
 class TestInterface3Nodes:
-    def test_assemble_pages(self, golden_data: dict):
-        from datapipeline.nodes.interface3 import assemble_pages_node
+    """Interface 3 — 10노드 순차 파이프라인 (mock)."""
 
-        raw_narrative = golden_data["interface_2_raw_narrative"]
+    @pytest.fixture
+    def raw_narrative(self, golden_data: dict) -> dict:
+        return golden_data["interface_2_raw_narrative"]
+
+    def test_run_theme_mock(self, raw_narrative: dict):
+        from interface.nodes.interface3 import run_theme_node
+
+        state = {"raw_narrative": raw_narrative, "backend": "mock", "metrics": {}}
+        result = run_theme_node(state)
+
+        assert "error" not in result or result.get("error") is None
+        assert "i3_theme" in result
+        assert result["i3_theme"]["theme"]
+        assert result["i3_theme"]["one_liner"]
+
+    def test_run_pages_mock(self, raw_narrative: dict):
+        from interface.nodes.interface3 import run_pages_node
+
+        state = {"raw_narrative": raw_narrative, "backend": "mock", "metrics": {}}
+        result = run_pages_node(state)
+
+        assert "error" not in result or result.get("error") is None
+        assert "i3_pages" in result
+        assert len(result["i3_pages"]) == 6
+        assert result["i3_pages"][0]["step"] == 1
+
+    def test_run_hallcheck_pages_mock(self, raw_narrative: dict):
+        from interface.nodes.interface3 import run_theme_node, run_pages_node, run_hallcheck_pages_node
+
+        # build up state
+        theme_result = run_theme_node({"raw_narrative": raw_narrative, "backend": "mock", "metrics": {}})
+        pages_result = run_pages_node({"raw_narrative": raw_narrative, "backend": "mock", "metrics": {}})
+
         state = {
             "raw_narrative": raw_narrative,
-            "charts": {},
-            "glossaries": {},
+            "i3_theme": theme_result["i3_theme"],
+            "i3_pages": pages_result["i3_pages"],
             "backend": "mock",
             "metrics": {},
         }
-        result = assemble_pages_node(state)
+        result = run_hallcheck_pages_node(state)
 
         assert "error" not in result or result.get("error") is None
-        assert len(result["pages"]) == 6
-        assert result["pages"][0]["step"] == 1
+        assert "i3_validated" in result
+        assert result["i3_validated"]["validated_theme"]
+        assert len(result["i3_validated"]["validated_pages"]) == 6
 
-    def test_collect_sources(self, golden_data: dict):
-        from datapipeline.nodes.interface3 import assemble_pages_node, collect_sources_node
+    def test_run_glossary_mock(self, raw_narrative: dict):
+        from interface.nodes.interface3 import run_theme_node, run_pages_node, run_hallcheck_pages_node, run_glossary_node
 
-        raw_narrative = golden_data["interface_2_raw_narrative"]
-        curated_context = golden_data["interface_1_curated_context"]
-
-        # 먼저 pages 조립
-        pages_result = assemble_pages_node({
+        theme_r = run_theme_node({"raw_narrative": raw_narrative, "backend": "mock", "metrics": {}})
+        pages_r = run_pages_node({"raw_narrative": raw_narrative, "backend": "mock", "metrics": {}})
+        hallcheck_r = run_hallcheck_pages_node({
             "raw_narrative": raw_narrative,
-            "charts": {},
-            "glossaries": {},
-            "metrics": {},
+            "i3_theme": theme_r["i3_theme"],
+            "i3_pages": pages_r["i3_pages"],
+            "backend": "mock", "metrics": {},
         })
 
         state = {
+            "raw_narrative": raw_narrative,
+            "i3_validated": hallcheck_r["i3_validated"],
+            "backend": "mock",
+            "metrics": {},
+        }
+        result = run_glossary_node(state)
+
+        assert "error" not in result or result.get("error") is None
+        assert "i3_glossaries" in result
+        assert len(result["i3_glossaries"]) == 6
+
+    def test_run_tone_final_mock(self, raw_narrative: dict):
+        from interface.nodes.interface3 import (
+            run_theme_node, run_pages_node, run_hallcheck_pages_node,
+            run_glossary_node, run_hallcheck_glossary_node, run_tone_final_node,
+        )
+
+        theme_r = run_theme_node({"raw_narrative": raw_narrative, "backend": "mock", "metrics": {}})
+        pages_r = run_pages_node({"raw_narrative": raw_narrative, "backend": "mock", "metrics": {}})
+        hallcheck_r = run_hallcheck_pages_node({
+            "raw_narrative": raw_narrative,
+            "i3_theme": theme_r["i3_theme"],
+            "i3_pages": pages_r["i3_pages"],
+            "backend": "mock", "metrics": {},
+        })
+        glossary_r = run_glossary_node({
+            "raw_narrative": raw_narrative,
+            "i3_validated": hallcheck_r["i3_validated"],
+            "backend": "mock", "metrics": {},
+        })
+        hallcheck_g = run_hallcheck_glossary_node({
+            "raw_narrative": raw_narrative,
+            "i3_validated": hallcheck_r["i3_validated"],
+            "i3_glossaries": glossary_r["i3_glossaries"],
+            "backend": "mock", "metrics": {},
+        })
+
+        state = {
+            "i3_validated": hallcheck_r["i3_validated"],
+            "i3_validated_glossaries": hallcheck_g["i3_validated_glossaries"],
+            "backend": "mock",
+            "metrics": {},
+        }
+        result = run_tone_final_node(state)
+
+        assert "error" not in result or result.get("error") is None
+        assert "pages" in result
+        assert len(result["pages"]) == 6
+        # glossary merged
+        assert "glossary" in result["pages"][0]
+
+    def test_collect_sources(self, golden_data: dict, raw_narrative: dict):
+        from interface.nodes.interface3 import run_pages_node, collect_sources_node
+
+        curated_context = golden_data["interface_1_curated_context"]
+        pages_r = run_pages_node({"raw_narrative": raw_narrative, "backend": "mock", "metrics": {}})
+
+        state = {
             "curated_context": curated_context,
-            "pages": pages_result["pages"],
+            "pages": pages_r["i3_pages"],
+            "sources": None,
             "backend": "mock",
             "metrics": {},
         }

@@ -16,198 +16,19 @@ from typing import Any
 
 from langsmith import traceable
 
-from ..ai.llm_utils import JSONResponseParseError, call_llm_with_prompt
+from ..ai.llm_utils import call_llm_with_prompt
 from ..schemas import RawNarrative
 
 logger = logging.getLogger(__name__)
 
 
 def _update_metrics(state: dict, node_name: str, elapsed: float, status: str = "success") -> dict:
-    metrics = dict(state.get("metrics") or {})
-    metrics[node_name] = {"elapsed_s": round(elapsed, 2), "status": status}
-    return metrics
-
-
-MAX_VALIDATION_STOCKS = 8
-MAX_VALIDATION_NEWS = 8
-MAX_VALIDATION_REPORTS = 6
-MAX_SHORT_TEXT = 280
-MAX_LONG_TEXT = 1600
-
-NARRATIVE_SECTION_KEYS = (
-    "background",
-    "concept_explain",
-    "history",
-    "application",
-    "caution",
-    "summary",
-)
-
-
-def _truncate_text(value: Any, max_chars: int = MAX_SHORT_TEXT) -> str:
-    text = str(value or "").strip()
-    if len(text) <= max_chars:
-        return text
-    return f"{text[: max_chars - 1].rstrip()}…"
-
-
-def _compact_concept(concept: Any) -> dict[str, str]:
-    if not isinstance(concept, dict):
-        return {"name": "", "definition": "", "relevance": ""}
+    """메트릭 업데이트 (Partial Update for Reducer)."""
     return {
-        "name": _truncate_text(concept.get("name"), 120),
-        "definition": _truncate_text(concept.get("definition"), 320),
-        "relevance": _truncate_text(concept.get("relevance"), 320),
-    }
-
-
-def _compact_curated_context_for_validation(curated: dict[str, Any]) -> dict[str, Any]:
-    if not isinstance(curated, dict):
-        return {}
-
-    selected_stocks: list[dict[str, Any]] = []
-    for stock in (curated.get("selected_stocks") or [])[:MAX_VALIDATION_STOCKS]:
-        if not isinstance(stock, dict):
-            continue
-        selected_stocks.append({
-            "ticker": _truncate_text(stock.get("ticker"), 20),
-            "name": _truncate_text(stock.get("name"), 40),
-            "momentum": _truncate_text(stock.get("momentum"), 20),
-            "change_pct": stock.get("change_pct"),
-            "period_days": stock.get("period_days"),
-            "attention_score": stock.get("attention_score"),
-            "attention_percentile": stock.get("attention_percentile"),
-            "volume_ratio": stock.get("volume_ratio"),
-        })
-
-    verified_news: list[dict[str, str]] = []
-    for news in (curated.get("verified_news") or [])[:MAX_VALIDATION_NEWS]:
-        if not isinstance(news, dict):
-            continue
-        verified_news.append({
-            "title": _truncate_text(news.get("title"), 180),
-            "source": _truncate_text(news.get("source"), 60),
-            "published_date": _truncate_text(news.get("published_date"), 20),
-            "summary": _truncate_text(news.get("summary"), MAX_SHORT_TEXT),
-        })
-
-    reports: list[dict[str, str]] = []
-    for report in (curated.get("reports") or [])[:MAX_VALIDATION_REPORTS]:
-        if not isinstance(report, dict):
-            continue
-        reports.append({
-            "title": _truncate_text(report.get("title"), 180),
-            "source": _truncate_text(report.get("source"), 60),
-            "date": _truncate_text(report.get("date"), 20),
-            "summary": _truncate_text(report.get("summary"), MAX_SHORT_TEXT),
-        })
-
-    return {
-        "date": _truncate_text(curated.get("date"), 20),
-        "theme": _truncate_text(curated.get("theme"), 120),
-        "one_liner": _truncate_text(curated.get("one_liner"), 180),
-        "concept": _compact_concept(curated.get("concept")),
-        "selected_stocks": selected_stocks,
-        "verified_news": verified_news,
-        "reports": reports,
-        "source_ids": [
-            _truncate_text(source_id, 80)
-            for source_id in (curated.get("source_ids") or [])[:20]
-        ],
-    }
-
-
-def _compact_page_purpose_for_validation(page_purpose: dict[str, Any]) -> dict[str, Any]:
-    if not isinstance(page_purpose, dict):
-        return {}
-    return {
-        "theme": _truncate_text(page_purpose.get("theme"), 120),
-        "one_liner": _truncate_text(page_purpose.get("one_liner"), 180),
-        "concept": _compact_concept(page_purpose.get("concept")),
-    }
-
-
-def _compact_historical_case_for_validation(historical_case_output: dict[str, Any]) -> dict[str, Any]:
-    if not isinstance(historical_case_output, dict):
-        return {"historical_case": {}}
-
-    historical_case = historical_case_output.get("historical_case", historical_case_output)
-    if not isinstance(historical_case, dict):
-        return {"historical_case": {}}
-
-    return {
-        "historical_case": {
-            "period": _truncate_text(historical_case.get("period"), 80),
-            "title": _truncate_text(historical_case.get("title"), 160),
-            "summary": _truncate_text(historical_case.get("summary"), 420),
-            "outcome": _truncate_text(historical_case.get("outcome"), 420),
-            "lesson": _truncate_text(historical_case.get("lesson"), 420),
+        node_name: {
+            "elapsed_s": round(elapsed, 2),
+            "status": status
         }
-    }
-
-
-def _compact_narrative_output_for_validation(narrative_output: dict[str, Any]) -> dict[str, Any]:
-    if not isinstance(narrative_output, dict):
-        return {"narrative": {}}
-
-    narrative = narrative_output.get("narrative", narrative_output)
-    if not isinstance(narrative, dict):
-        return {"narrative": {}}
-
-    compact_narrative: dict[str, Any] = {}
-    for key in NARRATIVE_SECTION_KEYS:
-        section = narrative.get(key, {})
-        if not isinstance(section, dict):
-            section = {}
-        compact_narrative[key] = {
-            "purpose": _truncate_text(section.get("purpose"), 220),
-            "content": _truncate_text(section.get("content"), MAX_LONG_TEXT),
-            "bullets": [
-                _truncate_text(bullet, 180)
-                for bullet in (section.get("bullets") or [])[:3]
-            ],
-            "viz_hint": (
-                _truncate_text(section.get("viz_hint"), 220)
-                if section.get("viz_hint") is not None
-                else None
-            ),
-        }
-
-    return {"narrative": compact_narrative}
-
-
-def _json_size(payload: Any) -> int:
-    try:
-        return len(json.dumps(payload, ensure_ascii=False))
-    except Exception:
-        return 0
-
-
-def _build_hallucination_check_inputs(
-    curated: dict[str, Any],
-    page_purpose: dict[str, Any],
-    historical_case_output: dict[str, Any],
-    narrative_output: dict[str, Any],
-) -> dict[str, Any]:
-    return {
-        "curated_context": _compact_curated_context_for_validation(curated),
-        "page_purpose_output": _compact_page_purpose_for_validation(page_purpose),
-        "historical_case_output": _compact_historical_case_for_validation(historical_case_output),
-        "narrative_output": _compact_narrative_output_for_validation(narrative_output),
-    }
-
-
-def _build_unvalidated_interface2(
-    page_purpose: dict[str, Any],
-    historical_case_output: dict[str, Any],
-    narrative_output: dict[str, Any],
-) -> dict[str, Any]:
-    return {
-        "theme": page_purpose.get("theme"),
-        "one_liner": page_purpose.get("one_liner"),
-        "concept": page_purpose.get("concept"),
-        "historical_case": historical_case_output.get("historical_case", historical_case_output),
-        "narrative": narrative_output.get("narrative", narrative_output),
     }
 
 
@@ -283,9 +104,9 @@ def _mock_narrative(curated: dict, pp: dict, hc: dict) -> dict:
             },
             "summary": {
                 "purpose": "핵심 요약과 관찰 포인트 제시",
-                "content": "### 투자 전에 꼭 확인할 포인트\n- 재고 지표가 연속으로 개선되는지 확인해요.\n- 가격 반등이 단기 반짝인지 지속 신호인지 구분해요.\n- 핵심 고객과 제품 관련 일정 변화를 매일 체크해요.",
+                "content": "핵심은 재고, 가격, 경쟁력 지표의 순서를 구분해서 보는 거예요.",
                 "bullets": ["재고 지표의 연속 개선 여부", "가격 반등의 지속성", "핵심 고객/제품 경쟁력 이벤트"],
-                "viz_hint": None,
+                "viz_hint": "horizontal_bar - 관찰 지표 우선순위",
             },
         }
     }
@@ -416,23 +237,6 @@ def run_narrative_body_node(state: dict) -> dict:
             "metrics": _update_metrics(state, "run_narrative_body", time.time() - node_start),
         }
 
-    except JSONResponseParseError as e:
-        logger.error(
-            "JSON_PARSE_FAILURE narrative_body 실패: prompt=%s provider=%s model=%s detail=%s",
-            e.prompt_name,
-            e.provider,
-            e.model,
-            e,
-        )
-        return {
-            "error": (
-                "narrative_body 실패: 모델 응답 JSON 불량 "
-                f"(prompt={e.prompt_name}, provider={e.provider}, model={e.model})"
-            ),
-            "metrics": _update_metrics(
-                state, "run_narrative_body", time.time() - node_start, "failed"
-            ),
-        }
     except Exception as e:
         logger.error("  narrative_body 실패: %s", e)
         return {
@@ -457,49 +261,25 @@ def validate_interface2_node(state: dict) -> dict:
         narr = state["narrative"]
         curated = state["curated_context"]
         backend = state.get("backend", "live")
-        fallback_validated = _build_unvalidated_interface2(pp, hc, narr)
 
         if backend == "mock":
             result = _mock_hallucination_check(pp, hc, narr)
         else:
-            raw_payload = {
+            result = call_llm_with_prompt("hallucination_check", {
                 "curated_context": curated,
                 "page_purpose_output": pp,
                 "historical_case_output": hc,
                 "narrative_output": narr,
-            }
-            compact_payload = _build_hallucination_check_inputs(curated, pp, hc, narr)
-            logger.info(
-                "  validate_interface2 입력 축소: %.1fKB -> %.1fKB",
-                _json_size(raw_payload) / 1024,
-                _json_size(compact_payload) / 1024,
-            )
-            try:
-                result = call_llm_with_prompt("hallucination_check", compact_payload)
-            except Exception as hallcheck_exc:
-                err_text = str(hallcheck_exc).lower()
-                if "timed out" in err_text or "timeout" in err_text:
-                    logger.warning(
-                        "  validate_interface2 hallcheck timeout -> fallback 사용: %s",
-                        hallcheck_exc,
-                    )
-                    result = {
-                        "overall_risk": "medium",
-                        "summary": "hallucination_check timeout으로 검증을 건너뛰고 원본 출력을 사용했어요.",
-                        "issues": [],
-                        "consistency_checks": [],
-                        "validated_interface_2": fallback_validated,
-                    }
-                else:
-                    raise
+            })
 
         # validated_interface_2 추출
-        validated = result.get("validated_interface_2", fallback_validated)
-
-        # summary는 텍스트 체크리스트 섹션으로 고정 (차트 생성 방지)
-        summary_section = validated.get("narrative", {}).get("summary")
-        if isinstance(summary_section, dict):
-            summary_section["viz_hint"] = None
+        validated = result.get("validated_interface_2", {
+            "theme": pp["theme"],
+            "one_liner": pp["one_liner"],
+            "concept": pp["concept"],
+            "historical_case": hc.get("historical_case", hc),
+            "narrative": narr.get("narrative", narr),
+        })
 
         # Pydantic 검증
         raw_narr = RawNarrative.model_validate(validated)

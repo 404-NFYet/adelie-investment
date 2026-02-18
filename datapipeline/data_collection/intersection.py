@@ -8,7 +8,7 @@ from __future__ import annotations
 
 def screened_to_matched(stock: dict) -> dict:
     """스크리닝 결과를 MatchedStock 형태로 변환 (v2: narrative 없음)."""
-    result = {
+    return {
         "symbol": stock["symbol"],
         "name": stock["name"],
         "signal": stock["signal"],
@@ -19,8 +19,3 @@ def screened_to_matched(stock: dict) -> dict:
         "narrative_sources": [],
         "has_narrative": False,
     }
-    # attention 필드 pass-through
-    for field in ("attention_score", "attention_percentile", "market", "recency_days"):
-        if field in stock:
-            result[field] = stock[field]
-    return result

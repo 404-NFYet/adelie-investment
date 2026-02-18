@@ -15,24 +15,19 @@ logger = logging.getLogger(__name__)
 
 
 def _update_metrics(state: dict, node_name: str, elapsed: float, status: str = "success") -> dict:
-    metrics = dict(state.get("metrics") or {})
-    metrics[node_name] = {"elapsed_s": round(elapsed, 2), "status": status}
-    return metrics
+    """메트릭 업데이트 (Partial Update for Reducer)."""
+    return {
+        node_name: {
+            "elapsed_s": round(elapsed, 2),
+            "status": status
+        }
+    }
 
 
 _MOCK_SCREENED = [
-    {"symbol": "005930", "name": "삼성전자", "signal": "attention_hot",
-     "return_pct": 0.8234, "volume_ratio": 2.1, "period_days": 7,
-     "attention_score": 0.8234, "attention_percentile": 98.0,
-     "market": "KR", "recency_days": 7},
-    {"symbol": "000660", "name": "SK하이닉스", "signal": "attention_hot",
-     "return_pct": 0.6512, "volume_ratio": 1.8, "period_days": 7,
-     "attention_score": 0.6512, "attention_percentile": 92.0,
-     "market": "KR", "recency_days": 7},
-    {"symbol": "035420", "name": "NAVER", "signal": "attention_hot",
-     "return_pct": 0.5103, "volume_ratio": 3.2, "period_days": 7,
-     "attention_score": 0.5103, "attention_percentile": 85.0,
-     "market": "KR", "recency_days": 7},
+    {"symbol": "005930", "name": "삼성전자", "signal": "short_surge", "return_pct": 8.5, "volume_ratio": 2.1, "period_days": 5},
+    {"symbol": "000660", "name": "SK하이닉스", "signal": "mid_term_up", "return_pct": 15.3, "volume_ratio": 1.8, "period_days": 126},
+    {"symbol": "035420", "name": "NAVER", "signal": "volume_spike", "return_pct": 0.0, "volume_ratio": 3.2, "period_days": 1},
 ]
 
 
@@ -60,10 +55,15 @@ def screen_stocks_node(state: dict) -> dict:
         }
 
     try:
-        from ..data_collection.screener import screen_stocks
         from ..data_collection.intersection import screened_to_matched
+        from ..mcp_client import call_mcp_tool
+        from ..config import TOP_N
 
-        screened = screen_stocks(market=market)
+        # MCP 도구 호출 (기존 screen_stocks 대체)
+        screened = call_mcp_tool("get_top_gainers", {
+            "market": market,
+            "limit": TOP_N
+        })
         if not screened:
             return {
                 "error": "스크리닝 결과가 없습니다. 시장 데이터를 확인하세요.",
