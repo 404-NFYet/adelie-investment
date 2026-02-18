@@ -10,6 +10,7 @@ import rehypeRaw from 'rehype-raw';
 import { narrativeApi } from '../api';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import { useTermContext } from '../contexts/TermContext';
+import { useTutor } from '../contexts';
 import { formatKRW } from '../utils/formatNumber';
 import { buildNarrativePlot } from '../utils/narrativeChartAdapter';
 import ResponsiveEChart from '../components/charts/ResponsiveEChart';
@@ -489,6 +490,7 @@ export default function Narrative() {
   const navigate = useNavigate();
   const { claimReward } = usePortfolio();
   const { openTermSheet } = useTermContext();
+  const { setContextInfo } = useTutor();
 
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -500,6 +502,13 @@ export default function Narrative() {
   const [showReward, setShowReward] = useState(false);
   const [rewardData, setRewardData] = useState(null);
   const [rewardError, setRewardError] = useState('');
+
+  useEffect(() => {
+    if (caseId) {
+      setContextInfo({ type: 'narrative', id: Number(caseId) });
+    }
+    return () => setContextInfo(null);
+  }, [caseId, setContextInfo]);
 
   useEffect(() => {
     if (!caseId) {

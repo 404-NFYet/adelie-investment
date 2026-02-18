@@ -22,7 +22,12 @@ from app.core.database import get_db
 from app.core.limiter import limiter
 from app.models.tutor import TutorSession, TutorMessage
 from app.models.glossary import Glossary
-from app.schemas.tutor import TutorChatRequest, TutorChatEvent
+from app.schemas.tutor import (
+    TutorChatRequest,
+    TutorChatEvent,
+    TutorSuggestionRequest,
+    TutorSuggestionResponse,
+)
 from app.services import get_redis_cache
 from app.services.tutor_engine import (
     _collect_glossary_context,
@@ -402,3 +407,17 @@ async def tutor_chat(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.post("/suggestions")
+async def get_suggestions(
+    request: TutorSuggestionRequest,
+    db: AsyncSession = Depends(get_db),
+) -> TutorSuggestionResponse:
+    """Get active suggestions based on current context."""
+    from app.services.tutor_engine import get_active_suggestions
+
+    suggestions = await get_active_suggestions(
+        request.context_type, request.context_id, db
+    )
+    return TutorSuggestionResponse(suggestions=suggestions)

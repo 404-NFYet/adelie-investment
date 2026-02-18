@@ -17,6 +17,7 @@ from openai import AsyncOpenAI
 from app.core.config import get_settings
 from app.models.tutor import TutorSession, TutorMessage
 from app.models.glossary import Glossary
+from app.models.daily_briefing import DailyBriefing
 from app.models.historical_case import HistoricalCase
 from app.models.report import BrokerReport
 from app.schemas.tutor import TutorChatRequest
@@ -399,3 +400,50 @@ async def generate_tutor_response(
 
     except Exception as e:
         yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+
+
+async def get_active_suggestions(
+    context_type: str | None,
+    context_id: int | None,
+    db: AsyncSession,
+) -> list[str]:
+    """현재 컨텍스트에 맞는 추천 질문을 DB에서 조회한다."""
+    if not context_type or not context_id:
+        return []
+
+    try:
+        # 1) 브리핑/내러티브 (DailyBriefing)
+        if context_type == "briefing":
+            result = await db.execute(
+                select(DailyBriefing.suggested_questions)
+                .where(DailyBriefing.id == context_id)
+            )
+            questions = result.scalar_one_or_none()
+            if questions and isinstance(questions, list):
+                return questions
+
+        # 2) 과거 사례 (HistoricalCase)
+        elif context_type == "narrative":
+            result = await db.execute(
+                select(HistoricalCase.suggested_questions)
+                .where(HistoricalCase.id == context_id)
+            )
+            questions = result.scalar_one_or_none()
+            if questions and isinstance(questions, list):
+                return questions
+
+        # 3) 리포트 (BrokerReport)
+        elif context_type == "report":
+            result = await db.execute(
+                select(BrokerReport.suggested_questions)
+                .where(BrokerReport.id == context_id)
+            )
+            questions = result.scalar_one_or_none()
+            if questions and isinstance(questions, list):
+                return questions
+
+    except Exception as e:
+        logger.warning("추천 질문 조회 실패: %s", e)
+        return []
+
+    return []

@@ -516,3 +516,56 @@ def validate_interface2_node(state: dict) -> dict:
             "error": f"validate_interface2 실패: {e}",
             "metrics": _update_metrics(state, "validate_interface2", time.time() - node_start, "failed"),
         }
+
+
+@traceable(name="generate_suggestions", run_type="llm",
+           metadata={"phase": "interface_2", "phase_name": "내러티브 생성", "step": 5})
+def generate_suggestions_node(state: dict) -> dict:
+    """Stage 5: 챗봇 추천 질문 생성."""
+    if state.get("error"):
+        return {"error": state["error"]}
+
+    node_start = time.time()
+    logger.info("[Node] generate_suggestions")
+
+    try:
+        narr = state["narrative"]
+        # 내러티브 본문 텍스트 추출 (요약 및 본문)
+        narrative_text = ""
+        if isinstance(narr, dict) and "narrative" in narr:
+             n = narr["narrative"]
+             if isinstance(n, dict):
+                 narrative_text = f"배경: {n.get('background', {}).get('content', '')}\\n"
+                 narrative_text += f"개념: {n.get('concept_explain', {}).get('content', '')}\\n"
+                 narrative_text += f"적용: {n.get('application', {}).get('content', '')}\\n"
+                 narrative_text += f"요약: {n.get('summary', {}).get('content', '')}"
+
+        backend = state.get("backend", "live")
+
+        if backend == "mock":
+            result = ["(Mock) 이 현상이 지속될까요?", "(Mock) 과거와 다른 점은 무엇인가요?", "(Mock) 주요 리스크는 무엇인가요?"]
+        else:
+            # glossary 용어 추출 (간이)
+            # 실제로는 DB나 state에서 가져와야 하지만, 여기서는 프롬프트에서 처리하도록 텍스트만 전달
+            result = call_llm_with_prompt("suggested_questions", {
+                "content": narrative_text[:3000], # 길이 제한
+                "excluded_terms": [], # 필요시 추가
+            })
+
+        logger.info("  generate_suggestions 완료: %d개", len(result))
+        
+        # raw_narrative에 suggested_questions 필드가 없으므로 state에 별도 저장하거나
+        # RawNarrative 스키마를 수정해야 함.
+        # 여기서는 state에 'suggested_questions' 키로 추가하여 writer가 처리하도록 함.
+        return {
+            "suggested_questions": result,
+            "metrics": _update_metrics(state, "generate_suggestions", time.time() - node_start),
+        }
+
+    except Exception as e:
+        logger.warning("  generate_suggestions 실패 (무시됨): %s", e)
+        return {
+            # 실패해도 전체 파이프라인을 중단하지 않음
+            "suggested_questions": [],
+            "metrics": _update_metrics(state, "generate_suggestions", time.time() - node_start, "failed"),
+        }

@@ -229,6 +229,41 @@ export function TutorProvider({ children }) {
     setCurrentTerm(null);
   }, []);
 
+  // 추천 질문 관리
+  const [suggestions, setSuggestions] = useState([]);
+
+  useEffect(() => {
+    if (!contextInfo?.type || !contextInfo?.id) {
+      setSuggestions([]);
+      return;
+    }
+
+    const fetchSuggestions = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch(`${API_BASE_URL}/api/v1/tutor/suggestions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            context_type: contextInfo.type,
+            context_id: Number(contextInfo.id),
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setSuggestions(data.suggestions || []);
+        }
+      } catch (e) {
+        console.error('Failed to fetch suggestions:', e);
+      }
+    };
+
+    fetchSuggestions();
+  }, [contextInfo]);
+
   const value = useMemo(() => ({
     isOpen,
     openTutor,
@@ -247,10 +282,12 @@ export function TutorProvider({ children }) {
     deleteChat,
     loadChatHistory,
     requestVisualization,
+    suggestions,
   }), [
     isOpen, openTutor, closeTutor, messages, isLoading, sendMessage,
     clearMessages, contextInfo, currentTerm, sessions, activeSessionId,
     createNewChat, deleteChat, loadChatHistory, requestVisualization,
+    suggestions,
   ]);
 
   return (

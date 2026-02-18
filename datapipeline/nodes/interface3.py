@@ -937,11 +937,13 @@ def assemble_output_node(state: dict) -> dict:
             }
 
         # Pydantic 검증
+        # Pydantic 검증
         output = FullBriefingOutput(
             topic=theme,
             interface_1_curated_context=CuratedContext.model_validate(curated),
             interface_2_raw_narrative=RawNarrative.model_validate(raw_narrative),
             interface_3_final_briefing=FinalBriefing.model_validate(final_briefing_data),
+            suggested_questions=state.get("suggested_questions"),
             data_collection_status=data_collection_status,
         )
 

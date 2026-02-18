@@ -42,6 +42,7 @@ from .nodes.interface2 import (
     run_narrative_body_node,
     run_page_purpose_node,
     validate_interface2_node,
+    generate_suggestions_node,
 )
 from .nodes.interface3 import (
     run_theme_node,
@@ -92,6 +93,7 @@ class BriefingPipelineState(TypedDict):
     historical_case: Optional[dict]
     narrative: Optional[dict]
     raw_narrative: Optional[dict]
+    suggested_questions: Optional[list]
 
     # Interface 3 중간 결과
     i3_theme: Optional[dict]
@@ -272,6 +274,7 @@ def build_graph() -> Any:
     graph.add_node("run_historical_case", run_historical_case_node)
     graph.add_node("run_narrative_body", run_narrative_body_node)
     graph.add_node("validate_interface2", validate_interface2_node)
+    graph.add_node("generate_suggestions", generate_suggestions_node)
 
     # Interface 3 (병렬 최적화 + 홈 아이콘 매핑)
     graph.add_node("run_theme", run_theme_node)
@@ -334,10 +337,15 @@ def build_graph() -> Any:
         check_error,
         {"continue": "validate_interface2", "end": END},
     )
+    graph.add_conditional_edges(
+        "validate_interface2",
+        check_error,
+        {"continue": "generate_suggestions", "end": END},
+    )
 
     # Interface 2 → Interface 3 (병렬 최적화)
     graph.add_conditional_edges(
-        "validate_interface2",
+        "generate_suggestions",
         check_error,
         {"continue": "run_theme", "end": END},
     )

@@ -15,7 +15,7 @@ export default function TutorModal() {
   const {
     isOpen, closeTutor, messages, isLoading, sendMessage,
     requestVisualization, currentTerm, sessions, activeSessionId,
-    createNewChat, deleteChat, loadChatHistory,
+    createNewChat, deleteChat, loadChatHistory, suggestions,
   } = useTutor();
   const { settings } = useUser();
   const [input, setInput] = useState('');
@@ -52,7 +52,9 @@ export default function TutorModal() {
     }
   };
 
-  const quickQuestions = ['PER이 뭔가요?', '오늘 시장 어때요?', '초보자 학습 팁'];
+  const displayQuestions = (suggestions && suggestions.length > 0)
+    ? suggestions
+    : ['PER이 뭔가요?', '오늘 시장 어때요?', '초보자 학습 팁'];
 
   return (
     <AnimatePresence>
@@ -93,7 +95,7 @@ export default function TutorModal() {
                 <div className="text-center py-6">
                   <PenguinMascot variant="welcome" message="안녕하세요! 시장에 대해 궁금한 점을 물어보세요." />
                   <div className="space-y-2 mt-4">
-                    {quickQuestions.map((q) => (
+                    {displayQuestions.map((q) => (
                       <button key={q} onClick={() => sendMessage(q, settings.difficulty)} className="block w-full text-left px-4 py-3 bg-surface rounded-xl text-sm text-text-primary hover:bg-border transition-colors">{q}</button>
                     ))}
                     <button onClick={() => requestVisualization('오늘 급등주 등락률 차트')} className="block w-full text-left px-4 py-3 bg-surface rounded-xl text-sm text-text-primary hover:bg-border transition-colors">오늘 급등주 차트 보기</button>

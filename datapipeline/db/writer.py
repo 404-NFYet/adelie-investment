@@ -75,6 +75,7 @@ async def _save(
 
     curated = full_output.get("interface_1_curated_context", {})
     narrative = full_output.get("interface_2_raw_narrative", {})
+    suggested_questions = full_output.get("suggested_questions", [])
     final = full_output.get("interface_3_final_briefing", {})
 
     # 날짜 결정
@@ -119,8 +120,9 @@ async def _save(
 
             # top_keywords만 업데이트 (market_summary 유지)
             await conn.execute(
-                "UPDATE daily_briefings SET top_keywords = $1::jsonb WHERE id = $2",
+                "UPDATE daily_briefings SET top_keywords = $1::jsonb, suggested_questions = $2::jsonb WHERE id = $3",
                 json.dumps(existing_kw, ensure_ascii=False),
+                json.dumps(suggested_questions, ensure_ascii=False),
                 existing_id,
             )
             briefing_id = existing_id
@@ -129,12 +131,13 @@ async def _save(
                         briefing_id, briefing_date, len(existing_kw["keywords"]))
         else:
             briefing_id = await conn.fetchval(
-                """INSERT INTO daily_briefings (briefing_date, market_summary, top_keywords, created_at)
-                   VALUES ($1, $2, $3::jsonb, NOW())
+                """INSERT INTO daily_briefings (briefing_date, market_summary, top_keywords, suggested_questions, created_at)
+                   VALUES ($1, $2, $3::jsonb, $4::jsonb, NOW())
                    RETURNING id""",
                 briefing_date,
                 curated.get("theme", ""),
                 json.dumps(_build_top_keywords(curated, final), ensure_ascii=False),
+                json.dumps(suggested_questions, ensure_ascii=False),
             )
             logger.info("새 브리핑 생성: id=%d, date=%s", briefing_id, briefing_date)
 
@@ -192,15 +195,16 @@ async def _save(
 
             case_id = await conn.fetchval(
                 """INSERT INTO historical_cases
-                   (title, event_year, summary, full_content, keywords,
+                   (title, event_year, summary, full_content, keywords, suggested_questions,
                     difficulty, view_count, created_at, updated_at)
-                   VALUES ($1, $2, $3, $4, $5::jsonb, 'beginner', 0, NOW(), NOW())
+                   VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, 'beginner', 0, NOW(), NOW())
                    RETURNING id""",
                 hist.get("title", curated.get("theme", "")),
                 event_year,
                 hist.get("summary", ""),
                 full_content,
                 keywords_jsonb,
+                json.dumps(suggested_questions, ensure_ascii=False),
             )
             result["case_id"] = case_id
             logger.info("historical_cases 저장: id=%d", case_id)

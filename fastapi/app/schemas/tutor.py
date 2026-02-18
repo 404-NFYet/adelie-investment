@@ -25,3 +25,14 @@ class TutorChatEvent(BaseModel):
     session_id: Optional[str] = None
     total_tokens: Optional[int] = None
     error: Optional[str] = None
+
+
+class TutorSuggestionRequest(BaseModel):
+    """Request for active suggestions."""
+    context_type: Literal["briefing", "narrative", "report"]
+    context_id: int
+
+
+class TutorSuggestionResponse(BaseModel):
+    """Response with active suggestions."""
+    suggestions: list[str]
