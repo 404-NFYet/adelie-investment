@@ -44,7 +44,8 @@ def _get_refresh_exp_seconds(settings) -> int:
     return 60 * 60 * 24 * 7
 
 
-def _build_token(subject: str, expires_in: int, extra_claims: dict | None = None) -> str:    settings = get_settings()
+def _build_token(subject: str, expires_in: int, extra_claims: dict | None = None) -> str:
+    settings = get_settings()
     now = datetime.now(timezone.utc)
     payload = {
         "sub": subject,
@@ -52,7 +53,7 @@ def _build_token(subject: str, expires_in: int, extra_claims: dict | None = None
         "exp": int((now + timedelta(seconds=expires_in)).timestamp()),
     }
     if extra_claims:
-    payload.update(extra_claims)
+        payload.update(extra_claims)
     return jwt.encode(
         payload,
         _get_jwt_key(settings.JWT_SECRET),
@@ -186,7 +187,7 @@ async def register_user(
         )
 
     access_token = _build_token(email, _get_access_exp_seconds(settings))
-refresh_ttl = _get_refresh_exp_seconds(settings)
+    refresh_ttl = _get_refresh_exp_seconds(settings)
     refresh_jti = uuid.uuid4().hex
     refresh_token = _build_token(
         email,
@@ -206,11 +207,11 @@ refresh_ttl = _get_refresh_exp_seconds(settings)
         "tokenType": "Bearer",
         "expiresIn": _get_access_exp_seconds(settings),
         "user": {
-                    "id": user.id,
-                    "email": user.email,
-                    "username": user.username,
-                    "difficulty_level": user.difficulty_level,
-                },    
+            "id": user.id,
+            "email": user.email,
+            "username": user.username,
+            "difficulty_level": user.difficulty_level,
+        },
         }
 
 
@@ -247,11 +248,11 @@ async def login_user(db: AsyncSession, *, email: str, password: str) -> dict:
         "tokenType": "Bearer",
         "expiresIn": _get_access_exp_seconds(settings),
         "user": {
-                    "id": user.id,
-                    "email": user.email,
-                    "username": user.username,
-                    "difficulty_level": user.difficulty_level,
-                },    
+            "id": user.id,
+            "email": user.email,
+            "username": user.username,
+            "difficulty_level": user.difficulty_level,
+        },
     }
 
 
@@ -337,9 +338,9 @@ async def refresh_tokens(db: AsyncSession, *, refresh_token: str) -> dict:
         "tokenType": "Bearer",
         "expiresIn": _get_access_exp_seconds(settings),
         "user": {
-                    "id": user.id,
-                    "email": user.email,
-                    "username": user.username,
-                    "difficulty_level": user.difficulty_level,
-                },    
+            "id": user.id,
+            "email": user.email,
+            "username": user.username,
+            "difficulty_level": user.difficulty_level,
+        },
     }
