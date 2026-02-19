@@ -42,13 +42,16 @@ services:
       - /home/ubuntu/.ssh/id_ed25519:/root/.ssh/id_ed25519:ro
       - /home/ubuntu/.ssh/known_hosts:/root/.ssh/known_hosts:ro
     environment:
-      DB_HOST: ${DB_HOST:-10.10.10.20}
+      DB_HOST: ${DB_HOST:-postgres}
       DB_PORT: ${DB_PORT:-5432}
       DB_NAME: ${DB_NAME:-narrative_invest}
       DB_USER: ${DB_USER:-narative}
       DB_PASSWORD: ${DB_PASSWORD:-password}
       PROMETHEUS_URL: http://adelie-prometheus:9090
       GRAFANA_URL: https://monitoring.adelie-invest.com
+    networks:
+      - default
+      - adelie-network
     depends_on:
       - prometheus
 
@@ -70,6 +73,12 @@ services:
 
   # node-exporter: deploy-test 서버에 systemd 서비스로 이미 설치/운행 중 (포트 9100)
   # 별도 컨테이너 불필요 — prometheus.yml이 10.10.10.20:9100 직접 스크레이핑
+
+networks:
+  default: {}
+  adelie-network:
+    external: true
+    name: adelie-network
 
 volumes:
   prometheus_data:
