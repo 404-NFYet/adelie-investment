@@ -3,6 +3,7 @@
  */
 export { default as Onboarding } from './Onboarding';
 export { default as Landing } from './Landing';
+export { default as Education } from './Education';
 export { default as Home } from './Home';
 export { default as Search } from './Search';
 export { default as Comparison } from './Comparison';

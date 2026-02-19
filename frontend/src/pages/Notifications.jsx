@@ -48,7 +48,7 @@ function NotificationItem({ notification, onRead, onDelete }) {
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`card flex items-start gap-3 relative ${isUnread ? 'border-l-4 border-l-primary' : 'opacity-75'}`}
+      className={`card flex items-start gap-3 relative ${isUnread ? '' : 'opacity-75'}`}
       onClick={() => isUnread && onRead?.(notification.id)}
     >
       <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 text-primary">

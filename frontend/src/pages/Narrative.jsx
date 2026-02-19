@@ -2,7 +2,7 @@
  * Narrative.jsx - 콘텐츠1~6 스타일 기반 내러티브 화면
  * 순서: background -> concept_explain -> history -> application -> caution -> summary
  */
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
@@ -80,12 +80,16 @@ const slideVariants = {
 
 const SWIPE_THRESHOLD = 70;
 const SWIPE_VELOCITY = 420;
+const RESUME_STORAGE_PREFIX = 'adelie:narrative:resume:';
+const RESUME_TTL_MS = 24 * 60 * 60 * 1000;
 
 const FEEDBACK_OPTIONS = [
   { label: 'good', text: '유익했어요' },
   { label: 'neutral', text: '보통이에요' },
   { label: 'bad', text: '아쉬워요' },
 ];
+
+const getResumeStorageKey = (caseId) => `${RESUME_STORAGE_PREFIX}${caseId}`;
 
 function getPlainLines(content) {
   if (!content) return [];
@@ -503,6 +507,37 @@ export default function Narrative() {
   const [showReward, setShowReward] = useState(false);
   const [rewardData, setRewardData] = useState(null);
   const [rewardError, setRewardError] = useState('');
+  const hasRestoredResumeRef = useRef(false);
+  const scrollThrottleTimerRef = useRef(null);
+
+  const clearResumeState = useCallback(() => {
+    if (!caseId) return;
+    try {
+      localStorage.removeItem(getResumeStorageKey(caseId));
+    } catch {
+      // ignore localStorage errors
+    }
+  }, [caseId]);
+
+  const saveResumeState = useCallback((stepIndex) => {
+    if (!caseId) return;
+    try {
+      localStorage.setItem(
+        getResumeStorageKey(caseId),
+        JSON.stringify({
+          stepIndex,
+          scrollY: window.scrollY || 0,
+          updatedAt: new Date().toISOString(),
+        }),
+      );
+    } catch {
+      // ignore localStorage errors
+    }
+  }, [caseId]);
+
+  useEffect(() => {
+    hasRestoredResumeRef.current = false;
+  }, [caseId]);
 
   useEffect(() => {
     if (!caseId) {
@@ -533,6 +568,70 @@ export default function Narrative() {
   const stepTitle = stepData?.title || stepConfig.title;
   const isLastStep = currentStep === totalSteps - 1;
 
+  useEffect(() => {
+    if (!caseId || !data || isLoading || error || hasRestoredResumeRef.current) return;
+
+    hasRestoredResumeRef.current = true;
+
+    try {
+      const raw = localStorage.getItem(getResumeStorageKey(caseId));
+      if (!raw) {
+        window.scrollTo({ top: 0, behavior: 'auto' });
+        return;
+      }
+
+      const parsed = JSON.parse(raw);
+      const savedAt = Date.parse(parsed?.updatedAt || '');
+      if (!Number.isFinite(savedAt) || Date.now() - savedAt > RESUME_TTL_MS) {
+        clearResumeState();
+        window.scrollTo({ top: 0, behavior: 'auto' });
+        return;
+      }
+
+      const parsedStep = Number.isInteger(parsed?.stepIndex) ? parsed.stepIndex : 0;
+      const safeStepIndex = Math.min(Math.max(parsedStep, 0), totalSteps - 1);
+      const safeScrollY = Math.max(0, Number(parsed?.scrollY || 0));
+
+      setDirection(0);
+      setCurrentStep(safeStepIndex);
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          window.scrollTo({ top: safeScrollY, behavior: 'auto' });
+        });
+      });
+    } catch {
+      clearResumeState();
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }
+  }, [caseId, clearResumeState, data, error, isLoading, totalSteps]);
+
+  useEffect(() => {
+    if (!caseId || !data || isLoading || error || !hasRestoredResumeRef.current) return;
+    saveResumeState(currentStep);
+  }, [caseId, currentStep, data, error, isLoading, saveResumeState]);
+
+  useEffect(() => {
+    if (!caseId || !data || isLoading || error || !hasRestoredResumeRef.current) return undefined;
+
+    const handleScroll = () => {
+      if (scrollThrottleTimerRef.current) return;
+      scrollThrottleTimerRef.current = window.setTimeout(() => {
+        saveResumeState(currentStep);
+        scrollThrottleTimerRef.current = null;
+      }, 250);
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      if (scrollThrottleTimerRef.current) {
+        window.clearTimeout(scrollThrottleTimerRef.current);
+        scrollThrottleTimerRef.current = null;
+      }
+    };
+  }, [caseId, currentStep, data, error, isLoading, saveResumeState]);
+
   const goToStep = (nextIndex) => {
     if (nextIndex < 0 || nextIndex >= totalSteps) return;
     setDirection(nextIndex > currentStep ? 1 : -1);
@@ -558,6 +657,7 @@ export default function Narrative() {
     } catch (claimError) {
       const message = claimError?.message || '보상 청구에 실패했습니다.';
       if (message.includes('이미')) {
+        clearResumeState();
         navigate('/home');
         return;
       }
@@ -581,6 +681,7 @@ export default function Narrative() {
 
   const closeReward = () => {
     setShowReward(false);
+    clearResumeState();
     navigate('/portfolio');
   };
 
