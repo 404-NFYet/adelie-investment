@@ -3,7 +3,7 @@
   "checkpoint_id": "53d4af738184",
   "strategy": "manual-commit",
   "branch": "develop",
-  "checkpoints_count": 19,
+  "checkpoints_count": 20,
   "files_touched": [
     "CLAUDE.md",
     "Makefile",
@@ -33,11 +33,13 @@
     "frontend/src/components/domain/HighlightedText.jsx",
     "frontend/src/components/domain/TermBottomSheet.jsx",
     "frontend/src/components/layout/BottomNav.jsx",
+    "frontend/src/components/layout/ChatFAB.jsx",
     "frontend/src/components/trading/Leaderboard.jsx",
     "frontend/src/contexts/TutorContext.jsx",
     "frontend/src/pages/Home.jsx",
     "frontend/src/pages/Landing.jsx",
     "frontend/src/pages/Portfolio.jsx",
+    "frontend/src/pages/TutorChat.jsx",
     "frontend/src/utils/markdown.js",
     "infra/docker-dashboard/pages/feedback.py",
     "infra/monitoring/docker-compose.yml",
@@ -133,13 +135,20 @@
       "context": "/53/d4af738184/11/context.md",
       "content_hash": "/53/d4af738184/11/content_hash.txt",
       "prompt": "/53/d4af738184/11/prompt.txt"
+    },
+    {
+      "metadata": "/53/d4af738184/12/metadata.json",
+      "transcript": "/53/d4af738184/12/full.jsonl",
+      "context": "/53/d4af738184/12/context.md",
+      "content_hash": "/53/d4af738184/12/content_hash.txt",
+      "prompt": "/53/d4af738184/12/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 8106,
-    "cache_creation_tokens": 1190641,
-    "cache_read_tokens": 40661092,
-    "output_tokens": 93575,
-    "api_call_count": 562
+    "input_tokens": 8136,
+    "cache_creation_tokens": 1239096,
+    "cache_read_tokens": 41727481,
+    "output_tokens": 106593,
+    "api_call_count": 588
   }
 }
