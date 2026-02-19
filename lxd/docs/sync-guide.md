@@ -67,11 +67,11 @@ develop에 다른 팀원 작업이 반영됐을 때, 내 dev/* 브랜치를 최�
 ### 방법 1: Makefile (인프라 담당자 — 일괄 싱크)
 
 ```bash
-# develop → dev/* 5개 브랜치 자동 병합 & push
-make sync-dev-branches
+# develop → dev/* 5개 브랜치 자동 병합 & push (인프라 전용 Makefile)
+make -f lxd/Makefile sync-dev-branches
 ```
 
-> 이 명령은 도형준(dorae222) git 계정으로 실행됩니다.
+> 실행 전 git config user.name / user.email이 dorae222 계정인지 확인하세요.
 > 개인 싱크는 아래 방법 2를 사용하세요.
 
 ### 방법 2: 개별 싱크 (각 담당자)
@@ -95,11 +95,11 @@ git push origin dev/<내 파트>
 ### 방법 1: Makefile (일괄 업데이트)
 
 ```bash
-# 모든 LXD 서버에서 git pull 실행
-make sync-lxd
+# 모든 LXD 서버에서 git pull 실행 (인프라 전용 Makefile)
+make -f lxd/Makefile sync-lxd
 
 # 브랜치 싱크 + LXD 서버 동시 실행
-make sync-all
+make -f lxd/Makefile sync-all
 ```
 
 ### 방법 2: 개별 서버 직접 접속
@@ -109,18 +109,18 @@ make sync-all
 lxc exec dev-<컨테이너명> -- bash
 
 # 컨테이너 내부에서
-cd ~/adelie-investment
+cd /home/ubuntu/adelie-investment
 git pull origin dev/<내 파트>
 ```
 
 ### 방법 3: 원격 명령 (lxc exec)
 
 ```bash
-lxc exec dev-yj99son  -- bash -c "cd ~/adelie-investment && git pull origin dev/frontend"
-lxc exec dev-j2hoon10 -- bash -c "cd ~/adelie-investment && git pull origin dev/chatbot"
-lxc exec dev-ryejinn  -- bash -c "cd ~/adelie-investment && git pull origin dev/pipeline"
-lxc exec dev-jjjh02   -- bash -c "cd ~/adelie-investment && git pull origin dev/backend"
-lxc exec dev-hj       -- bash -c "cd ~/adelie-investment && git pull origin dev/infra"
+lxc exec dev-yj99son  -- bash -c "cd /home/ubuntu/adelie-investment && git pull origin dev/frontend"
+lxc exec dev-j2hoon10 -- bash -c "cd /home/ubuntu/adelie-investment && git pull origin dev/chatbot"
+lxc exec dev-ryejinn  -- bash -c "cd /home/ubuntu/adelie-investment && git pull origin dev/pipeline"
+lxc exec dev-jjjh02   -- bash -c "cd /home/ubuntu/adelie-investment && git pull origin dev/backend"
+lxc exec dev-hj       -- bash -c "cd /home/ubuntu/adelie-investment && git pull origin dev/infra"
 ```
 
 ---
@@ -163,13 +163,13 @@ deploy-test(10.10.10.20)는 develop 브랜치 기반 테스트 환경입니다.
 
 ```bash
 # 전체 재배포
-make deploy-test
+make -f lxd/Makefile deploy-test
 
 # 특정 서비스만 재배포 (예: frontend)
-make deploy-test-service SVC=frontend
+make -f lxd/Makefile deploy-test-service SVC=frontend
 ```
 
-> `make deploy-test`는 내부적으로 `git pull origin develop`을 실행합니다.
+> `deploy-test`는 내부적으로 `git pull origin develop`을 실행합니다.
 
 ---
 
@@ -180,23 +180,23 @@ make deploy-test-service SVC=frontend
 git fetch origin && git merge origin/develop --no-edit
 
 # develop → 전체 dev/* 브랜치 싱크 (인프라 담당자)
-make sync-dev-branches
+make -f lxd/Makefile sync-dev-branches
 
 # LXD 서버 전체 코드 업데이트
-make sync-lxd
+make -f lxd/Makefile sync-lxd
 
 # 브랜치 + 서버 동시 싱크
-make sync-all
+make -f lxd/Makefile sync-all
 
 # 내 LXD 서버에서 직접 pull
-lxc exec dev-<컨테이너> -- bash -c "cd ~/adelie-investment && git pull origin dev/<파트>"
+lxc exec dev-<컨테이너> -- bash -c "cd /home/ubuntu/adelie-investment && git pull origin dev/<파트>"
 
 # 브랜치 현황 확인
 git log --oneline develop..origin/dev/frontend   # develop보다 앞선 커밋
 git log --oneline origin/dev/frontend..develop   # develop보다 뒤처진 커밋
 
 # deploy-test 배포
-make deploy-test
+make -f lxd/Makefile deploy-test
 ```
 
 ---
