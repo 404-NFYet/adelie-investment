@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "53d4af738184",
+  "session_id": "097046ca-b797-4068-adfd-7978c8f0f19b",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-19T02:31:42.988683656Z",
+  "branch": "develop",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "database/alembic/versions/20260213_trading_tables.py",
+    "docker-compose.dev.yml"
+  ],
+  "agent": "Claude Code",
+  "transcript_identifier_at_start": "68e35091-8845-4e58-a8ec-35ee55669483",
+  "token_usage": {
+    "input_tokens": 95,
+    "cache_creation_tokens": 73859,
+    "cache_read_tokens": 5331624,
+    "output_tokens": 2209,
+    "api_call_count": 91
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-19T02:31:42.955791809Z",
+    "agent_lines": 0,
+    "human_added": 0,
+    "human_modified": 1,
+    "human_removed": 25,
+    "total_committed": 0,
+    "agent_percentage": 0
+  }
+}
