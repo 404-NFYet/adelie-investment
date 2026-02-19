@@ -80,10 +80,7 @@ export default function Home() {
   }, []);
 
   const visibleCards = useMemo(
-    () =>
-      [...keywords]
-        .sort((a, b) => (b.case_id || 0) - (a.case_id || 0))
-        .slice(0, 3),
+    () => keywords.slice(0, 3),
     [keywords],
   );
 

@@ -14,10 +14,29 @@ from app.core.redis_keys import key_keywords_today
 from app.models.briefing import DailyBriefing
 from app.models.historical_case import CaseMatch, HistoricalCase
 from app.services.redis_cache import get_redis_cache
+from datapipeline.constants.home_icons import normalize_title_for_match, resolve_icon_key
 
 KST = timezone(timedelta(hours=9))
 
 router = APIRouter(prefix="/keywords", tags=["keywords"])
+
+
+def _build_keyword_lookup(keywords_raw: list[dict]) -> tuple[dict[str, dict], dict[str, dict]]:
+    """Build exact and normalized title lookup for briefing keywords."""
+    exact: dict[str, dict] = {}
+    normalized: dict[str, dict] = {}
+
+    for kw in keywords_raw:
+        if not isinstance(kw, dict):
+            continue
+        title = str(kw.get("title", "")).strip()
+        if not title:
+            continue
+        exact.setdefault(title, kw)
+        norm_title = normalize_title_for_match(title)
+        if norm_title:
+            normalized.setdefault(norm_title, kw)
+    return exact, normalized
 
 
 @router.get("/today")
@@ -67,6 +86,9 @@ async def get_today_keywords(
 
     kw_data = briefing.top_keywords if isinstance(briefing.top_keywords, dict) else json.loads(briefing.top_keywords)
     keywords_raw = kw_data.get("keywords", [])
+    if not isinstance(keywords_raw, list):
+        keywords_raw = []
+    keyword_lookup_exact, keyword_lookup_normalized = _build_keyword_lookup(keywords_raw)
 
     # 해당 날짜에 실제 생성된 case 키워드를 우선 카드로 사용한다.
     day_start = datetime.combine(target_date, datetime.min.time())
@@ -132,7 +154,11 @@ async def get_today_keywords(
     keywords_with_cases = []
     if generated_cards:
         for i, case_info in enumerate(generated_cards):
-            fallback_kw = keywords_raw[i] if i < len(keywords_raw) else {}
+            current_title = case_info["current_keyword"]
+            fallback_kw = keyword_lookup_exact.get(current_title)
+            if fallback_kw is None:
+                fallback_kw = keyword_lookup_normalized.get(normalize_title_for_match(current_title), {})
+
             matched_stocks = [
                 {
                     "stock_code": code,
@@ -146,9 +172,15 @@ async def get_today_keywords(
                 {
                     "id": i + 1,
                     "category": fallback_kw.get("category", "GENERATED_CASE"),
-                    "title": case_info["current_keyword"],
+                    "title": current_title,
                     "description": case_info["description"] or fallback_kw.get("description", ""),
-                    "icon_key": fallback_kw.get("icon_key"),
+                    "icon_key": resolve_icon_key(
+                        title=current_title,
+                        description=case_info["description"] or fallback_kw.get("description", ""),
+                        category=fallback_kw.get("category", ""),
+                        trend_type=fallback_kw.get("trend_type", ""),
+                        icon_key=fallback_kw.get("icon_key"),
+                    ),
                     "sector": fallback_kw.get("sector"),
                     "stocks": matched_stocks,
                     "trend_days": fallback_kw.get("trend_days"),
@@ -168,14 +200,24 @@ async def get_today_keywords(
             )
     else:
         # 생성된 case가 없으면 기존 키워드만 노출 (버튼 비활성)
-        for i, kw in enumerate(keywords_raw):
+        for kw in keywords_raw:
+            if not isinstance(kw, dict):
+                continue
+            title = kw.get("title", "")
+            description = kw.get("description", "")
             keywords_with_cases.append(
                 {
-                    "id": i + 1,
+                    "id": len(keywords_with_cases) + 1,
                     "category": kw.get("category", "GENERAL"),
-                    "title": kw.get("title", ""),
-                    "description": kw.get("description", ""),
-                    "icon_key": kw.get("icon_key"),
+                    "title": title,
+                    "description": description,
+                    "icon_key": resolve_icon_key(
+                        title=title,
+                        description=description,
+                        category=kw.get("category", ""),
+                        trend_type=kw.get("trend_type", ""),
+                        icon_key=kw.get("icon_key"),
+                    ),
                     "sector": kw.get("sector"),
                     "stocks": kw.get("stocks", []),
                     "trend_days": kw.get("trend_days"),
