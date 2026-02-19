@@ -234,9 +234,11 @@ psql -h 10.10.10.20 -p 5432 -U narative -d narrative_invest
 |-----|--------|---------|
 | https://demo.adelie-invest.com | Frontend (nginx) | deploy-test:80 |
 | https://monitoring.adelie-invest.com | Grafana | deploy-test:3000 |
-| https://dashboard.adelie-invest.com | Streamlit 대시보드 | deploy-test:8501 |
+| https://dashboard.adelie-invest.com | Streamlit 대시보드 | deploy-test:8501 (nginx→Streamlit) |
 
-대시보드 배포: `ssh deploy-test 'cd ~/adelie-investment/infra/monitoring && docker compose up -d dashboard'`
+> Cloudflare Tunnel 라우팅: `dashboard.adelie-invest.com` → `localhost:8501`(nginx) → `dashboard:8501`(Streamlit 컨테이너 내부)
+
+대시보드 배포: `ssh deploy-test 'cd ~/adelie-investment/infra/monitoring && docker compose up -d --build nginx dashboard'`
 
 ## Skills (Claude Code CLI)
 
