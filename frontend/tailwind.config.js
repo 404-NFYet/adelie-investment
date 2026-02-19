@@ -39,7 +39,7 @@ export default {
         mobile: '480px',
       },
       fontFamily: {
-        sans: ['IBM Plex Sans KR', 'Inter', 'Noto Sans KR', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+        sans: ['Pretendard', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Noto Sans KR', 'sans-serif'],
       },
       borderRadius: {
         card: '16px',
