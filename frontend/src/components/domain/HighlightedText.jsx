@@ -2,7 +2,10 @@
  * HighlightedText.jsx - AI 생성 콘텐츠 내 용어 하이라이팅
  * <mark class='term'>용어</mark> 및 [[용어]] 형식을 모두 지원.
  * 클릭하면 TermBottomSheet에서 LLM 동적 설명을 표시.
+ * 마크다운(**bold**, *italic* 등)은 ReactMarkdown으로 처리.
  */
+import ReactMarkdown from 'react-markdown';
+import rehypeRaw from 'rehype-raw';
 import { useTermContext } from '../../contexts/TermContext';
 
 export default function HighlightedText({ content, onTermClick }) {
@@ -10,8 +13,7 @@ export default function HighlightedText({ content, onTermClick }) {
 
   // <mark class='term'>term</mark> 및 [[term]] 패턴을 모두 파싱
   const parseContent = (text) => {
-    // 두 패턴을 모두 매칭: <mark class='term'>...</mark> 또는 [[...]]
-    const pattern = /<mark\s+class=['"]term['"]>(.*?)<\/mark>|\[\[([^\]]+)\]\]/g;
+    const pattern = /<mark\s+class=['"]term(?:-highlight)?['"]>(.*?)<\/mark>|\[\[([^\]]+)\]\]/g;
     const parts = [];
     let lastIndex = 0;
     let match;
@@ -62,7 +64,18 @@ export default function HighlightedText({ content, onTermClick }) {
             </mark>
           );
         }
-        return <span key={index}>{part.content}</span>;
+        return (
+          <ReactMarkdown
+            key={index}
+            rehypePlugins={[rehypeRaw]}
+            components={{
+              // 인라인 컨텍스트이므로 p → span 변환
+              p: ({ children }) => <span>{children}</span>,
+            }}
+          >
+            {part.content.replace(/->/g, '→')}
+          </ReactMarkdown>
+        );
       })}
     </span>
   );

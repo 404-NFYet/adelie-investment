@@ -39,7 +39,7 @@ const HoldingCard = React.memo(function HoldingCard({ holding, onClick }) {
         <div className="text-right">
           <p className="font-bold text-sm">{formatKRW(holding.current_value || 0)}</p>
           <p className={`text-xs font-semibold ${isPositive ? 'text-red-500' : isNegative ? 'text-blue-500' : 'text-text-secondary'}`}>
-            {isPositive ? '+' : ''}{holding.profit_loss_pct || 0}%
+            {isPositive ? '+' : ''}{Number(holding.profit_loss_pct || 0).toFixed(2)}%
           </p>
         </div>
       </div>
@@ -211,7 +211,7 @@ export default function Portfolio() {
           <p className="text-xs text-text-secondary mb-1">총 자산</p>
           <p className="text-2xl font-bold">{formatKRW(animatedTotal)}</p>
           <p className={`text-sm font-semibold mt-1 ${isPositive ? 'text-red-500' : isNegative ? 'text-blue-500' : 'text-text-secondary'}`}>
-            {isPositive ? '+' : ''}{formatKRW(animatedPL)} ({isPositive ? '+' : ''}{displayPortfolio.total_profit_loss_pct}%)
+            {isPositive ? '+' : ''}{formatKRW(animatedPL)} ({isPositive ? '+' : ''}{Number(displayPortfolio.total_profit_loss_pct).toFixed(2)}%)
           </p>
           <div className="flex justify-around mt-4 pt-3 border-t border-border">
             <div><p className="text-xs text-text-secondary">보유 현금</p><p className="text-sm font-semibold">{formatKRW(displayPortfolio.current_cash)}</p></div>
@@ -237,7 +237,7 @@ export default function Portfolio() {
                       />
                     </div>
                     <span className={`w-14 text-right font-semibold ${pct > 0 ? 'text-red-500' : pct < 0 ? 'text-blue-500' : 'text-text-secondary'}`}>
-                      {pct > 0 ? '+' : ''}{pct}%
+                      {pct > 0 ? '+' : ''}{Number(pct).toFixed(2)}%
                     </span>
                   </div>
                 );
