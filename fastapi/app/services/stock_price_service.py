@@ -8,6 +8,7 @@ from typing import Optional
 
 from pykrx import stock
 
+from app.services.kis_service import get_kis_service
 from app.services.redis_cache import get_redis_cache
 
 logger = logging.getLogger(__name__)
@@ -44,15 +45,41 @@ def _fetch_price_sync(stock_code: str) -> Optional[dict]:
             "change_rate": round(float(row.get("등락률", 0)), 2),
             "volume": int(row.get("거래량", 0)),
             "timestamp": try_date_str,
+            "source": "pykrx",
         }
 
     return None
 
 
+async def _fetch_price_from_kis(stock_code: str) -> Optional[dict]:
+    """KIS 시세 조회를 표준 응답 포맷으로 정규화."""
+    try:
+        kis = get_kis_service()
+        if not kis.is_configured:
+            return None
+
+        result = await kis.get_current_price(stock_code)
+        if not result:
+            return None
+
+        return {
+            "stock_code": result.get("stock_code", stock_code),
+            "stock_name": result.get("stock_name", stock_code),
+            "current_price": int(result.get("current_price", 0)),
+            "change_rate": round(float(result.get("change_rate", 0)), 2),
+            "volume": int(result.get("volume", 0)),
+            "timestamp": str(result.get("timestamp") or datetime.now().strftime("%Y%m%d%H%M%S")),
+            "source": "kis",
+        }
+    except Exception as e:
+        logger.warning(f"KIS price lookup failed for {stock_code}: {e}")
+        return None
+
+
 async def get_current_price(stock_code: str) -> Optional[dict]:
     """단일 종목의 현재가(최신 종가)를 조회한다.
 
-    Redis 캐시(60초 TTL)를 우선 확인하고, 없으면 pykrx로 조회한다.
+    Redis 캐시(60초 TTL)를 우선 확인하고, 없으면 KIS 우선/pykrx 폴백으로 조회한다.
     pykrx는 동기 HTTP 호출이므로 asyncio.to_thread로 스레드풀에서 실행한다.
     """
     cache = await get_redis_cache()
@@ -67,24 +94,28 @@ async def get_current_price(stock_code: str) -> Optional[dict]:
         except Exception as e:
             logger.warning(f"Redis cache read error: {e}")
 
-    # pykrx 조회 (스레드풀 + 타임아웃)
-    try:
-        result = await asyncio.wait_for(
-            asyncio.to_thread(_fetch_price_sync, stock_code),
-            timeout=PYKRX_TIMEOUT,
-        )
-        if result:
-            # 캐시 저장
-            if cache.client:
-                try:
-                    await cache.client.setex(cache_key, TTL_STOCK_PRICE, json.dumps(result))
-                except Exception as e:
-                    logger.warning(f"Redis cache write error: {e}")
-            return result
-    except asyncio.TimeoutError:
-        logger.warning(f"Price lookup timeout for {stock_code}")
-    except Exception as e:
-        logger.error(f"Failed to get price for {stock_code}: {e}")
+    # 1) KIS 조회 우선
+    result = await _fetch_price_from_kis(stock_code)
+
+    # 2) pykrx 폴백 (스레드풀 + 타임아웃)
+    if not result:
+        try:
+            result = await asyncio.wait_for(
+                asyncio.to_thread(_fetch_price_sync, stock_code),
+                timeout=PYKRX_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(f"Price lookup timeout for {stock_code}")
+        except Exception as e:
+            logger.error(f"Failed to get price for {stock_code}: {e}")
+
+    if result:
+        if cache.client:
+            try:
+                await cache.client.setex(cache_key, TTL_STOCK_PRICE, json.dumps(result))
+            except Exception as e:
+                logger.warning(f"Redis cache write error: {e}")
+        return result
 
     return None
 

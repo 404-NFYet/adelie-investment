@@ -6,7 +6,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
+import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
+import remarkMath from 'remark-math';
 import { narrativeApi } from '../api';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import { useTermContext } from '../contexts/TermContext';
@@ -134,7 +136,8 @@ function MarkdownBody({ content, onTermClick, className = '' }) {
   return (
     <div className={className}>
       <ReactMarkdown
-        rehypePlugins={[rehypeRaw]}
+        remarkPlugins={[remarkMath]}
+        rehypePlugins={[rehypeRaw, rehypeKatex]}
         components={{
           mark: ({ node, ...props }) => (
             <mark

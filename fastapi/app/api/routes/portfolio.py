@@ -1,12 +1,14 @@
 """포트폴리오 및 모의투자 API 라우트."""
 
 import logging
+from calendar import monthrange
 from datetime import datetime, timedelta
+from time import perf_counter
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -19,6 +21,9 @@ from app.models.reward import BriefingReward, DwellReward
 from app.schemas.portfolio import (
     PortfolioResponse,
     PortfolioSummary,
+    RefreshPortfolioRequest,
+    RefreshPortfolioResponse,
+    RefreshInvalidatedInfo,
     HoldingResponse,
     TradeRequest,
     TradeResponse,
@@ -41,11 +46,124 @@ from app.services.portfolio_service import (
 from app.services.stock_price_service import get_current_price, get_batch_prices
 from app.api.routes.notification import create_notification
 from app.models.user import User
-from app.models.portfolio import UserPortfolio, PortfolioHolding
+from app.models.portfolio import UserPortfolio
 
 logger = logging.getLogger("narrative_api.portfolio")
 
 router = APIRouter(prefix="/portfolio", tags=["portfolio"])
+
+
+async def invalidate_portfolio_summary_cache(user_id: int) -> None:
+    """포트폴리오 요약 캐시를 즉시 무효화한다."""
+    try:
+        cache = await get_redis_cache()
+        await cache.delete(key_portfolio_summary(user_id))
+    except Exception:
+        # 캐시 미사용 환경에서도 API 동작은 유지
+        pass
+
+
+async def invalidate_user_stock_price_caches(user_id: int, db: AsyncSession) -> RefreshInvalidatedInfo:
+    """사용자 보유 종목의 가격 캐시와 summary 캐시를 무효화한다."""
+    portfolio = await get_or_create_portfolio(db, user_id)
+    stock_codes = sorted({h.stock_code for h in portfolio.holdings if h.stock_code})
+    stock_price_deleted = 0
+    kis_price_deleted = 0
+
+    try:
+        cache = await get_redis_cache()
+        if cache.client:
+            if stock_codes:
+                stock_keys = [f"stock_price:{code}" for code in stock_codes]
+                kis_keys = [f"kis:price:{code}" for code in stock_codes]
+                stock_price_deleted = await cache.client.delete(*stock_keys)
+                kis_price_deleted = await cache.client.delete(*kis_keys)
+            await cache.client.delete(key_portfolio_summary(user_id))
+        else:
+            await invalidate_portfolio_summary_cache(user_id)
+    except Exception:
+        # 캐시 장애 시에도 포트폴리오 조회는 계속 진행
+        await invalidate_portfolio_summary_cache(user_id)
+
+    return RefreshInvalidatedInfo(
+        summary=True,
+        stock_price_keys=stock_price_deleted,
+        kis_price_keys=kis_price_deleted,
+    )
+
+
+async def _load_portfolio_price_map(
+    db: AsyncSession,
+    user_id: int,
+) -> tuple[UserPortfolio, dict[str, int]]:
+    """포트폴리오와 보유 종목 가격 맵을 함께 조회한다."""
+    portfolio = await get_or_create_portfolio(db, user_id)
+    codes = [h.stock_code for h in portfolio.holdings]
+    batch_results = await get_batch_prices(codes) if codes else []
+    price_map = {p["stock_code"]: p["current_price"] for p in batch_results}
+    return portfolio, price_map
+
+
+def _build_portfolio_response(portfolio: UserPortfolio, price_map: dict[str, int]) -> PortfolioResponse:
+    """포트폴리오 응답 모델을 생성한다."""
+    holdings_response = []
+    total_holdings_value = 0.0
+
+    for h in portfolio.holdings:
+        current_price = price_map.get(h.stock_code) or int(h.avg_buy_price)
+        current_value = current_price * h.quantity
+        invested = float(h.avg_buy_price) * h.quantity
+        profit_loss = current_value - invested
+        profit_loss_pct = (profit_loss / invested * 100) if invested > 0 else 0
+
+        total_holdings_value += current_value
+        holdings_response.append(HoldingResponse(
+            stock_code=h.stock_code,
+            stock_name=h.stock_name,
+            quantity=h.quantity,
+            avg_buy_price=float(h.avg_buy_price),
+            current_price=current_price,
+            current_value=current_value,
+            profit_loss=profit_loss,
+            profit_loss_pct=round(profit_loss_pct, 2),
+        ))
+
+    total_value = portfolio.current_cash + total_holdings_value
+    rewards = portfolio.total_rewards_received or 0
+    total_pl = total_value - portfolio.initial_cash - rewards
+    total_pl_pct = (total_pl / portfolio.initial_cash * 100) if portfolio.initial_cash > 0 else 0
+
+    return PortfolioResponse(
+        id=portfolio.id,
+        portfolio_name=portfolio.portfolio_name,
+        initial_cash=portfolio.initial_cash,
+        current_cash=portfolio.current_cash,
+        holdings=holdings_response,
+        total_value=total_value,
+        total_profit_loss=total_pl,
+        total_profit_loss_pct=round(total_pl_pct, 2),
+        total_rewards_received=rewards,
+    )
+
+
+def _build_portfolio_summary(portfolio: UserPortfolio, price_map: dict[str, int]) -> PortfolioSummary:
+    """포트폴리오 summary 응답 모델을 생성한다."""
+    total_holdings = 0
+    for h in portfolio.holdings:
+        cp = price_map.get(h.stock_code) or int(h.avg_buy_price)
+        total_holdings += cp * h.quantity
+
+    total_value = portfolio.current_cash + total_holdings
+    rewards = portfolio.total_rewards_received or 0
+    total_pl = total_value - portfolio.initial_cash - rewards
+    total_pl_pct = (total_pl / portfolio.initial_cash * 100) if portfolio.initial_cash > 0 else 0
+
+    return PortfolioSummary(
+        total_value=int(total_value),
+        total_profit_loss=int(total_pl),
+        total_profit_loss_pct=round(total_pl_pct, 2),
+        total_rewards_received=rewards,
+    )
 
 
 # ──────────────────── Leaderboard ────────────────────
@@ -158,52 +276,8 @@ async def get_portfolio(
 ):
     """포트폴리오 전체 조회 (실시간 평가액 포함). JWT 인증 필수."""
     user_id = current_user["id"]
-    portfolio = await get_or_create_portfolio(db, user_id)
-
-    # 배치 가격 조회 (N+1 방지)
-    codes = [h.stock_code for h in portfolio.holdings]
-    batch_results = await get_batch_prices(codes) if codes else []
-    price_map = {p["stock_code"]: p["current_price"] for p in batch_results}
-
-    holdings_response = []
-    total_holdings_value = 0.0
-
-    for h in portfolio.holdings:
-        current_price = price_map.get(h.stock_code) or int(h.avg_buy_price)
-        current_value = current_price * h.quantity
-        invested = float(h.avg_buy_price) * h.quantity
-        profit_loss = current_value - invested
-        profit_loss_pct = (profit_loss / invested * 100) if invested > 0 else 0
-
-        total_holdings_value += current_value
-        holdings_response.append(HoldingResponse(
-            stock_code=h.stock_code,
-            stock_name=h.stock_name,
-            quantity=h.quantity,
-            avg_buy_price=float(h.avg_buy_price),
-            current_price=current_price,
-            current_value=current_value,
-            profit_loss=profit_loss,
-            profit_loss_pct=round(profit_loss_pct, 2),
-        ))
-
-    total_value = portfolio.current_cash + total_holdings_value
-    # 수익률 계산: 누적 보상액 제외 (리더보드와 동일 공식)
-    rewards = portfolio.total_rewards_received or 0
-    total_pl = total_value - portfolio.initial_cash - rewards
-    total_pl_pct = (total_pl / portfolio.initial_cash * 100) if portfolio.initial_cash > 0 else 0
-
-    return PortfolioResponse(
-        id=portfolio.id,
-        portfolio_name=portfolio.portfolio_name,
-        initial_cash=portfolio.initial_cash,
-        current_cash=portfolio.current_cash,
-        holdings=holdings_response,
-        total_value=total_value,
-        total_profit_loss=total_pl,
-        total_profit_loss_pct=round(total_pl_pct, 2),
-        total_rewards_received=rewards,
-    )
+    portfolio, price_map = await _load_portfolio_price_map(db, user_id)
+    return _build_portfolio_response(portfolio, price_map)
 
 
 @router.get("/summary", response_model=PortfolioSummary)
@@ -225,29 +299,8 @@ async def get_portfolio_summary(
     except Exception:
         pass
 
-    portfolio = await get_or_create_portfolio(db, user_id)
-    # 배치 가격 조회 (N+1 방지)
-    codes = [h.stock_code for h in portfolio.holdings]
-    batch_results = await get_batch_prices(codes) if codes else []
-    price_map = {p["stock_code"]: p["current_price"] for p in batch_results}
-
-    total_holdings = 0
-    for h in portfolio.holdings:
-        cp = price_map.get(h.stock_code) or int(h.avg_buy_price)
-        total_holdings += cp * h.quantity
-
-    total_value = portfolio.current_cash + total_holdings
-    # 수익률 계산: 누적 보상액 제외 (리더보드와 동일 공식)
-    rewards = portfolio.total_rewards_received or 0
-    total_pl = total_value - portfolio.initial_cash - rewards
-    total_pl_pct = (total_pl / portfolio.initial_cash * 100) if portfolio.initial_cash > 0 else 0
-
-    summary = PortfolioSummary(
-        total_value=int(total_value),
-        total_profit_loss=int(total_pl),
-        total_profit_loss_pct=round(total_pl_pct, 2),
-        total_rewards_received=rewards,
-    )
+    portfolio, price_map = await _load_portfolio_price_map(db, user_id)
+    summary = _build_portfolio_summary(portfolio, price_map)
 
     # 캐시 저장 (2분)
     try:
@@ -256,6 +309,50 @@ async def get_portfolio_summary(
         pass
 
     return summary
+
+
+@router.post("/refresh", response_model=RefreshPortfolioResponse)
+async def refresh_portfolio(
+    req: RefreshPortfolioRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """포트폴리오 캐시 무효화 + 최신 데이터 즉시 재조회."""
+    user_id = current_user["id"]
+    started_at = perf_counter()
+
+    if req.invalidate_scope != "summary_and_holdings":
+        raise HTTPException(status_code=400, detail="지원하지 않는 invalidate_scope")
+
+    invalidated = await invalidate_user_stock_price_caches(user_id, db)
+    portfolio, price_map = await _load_portfolio_price_map(db, user_id)
+    portfolio_response = _build_portfolio_response(portfolio, price_map)
+    summary = _build_portfolio_summary(portfolio, price_map)
+
+    # 최신 summary를 다시 캐싱해 이후 조회 지연을 줄인다.
+    try:
+        import json as _json
+        cache = await get_redis_cache()
+        await cache.set(key_portfolio_summary(user_id), _json.dumps(summary.model_dump()), TTL_MEDIUM)
+    except Exception:
+        pass
+
+    duration_ms = int((perf_counter() - started_at) * 1000)
+    logger.info(
+        "portfolio_refresh user_id=%s stock_price_keys=%s kis_price_keys=%s duration_ms=%s",
+        user_id,
+        invalidated.stock_price_keys,
+        invalidated.kis_price_keys,
+        duration_ms,
+    )
+
+    return RefreshPortfolioResponse(
+        portfolio=portfolio_response,
+        summary=summary,
+        invalidated=invalidated,
+        source_policy="kis_first_fallback_pykrx",
+        refreshed_at=datetime.utcnow(),
+    )
 
 
 # ──────────────────── Trading ────────────────────
@@ -281,6 +378,7 @@ async def create_trade(
         raise HTTPException(status_code=400, detail=str(e))
 
     await db.refresh(portfolio)
+    await invalidate_portfolio_summary_cache(user_id)
 
     return TradeResponse(
         id=trade.id,
@@ -381,6 +479,7 @@ async def claim_briefing_reward(
         data={"case_id": req.case_id, "amount": reward.base_reward},
     )
     await db.commit()
+    await invalidate_portfolio_summary_cache(user_id)
 
     return RewardResponse(
         reward_id=reward.id,
@@ -407,8 +506,13 @@ async def get_rewards(
     rewards = result.scalars().all()
 
     items = []
+    summary_changed = False
     for r in rewards:
+        before_status = r.status
+        before_final_reward = r.final_reward
         r = await check_and_apply_multiplier(db, r)
+        if r.status != before_status or r.final_reward != before_final_reward:
+            summary_changed = True
         items.append(RewardItem(
             reward_id=r.id,
             case_id=r.case_id,
@@ -418,6 +522,9 @@ async def get_rewards(
             status=r.status,
             maturity_at=r.maturity_at.isoformat(),
         ))
+
+    if summary_changed:
+        await invalidate_portfolio_summary_cache(user_id)
 
     return RewardsListResponse(rewards=items)
 
@@ -480,6 +587,7 @@ async def claim_dwell_reward(
         data={"page": req.page, "amount": DWELL_REWARD_AMOUNT},
     )
     await db.commit()
+    await invalidate_portfolio_summary_cache(user_id)
 
     return {
         "reward_amount": DWELL_REWARD_AMOUNT,
@@ -492,18 +600,59 @@ async def claim_dwell_reward(
 
 
 @router.get("/stock/chart/{stock_code}")
-async def get_stock_chart(stock_code: str, days: int = Query(20, ge=5, le=60)):
+async def get_stock_chart(
+    stock_code: str,
+    days: int = Query(20, ge=5, le=366),
+    period: Optional[str] = Query(None, regex="^(1w|1m|3m|6m|1y)$"),
+):
     """종목 가격 차트 데이터 (pykrx 일봉)."""
+    def subtract_months(base_dt: datetime, months: int) -> datetime:
+        year = base_dt.year
+        month = base_dt.month - months
+        while month <= 0:
+            month += 12
+            year -= 1
+        day = min(base_dt.day, monthrange(year, month)[1])
+        return base_dt.replace(year=year, month=month, day=day)
+
     try:
         from pykrx import stock
-        end_date = datetime.now().strftime("%Y%m%d")
-        start_date = (datetime.now() - timedelta(days=days + 10)).strftime("%Y%m%d")
+        now = datetime.now()
+        end_date = now.strftime("%Y%m%d")
+
+        if period:
+            period_to_start = {
+                "1w": now - timedelta(days=7),
+                "1m": subtract_months(now, 1),
+                "3m": subtract_months(now, 3),
+                "6m": subtract_months(now, 6),
+                "1y": subtract_months(now, 12),
+            }
+            start_dt = period_to_start[period]
+            start_date = start_dt.strftime("%Y%m%d")
+        else:
+            lookback_days = max(days + 30, int(days * 1.8))
+            start_dt = now - timedelta(days=lookback_days)
+            start_date = start_dt.strftime("%Y%m%d")
+
         df = stock.get_market_ohlcv(start_date, end_date, stock_code)
         if df.empty:
             raise HTTPException(status_code=404, detail="차트 데이터 없음")
-        df = df.tail(days)
+
+        if period:
+            range_start = start_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+            df = df[df.index >= range_start]
+        else:
+            df = df.tail(days)
+
+        if df.empty:
+            raise HTTPException(status_code=404, detail="선택 기간 차트 데이터 없음")
+
         return {
             "stock_code": stock_code,
+            "period": period,
+            "period_start": df.index[0].strftime("%Y-%m-%d"),
+            "period_end": df.index[-1].strftime("%Y-%m-%d"),
             "dates": [d.strftime("%Y-%m-%d") for d in df.index],
             "opens": df["시가"].tolist(),
             "highs": df["고가"].tolist(),
