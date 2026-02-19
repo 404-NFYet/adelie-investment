@@ -5,12 +5,11 @@
 """
 
 from typing import Any
-import datetime as dt
 from mcp.server.fastmcp import FastMCP
 
 from .data_collection.news_crawler import crawl_news
 from .data_collection.screener import screen_stocks
-from .config import MARKET
+from .config import MARKET, kst_today
 
 # MCP 서버 인스턴스 생성
 mcp = FastMCP("Interface Data Server")
@@ -24,7 +23,7 @@ def search_news(query: str, market: str = "KR", days: int = 1) -> str:
         market: 시장 (KR/US)
         days: 최근 며칠간의 데이터를 가져올지 (기본 1일)
     """
-    target_date = dt.date.today()
+    target_date = kst_today()
     # 기존 crawl_news 함수 재사용 (query는 RSS 방식이라 무시되지만 인터페이스는 유지)
     news_items = crawl_news(target_date, market)
     

@@ -9,7 +9,6 @@
 
 from __future__ import annotations
 
-import datetime as dt
 import json
 import logging
 import time
@@ -17,6 +16,7 @@ from typing import Any
 
 from langsmith import traceable
 
+from ..config import kst_today
 from ..schemas import CuratedContext
 
 logger = logging.getLogger(__name__)
@@ -41,7 +41,7 @@ _MOCK_TOPICS = [
     {
         "topic": "반도체 업황 회복",
         "interface_1_curated_context": {
-            "date": dt.date.today().isoformat(),
+            "date": kst_today().isoformat(),
             "theme": "반도체 업황 회복과 AI 수요 확대",
             "one_liner": "재고 조정 마무리와 AI 수요 확대가 맞물리며 반도체 업황이 회복세를 보이고 있어요.",
             "selected_stocks": [
@@ -54,7 +54,7 @@ _MOCK_TOPICS = [
                     "url": "https://example.com/mock-news-1",
                     "source": "Mock Economy",
                     "summary": "반도체 재고 조정이 마무리 국면에 접어들었어요.",
-                    "published_date": dt.date.today().isoformat(),
+                    "published_date": kst_today().isoformat(),
                 },
             ],
             "reports": [
@@ -62,7 +62,7 @@ _MOCK_TOPICS = [
                     "title": "[Mock] 산업 전망 리포트",
                     "source": "Mock Securities",
                     "summary": "2026년 반도체 업황은 하반기 회복이 예상돼요.",
-                    "date": dt.date.today().isoformat(),
+                    "date": kst_today().isoformat(),
                 },
             ],
             "concept": {
@@ -186,7 +186,7 @@ def curate_topics_node(state: dict) -> dict:
         screening_results = "\n".join(screening_lines) or "(스크리닝 결과 없음)"
 
         market = state.get("market", "KR")
-        date = dt.date.today().isoformat()
+        date = kst_today().isoformat()
 
         topics, log_data = curate_with_websearch(
             news_summary=news_summary,
