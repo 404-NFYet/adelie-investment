@@ -3,6 +3,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
+from sqlalchemy import text
 
 from utils.database import get_engine, execute_query
 from utils.ui_components import (
@@ -27,7 +28,7 @@ def _query(sql: str, params: dict | None = None) -> pd.DataFrame:
     """SQL 실행 후 DataFrame 반환."""
     engine = get_engine()
     with engine.connect() as conn:
-        return pd.read_sql(sql, conn, params=params or {})
+        return pd.read_sql_query(text(sql), conn, params=params or {})
 
 
 st.title("📬 피드백 관리")
@@ -102,11 +103,11 @@ with tab_general:
     params = {}
 
     if selected_cat != "전체":
-        conditions.append("category = %(cat)s")
+        conditions.append("category = :cat")
         params["cat"] = selected_cat
 
     if selected_page != "전체":
-        conditions.append("page = %(page)s")
+        conditions.append("page = :page")
         params["page"] = selected_page
 
     if period == "오늘":

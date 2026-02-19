@@ -93,11 +93,14 @@ services:
       - /home/ubuntu/.ssh/id_ed25519:/root/.ssh/id_ed25519:ro
       - /home/ubuntu/.ssh/known_hosts:/root/.ssh/known_hosts:ro
     environment:
-      DB_HOST: ${DB_HOST:-10.10.10.10}
+      DB_HOST: ${DB_HOST:-postgres}
       DB_PORT: ${DB_PORT:-5432}
       DB_NAME: ${POSTGRES_DB:-narrative_invest}
       DB_USER: ${POSTGRES_USER:-narative}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-password}
+    networks:
+      - default
+      - adelie-network
     deploy:
       resources:
         limits:
@@ -107,6 +110,9 @@ services:
 networks:
   default:
     name: narrative-network
+  adelie-network:
+    external: true
+    name: adelie-network
 
 volumes:
   postgres_data:
