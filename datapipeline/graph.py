@@ -58,6 +58,7 @@ from .nodes.interface3 import (
 from .nodes.chart_agent import run_chart_agent_node, run_hallcheck_chart_node
 from .nodes.db_save import save_to_db_node
 from .nodes.screening import screen_stocks_node
+from .nodes.suggestions import generate_suggestions_node
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +110,7 @@ class BriefingPipelineState(TypedDict):
     theme: Optional[str]
     one_liner: Optional[str]
     home_icon: Optional[dict]
+    suggested_questions: Optional[list[str]]
 
     # 최종 출력
     full_output: Optional[dict]

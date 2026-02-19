@@ -904,6 +904,7 @@ def assemble_output_node(state: dict) -> dict:
         crawl_research_status = state.get("crawl_research_status")
         theme = state.get("theme", raw_narrative["theme"])
         one_liner = state.get("one_liner", raw_narrative["one_liner"])
+        suggested_questions = state.get("suggested_questions")
 
         # charts를 pages에 병합
         for page in pages:
@@ -928,6 +929,7 @@ def assemble_output_node(state: dict) -> dict:
             "home_icon": home_icon,
             "sources": sources,
             "hallucination_checklist": checklist,
+            "suggested_questions": suggested_questions,
         }
         data_collection_status = None
         if isinstance(crawl_news_status, dict) or isinstance(crawl_research_status, dict):

@@ -75,8 +75,10 @@ async def _save(
 
     curated = full_output.get("interface_1_curated_context", {})
     narrative = full_output.get("interface_2_raw_narrative", {})
-    suggested_questions = full_output.get("suggested_questions", [])
     final = full_output.get("interface_3_final_briefing", {})
+
+    suggested_q = final.get("suggested_questions")
+    suggested_q_json = json.dumps(suggested_q, ensure_ascii=False) if suggested_q else None
 
     # 날짜 결정
     if briefing_date is None:
@@ -122,7 +124,7 @@ async def _save(
             await conn.execute(
                 "UPDATE daily_briefings SET top_keywords = $1::jsonb, suggested_questions = $2::jsonb WHERE id = $3",
                 json.dumps(existing_kw, ensure_ascii=False),
-                json.dumps(suggested_questions, ensure_ascii=False),
+                suggested_q_json,
                 existing_id,
             )
             briefing_id = existing_id
@@ -137,7 +139,7 @@ async def _save(
                 briefing_date,
                 curated.get("theme", ""),
                 json.dumps(_build_top_keywords(curated, final), ensure_ascii=False),
-                json.dumps(suggested_questions, ensure_ascii=False),
+                suggested_q_json,
             )
             logger.info("새 브리핑 생성: id=%d, date=%s", briefing_id, briefing_date)
 
@@ -204,7 +206,7 @@ async def _save(
                 hist.get("summary", ""),
                 full_content,
                 keywords_jsonb,
-                json.dumps(suggested_questions, ensure_ascii=False),
+                suggested_q_json,
             )
             result["case_id"] = case_id
             logger.info("historical_cases 저장: id=%d", case_id)

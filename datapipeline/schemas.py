@@ -183,6 +183,7 @@ class FinalBriefing(BaseModel):
     home_icon: Optional[HomeIcon] = None
     sources: list[SourceItem]
     hallucination_checklist: list[HallucinationItem]
+    suggested_questions: Optional[list[str]] = None
 
 
 # ────────────────────────────────────────────
