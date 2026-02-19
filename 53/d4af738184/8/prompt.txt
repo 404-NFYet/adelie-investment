@@ -1,0 +1,192 @@
+Implement the following plan:
+
+# 대시보드 ImportError 수정 + Grafana 데이터 수정 및 개선
+
+## Context
+
+이전 세션에서 `adelie-dashboard` 컨테이너를 deploy-test에 배포했으나 두 가지 문제 발생:
+1. **ImportError**: `feedback.py`/`db_viewer.py` 페이지에서 `inject_custom_css` import 실패
+2. **Grafana 데이터 없음**: FastAPI가 `/metrics`를 노출하지 않고, cAdvisor/node-exporter도 미가동
+
+---
+
+## 원인 분석
+
+### Issue 1: ImportError 원인
+- `ui_components.py`에 `inject_custom_css`가 정의되어 있고 커밋됨 ✅
+- `feedback.py`, `db_viewer.py`는 커밋된 버전에서도 import하지만 **로컬에 미커밋 스키마 변경**도 있음
+- 컨테이너가 `docker compose build` 시 **Docker 캐시를 사용해 구버전 이미지 레이어** 재사용
+- **해결**: `--no-cache`로 강제 재빌드 + 로컬 미커밋 변경사항 커밋 후 rebuild
+
+### Issue 2: Grafana 데이터 없음
+- `prometheus.yml`이 `10.10.10.20:8082/metrics`를 스크레이핑하도록 설정되어 있으나 **FastAPI에 Prometheus 미들웨어/엔드포인트 없음**
+- `fastapi/requirements.txt`에 `prometheus-fastapi-instrumentator` 없음
+- `docker ps` 확인 결과: **cAdvisor** (port 8080), **node-exporter** (port 9100) 미가동
+- 따라서 Grafana의 세 종류 패널 모두 "No data":
+  - Server Status (node-exporter 의존)
+  - Container Metrics (cAdvisor 의존)
+  - FastAPI Metrics (instrumentator 의존)
+
+---
+
+## 수정 계획
+
+### Step 1: 대시보드 미커밋 변경사항 커밋
+
+**파일**: `infra/docker-dashboard/pages/feedback.py`, `infra/docker-dashboard/pages/db_viewer.py`
+
+로컬 변경 내용 (스키마 마이그레이션):
+- `feedback.py`: `market_date` → `briefing_date`, 평점 방식 변경 (avg → good/neutral/bad), 스택 바 차트로 개선
+- `db_viewer.py`: `market_date` → `briefing_date`, keywords JSON 추출 방식 변경, `market_summary` 컬럼 반영
+
+커밋: `feat: 대시보드 스키마 마이그레이션 (briefing_date, 피드백 3분류)` (도형준)
+
+### Step 2: FastAPI Prometheus 메트릭 추가
+
+**파일 수정**:
+
+#### `fastapi/requirements.txt`
+```
+# Monitoring
+prometheus-fastapi-instrumentator>=0.21.0
+```
+
+#### `fastapi/app/main.py`
+lifespan 위, app 정의 후 추가:
+```python
+from prometheus_fastapi_instrumentator import Instrumentator
+
+# ... (app 생성 후)
+
+# Prometheus 메트릭 — /metrics 엔드포인트 자동 노출
+Instrumentator(
+    should_group_status_codes=True,
+    should_ignore_untemplated=True,
+    should_instrument_requests_inprogress=True,
+    excluded_handlers=["/metrics", "/docs", "/redoc", "/openapi.json", "/"],
+).instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+```
+
+Grafana 기존 쿼리 호환:
+- `http_request_duration_seconds_count` → 요청 수 ✅
+- `http_request_duration_seconds_bucket` → P95 레이턴시 ✅
+- status code 레이블로 5xx 오류율 계산 ✅
+
+커밋: `feat: FastAPI Prometheus 메트릭 엔드포인트 추가 (/metrics)` (정지훈)
+
+### Step 3: cAdvisor + node-exporter monitoring compose 추가
+
+**파일**: `infra/monitoring/docker-compose.yml`
+
+```yaml
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: adelie-cadvisor
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    privileged: true
+    devices:
+      - /dev/kmsg
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: adelie-node-exporter
+    restart: unless-stopped
+    network_mode: host
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/rootfs
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+```
+
+커밋: `chore: cAdvisor + node-exporter monitoring compose 추가` (도형준)
+
+### Step 4: Grafana adelie-overview.json 개선
+
+**파일**: `infra/monitoring/grafana/provisioning/dashboards/adelie-overview.json`
+
+**추가할 패널** (Row 6: "API 상세 메트릭"):
+1. **엔드포인트별 요청 수** (bar chart): `topk(10, sum by(handler) (rate(http_request_duration_seconds_count{job="fastapi"}[5m])))`
+2. **엔드포인트별 오류율** (stat): `sum by(handler) (rate(http_request_duration_seconds_count{job="fastapi",status=~"5.."}[5m]))`
+3. **P50/P95/P99 레이턴시** (stat): histogram_quantile
+
+**수정할 패널**:
+- Service Status Row: cAdvisor 메트릭이 이제 가용하므로 정상 동작 ✅
+- FastAPI Metrics Row: 기존 쿼리 그대로 동작 ✅
+
+커밋: `feat: Grafana 대시보드 API 상세 메트릭 패널 추가` (도형준)
+
+### Step 5: 빌드 & 배포
+
+```bash
+# 1. FastAPI 이미지 재빌드 (prometheus-fastapi-instrumentator 포함)
+make build-api && make push
+
+# 2. deploy-test: backend-api 재배포
+ssh deploy-test 'cd ~/adelie-investment && git pull origin develop && \
+  docker compose -f docker-compose.prod.yml pull backend-api && \
+  docker compose -f docker-compose.prod.yml up -d backend-api'
+
+# 3. deploy-test: dashboard --no-cache 재빌드
+ssh deploy-test 'cd ~/adelie-investment/infra/monitoring && \
+  docker compose build --no-cache dashboard && \
+  docker compose up -d dashboard'
+
+# 4. deploy-test: cAdvisor + node-exporter 시작
+ssh deploy-test 'cd ~/adelie-investment/infra/monitoring && \
+  docker compose up -d cadvisor node-exporter'
+
+# 5. Prometheus 재시작 (새 타겟 인식)
+ssh deploy-test 'cd ~/adelie-investment/infra/monitoring && \
+  docker compose restart prometheus'
+```
+
+---
+
+## 검증
+
+| 항목 | 검증 방법 |
+|------|---------|
+| ImportError 해결 | `https://dashboard.adelie-invest.com/feedback` 정상 로드 |
+| FastAPI 메트릭 | `curl http://10.10.10.20:8082/metrics \| grep http_request` |
+| Prometheus 스크레이핑 | `https://monitoring.adelie-invest.com/targets` → fastapi job UP |
+| cAdvisor | `http://10.10.10.20:8080` 접속, Prometheus targets → cadvisor UP |
+| node-exporter | Prometheus targets → node job deploy-test UP |
+| Grafana 패널 | overview 대시보드 FastAPI/Server/Container 모든 패널에 데이터 표시 |
+
+---
+
+## 파일 변경 목록
+
+| 파일 | 변경 | 담당 |
+|------|------|------|
+| `infra/docker-dashboard/pages/feedback.py` | 미커밋 변경 커밋 | 도형준 |
+| `infra/docker-dashboard/pages/db_viewer.py` | 미커밋 변경 커밋 | 도형준 |
+| `fastapi/requirements.txt` | prometheus-fastapi-instrumentator 추가 | 정지훈 |
+| `fastapi/app/main.py` | Instrumentator 등록 | 정지훈 |
+| `infra/monitoring/docker-compose.yml` | cAdvisor + node-exporter 추가 | 도형준 |
+| `infra/monitoring/grafana/provisioning/dashboards/adelie-overview.json` | API 상세 패널 추가 | 도형준 |
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+현재 개장이되었는데, 매수 및 매도 기능이 동작을 안하는데 이를 올바르게 수정해야 한다.
+
+---
+
+[Request interrupted by user for tool use]
