@@ -1,0 +1,483 @@
+Implement the following plan:
+
+# dashboard.adelie-invest.com DB뷰어/피드백 탭 수정 + 배포 싱크
+
+## Context
+
+`dashboard.adelie-invest.com` (deploy-test:8501, Streamlit `infra/docker-compose.yml` 기반)의
+DB 뷰어 탭과 피드백 관리 탭이 동작하지 않는 원인이 두 가지 확인됨.
+
+### 원인 1: 네트워크 단절 (DB 뷰어 + 피드백 탭 공통)
+- `adelie-dashboard` 컨테이너 → `monitoring_default` 네트워크
+- `adelie-postgres` 컨테이너 → `adelie-network` (host 포트 5432 미노출)
+- Dashboard가 `DB_HOST=10.10.10.20:5432`로 접근 → **Connection refused**
+- 검증: `docker exec adelie-dashboard python3 -c "psycopg2.connect(...)"` → 확인됨
+
+### 원인 2: SQLAlchemy 2.x 비호환 (피드백 탭 전용)
+- 설치 버전: SQLAlchemy 2.0.46
+- `feedback.py`의 `_query()`: `pd.read_sql(raw_string, conn)` 사용
+- SQLAlchemy 2.x에서 Connection.execute(raw_string) 불가 → `ObjectNotExecutableError`
+- `%(key)s` 파라미터 스타일도 `text()` + `:key` 스타일로 변경 필요
+
+### 참고 사항
+- `db_viewer.py`: `utils/database.py`의 `execute_query(text(sql), conn)` 패턴 이미 사용 → 코드 수정 불필요
+- `user_feedback`, `briefing_feedback`, `usage_events` 테이블 존재, 데이터 없음 (0행) — 정상 (empty 처리 코드 있음)
+- deploy-test: `prod` 브랜치로 운영, origin/prod보다 56 커밋 앞. 특정 파일만 develop에서 체크아웃하여 적용
+
+---
+
+## 수정 대상 파일 (2개)
+
+| 파일 | 변경 이유 |
+|------|-----------|
+| `infra/docker-compose.yml` | `adelie-network` external network 추가, dashboard 서비스에 연결 |
+| `infra/docker-dashboard/pages/feedback.py` | `_query()` → `text()` 래핑 + `:key` 파라미터 스타일 |
+
+---
+
+## Step 1: `infra/docker-compose.yml` 수정
+
+`dashboard` 서비스에 `adelie-network` 추가 + 하단에 external network 선언:
+
+```yaml
+services:
+  dashboard:
+    ...
+    networks:
+      - default
+      - adelie-network    # ← 추가
+
+# 기존
+networks:
+  default:
+    name: narrative-network
+
+# ↓ 수정 후
+networks:
+  default:
+    name: narrative-network
+  adelie-network:          # ← 추가
+    external: true
+    name: adelie-network
+```
+
+`DB_HOST` 기본값 변경 (10.10.10.10 → postgres):
+```yaml
+environment:
+  DB_HOST: ${DB_HOST:-postgres}   # postgres = adelie-network 내 서비스 DNS
+```
+
+---
+
+## Step 2: `infra/docker-dashboard/pages/feedback.py` 수정
+
+### 2-1. import 추가 + `_query()` 수정
+
+```python
+# 추가
+from sqlalchemy import text
+
+# 기존 _query()
+def _query(sql: str, params: dict | None = None) -> pd.DataFrame:
+    engine = get_engine()
+    with engine.connect() as conn:
+        return pd.read_sql(sql, conn, params=params or {})
+
+# 수정 후 (database.py의 execute_query 패턴과 동일)
+def _query(sql: str, params: dict | None = None) -> pd.DataFrame:
+    engine = get_engine()
+    with engine.connect() as conn:
+        return pd.read_sql_query(text(sql), conn, params=params or {})
+```
+
+### 2-2. 파라미터 스타일 변경 (피드백 목록 조회 조건 구성 부분)
+
+```python
+# 기존 (%(key)s 스타일 — text() 미사용 시 psycopg2 방언)
+conditions.append("category = %(cat)s")
+params["cat"] = selected_cat
+conditions.append("page = %(page)s")
+params["page"] = selected_page
+
+# 수정 후 (:key 스타일 — SQLAlchemy text() 방언)
+conditions.append("category = :cat")
+params["cat"] = selected_cat
+conditions.append("page = :page")
+params["page"] = selected_page
+```
+
+---
+
+## Step 3: develop 커밋 + push
+
+커밋 담당자 확인 (인프라 담당):
+```bash
+git config user.name   # → dorae222
+git config user.email  # → dhj9842@gmail.com
+```
+
+커밋:
+```bash
+git add infra/docker-compose.yml infra/docker-dashboard/pages/feedback.py
+git commit -m "fix(dashboard): DB 네트워크 연결 수정 및 SQLAlchemy 2.x 호환"
+git push origin develop
+```
+
+---
+
+## Step 4: deploy-test 적용
+
+```bash
+# 1) 수정된 파일만 origin/develop에서 체크아웃 (prod 브랜치 유지)
+ssh deploy-test 'cd ~/adelie-investment && \
+  git fetch origin && \
+  git checkout origin/develop -- infra/docker-compose.yml \
+    infra/docker-dashboard/pages/feedback.py && \
+  git add infra/ && \
+  git commit -m "fix(dashboard): DB 네트워크 + SQLAlchemy 수정 apply"'
+
+# 2) root .env의 DB_HOST를 postgres로 변경
+ssh deploy-test 'sed -i "s/^DB_HOST=.*/DB_HOST=postgres/" ~/adelie-investment/.env && \
+  grep DB_HOST ~/adelie-investment/.env'
+
+# 3) infra 디렉토리에서 대시보드 이미지 재빌드 + 재시작
+ssh deploy-test 'cd ~/adelie-investment/infra && \
+  docker compose build dashboard && \
+  docker compose up -d dashboard'
+```
+
+---
+
+## Step 5: 검증
+
+```bash
+# DB 연결 확인
+ssh deploy-test 'docker exec adelie-dashboard python3 -c "
+import os, psycopg2
+conn = psycopg2.connect(host=os.getenv(\"DB_HOST\", \"postgres\"),
+  port=5432, dbname=os.getenv(\"DB_NAME\", \"narrative_invest\"),
+  user=os.getenv(\"DB_USER\", \"narative\"),
+  password=os.getenv(\"DB_PASSWORD\", \"password\"), connect_timeout=5)
+print(\"DB 연결 OK:\", os.getenv(\"DB_HOST\")); conn.close()"'
+
+# 네트워크 확인 (adelie-network 포함 여부)
+ssh deploy-test 'docker inspect adelie-dashboard | \
+  python3 -c "import json,sys; d=json.load(sys.stdin)[0]; \
+  print(list(d[\"NetworkSettings\"][\"Networks\"].keys()))"'
+
+# 컨테이너 상태
+ssh deploy-test 'docker ps --filter name=adelie-dashboard --format "{{.Names}} {{.Status}}"'
+```
+
+---
+
+## 주의사항
+
+- `DB_HOST=postgres`: `adelie-network` 내 서비스 DNS 이름. 단독으로 사용 시 다른 네트워크에서는 미동작
+- deploy-test root `.env`의 `DB_HOST=10.10.10.10` → `postgres`로 변경 필수 (git 외 서버 직접 수정)
+- `adelie-network`는 `docker-compose.prod.yml`에서 `name: adelie-network`로 선언됨 (외부 네트워크로 참조 가능)
+- 대시보드 이미지는 Docker Hub 아닌 deploy-test 서버 **로컬 빌드**
+- 다른 모니터링 서비스 (Grafana, Prometheus) 동일 docker-compose이므로 영향 없음
+- 피드백/usage_events 테이블 데이터 0건 → 수정 후에도 "데이터 없음" 표시가 정상
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+경로들을 올바르게 확인하여 탭들이 올바르게 작동하는지 확인해라.
+DB랑 피드백이 아직 작동을 안한다.
+
+---
+
+[Request interrupted by user for tool use]
+
+---
+
+에러를 확인하고 어떻게 할지 계획을 디벨롭해라.
+
+---
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Analysis:
+Let me chronologically analyze this conversation to create a comprehensive summary.
+
+## Timeline of Events
+
+### Initial Request
+The user asked to implement a pre-written plan to fix `dashboard.adelie-invest.com` DB viewer and feedback tab issues. The plan identified two causes:
+1. Network isolation - `adelie-dashboard` on `monitoring_default` but `adelie-postgres` on `adelie-network`
+2. SQLAlchemy 2.x incompatibility in `feedback.py`
+
+### Actions Taken (First Session)
+
+**File 1: `infra/docker-compose.yml`** - Added `adelie-network` external network + changed `DB_HOST` default from `10.10.10.10` to `postgres`
+
+**File 2: `infra/docker-dashboard/pages/feedback.py`** - Added `from sqlalchemy import text`, changed `_query()` to use `pd.read_sql_query(text(sql), ...)`, changed `%(key)s` params to `:key` style
+
+**Committed** to develop branch, pushed to origin.
+
+**Deploy to deploy-test**: 
+- Attempted via `infra/docker-compose.yml` but failed - existing `adelie-dashboard` was managed by `infra/monitoring/docker-compose.yml` (project: `monitoring`)
+- Discovered actual running compose file was `infra/monitoring/docker-compose.yml`
+- Modified `infra/monitoring/docker-compose.yml` to add `adelie-network` + change `DB_HOST` default
+- Committed and applied to deploy-test
+- Successfully rebuilt and restarted dashboard container
+- Verification passed: `DB 연결 OK: postgres`, network `['adelie-network', 'monitoring_default']`
+
+### Second Request
+User: "경로들을 올바르게 확인하여 탭들이 올바르게 작동하는지 확인해라. DB랑 피드백이 아직 작동을 안한다."
+
+### Diagnostic Phase (Plan Mode)
+Launched explore agents to investigate:
+
+**Diagnostic 1**: Read all local dashboard source files:
+- `utils/database.py` - has `execute_query(text(sql))` pattern already correct
+- `pages/db_viewer.py` - uses `execute_query()` from `database.py`
+- `pages/feedback.py` - confirmed code is correct with `text()` wrapper
+- `utils/ui_components.py` - has `inject_custom_css`, `render_metric_card`, `render_section_header`
+- `config.py` - reads `DB_HOST` from env vars: `os.getenv("DB_HOST", "10.10.10.10")`
+
+**Diagnostic 2**: Ran actual DB queries in container:
+- SQLAlchemy engine: `postgresql://narative:***@postgres:5432/narrative_invest` OK
+- `get_tables()`: returned 30 tables (including user_feedback, briefing_feedback, usage_events)
+- Direct queries: `user_feedback` count=0, `briefing_feedback` count=0, `usage_events` count=0
+- All technically OK - data 0 rows but that's normal
+
+**Asked user**: "정확히 어떤 화면이 보이나요?"
+
+**User answered**: 
+```
+ImportError: cannot import name 'inject_custom_css' from 'utils.ui_components' (/app/utils/ui_components.py)
+Traceback:
+File "/app/app.py", line 46, in <module>  nav.run()
+File "streamlit/navigation/page.py", line 310, in run  exec(code, module.__dict__)
+File "/app/pages/db_viewer.py", line 9, in <module>  from utils.ui_components import (
+```
+
+### Further Investigation of ImportError
+
+Launched more explore agents:
+- Container `grep -n "^def " /app/utils/ui_components.py` → all functions including `inject_custom_css` at line 20 ✓
+- `import utils.ui_components` → "ui_components import OK" with `inject_custom_css` in dir() ✓
+- Pyc timestamp: Feb 19 11:10 (fresh)
+- `app.py` full content revealed
+
+**app.py key content**:
+- Line 7: `from utils.ui_components import inject_custom_css, render_metric_card, render_status_badge`
+- Line 6: `from pages.team_member import render_team_page` (imports page at top level!)
+- ops_pages = list of `st.Page("pages/db_viewer.py", ...)`, `st.Page("pages/feedback.py", ...)`
+- Line 46: `nav.run()` - this exec's the pages
+
+**Key insight sought**: Why would `import utils.ui_components` work manually but fail when Streamlit exec's `db_viewer.py`?
+
+Plan written: rebuild with `--no-cache` as fix.
+
+### Cloudflare Tunnel Discovery (Critical)
+
+After exploring `infra/monitoring/` and checking Cloudflare Tunnel config on deploy-test:
+
+```yaml
+ingress:
+  - hostname: demo.adelie-invest.com
+    service: http://localhost:80
+  - hostname: monitoring.adelie-invest.com
+    service: http://localhost:3000
+  - hostname: dashboard.adelie-invest.com
+    service: http://10.10.10.10:8501   # ← INFRA-SERVER, not deploy-test!
+  - service: http_status:404
+```
+
+**This is the real root cause**: `dashboard.adelie-invest.com` routes to infra-server (10.10.10.10:8501), NOT to deploy-test (10.10.10.20)'s `adelie-dashboard` container. All fixes applied to deploy-test's container are NOT visible to users accessing the URL.
+
+Additionally discovered `_stcore` 404 issues for Streamlit sub-page navigation.
+
+### Plan Updated (Current State)
+Plan file updated to include:
+1. **Fix 0**: Cloudflare Tunnel config - change `10.10.10.10:8501` → `localhost:8501`
+2. **Fix 1**: Add nginx proxy container to monitoring compose - handles `_stcore` path rewriting
+3. **Fix 2**: Add `[theme.sidebar]` to `config.toml`
+
+### Latest User Message
+User provided BOTH ImportError tracebacks again:
+- `db_viewer.py` line 9: `from utils.ui_components import (`
+- `feedback.py` line 8: `from utils.ui_components import (`
+
+Both `db_viewer.py` and `feedback.py` fail with the same ImportError.
+
+## Analysis of ImportError with Cloudflare Tunnel context
+
+Given that Cloudflare Tunnel → infra-server (10.10.10.10:8501), the user is accessing the dashboard on INFRA-SERVER, not deploy-test. The infra-server dashboard might have different code. The ImportError on infra-server's dashboard would happen if:
+- infra-server's `ui_components.py` was compiled from an older version
+- OR infra-server's dashboard image is stale
+
+All our code fixes (feedback.py text() fix, network fixes) were applied to deploy-test's `infra/monitoring/docker-compose.yml` but NOT to infra-server's `infra/docker-compose.yml`.
+
+The plan to fix Cloudflare Tunnel is the right path. Once we redirect to deploy-test (with proper nginx proxy), the ImportError on infra-server will stop being relevant.
+
+But we still need to address why the ImportError occurs even on deploy-test. The manual test shows `inject_custom_css` is importable, but Streamlit's `exec(code, module.__dict__)` fails.
+
+Wait - the ImportError is happening on infra-server (what users actually see via Cloudflare Tunnel). Once we fix Cloudflare Tunnel to point to deploy-test, users will see deploy-test's dashboard. On deploy-test, our diagnostics show the functions are importable. So the issue might resolve naturally once Cloudflare is fixed.
+
+However, there's still the possibility of the exec() context issue. To be safe, the plan should also address potential `_stcore` and import issues.
+
+## Files Modified Summary
+- `infra/docker-compose.yml` - adelie-network + DB_HOST=postgres
+- `infra/docker-dashboard/pages/feedback.py` - text() wrapper + :key params
+- `infra/monitoring/docker-compose.yml` - adelie-network + DB_HOST=postgres
+
+## Pending: Plan file needs to address ImportError in context of Cloudflare Tunnel fix
+
+Summary:
+1. Primary Request and Intent:
+   - Fix `dashboard.adelie-invest.com` (Streamlit dashboard on deploy-test:8501) where DB Viewer and Feedback management tabs were not working
+   - Original plan identified two causes: (1) network isolation between `adelie-dashboard` (monitoring_default) and `adelie-postgres` (adelie-network), and (2) SQLAlchemy 2.x incompatibility in `feedback.py`
+   - Later discovered deeper root causes: Cloudflare Tunnel points to wrong server (infra-server 10.10.10.10, not deploy-test), and Streamlit `_stcore` 404 error on sub-page navigation
+
+2. Key Technical Concepts:
+   - **Streamlit st.navigation() multi-page app** — pages executed via `exec(code, module.__dict__)` inside `nav.run()`
+   - **Docker multi-network** — `adelie-network` (external, shared with prod stack) and `monitoring_default`
+   - **SQLAlchemy 2.x** — `pd.read_sql()` with raw strings not allowed; must use `text()` wrapper with `pd.read_sql_query(text(sql), conn)`
+   - **Cloudflare Tunnel** — routing `dashboard.adelie-invest.com` → service URL; currently misconfigured to point to infra-server not deploy-test
+   - **nginx reverse proxy** — needed to handle `_stcore` path rewriting for Streamlit sub-pages: `/feedback/_stcore/...` → `/_stcore/...`
+   - **Docker build cache** — `COPY . .` CACHED in second build; stale `.pyc` bytecode possible cause of ImportError
+   - **Python module exec() context** — Streamlit imports `inject_custom_css` successfully in `app.py` but fails when `exec()`-ing page modules
+
+3. Files and Code Sections:
+   - **`infra/docker-compose.yml`** (infra-server, 10.10.10.10):
+     - Added `adelie-network` external network to dashboard service + changed `DB_HOST` default from `10.10.10.10` to `postgres`
+     - Added `networks: adelie-network: external: true`
+   - **`infra/monitoring/docker-compose.yml`** (deploy-test, actual running compose):
+     - Added `adelie-network` to dashboard service + changed `DB_HOST` default from `10.10.10.20` to `postgres`
+     - Added `networks: default: {}` and `adelie-network: external: true`
+     - **Current state** (after edits):
+     ```yaml
+     dashboard:
+       environment:
+         DB_HOST: ${DB_HOST:-postgres}
+       networks:
+         - default
+         - adelie-network
+     networks:
+       default: {}
+       adelie-network:
+         external: true
+         name: adelie-network
+     ```
+   - **`infra/docker-dashboard/pages/feedback.py`**:
+     - Added `from sqlalchemy import text`
+     - Changed `_query()` from `pd.read_sql(sql, conn)` to `pd.read_sql_query(text(sql), conn, params=params or {})`
+     - Changed `%(cat)s` → `:cat`, `%(page)s` → `:page` parameter style
+     ```python
+     from sqlalchemy import text
+     
+     def _query(sql: str, params: dict | None = None) -> pd.DataFrame:
+         engine = get_engine()
+         with engine.connect() as conn:
+             return pd.read_sql_query(text(sql), conn, params=params or {})
+     
+     # params style:
+     conditions.append("category = :cat")
+     conditions.append("page = :page")
+     ```
+   - **`infra/docker-dashboard/utils/ui_components.py`** (NOT modified):
+     - Has `inject_custom_css` at line 20, `render_metric_card` at line 228, `render_section_header` at line 263
+     - Manual container import test passed: `inject_custom_css` in `dir(utils.ui_components)`
+   - **`infra/docker-dashboard/app.py`** (NOT modified, discovered):
+     - Line 6: `from pages.team_member import render_team_page` (top-level import)
+     - Line 7: `from utils.ui_components import inject_custom_css, render_metric_card, render_status_badge`
+     - Line 46: `nav.run()` — triggers `exec(code, module.__dict__)` for each page
+     - ops_pages: `st.Page("pages/db_viewer.py", ...)`, `st.Page("pages/feedback.py", ...)`
+   - **`infra/docker-dashboard/.streamlit/config.toml`** (NOT yet modified):
+     - Current: has `[server]`, `[browser]`, `[theme]` sections — missing `[theme.sidebar]`
+   - **deploy-test `/etc/cloudflared/config.yml`** (NOT in git, needs direct server edit):
+     ```yaml
+     ingress:
+       - hostname: dashboard.adelie-invest.com
+         service: http://10.10.10.10:8501   # BUG: points to infra-server
+     ```
+   - **Plan file** `/home/hj/.claude/plans/cuddly-fluttering-key.md`:
+     - Updated with root cause analysis and 3-fix plan
+
+4. Errors and Fixes:
+   - **Error: Container name conflict on deploy-test**:
+     - First deploy attempt via `infra/docker-compose.yml` failed: "container name adelie-dashboard already in use"
+     - Fix: Discovered actual running compose is `infra/monitoring/docker-compose.yml` (project: `monitoring`)
+     - Modified `infra/monitoring/docker-compose.yml` instead and ran `docker compose up -d --force-recreate dashboard` from `infra/monitoring/`
+   - **Error: deploy-test git commit failed (no user identity)**:
+     - `fatal: unable to auto-detect email address (got 'ubuntu@deploy-test.(none)')`
+     - Fix: Used `git -c user.name="dorae222" -c user.email="dhj9842@gmail.com" commit ...`
+   - **Error: `ImportError: cannot import name 'inject_custom_css' from 'utils.ui_components'`**:
+     - Affects both `db_viewer.py` (line 9) and `feedback.py` (line 8)
+     - Occurs when Streamlit `exec(code, module.__dict__)` runs page files via `nav.run()`
+     - Manual Python import test PASSES (`inject_custom_css` confirmed in container)
+     - Root cause: **Cloudflare Tunnel points to infra-server (10.10.10.10:8501) not deploy-test** — user is accessing infra-server's dashboard which has stale/different code
+     - Secondary possible cause: Docker build cached layer with stale `.pyc` bytecode
+   - **Error: `_stcore` 404 on sub-page navigation**:
+     - `GET /feedback/_stcore/host-config 404`
+     - Streamlit JS requests `_stcore` relative to page URL when using `st.navigation()`
+     - Fix: Add nginx reverse proxy with path rewriting
+
+5. Problem Solving:
+   - **Solved**: DB network isolation — `adelie-dashboard` now on both `monitoring_default` and `adelie-network`, can reach `adelie-postgres` via hostname `postgres`
+   - **Solved**: SQLAlchemy 2.x incompatibility in `feedback.py` — `text()` wrapper added, params style changed
+   - **Verified working (deploy-test)**: DB connection OK, 30 tables accessible, queries return correct data (0 rows for feedback tables, which is normal)
+   - **Ongoing**: ImportError in Streamlit exec context — root cause traced to Cloudflare Tunnel pointing to wrong server (infra-server instead of deploy-test)
+   - **Ongoing**: `_stcore` 404 issue — nginx proxy needed
+   - **Ongoing**: sidebar color warning — `[theme.sidebar]` section needed in config.toml
+
+6. All user messages:
+   - "Implement the following plan: [plan for DB viewer/feedback tab fix + deployment sync]"
+   - "경로들을 올바르게 확인하여 탭들이 올바르게 작동하는지 확인해라. DB랑 피드백이 아직 작동을 안한다."
+   - (Answer to AskUserQuestion about what screen they see): "ImportError: cannot import name 'inject_custom_css' from 'utils.ui_components' ... db_viewer.py line 9 ... You can now continue with the user's answers in mind."
+   - "에러를 확인하고 어떻게 할지 계획을 디벨롭해라."
+   - (New message while working): "다시 아래 에러를 줄테니 확인해라. [both db_viewer.py and feedback.py ImportError tracebacks]"
+
+7. Pending Tasks:
+   - **Fix Cloudflare Tunnel**: Change `dashboard.adelie-invest.com` from `http://10.10.10.10:8501` → `http://localhost:8501` on deploy-test's `/etc/cloudflared/config.yml`, then `systemctl reload cloudflared`
+   - **Add nginx proxy** to `infra/monitoring/docker-compose.yml`:
+     - New file `infra/monitoring/nginx-dashboard.conf` with `_stcore` path rewriting
+     - Change dashboard `ports` → `expose`, add nginx service on port 8501
+   - **Fix `config.toml`**: Add `[theme.sidebar]` section to `infra/docker-dashboard/.streamlit/config.toml`
+   - **Commit and deploy** all changes to develop branch then apply to deploy-test
+   - **Address ImportError** on infra-server (or redirect Cloudflare to deploy-test where it's fixed)
+
+8. Current Work:
+   In plan mode, updating the plan file based on newly discovered root cause (Cloudflare Tunnel misconfiguration). The plan file `/home/hj/.claude/plans/cuddly-fluttering-key.md` was just updated to include:
+   - **Fix 0**: Cloudflare Tunnel config change (`10.10.10.10:8501` → `localhost:8501`)
+   - **Fix 1**: nginx proxy with `_stcore` rewriting in `infra/monitoring/nginx-dashboard.conf` and `docker-compose.yml` update
+   - **Fix 2**: `[theme.sidebar]` addition to `config.toml`
+   
+   User then re-sent both ImportError tracebacks (db_viewer.py and feedback.py):
+   ```
+   ImportError: cannot import name 'inject_custom_css' from 'utils.ui_components' (/app/utils/ui_components.py)
+   File "/app/pages/db_viewer.py", line 9, in <module>  from utils.ui_components import (
+   
+   ImportError: cannot import name 'inject_custom_css' from 'utils.ui_components' (/app/utils/ui_components.py)  
+   File "/app/pages/feedback.py", line 8, in <module>  from utils.ui_components import (
+   ```
+
+9. Optional Next Step:
+   The user's latest message is: "다시 아래 에러를 줄테니 확인해라" with both ImportError tracebacks for `db_viewer.py` and `feedback.py`.
+   
+   The plan needs to incorporate a concrete fix for the ImportError. Given that:
+   - The Cloudflare Tunnel points to infra-server (10.10.10.10:8501), the user sees infra-server's dashboard
+   - On infra-server, `infra/docker-compose.yml` runs the dashboard
+   - The ImportError occurs because Streamlit's `exec(code, module.__dict__)` context can't find `inject_custom_css`
+   
+   The next step is to update the plan to also cover the ImportError fix. The most robust fix for both servers is to add an explicit sys.path setup in `db_viewer.py` and `feedback.py`:
+   ```python
+   import sys, os
+   sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+   ```
+   This ensures `/app` is always in sys.path regardless of Streamlit's exec() context, and works for both infra-server and deploy-test dashboards.
+   
+   Then ExitPlanMode to present the complete updated plan to the user.
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+Please continue the conversation from where we left off without asking the user any further questions. Continue with the last task that you were asked to work on.
+
+---
+
+[Request interrupted by user for tool use]
