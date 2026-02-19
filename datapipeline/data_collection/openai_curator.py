@@ -9,12 +9,14 @@ import json
 import logging
 import os
 import re
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import requests
 
+from ..ai.llm_observability import record_llm_call, record_llm_event
 from ..config import (
     OPENAI_PHASE2_MAX_OUTPUT_TOKENS,
     OPENAI_PHASE2_MODEL,
@@ -224,6 +226,7 @@ def _build_payload(prompt: str) -> dict:
 
 
 def _request_responses(payload: dict, api_key: str) -> dict:
+    started = time.perf_counter()
     resp = requests.post(
         OPENAI_API_URL,
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
@@ -231,9 +234,19 @@ def _request_responses(payload: dict, api_key: str) -> dict:
         timeout=180,
     )
     if not resp.ok:
+        record_llm_event(prompt_name="phase2_curate_with_websearch", event="http_error")
         err_body = resp.text[:2000]
         raise RuntimeError(f"OpenAI Responses API error {resp.status_code}: {err_body}")
-    return resp.json()
+    data = resp.json()
+    usage = data.get("usage", {}) if isinstance(data, dict) else {}
+    record_llm_call(
+        prompt_name="phase2_curate_with_websearch",
+        provider="openai",
+        model=str(payload.get("model", OPENAI_PHASE2_MODEL)),
+        usage=usage if isinstance(usage, dict) else {},
+        elapsed_s=time.perf_counter() - started,
+    )
+    return data
 
 
 def _parse_web_search_log(output: list) -> dict:
