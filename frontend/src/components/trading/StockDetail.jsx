@@ -9,6 +9,19 @@ import { formatKRW, formatVolume } from '../../utils/formatNumber';
 import { usePortfolio } from '../../contexts/PortfolioContext';
 import MiniChart from './MiniChart';
 
+const PERIOD_OPTIONS = [
+  { key: '1w', label: '1주' },
+  { key: '1m', label: '1개월' },
+  { key: '3m', label: '3개월' },
+  { key: '6m', label: '6개월' },
+  { key: '1y', label: '1년' },
+];
+
+const PERIOD_LABEL_MAP = PERIOD_OPTIONS.reduce((acc, item) => {
+  acc[item.key] = item.label;
+  return acc;
+}, {});
+
 function toFiniteNumbers(list) {
   if (!Array.isArray(list)) return [];
   return list.map((v) => Number(v)).filter((v) => Number.isFinite(v));
@@ -72,13 +85,29 @@ export default function StockDetail({ isOpen, onClose, stock, onTrade }) {
   const [chart, setChart] = useState(null);
   const [loading, setLoading] = useState(false);
   const [marketClosed, setMarketClosed] = useState(false);
+  const [selectedPeriod, setSelectedPeriod] = useState('1m');
   const { portfolio } = usePortfolio();
   const normalizedChart = useMemo(() => normalizeChartData(chart), [chart]);
   const hasChartData = normalizedChart.values.length > 0;
+  const periodChangeRate = useMemo(() => {
+    const values = normalizedChart.values;
+    if (!Array.isArray(values) || values.length < 2) return null;
+    const start = values[0];
+    const end = values[values.length - 1];
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start <= 0) return null;
+    return ((end - start) / start) * 100;
+  }, [normalizedChart.values]);
+
   const currentCash = portfolio?.current_cash || 0;
   const holding = portfolio?.holdings?.find((h) => h.stock_code === stock?.stock_code);
   const hasHolding = holding && holding.quantity > 0;
   const noCash = currentCash <= 0;
+
+  useEffect(() => {
+    if (isOpen && stock?.stock_code) {
+      setSelectedPeriod('1m');
+    }
+  }, [isOpen, stock?.stock_code]);
 
   useEffect(() => {
     if (isOpen && stock?.stock_code) {
@@ -87,7 +116,7 @@ export default function StockDetail({ isOpen, onClose, stock, onTrade }) {
       setMarketClosed(false);
       Promise.all([
         portfolioApi.getStockPrice(stock.stock_code).catch(() => null),
-        portfolioApi.getStockChart(stock.stock_code, 20).catch(() => null),
+        portfolioApi.getStockChart(stock.stock_code, { period: selectedPeriod }).catch(() => null),
         portfolioApi.getMarketStatus().catch(() => null),
       ]).then(([priceData, chartData, statusData]) => {
         setPrice(priceData);
@@ -95,7 +124,7 @@ export default function StockDetail({ isOpen, onClose, stock, onTrade }) {
         if (statusData && !statusData.is_trading_day) setMarketClosed(true);
       }).finally(() => setLoading(false));
     }
-  }, [isOpen, stock]);
+  }, [isOpen, stock, selectedPeriod]);
 
   if (!isOpen) return null;
 
@@ -139,8 +168,10 @@ export default function StockDetail({ isOpen, onClose, stock, onTrade }) {
           ) : price ? (
             <div className="bg-gray-50 dark:bg-gray-800 rounded-2xl p-4 mb-4">
               <div className="text-2xl font-bold mb-1">{formatKRW(price.current_price)}</div>
-              <div className={`text-sm font-semibold ${price.change_rate > 0 ? 'text-red-500' : price.change_rate < 0 ? 'text-blue-500' : 'text-gray-500'}`}>
-                {price.change_rate > 0 ? '+' : ''}{price.change_rate}%
+              <div className={`text-sm font-semibold ${
+                (periodChangeRate || 0) > 0 ? 'text-red-500' : (periodChangeRate || 0) < 0 ? 'text-blue-500' : 'text-gray-500'
+              }`}>
+                {PERIOD_LABEL_MAP[selectedPeriod]} 수익률 {periodChangeRate !== null ? `${periodChangeRate > 0 ? '+' : ''}${periodChangeRate.toFixed(2)}%` : '-'}
               </div>
               {price.volume && (
                 <div className="text-xs text-gray-500 mt-1">
@@ -153,6 +184,24 @@ export default function StockDetail({ isOpen, onClose, stock, onTrade }) {
               시세 정보를 불러올 수 없습니다
             </div>
           )}
+
+          {/* 기간 선택 */}
+          <div className="mb-4 flex gap-2">
+            {PERIOD_OPTIONS.map((option) => (
+              <button
+                key={option.key}
+                type="button"
+                onClick={() => setSelectedPeriod(option.key)}
+                className={`flex-1 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors ${
+                  selectedPeriod === option.key
+                    ? 'bg-primary text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
 
           {/* 미니 차트 (항상 라인차트 우선, 폴백 메시지 포함) */}
           <div className="mb-4">

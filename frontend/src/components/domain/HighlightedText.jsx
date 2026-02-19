@@ -5,7 +5,9 @@
  * 마크다운(**bold**, *italic* 등)은 ReactMarkdown으로 처리.
  */
 import ReactMarkdown from 'react-markdown';
+import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
+import remarkMath from 'remark-math';
 import { useTermContext } from '../../contexts/TermContext';
 
 export default function HighlightedText({ content, onTermClick }) {
@@ -67,7 +69,8 @@ export default function HighlightedText({ content, onTermClick }) {
         return (
           <ReactMarkdown
             key={index}
-            rehypePlugins={[rehypeRaw]}
+            remarkPlugins={[remarkMath]}
+            rehypePlugins={[rehypeRaw, rehypeKatex]}
             components={{
               // 인라인 컨텍스트이므로 p → span 변환
               p: ({ children }) => <span>{children}</span>,

@@ -38,19 +38,44 @@ export function PortfolioProvider({ children }) {
     }
   }, [userId]);
 
+  const syncPortfolioState = useCallback(async () => {
+    await Promise.all([fetchPortfolio(), fetchSummary()]);
+  }, [fetchPortfolio, fetchSummary]);
+
+  const refreshPortfolio = useCallback(async (force = true) => {
+    if (!userId) return { ok: false, reason: 'unauthorized' };
+
+    if (!force) {
+      await syncPortfolioState();
+      return { ok: true, fallback: true };
+    }
+
+    try {
+      const refreshed = await portfolioApi.refreshPortfolio('summary_and_holdings');
+      if (refreshed?.portfolio) setPortfolio(refreshed.portfolio);
+      if (refreshed?.summary) setSummary(refreshed.summary);
+      setError(null);
+      return { ok: true, data: refreshed };
+    } catch (err) {
+      console.error('Portfolio refresh error:', err);
+      await syncPortfolioState();
+      return { ok: false, error: err };
+    }
+  }, [userId, syncPortfolioState]);
+
   const executeTrade = useCallback(async (tradeData) => {
     if (!userId) throw new Error('로그인이 필요합니다');
     const result = await portfolioApi.executeTrade(tradeData);
-    await fetchPortfolio();
+    await refreshPortfolio(true);
     return result;
-  }, [userId, fetchPortfolio]);
+  }, [userId, refreshPortfolio]);
 
   const claimReward = useCallback(async (caseId) => {
     if (!userId) throw new Error('로그인이 필요합니다');
     const result = await portfolioApi.claimBriefingReward(caseId);
-    await fetchSummary();
+    await refreshPortfolio(true);
     return result;
-  }, [userId, fetchSummary]);
+  }, [userId, refreshPortfolio]);
 
   // 초기 로드 (인증된 사용자만) + 로그아웃 시 상태 초기화
   useEffect(() => {
@@ -72,9 +97,10 @@ export function PortfolioProvider({ children }) {
     error,
     fetchPortfolio,
     fetchSummary,
+    refreshPortfolio,
     executeTrade,
     claimReward,
-  }), [portfolio, summary, isLoading, error, fetchPortfolio, fetchSummary, executeTrade, claimReward]);
+  }), [portfolio, summary, isLoading, error, fetchPortfolio, fetchSummary, refreshPortfolio, executeTrade, claimReward]);
 
   return (
     <PortfolioContext.Provider value={value}>

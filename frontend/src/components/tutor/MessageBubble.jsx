@@ -2,10 +2,12 @@
  * MessageBubble - 채팅 메시지 렌더링 컴포넌트
  * Message, SourceBadge, VisualizationMessage, TypingIndicator 포함
  */
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
+import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
+import remarkMath from 'remark-math';
 import PenguinLoading from '../common/PenguinLoading';
 import ResponsivePlotly from '../charts/ResponsivePlotly';
 import { normalizeLayout } from '../../utils/plotly/normalizeLayout';
@@ -22,6 +24,23 @@ const SOURCE_LABELS = {
   financial:   { icon: '\uD83D\uDCB9', label: '재무제표',       desc: 'FinanceDataReader' },
   web:         { icon: '\uD83C\uDF10', label: '웹 검색',        desc: 'Perplexity 검색' },
 };
+
+function normalizeMathDelimiters(content) {
+  if (!content) return '';
+
+  let normalized = String(content).replace(/\r\n/g, '\n');
+
+  // MathJax 스타일 블록 수식(\[...\])을 KaTeX 호환 블록($$...$$)으로 정규화
+  normalized = normalized.replace(
+    /(?:^|\n)\s*\\\[\s*([\s\S]*?)\s*\\?\]\s*(?=\n|$)/g,
+    (_, expr) => `\n$$\n${expr.trim()}\n$$\n`,
+  );
+
+  // MathJax 스타일 인라인 수식(\(...\))을 KaTeX 호환 인라인($...$)으로 정규화
+  normalized = normalized.replace(/\\\(\s*([\s\S]*?)\s*\\\)/g, (_, expr) => `$${expr.trim()}$`);
+
+  return normalized;
+}
 
 function SourceBadge({ sources }) {
   const [open, setOpen] = useState(false);
@@ -164,6 +183,10 @@ export function TypingIndicator() {
 }
 
 export default React.memo(function Message({ message }) {
+  const markdownContent = useMemo(
+    () => normalizeMathDelimiters(message.content),
+    [message.content],
+  );
   if (message.role === 'visualization') return <VisualizationMessage message={message} />;
 
   const isUser = message.role === 'user';
@@ -188,7 +211,9 @@ export default React.memo(function Message({ message }) {
         <div className={`px-4 py-3 rounded-2xl rounded-tl-md ${message.isError ? 'bg-error-light text-error border border-error/20' : 'bg-surface border border-border'}`}>
           {message.isError ? <p className="text-sm">{message.content}</p> : (
             <div className="text-sm leading-relaxed text-text-primary prose prose-sm prose-headings:text-text-primary prose-strong:text-text-primary prose-code:text-primary prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs max-w-none dark:prose-invert">
-              <ReactMarkdown rehypePlugins={[rehypeRaw]}>{message.content}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeRaw, rehypeKatex]}>
+                {markdownContent}
+              </ReactMarkdown>
             </div>
           )}
           {message.isStreaming && <span className="inline-block w-1.5 h-4 bg-primary animate-pulse ml-0.5 rounded-sm" />}
