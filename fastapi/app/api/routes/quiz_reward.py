@@ -3,13 +3,14 @@ from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select, update
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.auth import get_current_user
 from app.models.portfolio import UserPortfolio
 from app.models.reward import BriefingReward
+from app.services.portfolio_service import get_or_create_portfolio
 
 router = APIRouter(prefix="/quiz", tags=["quiz"])
 
@@ -40,20 +41,18 @@ async def process_quiz_reward(
     is_correct = req.selected_answer == req.correct_answer
     reward_amount = CORRECT_REWARD if is_correct else INCORRECT_REWARD
 
-    # 포트폴리오 조회
-    result = await db.execute(
-        select(UserPortfolio).where(UserPortfolio.user_id == user_id)
-    )
-    portfolio = result.scalar_one_or_none()
-    if not portfolio:
-        raise HTTPException(404, "Portfolio not found")
+    # 포트폴리오 조회 (없으면 자동 생성, 중복 안전)
+    portfolio = await get_or_create_portfolio(db, user_id)
 
-    # 포트폴리오 현금 추가
+    # 포트폴리오 현금 추가 + 누적 보상액 갱신 (특정 portfolio.id로 1건만 업데이트)
     new_cash = portfolio.current_cash + reward_amount
     await db.execute(
         update(UserPortfolio)
-        .where(UserPortfolio.user_id == user_id)
-        .values(current_cash=new_cash)
+        .where(UserPortfolio.id == portfolio.id)
+        .values(
+            current_cash=new_cash,
+            total_rewards_received=UserPortfolio.total_rewards_received + reward_amount,
+        )
     )
 
     # 보상 기록 (BriefingReward 필수 컬럼 포함)

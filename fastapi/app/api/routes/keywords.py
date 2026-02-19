@@ -12,6 +12,7 @@ from sqlalchemy import select, and_, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.redis_keys import key_keywords_today
 from app.models.briefing import DailyBriefing
 from app.models.historical_case import HistoricalCase, CaseMatch
 from app.services.redis_cache import get_redis_cache
@@ -35,7 +36,7 @@ async def get_today_keywords(
 
     # Redis 캐시 체크
     target_date_str = target_date.strftime("%Y%m%d")
-    cache_key = f"api:keywords:today:{target_date_str}"
+    cache_key = key_keywords_today(target_date_str)
     try:
         cache = await get_redis_cache()
         cached = await cache.get(cache_key)

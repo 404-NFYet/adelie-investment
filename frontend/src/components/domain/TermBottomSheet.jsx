@@ -5,6 +5,8 @@
  */
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import ReactMarkdown from 'react-markdown';
+import rehypeRaw from 'rehype-raw';
 import { API_BASE_URL } from '../../config';
 import { useTermContext } from '../../contexts/TermContext';
 
@@ -103,9 +105,11 @@ export default function TermBottomSheet() {
                   <p className="text-sm text-error">{error}</p>
                 )}
                 {!isLoading && !error && explanation && (
-                  <p className="text-base leading-relaxed text-gray-600 dark:text-text-secondary">
-                    {explanation}
-                  </p>
+                  <div className="text-base leading-relaxed text-gray-600 dark:text-text-secondary prose prose-sm max-w-none">
+                    <ReactMarkdown rehypePlugins={[rehypeRaw]}>
+                      {explanation.replace(/->/g, '→')}
+                    </ReactMarkdown>
+                  </div>
                 )}
               </div>
 

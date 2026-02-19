@@ -319,9 +319,12 @@ async def generate_tutor_response(
         except Exception as e:
             logger.warning("Failed to save tutor session: %s", e)
         
-        # 시각화 자동 감지: 사용자 메시지나 응답에 차트 키워드가 있으면 Plotly 생성
-        viz_keywords = ["차트", "그래프", "시각화", "그려", "보여줘", "chart", "graph"]
-        should_viz = any(kw in request.message.lower() for kw in viz_keywords)
+        # 시각화 자동 감지: should_auto_visualize() + chart_data 존재 여부로 판단
+        from app.services.stock_resolver import should_auto_visualize
+        should_viz = should_auto_visualize(request.message, bool(detected_stocks))
+        # chart_data가 이미 수집되어 있으면 자동 시각화
+        if chart_data and not should_viz:
+            should_viz = True
 
         if should_viz and full_response:
             try:

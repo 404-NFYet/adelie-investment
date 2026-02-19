@@ -479,10 +479,10 @@ def merge_theme_pages_node(state: dict) -> dict:
 # 4. run_glossary — page_glossaries
 # ────────────────────────────────────────────
 
-@traceable(name="run_glossary", run_type="llm",
+@traceable(name="run_glossary", run_type="chain",
            metadata={"phase": "interface_3", "phase_name": "용어 생성", "step": 4})
 def run_glossary_node(state: dict) -> dict:
-    """validated_pages → page_glossaries."""
+    """validated_pages → term extraction → search → page_glossaries."""
     if state.get("error"):
         return {"error": state["error"]}
 
@@ -491,8 +491,12 @@ def run_glossary_node(state: dict) -> dict:
 
     try:
         raw = state["raw_narrative"]
-        validated = state["i3_validated"]
-        validated_pages = validated.get("validated_pages", [])
+        validated = state.get("i3_validated")
+        if not validated:
+            logger.warning("  run_glossary: i3_validated is None. Using raw i3_pages.")
+            validated_pages = state.get("i3_pages", [])
+        else:
+            validated_pages = validated.get("validated_pages", [])
         backend = state.get("backend", "live")
 
         if backend == "mock":
@@ -504,12 +508,57 @@ def run_glossary_node(state: dict) -> dict:
                         {"term": f"용어-{section_key}", "definition": "mock 정의예요.", "domain": "일반"}
                     ],
                 })
-            result = {"page_glossaries": page_glossaries}
-        else:
-            result = call_llm_with_prompt("3_glossary", {
-                "validated_interface_2": json.dumps(raw, ensure_ascii=False),
-                "validated_pages": json.dumps(validated_pages, ensure_ascii=False),
-            })
+            return {
+                "i3_glossaries": page_glossaries,
+                "i3_glossary_search_context": "[Mock Search Results]",
+                "metrics": _update_metrics(state, "run_glossary", time.time() - node_start),
+            }
+
+        # 1. Term Extraction
+        extraction_result = call_llm_with_prompt("3_glossary_term_extraction", {
+            "validated_pages": json.dumps(validated_pages, ensure_ascii=False),
+        })
+        terms_to_search = extraction_result.get("terms_to_search", [])
+        logger.info("  Extracted %d terms to search.", len(terms_to_search))
+
+        # 2. Web Search
+        from ..ai.tools import search_web_for_chart_data
+
+        search_results_text = ""
+        if terms_to_search:
+            unique_terms_map: dict[str, str] = {}
+            for item in terms_to_search:
+                term = item.get("term")
+                context = item.get("context_sentence", "")
+                if term and term not in unique_terms_map:
+                    unique_terms_map[term] = context
+
+            logger.info("  Searching for: %s", list(unique_terms_map.keys()))
+
+            search_docs: list[str] = []
+            for term, context in unique_terms_map.items():
+                try:
+                    if context:
+                        query = f"주식 용어 {term} 뜻 의미 (문맥: {context})"
+                    else:
+                        query = f"주식 용어 {term} 뜻 의미"
+
+                    search_output = search_web_for_chart_data.invoke(query)
+                    search_docs.append(f"[{term}]\n(문맥: {context})\n{search_output}\n")
+                except Exception as e:
+                    logger.warning("  Search failed for %s: %s", term, e)
+
+            search_results_text = "\n".join(search_docs)
+
+        if not search_results_text:
+            search_results_text = "(검색 결과 없음)"
+
+        # 3. Glossary Generation (search_results 포함)
+        result = call_llm_with_prompt("3_glossary", {
+            "validated_interface_2": json.dumps(raw, ensure_ascii=False),
+            "validated_pages": json.dumps(validated_pages, ensure_ascii=False),
+            "search_results": search_results_text,
+        })
 
         glossary_count = sum(
             len(pg.get("glossary", []))
@@ -519,6 +568,7 @@ def run_glossary_node(state: dict) -> dict:
 
         return {
             "i3_glossaries": result.get("page_glossaries", []),
+            "i3_glossary_search_context": search_results_text,
             "metrics": _update_metrics(state, "run_glossary", time.time() - node_start),
         }
 
@@ -559,10 +609,12 @@ def run_hallcheck_glossary_node(state: dict) -> dict:
                 "validated_page_glossaries": i3_glossaries,
             }
         else:
+            search_context = state.get("i3_glossary_search_context", "(검색 결과 없음)")
             result = call_llm_with_prompt("3_hallcheck_glossary", {
                 "validated_interface_2": json.dumps(raw, ensure_ascii=False),
                 "validated_pages": json.dumps(validated_pages, ensure_ascii=False),
                 "page_glossaries": json.dumps(i3_glossaries, ensure_ascii=False),
+                "search_results": search_context,
             })
 
         risk = result.get("overall_risk", "unknown")

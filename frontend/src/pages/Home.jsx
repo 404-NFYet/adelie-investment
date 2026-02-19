@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { keywordsApi } from '../api';
 import { DEFAULT_HOME_ICON_KEY, getHomeIconSrc } from '../constants/homeIconCatalog';
+import AppHeader from '../components/layout/AppHeader';
 
 export default function Home() {
   const navigate = useNavigate();
@@ -37,7 +38,8 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background pb-24">
-      <main className="max-w-mobile mx-auto px-6 pt-28">
+      <AppHeader />
+      <main className="max-w-mobile mx-auto px-6 pt-6">
         <p className="text-[16px] font-medium text-[#616161]">
           안녕하세요
         </p>

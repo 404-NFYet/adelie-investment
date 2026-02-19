@@ -98,6 +98,7 @@ class BriefingPipelineState(TypedDict):
     i3_pages: Optional[list]
     i3_validated: Optional[dict]
     i3_glossaries: Optional[list]
+    i3_glossary_search_context: Optional[str]
     i3_validated_glossaries: Optional[list]
     charts: Optional[dict]
     pages: Optional[list]

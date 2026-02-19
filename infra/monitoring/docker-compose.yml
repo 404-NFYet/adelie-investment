@@ -30,6 +30,47 @@ services:
     depends_on:
       - prometheus
 
+  dashboard:
+    build:
+      context: ../docker-dashboard
+      dockerfile: Dockerfile
+    container_name: adelie-dashboard
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    volumes:
+      - /home/ubuntu/.ssh/id_ed25519:/root/.ssh/id_ed25519:ro
+      - /home/ubuntu/.ssh/known_hosts:/root/.ssh/known_hosts:ro
+    environment:
+      DB_HOST: ${DB_HOST:-10.10.10.20}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_NAME: ${DB_NAME:-narrative_invest}
+      DB_USER: ${DB_USER:-narative}
+      DB_PASSWORD: ${DB_PASSWORD:-password}
+      PROMETHEUS_URL: http://adelie-prometheus:9090
+      GRAFANA_URL: https://monitoring.adelie-invest.com
+    depends_on:
+      - prometheus
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: adelie-cadvisor
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    privileged: true
+    devices:
+      - /dev/kmsg
+
+  # node-exporter: deploy-test 서버에 systemd 서비스로 이미 설치/운행 중 (포트 9100)
+  # 별도 컨테이너 불필요 — prometheus.yml이 10.10.10.20:9100 직접 스크레이핑
+
 volumes:
   prometheus_data:
   grafana_data:

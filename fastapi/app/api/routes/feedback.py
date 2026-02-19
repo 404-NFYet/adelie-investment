@@ -21,7 +21,7 @@ router = APIRouter(prefix="/feedback", tags=["feedback"])
 class FeedbackCreate(BaseModel):
     """피드백 생성 요청."""
     page: str = Field(..., max_length=50, description="현재 페이지 (home, narrative, portfolio, tutor, trading)")
-    rating: int = Field(..., ge=1, le=5, description="별점 (1~5)")
+    rating: Optional[int] = Field(None, ge=1, le=5, description="별점 (1~5)")
     category: Optional[str] = Field(None, max_length=20, description="카테고리 (design, feature, content, speed, other)")
     comment: Optional[str] = Field(None, max_length=1000, description="텍스트 의견")
     device_info: Optional[dict] = Field(None, description="디바이스 정보 (userAgent, screen, pwa여부)")

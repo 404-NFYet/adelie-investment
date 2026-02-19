@@ -7,8 +7,10 @@ pykrx의 get_nearest_business_day_in_a_week 활용:
 
 import asyncio
 import logging
-from datetime import date, datetime
+from datetime import datetime, timezone, timedelta
 from functools import lru_cache
+
+KST = timezone(timedelta(hours=9))
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +35,7 @@ def _check_business_day(date_str: str) -> bool:
 
 async def is_kr_market_open_today() -> bool:
     """오늘이 한국 주식시장 영업일인지 비동기로 확인한다."""
-    today_str = date.today().strftime("%Y%m%d")
+    today_str = datetime.now(KST).strftime("%Y%m%d")
     # pykrx는 동기 함수 → executor에서 실행
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _check_business_day, today_str)

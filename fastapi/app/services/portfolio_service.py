@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -29,7 +30,7 @@ async def get_or_create_portfolio(db: AsyncSession, user_id: int) -> UserPortfol
         )
     )
     result = await db.execute(stmt)
-    portfolio = result.scalar_one_or_none()
+    portfolio = result.scalars().first()  # 중복 시 에러 대신 첫 번째 반환
 
     if not portfolio:
         portfolio = UserPortfolio(
@@ -39,8 +40,15 @@ async def get_or_create_portfolio(db: AsyncSession, user_id: int) -> UserPortfol
             current_cash=1_000_000,
         )
         db.add(portfolio)
-        await db.commit()
-        await db.refresh(portfolio, attribute_names=["holdings", "trades"])
+        try:
+            await db.flush()
+        except IntegrityError:
+            await db.rollback()
+            result = await db.execute(stmt)
+            portfolio = result.scalars().first()
+        else:
+            await db.commit()
+            await db.refresh(portfolio, attribute_names=["holdings", "trades"])
 
     return portfolio
 
@@ -160,6 +168,7 @@ async def complete_briefing_reward(
 
     # 기본 보상 즉시 지급
     portfolio.current_cash += BRIEFING_BASE_REWARD
+    portfolio.total_rewards_received += BRIEFING_BASE_REWARD
 
     reward = BriefingReward(
         user_id=user_id,
@@ -206,12 +215,13 @@ async def check_and_apply_multiplier(
     price_map = {p["stock_code"]: p["current_price"] for p in batch_results}
 
     for h in holdings:
-        cp = price_map.get(h.stock_code)
-        if cp:
-            total_holdings_value += cp * h.quantity
+        cp = price_map.get(h.stock_code) or int(h.avg_buy_price)
+        total_holdings_value += cp * h.quantity
 
     total_value = portfolio.current_cash + total_holdings_value
-    profit = total_value - portfolio.initial_cash
+    # 누적 보상액 차감하여 순수 투자 수익만 평가
+    rewards = portfolio.total_rewards_received or 0
+    profit = total_value - portfolio.initial_cash - rewards
 
     if profit > 0:
         # 수익: 1.5배 보너스 (추가분만 지급)
@@ -219,6 +229,7 @@ async def check_and_apply_multiplier(
         reward.multiplier = PROFIT_MULTIPLIER
         reward.final_reward = reward.base_reward + bonus
         portfolio.current_cash += bonus
+        portfolio.total_rewards_received += bonus
         reward.status = "applied"
     else:
         # 손실: 보너스 소멸

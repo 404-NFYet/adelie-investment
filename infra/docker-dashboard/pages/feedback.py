@@ -110,11 +110,11 @@ with tab_general:
         params["page"] = selected_page
 
     if period == "오늘":
-        conditions.append("created_at >= now() - interval '1 day'")
+        conditions.append("uf.created_at >= now() - interval '1 day'")
     elif period == "최근 7일":
-        conditions.append("created_at >= now() - interval '7 days'")
+        conditions.append("uf.created_at >= now() - interval '7 days'")
     elif period == "최근 30일":
-        conditions.append("created_at >= now() - interval '30 days'")
+        conditions.append("uf.created_at >= now() - interval '30 days'")
 
     where = " AND ".join(conditions) if conditions else "1=1"
 
@@ -314,21 +314,22 @@ with tab_briefing:
             SELECT
                 count(*) as total,
                 count(*) FILTER (WHERE created_at >= now() - interval '7 days') as week,
-                round(avg(rating)::numeric, 1) as avg_rating,
+                count(*) FILTER (WHERE overall_rating = 'good') as good_count,
                 count(DISTINCT briefing_id) as briefing_count
             FROM briefing_feedback
         """)
 
         if not bf_summary.empty:
             row = bf_summary.iloc[0]
+            total = int(row["total"])
+            good_pct = f"{int(row['good_count']) / total * 100:.0f}%" if total > 0 else "N/A"
             c1, c2, c3, c4 = st.columns(4)
             with c1:
-                render_metric_card("전체 평가", str(int(row["total"])), icon="📊")
+                render_metric_card("전체 평가", str(total), icon="📊")
             with c2:
                 render_metric_card("최근 7일", str(int(row["week"])), icon="📆")
             with c3:
-                avg_r = str(row['avg_rating']) if row['avg_rating'] else 'N/A'
-                render_metric_card("평균 평점", avg_r, icon="rating")
+                render_metric_card("긍정 비율", good_pct, icon="👍")
             with c4:
                 render_metric_card("평가된 브리핑", str(int(row["briefing_count"])), icon="📰")
 
@@ -343,9 +344,9 @@ with tab_briefing:
                 bf.created_at,
                 COALESCE(u.username, '비회원') as username,
                 bf.briefing_id,
-                bf.rating,
-                bf.comment,
-                db.title as briefing_title
+                bf.overall_rating,
+                bf.favorite_section,
+                db.briefing_date::text as briefing_title
             FROM briefing_feedback bf
             LEFT JOIN users u ON bf.user_id = u.id
             LEFT JOIN daily_briefings db ON bf.briefing_id = db.id
@@ -355,16 +356,15 @@ with tab_briefing:
 
         if not bf_list.empty:
             bf_list["날짜"] = pd.to_datetime(bf_list["created_at"]).dt.strftime("%m/%d %H:%M")
-            bf_list["평점"] = bf_list["rating"].apply(
-                lambda r: "* " * int(r) if pd.notna(r) else "-"
-            )
+            rating_emoji = {"good": "👍", "neutral": "😐", "bad": "👎"}
+            bf_list["평가"] = bf_list["overall_rating"].map(rating_emoji).fillna("-")
 
-            display_df = bf_list[["id", "날짜", "username", "briefing_title", "평점", "comment"]].rename(
+            display_df = bf_list[["id", "날짜", "username", "briefing_title", "평가", "favorite_section"]].rename(
                 columns={
                     "id": "ID",
                     "username": "사용자",
-                    "briefing_title": "브리핑 제목",
-                    "comment": "코멘트",
+                    "briefing_title": "브리핑 날짜",
+                    "favorite_section": "선호 섹션",
                 }
             )
             st.dataframe(display_df, use_container_width=True, hide_index=True)
@@ -384,37 +384,37 @@ with tab_briefing:
 
         st.divider()
 
-        # 브리핑별 평균 평점
-        render_section_header("브리핑별 평균 평점", "📊")
+        # 브리핑별 평가 분포
+        render_section_header("브리핑별 평가 분포", "📊")
         bf_stats = _query("""
             SELECT
-                db.title as briefing_title,
-                db.market_date,
+                db.briefing_date::text as briefing_title,
                 count(*) as feedback_count,
-                round(avg(bf.rating)::numeric, 1) as avg_rating
+                count(*) FILTER (WHERE bf.overall_rating = 'good') as good,
+                count(*) FILTER (WHERE bf.overall_rating = 'neutral') as neutral,
+                count(*) FILTER (WHERE bf.overall_rating = 'bad') as bad
             FROM briefing_feedback bf
             JOIN daily_briefings db ON bf.briefing_id = db.id
-            GROUP BY db.id, db.title, db.market_date
-            ORDER BY db.market_date DESC
+            GROUP BY db.id, db.briefing_date
+            ORDER BY db.briefing_date DESC
             LIMIT 20
         """)
 
         if not bf_stats.empty:
             if HAS_PLOTLY:
-                fig = px.bar(
-                    bf_stats,
-                    x="briefing_title",
-                    y="avg_rating",
-                    title="브리핑별 평균 평점",
-                    color="feedback_count",
-                    labels={"briefing_title": "브리핑", "avg_rating": "평균 평점", "feedback_count": "평가 수"},
-                    color_continuous_scale=["#E9ECEF", "#FF6B00"],
-                )
+                fig = go.Figure()
+                fig.add_trace(go.Bar(name="👍 Good", x=bf_stats["briefing_title"], y=bf_stats["good"], marker_color="#28A745"))
+                fig.add_trace(go.Bar(name="😐 Neutral", x=bf_stats["briefing_title"], y=bf_stats["neutral"], marker_color="#FFC107"))
+                fig.add_trace(go.Bar(name="👎 Bad", x=bf_stats["briefing_title"], y=bf_stats["bad"], marker_color="#DC3545"))
                 fig.update_layout(
+                    barmode="stack",
+                    title="브리핑별 평가 분포",
                     plot_bgcolor="white",
                     paper_bgcolor="white",
                     font=dict(color="#1A1A2E"),
                     xaxis_tickangle=-45,
+                    xaxis_title="브리핑 날짜",
+                    yaxis_title="평가 수",
                 )
                 st.plotly_chart(fig, use_container_width=True)
             else:

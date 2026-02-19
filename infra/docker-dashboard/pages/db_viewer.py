@@ -122,7 +122,7 @@ with tab_pipeline:
     try:
         with col1:
             df = execute_query("""
-                SELECT MAX(market_date) as last_date
+                SELECT MAX(briefing_date) as last_date
                 FROM daily_briefings
             """)
             last_date = df["last_date"].iloc[0] if not df.empty and df["last_date"].iloc[0] else "N/A"
@@ -140,7 +140,7 @@ with tab_pipeline:
 
         with col3:
             df = execute_query("""
-                SELECT COUNT(DISTINCT market_date) as dates
+                SELECT COUNT(DISTINCT briefing_date) as dates
                 FROM daily_briefings
             """)
             total_dates = int(df["dates"].iloc[0]) if not df.empty else 0
@@ -165,14 +165,14 @@ with tab_pipeline:
     try:
         df = execute_query("""
             SELECT
-                market_date,
+                briefing_date,
                 COUNT(*) as briefing_count,
                 COUNT(DISTINCT id) as unique_briefings,
                 MIN(created_at) as first_created,
                 MAX(created_at) as last_created
             FROM daily_briefings
-            GROUP BY market_date
-            ORDER BY market_date DESC
+            GROUP BY briefing_date
+            ORDER BY briefing_date DESC
             LIMIT 14
         """)
         if not df.empty:
@@ -180,13 +180,13 @@ with tab_pipeline:
 
             # 차트
             if HAS_PLOTLY:
-                chart_df = df.sort_values("market_date")
+                chart_df = df.sort_values("briefing_date")
                 fig = px.bar(
                     chart_df,
-                    x="market_date",
+                    x="briefing_date",
                     y="briefing_count",
                     title="일별 브리핑 생성 수",
-                    labels={"market_date": "날짜", "briefing_count": "브리핑 수"},
+                    labels={"briefing_date": "날짜", "briefing_count": "브리핑 수"},
                     color_discrete_sequence=["#FF6B00"],
                 )
                 fig.update_layout(
@@ -196,7 +196,7 @@ with tab_pipeline:
                 )
                 st.plotly_chart(fig, use_container_width=True)
             else:
-                chart_df = df.sort_values("market_date").set_index("market_date")
+                chart_df = df.sort_values("briefing_date").set_index("briefing_date")
                 st.bar_chart(chart_df["briefing_count"])
         else:
             st.info("데이터 없음")
@@ -208,11 +208,11 @@ with tab_pipeline:
     render_section_header("최근 키워드 현황", "🔑")
     try:
         df = execute_query("""
-            SELECT display_date, COUNT(*) as keyword_count
-            FROM keywords
-            WHERE display_date IS NOT NULL
-            GROUP BY display_date
-            ORDER BY display_date DESC
+            SELECT briefing_date as display_date,
+                   jsonb_array_length(top_keywords) as keyword_count
+            FROM daily_briefings
+            WHERE top_keywords IS NOT NULL
+            ORDER BY briefing_date DESC
             LIMIT 14
         """)
         if not df.empty:
@@ -273,7 +273,7 @@ with tab_business:
     render_section_header("최근 브리핑", "📰")
     try:
         df = execute_query("""
-            SELECT id, market_date, title, created_at
+            SELECT id, briefing_date, left(market_summary, 50) as summary, created_at
             FROM daily_briefings
             ORDER BY created_at DESC
             LIMIT 10
@@ -289,9 +289,13 @@ with tab_business:
     render_section_header("최근 키워드", "🔑")
     try:
         df = execute_query("""
-            SELECT id, keyword, category, display_date, created_at
-            FROM keywords
-            ORDER BY created_at DESC
+            SELECT db.briefing_date as display_date,
+                   kw->>'keyword' as keyword,
+                   kw->>'category' as category
+            FROM daily_briefings db,
+                 jsonb_array_elements(db.top_keywords) kw
+            WHERE db.top_keywords IS NOT NULL
+            ORDER BY db.briefing_date DESC
             LIMIT 20
         """)
         if not df.empty:

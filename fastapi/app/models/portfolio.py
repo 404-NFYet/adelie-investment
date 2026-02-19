@@ -19,6 +19,10 @@ class UserPortfolio(Base):
     portfolio_name: Mapped[str] = mapped_column(String(100), default="내 포트폴리오")
     initial_cash: Mapped[int] = mapped_column(BigInteger, default=1000000, comment="초기 자금 (원)")
     current_cash: Mapped[int] = mapped_column(BigInteger, default=1000000, comment="현재 현금")
+    total_rewards_received: Mapped[int] = mapped_column(
+        BigInteger, default=0, server_default="0",
+        comment="누적 보상 수령액 (수익률 계산에서 제외용)"
+    )
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -28,7 +32,7 @@ class UserPortfolio(Base):
     trades: Mapped[list["SimulationTrade"]] = relationship(back_populates="portfolio", cascade="all, delete-orphan")
     
     __table_args__ = (
-        Index("ix_user_portfolios_user_id", "user_id"),
+        Index("ix_user_portfolios_user_id", "user_id", unique=True),
     )
 
 

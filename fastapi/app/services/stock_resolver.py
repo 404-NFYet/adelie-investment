@@ -100,15 +100,17 @@ def should_auto_visualize(message: str, stock_detected: bool, prev_messages: lis
     """메시지 맥락을 기반으로 시각화를 자동 생성해야 하는지 판단."""
     msg = message.lower()
 
-    viz_signals = ["시각화", "차트", "그래프", "보여줘", "그려줘", "시각적", "그림으로", "표로"]
+    # 1) 명시적 시각화 키워드
+    viz_signals = ["시각화", "차트", "그래프", "보여줘", "그려줘", "시각적", "그림으로", "표로",
+                   "비교", "추세", "흐름", "변화"]
     if any(s in msg for s in viz_signals):
         return True
 
+    # 2) 종목 감지 시 — 종목을 언급한 것 자체가 데이터 관심 신호
     if stock_detected:
-        data_signals = ["주가", "주식", "등락", "추이", "종가", "시세", "얼마", "수익률", "실적"]
-        if any(s in msg for s in data_signals):
-            return True
+        return True
 
+    # 3) 이전 대화에서 종목이 언급된 경우 + 시각화 키워드
     if prev_messages:
         recent_text = " ".join(m.get("content", "") for m in prev_messages[-4:])
         has_prior_stock = any(name in recent_text for name in list(_krx_cache.keys())[:100])

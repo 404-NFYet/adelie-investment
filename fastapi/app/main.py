@@ -90,6 +90,18 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+# Prometheus 메트릭 — /metrics 엔드포인트 자동 노출
+try:
+    from prometheus_fastapi_instrumentator import Instrumentator
+    Instrumentator(
+        should_group_status_codes=True,
+        should_ignore_untemplated=True,
+        should_instrument_requests_inprogress=True,
+        excluded_handlers=["/metrics", "/docs", "/redoc", "/openapi.json", "/"],
+    ).instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+except ImportError:
+    logger.warning("prometheus-fastapi-instrumentator 미설치 — /metrics 비활성화")
+
 
 # --- Rate Limiter 등록 ---
 app.state.limiter = limiter
@@ -181,36 +193,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- 글로벌 레이트 리미터 (IP당 100 req/min, Redis 기반) ---
-_RATE_LIMIT_MAX = 100
-_RATE_LIMIT_WINDOW = 60
-
-
-@app.middleware("http")
-async def global_rate_limit_middleware(request: Request, call_next):
-    """IP 기반 글로벌 레이트 리미팅 (100 req/min, Redis INCR 패턴)."""
-    # /metrics는 Prometheus 스크래핑용이므로 rate limit 제외
-    if request.url.path == "/metrics":
-        return await call_next(request)
-    client_ip = request.client.host if request.client else "unknown"
-    key = f"rate_limit:{client_ip}"
-    try:
-        cache = await get_redis_cache()
-        if cache.client:
-            count = await cache.client.incr(key)
-            if count == 1:
-                await cache.client.expire(key, _RATE_LIMIT_WINDOW)
-            if count > _RATE_LIMIT_MAX:
-                return JSONResponse(
-                    status_code=429,
-                    content={
-                        "error": "Too many requests",
-                        "detail": f"Rate limit: {_RATE_LIMIT_MAX}/min",
-                    },
-                )
-    except Exception:
-        pass  # Redis 실패 시 rate limit 미적용 (graceful)
-    return await call_next(request)
+# --- 슬라이딩 윈도우 레이트리밋 (Lua 원자적, IP당 100 req/min) ---
+from app.middleware.rate_limit import RateLimitMiddleware
+app.add_middleware(RateLimitMiddleware)
 
 
 @app.middleware("http")

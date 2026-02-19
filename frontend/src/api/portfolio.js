@@ -38,8 +38,8 @@ export const portfolioApi = {
     fetchJson(`${API_BASE_URL}/api/v1/portfolio/stock/chart/${stockCode}?days=${days}`),
 
   /** 리더보드 조회 */
-  getLeaderboard: (limit = 20) =>
-    fetchJson(`${API_BASE_URL}/api/v1/portfolio/leaderboard/ranking?limit=${limit}`),
+  getLeaderboard: (limit = 20, offset = 0) =>
+    fetchJson(`${API_BASE_URL}/api/v1/portfolio/leaderboard/ranking?limit=${limit}&offset=${offset}`),
 
   /** 오늘 시장 개장 여부 */
   getMarketStatus: () =>

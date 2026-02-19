@@ -26,6 +26,25 @@
 | localstack | 100GB | Docker 이미지, Terraform state, LocalStack 데이터 |
 | 예비 | 450GB | 향후 확장용 |
 
+## 배포 현황 (2026-02-19 업데이트)
+
+### deploy-test (10.10.10.20) — 통합 배포 서버
+
+| 서비스 | 컨테이너 | 포트 | URL |
+|--------|----------|------|-----|
+| Frontend (nginx) | adelie-frontend | :80 | https://demo.adelie-invest.com |
+| Backend API | adelie-backend-api | :8082 | (내부) |
+| PostgreSQL | adelie-postgres | :5432 | (내부) |
+| Redis | adelie-redis | :6379 | (내부) |
+| Prometheus | adelie-prometheus | :9090 | (내부) |
+| Grafana | adelie-grafana | :3000 | https://monitoring.adelie-invest.com |
+| Streamlit Dashboard | adelie-dashboard | :8501 | https://dashboard.adelie-invest.com |
+
+- Monitoring + Dashboard: `infra/monitoring/docker-compose.yml`
+- Main app: `docker-compose.prod.yml`
+
+### infra-server (10.10.10.10) — 로컬 SSH 접근 불가 (팀 내부망 전용)
+
 ## 역할 변경 이력 (2026-02-14)
 
 - dev-ryejinn: `dev-qa.yml` (2/4GB) → `dev-ai.yml` (4/12GB) 승격 (Pipeline 담당 전환)

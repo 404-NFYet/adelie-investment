@@ -12,6 +12,8 @@ from sqlalchemy.orm import selectinload
 
 from app.core.auth import get_current_user, get_current_user_optional
 from app.core.database import get_db
+from app.core.redis_keys import key_portfolio_summary, TTL_MEDIUM
+from app.services.redis_cache import get_redis_cache
 from app.models.portfolio import SimulationTrade
 from app.models.reward import BriefingReward, DwellReward
 from app.schemas.portfolio import (
@@ -52,10 +54,11 @@ router = APIRouter(prefix="/portfolio", tags=["portfolio"])
 @router.get("/leaderboard/ranking", response_model=LeaderboardResponse)
 async def get_leaderboard(
     limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     current_user: Optional[dict] = Depends(get_current_user_optional),
 ):
-    """수익률 리더보드 조회. 인증 시 본인 랭킹 하이라이트."""
+    """수익률 리더보드 조회. 보상 제외 수익률 기준, 공동 등수, 페이지네이션 지원."""
     current_user_id = current_user["id"] if current_user else 0
 
     # 모든 포트폴리오 조회 (holdings eager loading)
@@ -84,7 +87,9 @@ async def get_leaderboard(
             total_holdings += (cp if cp else float(h.avg_buy_price)) * h.quantity
 
         total_value = portfolio.current_cash + total_holdings
-        profit_loss = total_value - portfolio.initial_cash
+        # 수익률 계산: 누적 보상액 제외
+        rewards = getattr(portfolio, "total_rewards_received", 0) or 0
+        profit_loss = total_value - portfolio.initial_cash - rewards
         profit_loss_pct = (profit_loss / portfolio.initial_cash * 100) if portfolio.initial_cash > 0 else 0
 
         entries.append({
@@ -95,10 +100,20 @@ async def get_leaderboard(
             "profit_loss_pct": round(profit_loss_pct, 2),
         })
 
-    # 수익률 내림차순 정렬 + 랭킹 부여
+    # user_id 중복 제거 (UNIQUE 제약 이전 데이터 방어)
+    seen_users = set()
+    unique_entries = []
+    for e in entries:
+        if e["user_id"] not in seen_users:
+            seen_users.add(e["user_id"])
+            unique_entries.append(e)
+    entries = unique_entries
+
+    # 수익률 내림차순 정렬
     entries.sort(key=lambda e: e["profit_loss_pct"], reverse=True)
 
-    rankings = []
+    # 순차 등수 부여 (1,2,3... — 공동 등수 없음)
+    all_ranked = []
     my_entry = None
     my_rank = None
 
@@ -109,21 +124,27 @@ async def get_leaderboard(
             rank=rank,
             user_id=e["user_id"],
             username=e["username"],
-            total_value=e["total_value"],
-            profit_loss=e["profit_loss"],
+            total_value=e["total_value"] if is_me else 0.0,  # 타인 총자산 비공개
+            profit_loss=e["profit_loss"] if is_me else 0.0,
             profit_loss_pct=e["profit_loss_pct"],
             is_me=is_me,
         )
         if is_me:
             my_entry = entry
             my_rank = rank
-        rankings.append(entry)
+        all_ranked.append(entry)
+
+    total_users = len(all_ranked)
+    page_rankings = all_ranked[offset:offset + limit]
+    has_more = (offset + limit) < total_users
 
     return LeaderboardResponse(
         my_rank=my_rank,
         my_entry=my_entry,
-        rankings=rankings[:limit],
-        total_users=len(entries),
+        rankings=page_rankings,
+        total_users=total_users,
+        offset=offset,
+        has_more=has_more,
     )
 
 
@@ -167,7 +188,9 @@ async def get_portfolio(
         ))
 
     total_value = portfolio.current_cash + total_holdings_value
-    total_pl = total_value - portfolio.initial_cash
+    # 수익률 계산: 누적 보상액 제외 (리더보드와 동일 공식)
+    rewards = portfolio.total_rewards_received or 0
+    total_pl = total_value - portfolio.initial_cash - rewards
     total_pl_pct = (total_pl / portfolio.initial_cash * 100) if portfolio.initial_cash > 0 else 0
 
     return PortfolioResponse(
@@ -179,6 +202,7 @@ async def get_portfolio(
         total_value=total_value,
         total_profit_loss=total_pl,
         total_profit_loss_pct=round(total_pl_pct, 2),
+        total_rewards_received=rewards,
     )
 
 
@@ -189,6 +213,18 @@ async def get_portfolio_summary(
 ):
     """경량 포트폴리오 요약 (BottomNav 뱃지용). JWT 인증 필수."""
     user_id = current_user["id"]
+
+    # Redis 캐시 체크 (TTL 2분)
+    import json as _json
+    cache_key = key_portfolio_summary(user_id)
+    try:
+        cache = await get_redis_cache()
+        cached = await cache.get(cache_key)
+        if cached:
+            return PortfolioSummary(**_json.loads(cached))
+    except Exception:
+        pass
+
     portfolio = await get_or_create_portfolio(db, user_id)
     # 배치 가격 조회 (N+1 방지)
     codes = [h.stock_code for h in portfolio.holdings]
@@ -197,19 +233,29 @@ async def get_portfolio_summary(
 
     total_holdings = 0
     for h in portfolio.holdings:
-        cp = price_map.get(h.stock_code)
-        if cp:
-            total_holdings += cp * h.quantity
+        cp = price_map.get(h.stock_code) or int(h.avg_buy_price)
+        total_holdings += cp * h.quantity
 
     total_value = portfolio.current_cash + total_holdings
-    total_pl = total_value - portfolio.initial_cash
+    # 수익률 계산: 누적 보상액 제외 (리더보드와 동일 공식)
+    rewards = portfolio.total_rewards_received or 0
+    total_pl = total_value - portfolio.initial_cash - rewards
     total_pl_pct = (total_pl / portfolio.initial_cash * 100) if portfolio.initial_cash > 0 else 0
 
-    return PortfolioSummary(
+    summary = PortfolioSummary(
         total_value=int(total_value),
         total_profit_loss=int(total_pl),
         total_profit_loss_pct=round(total_pl_pct, 2),
+        total_rewards_received=rewards,
     )
+
+    # 캐시 저장 (2분)
+    try:
+        await cache.set(cache_key, _json.dumps(summary.model_dump()), TTL_MEDIUM)
+    except Exception:
+        pass
+
+    return summary
 
 
 # ──────────────────── Trading ────────────────────
@@ -416,6 +462,7 @@ async def claim_dwell_reward(
 
     # 보상 지급
     portfolio.current_cash += DWELL_REWARD_AMOUNT
+    portfolio.total_rewards_received += DWELL_REWARD_AMOUNT
     reward = DwellReward(
         user_id=user_id,
         portfolio_id=portfolio.id,

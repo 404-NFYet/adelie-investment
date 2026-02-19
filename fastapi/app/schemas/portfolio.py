@@ -30,6 +30,7 @@ class PortfolioResponse(BaseModel):
     total_value: float = 0
     total_profit_loss: float = 0
     total_profit_loss_pct: float = 0
+    total_rewards_received: int = 0
 
 
 class PortfolioSummary(BaseModel):
@@ -37,6 +38,7 @@ class PortfolioSummary(BaseModel):
     total_value: int
     total_profit_loss: int
     total_profit_loss_pct: float
+    total_rewards_received: int = 0
 
 
 # --- Trading ---
@@ -140,3 +142,5 @@ class LeaderboardResponse(BaseModel):
     my_entry: Optional[LeaderboardEntry] = None
     rankings: list[LeaderboardEntry]
     total_users: int
+    offset: int = 0
+    has_more: bool = False

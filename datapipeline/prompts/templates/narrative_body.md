@@ -1,6 +1,6 @@
 ---
-provider: openai
-model: gpt-5.2
+provider: anthropic
+model: claude-sonnet-4-6
 temperature: 0.4
 max_tokens: 5000
 response_format: json_object
