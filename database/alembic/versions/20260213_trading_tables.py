@@ -52,20 +52,6 @@ def upgrade() -> None:
         CREATE INDEX IF NOT EXISTS ix_watchlists_user_id ON watchlists(user_id)
     """)
 
-    # briefing_rewards에 중복 방지 UNIQUE 제약 (이미 있으면 무시)
-    op.execute("""
-        DO $$
-        BEGIN
-            IF NOT EXISTS (
-                SELECT 1 FROM pg_constraint
-                WHERE conname = 'uq_briefing_rewards_user_case'
-            ) THEN
-                ALTER TABLE briefing_rewards
-                ADD CONSTRAINT uq_briefing_rewards_user_case UNIQUE (user_id, case_id);
-            END IF;
-        END $$;
-    """)
-
     # current_cash 컬럼 NOT NULL + 기본값 설정
     op.execute("""
         UPDATE user_portfolios SET current_cash = 1000000 WHERE current_cash IS NULL
@@ -81,16 +67,5 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.execute("ALTER TABLE user_portfolios ALTER COLUMN current_cash DROP NOT NULL")
     op.execute("ALTER TABLE user_portfolios ALTER COLUMN current_cash DROP DEFAULT")
-    op.execute("""
-        DO $$
-        BEGIN
-            IF EXISTS (
-                SELECT 1 FROM pg_constraint
-                WHERE conname = 'uq_briefing_rewards_user_case'
-            ) THEN
-                ALTER TABLE briefing_rewards DROP CONSTRAINT uq_briefing_rewards_user_case;
-            END IF;
-        END $$;
-    """)
     op.execute("DROP TABLE IF EXISTS watchlists")
     op.execute("DROP TABLE IF EXISTS limit_orders")

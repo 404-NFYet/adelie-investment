@@ -7,7 +7,7 @@
 services:
   # --- PostgreSQL ---
   postgres:
-    image: pgvector/pgvector:pg15
+    image: pgvector/pgvector:pg16
     ports:
       - "5433:5432"
     environment:
