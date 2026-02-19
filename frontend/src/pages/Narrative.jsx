@@ -94,10 +94,17 @@ function getPlainLines(content) {
     .filter(Boolean);
 }
 
+function sanitizeChecklistItem(value) {
+  return String(value || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function getChecklistItems(content, bullets) {
   const items = [];
   const pushItem = (value) => {
-    const cleaned = String(value || '').trim();
+    const cleaned = sanitizeChecklistItem(value);
     if (!cleaned) return;
     if (/투자 전에 꼭 확인할 포인트/.test(cleaned)) return;
     if (!items.includes(cleaned)) {
