@@ -12,3 +12,8 @@ backgroundColor = "#FFFFFF"
 secondaryBackgroundColor = "#F8F9FA"
 textColor = "#1A1A2E"
 font = "sans serif"
+
+[theme.sidebar]
+backgroundColor = "#F8F9FA"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#1A1A2E"
