@@ -35,6 +35,8 @@ from app.services.tutor_engine import (
     _collect_stock_context,
     get_difficulty_prompt,
 )
+from app.services.guardrail import run_guardrail
+
 from app.services.stock_resolver import detect_stock_codes
 
 router = APIRouter(prefix="/tutor", tags=["AI tutor"])
@@ -142,7 +144,14 @@ async def generate_tutor_response(
     """Generate streaming response for AI tutor."""
     
     session_id = request.session_id or str(uuid.uuid4())
-    
+
+    # ── 0) LangGraph 가드레일: 4-카테고리 분류 및 차단 ─────────────────
+    is_allowed, block_msg, guardrail_decision = await run_guardrail(request.message)
+    if not is_allowed:
+        yield f"event: text_delta\ndata: {json.dumps({'content': block_msg})}\n\n"
+        yield f"event: done\ndata: {json.dumps({'session_id': session_id, 'total_tokens': 0, 'guardrail': guardrail_decision})}\n\n"
+        return
+
     yield f"event: step\ndata: {json.dumps({'type': 'thinking', 'content': '질문을 분석하고 있습니다...'})}\n\n"
     
     api_key = get_settings().OPENAI_API_KEY
@@ -333,28 +342,31 @@ async def generate_tutor_response(
 
         if should_viz and full_response:
             try:
+                import anthropic as _anthropic
+                _aclient = _anthropic.AsyncAnthropic(
+                    api_key=get_settings().ANTHROPIC_API_KEY
+                )
+                viz_system = (
+                    "당신은 Plotly.js 차트 전문가입니다. "
+                    "주어진 내용을 시각화하는 Plotly JSON config를 생성하세요. "
+                    '반드시 {"data": [...], "layout": {...}} 형식의 JSON만 반환하세요. '
+                    "디자인 규칙: 주요 색상 #FF6B00(주황), 보조 색상 #FF8C33, "
+                    "배경 투명(transparent), 한글 레이블 사용. "
+                    "마크다운 코드블록(```)으로 감싸지 마세요. 오직 JSON만 반환하세요."
+                )
                 viz_prompt = (
                     "다음 내용을 Plotly.js 차트 JSON으로 변환하세요.\n"
                     "반드시 아래 형식의 JSON만 반환하세요 (마크다운 코드블록 없이):\n"
                     '{"data": [트레이스 객체들], "layout": {레이아웃 옵션}}\n\n'
                     f"내용:\n{full_response[:500]}"
                 )
-                viz_response = await client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[
-                        {"role": "system", "content": (
-                            "당신은 Plotly.js 차트 전문가입니다. "
-                            "주어진 내용을 시각화하는 Plotly JSON config를 생성하세요. "
-                            '반드시 {"data": [...], "layout": {...}} 형식의 JSON만 반환하세요. '
-                            "디자인 규칙: 주요 색상 #FF6B00(주황), 보조 색상 #FF8C33, "
-                            "배경 투명(transparent), 한글 레이블 사용. "
-                            "마크다운 코드블록(```)으로 감싸지 마세요. 오직 JSON만 반환하세요."
-                        )},
-                        {"role": "user", "content": viz_prompt},
-                    ],
+                viz_response = await _aclient.messages.create(
+                    model="claude-sonnet-4-6",
                     max_tokens=2000,
+                    system=viz_system,
+                    messages=[{"role": "user", "content": viz_prompt}],
                 )
-                json_content = viz_response.choices[0].message.content.strip()
+                json_content = viz_response.content[0].text.strip()
                 # ```json 코드 블록 제거 (LLM이 감쌀 수 있음)
                 if json_content.startswith("```"):
                     json_content = json_content.split("```", 2)[1]
@@ -367,7 +379,7 @@ async def generate_tutor_response(
                 if "data" in chart_data and isinstance(chart_data["data"], list):
                     yield f"event: visualization\ndata: {json.dumps({'type': 'visualization', 'format': 'json', 'chartData': chart_data})}\n\n"
             except Exception as viz_err:
-                logger.warning(f"시각화 생성 실패: {viz_err}")
+                logger.warning(f"시각화 생성 실패 (Claude Sonnet): {viz_err}")
 
         done_data = {'session_id': session_id, 'total_tokens': total_tokens}
         if sources:
@@ -409,15 +421,75 @@ async def tutor_chat(
     )
 
 
-@router.post("/suggestions")
-async def get_suggestions(
-    request: TutorSuggestionRequest,
-    db: AsyncSession = Depends(get_db),
-) -> TutorSuggestionResponse:
-    """Get active suggestions based on current context."""
-    from app.services.tutor_engine import get_active_suggestions
 
-    suggestions = await get_active_suggestions(
-        request.context_type, request.context_id, db
-    )
-    return TutorSuggestionResponse(suggestions=suggestions)
+@router.get("/suggestions")
+async def get_suggestions(
+    context_type: str = Query(...),
+    context_id: int = Query(...),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """현재 보고 있는 페이지 내용을 기반으로 챗봇 추천 질문 3개 생성.
+
+    Interface 3(Narrative) 페이지에서만 호출됩니다 (context_type='case').
+    다른 context_type에 대해서는 빈 배열을 반환합니다.
+    """
+    if context_type != "case":
+        return {"questions": []}
+
+    # DB에서 케이스 제목/요약 조회
+    try:
+        result = await db.execute(
+            text("SELECT title, summary FROM historical_cases WHERE id = :id"),
+            {"id": context_id},
+        )
+        row = result.fetchone()
+    except Exception as e:
+        logger.warning("suggestions: DB 조회 실패 case_id=%s: %s", context_id, e)
+        return {"questions": []}
+
+    if not row:
+        return {"questions": []}
+
+    case_title, case_summary = row[0], row[1]
+
+    api_key = get_settings().OPENAI_API_KEY
+    if not api_key:
+        return {"questions": []}
+
+    try:
+        client = AsyncOpenAI(api_key=api_key)
+        prompt = (
+            f"다음 금융 내러티브 페이지를 읽고 있는 초보 투자자가 궁금해할 수 있는 ",
+            f"질문 3개를 한국어로 생성하세요.\n\n",
+            f"제목: {case_title}\n요약: {case_summary}\n\n",
+            "규칙:\n",
+            "- 각 질문은 1~2문장, 반말 금지, 의문문으로 끝낼 것\n",
+            "- 개인 투자 자문(매수/매도 추천)이 아닌 개념/현황 질문만\n",
+            "- JSON 배열 형식만 반환: [\"질문1\", \"질문2\", \"질문3\"]",
+        )
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "당신은 금융 교육 챗봇입니다. 지시에 따라 JSON 배열만 반환하세요.",
+                },
+                {"role": "user", "content": "".join(prompt)},
+            ],
+            max_tokens=300,
+            temperature=0.7,
+        )
+        raw = response.choices[0].message.content.strip()
+        # JSON 배열 파싱
+        if raw.startswith("["):
+            questions = json.loads(raw)
+        else:
+            # 코드블록 제거 후 재시도
+            raw = raw.replace("```json", "").replace("```", "").strip()
+            questions = json.loads(raw)
+        if not isinstance(questions, list):
+            raise ValueError("not a list")
+        return {"questions": [str(q) for q in questions[:3]]}
+    except Exception as e:
+        logger.warning("suggestions: LLM 호출 실패 case_id=%s: %s", context_id, e)
+        return {"questions": []}

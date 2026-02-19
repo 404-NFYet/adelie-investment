@@ -10,6 +10,7 @@ import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
 import remarkMath from 'remark-math';
 import { narrativeApi } from '../api';
+import { useTutor } from '../contexts/TutorContext';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import { useTermContext } from '../contexts/TermContext';
 import { useTutor } from '../contexts';
@@ -529,12 +530,17 @@ export default function Narrative() {
           throw new Error('내러티브 데이터가 없습니다.');
         }
         setData(response);
+        // 코치봇에 현재 케이스 콘텍스트 주입 (추천 질문 생성용)
+        setContextInfo({ type: 'case', id: Number(caseId) });
       })
       .catch((fetchError) => {
         setError(fetchError?.message || '내러티브 데이터를 불러오지 못했습니다.');
       })
       .finally(() => setIsLoading(false));
-  }, [caseId]);
+
+    // 언마운트 시 contextInfo 정리 (다른 페이지에서 코치봇 열면 추천질문 미표시)
+    return () => setContextInfo(null);
+  }, [caseId, setContextInfo]);
 
   const totalSteps = STEP_CONFIGS.length;
   const stepConfig = STEP_CONFIGS[currentStep];

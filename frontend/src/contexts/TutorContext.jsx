@@ -13,6 +13,7 @@ export function TutorProvider({ children }) {
   const [isLoading, setIsLoading] = useState(false);
   const [contextInfo, setContextInfo] = useState(null);
   const [currentTerm, setCurrentTerm] = useState(null);
+  const [suggestedQuestions, setSuggestedQuestions] = useState([]);
 
   // sessionId를 localStorage에 저장
   useEffect(() => {
@@ -21,6 +22,19 @@ export function TutorProvider({ children }) {
       else localStorage.removeItem(SESSION_KEY);
     } catch {}
   }, [sessionId]);
+
+  // contextInfo가 바뀔 때마다 해당 페이지의 추천 질문 3개를 가져옴
+  useEffect(() => {
+    if (contextInfo?.type && contextInfo?.id) {
+      const url = `${API_BASE_URL}/api/v1/tutor/suggestions?context_type=${contextInfo.type}&context_id=${contextInfo.id}`;
+      fetch(url)
+        .then((r) => (r.ok ? r.json() : { questions: [] }))
+        .then((data) => setSuggestedQuestions(Array.isArray(data.questions) ? data.questions : []))
+        .catch(() => setSuggestedQuestions([]));
+    } else {
+      setSuggestedQuestions([]);
+    }
+  }, [contextInfo]);
 
   const openTutor = useCallback((termOrContext = null) => {
     setIsOpen(true);
@@ -229,40 +243,6 @@ export function TutorProvider({ children }) {
     setCurrentTerm(null);
   }, []);
 
-  // 추천 질문 관리
-  const [suggestions, setSuggestions] = useState([]);
-
-  useEffect(() => {
-    if (!contextInfo?.type || !contextInfo?.id) {
-      setSuggestions([]);
-      return;
-    }
-
-    const fetchSuggestions = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        const res = await fetch(`${API_BASE_URL}/api/v1/tutor/suggestions`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({
-            context_type: contextInfo.type,
-            context_id: Number(contextInfo.id),
-          }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setSuggestions(data.suggestions || []);
-        }
-      } catch (e) {
-        console.error('Failed to fetch suggestions:', e);
-      }
-    };
-
-    fetchSuggestions();
-  }, [contextInfo]);
 
   const value = useMemo(() => ({
     isOpen,
@@ -282,12 +262,12 @@ export function TutorProvider({ children }) {
     deleteChat,
     loadChatHistory,
     requestVisualization,
-    suggestions,
+    suggestedQuestions,
   }), [
     isOpen, openTutor, closeTutor, messages, isLoading, sendMessage,
     clearMessages, contextInfo, currentTerm, sessions, activeSessionId,
     createNewChat, deleteChat, loadChatHistory, requestVisualization,
-    suggestions,
+    suggestedQuestions,
   ]);
 
   return (
