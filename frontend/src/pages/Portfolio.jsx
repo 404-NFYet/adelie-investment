@@ -10,6 +10,7 @@ import TradeModal from '../components/domain/TradeModal';
 import StockDetail from '../components/trading/StockDetail';
 import StockSearch from '../components/trading/StockSearch';
 import Leaderboard from '../components/trading/Leaderboard';
+import AppHeader from '../components/layout/AppHeader';
 import { PenguinMascot } from '../components';
 import { API_BASE_URL } from '../config';
 import useCountUp from '../hooks/useCountUp';
@@ -174,12 +175,7 @@ export default function Portfolio() {
   if (error) {
     return (
       <div className="min-h-screen bg-background pb-24">
-        <header className="h-[45px] border-b border-border px-3 flex items-center">
-          <div className="flex items-center gap-2">
-            <img src="/images/penguin-3d.png" alt="ADELIE" className="h-6 w-6 object-contain" />
-            <span className="text-[15px] font-bold tracking-tight">ADELIE</span>
-          </div>
-        </header>
+        <AppHeader />
         <main className="container py-6">
           <div className="card text-center py-12">
             <p className="text-text-primary font-medium mb-1">포트폴리오를 불러올 수 없습니다</p>
@@ -199,12 +195,7 @@ export default function Portfolio() {
 
   return (
     <div className="min-h-screen bg-background pb-24">
-      <header className="h-[45px] bg-white border-b border-border px-3 flex items-center">
-        <div className="flex items-center gap-2">
-          <img src="/images/penguin-3d.png" alt="ADELIE" className="h-6 w-6 object-contain" />
-          <span className="text-[15px] font-bold tracking-tight">ADELIE</span>
-        </div>
-      </header>
+      <AppHeader />
       <main className="container py-2 space-y-2">
         {/* 총 자산 카드 */}
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="card text-center rounded-2xl">

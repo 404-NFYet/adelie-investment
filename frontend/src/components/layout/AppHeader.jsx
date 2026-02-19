@@ -24,21 +24,23 @@ export default function AppHeader({ showBack = false, title = null }) {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             {showBack && (
-              <button onClick={() => navigate(-1)} className="p-1 -ml-1 text-text-secondary hover:text-text-primary transition-colors">
+              <button type="button" onClick={() => navigate(-1)} className="p-1 -ml-1 text-text-secondary hover:text-text-primary transition-colors">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M15 18l-6-6 6-6" />
                 </svg>
               </button>
             )}
-            <div
-              className="flex items-center gap-1.5 cursor-pointer"
+            <button
+              type="button"
+              aria-label="홈으로 이동"
+              className="flex items-center gap-1.5 cursor-pointer rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               onClick={() => navigate('/home')}
             >
               <img src={BRAND_LOGO_SRC} alt={BRAND_LABEL} className="h-7 w-7 object-contain" />
               <h1 className="text-[15px] font-bold tracking-tight text-text-primary">
                 {BRAND_LABEL}
               </h1>
-            </div>
+            </button>
             {title && (
               <span className="text-sm text-text-secondary ml-1">/ {title}</span>
             )}
