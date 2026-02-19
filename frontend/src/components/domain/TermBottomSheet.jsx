@@ -6,7 +6,9 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
+import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
+import remarkMath from 'remark-math';
 import { API_BASE_URL } from '../../config';
 import { useTermContext } from '../../contexts/TermContext';
 
@@ -106,7 +108,7 @@ export default function TermBottomSheet() {
                 )}
                 {!isLoading && !error && explanation && (
                   <div className="text-base leading-relaxed text-gray-600 dark:text-text-secondary prose prose-sm max-w-none">
-                    <ReactMarkdown rehypePlugins={[rehypeRaw]}>
+                    <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeRaw, rehypeKatex]}>
                       {explanation.replace(/->/g, '→')}
                     </ReactMarkdown>
                   </div>

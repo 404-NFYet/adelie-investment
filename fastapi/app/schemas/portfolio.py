@@ -41,6 +41,27 @@ class PortfolioSummary(BaseModel):
     total_rewards_received: int = 0
 
 
+class RefreshPortfolioRequest(BaseModel):
+    """포트폴리오 수동 업데이트 요청."""
+    invalidate_scope: Literal["summary_and_holdings"] = "summary_and_holdings"
+
+
+class RefreshInvalidatedInfo(BaseModel):
+    """수동 업데이트에서 무효화된 캐시 정보."""
+    summary: bool
+    stock_price_keys: int = 0
+    kis_price_keys: int = 0
+
+
+class RefreshPortfolioResponse(BaseModel):
+    """포트폴리오 수동 업데이트 응답."""
+    portfolio: PortfolioResponse
+    summary: PortfolioSummary
+    invalidated: RefreshInvalidatedInfo
+    source_policy: str = "kis_first_fallback_pykrx"
+    refreshed_at: datetime
+
+
 # --- Trading ---
 
 class TradeRequest(BaseModel):

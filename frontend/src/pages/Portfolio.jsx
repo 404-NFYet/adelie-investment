@@ -99,12 +99,16 @@ function TradeHistory({ trades }) {
 /* ── 메인 컴포넌트 ── */
 export default function Portfolio() {
   const { user, isLoading: isUserLoading } = useUser();
-  const { portfolio, isLoading, error, fetchPortfolio } = usePortfolio();
+  const { portfolio, isLoading, error, fetchPortfolio, refreshPortfolio } = usePortfolio();
   const [activeTab, setActiveTab] = useState('holdings');
   const [trades, setTrades] = useState([]);
   const [ranking, setRanking] = useState([]);
   const [stockDetail, setStockDetail] = useState({ isOpen: false, stock: null });
   const [tradeModal, setTradeModal] = useState({ isOpen: false, stock: null, type: 'buy' });
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshCooldownUntil, setRefreshCooldownUntil] = useState(0);
+  const [cooldownLeft, setCooldownLeft] = useState(0);
+  const [refreshMessage, setRefreshMessage] = useState('');
 
   const userId = user?.id;
   const isGuest = !userId;
@@ -128,6 +132,7 @@ export default function Portfolio() {
     ],
   };
   const displayPortfolio = portfolio || previewPortfolio;
+  const isRefreshDisabled = isGuest || isRefreshing || cooldownLeft > 0;
 
   // 총 자산 count-up
   const animatedTotal = useCountUp(displayPortfolio.total_value || 0, 800);
@@ -148,10 +153,52 @@ export default function Portfolio() {
     }
   }, [activeTab, ranking.length, userId]);
 
+  useEffect(() => {
+    if (!refreshCooldownUntil) {
+      setCooldownLeft(0);
+      return undefined;
+    }
+
+    const updateCooldown = () => {
+      const left = Math.max(0, Math.ceil((refreshCooldownUntil - Date.now()) / 1000));
+      setCooldownLeft(left);
+      if (left === 0) setRefreshCooldownUntil(0);
+    };
+
+    updateCooldown();
+    const intervalId = setInterval(updateCooldown, 250);
+    return () => clearInterval(intervalId);
+  }, [refreshCooldownUntil]);
+
+  useEffect(() => {
+    if (!refreshMessage) return undefined;
+    const timerId = setTimeout(() => setRefreshMessage(''), 2500);
+    return () => clearTimeout(timerId);
+  }, [refreshMessage]);
+
   const handleStockSelect = (stock) => setStockDetail({ isOpen: true, stock });
   const handleTrade = (stock, type) => {
     setStockDetail({ isOpen: false, stock: null });
     setTradeModal({ isOpen: true, stock, type });
+  };
+
+  const handleManualRefresh = async () => {
+    if (isRefreshDisabled) return;
+    setIsRefreshing(true);
+    setRefreshMessage('');
+    try {
+      const result = await refreshPortfolio(true);
+      if (result?.ok) {
+        setRefreshCooldownUntil(Date.now() + 10_000);
+        setRefreshMessage('업데이트됨');
+      } else {
+        setRefreshMessage('업데이트 실패');
+      }
+    } catch {
+      setRefreshMessage('업데이트 실패');
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   // 유저 로딩 중
@@ -198,12 +245,31 @@ export default function Portfolio() {
       <AppHeader />
       <main className="container py-2 space-y-2">
         {/* 총 자산 카드 */}
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="card text-center rounded-2xl">
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="card text-center rounded-2xl relative">
+          {!isGuest && (
+            <button
+              type="button"
+              onClick={handleManualRefresh}
+              disabled={isRefreshDisabled}
+              className={`absolute right-3 top-3 h-8 px-2.5 rounded-lg text-[11px] font-semibold border transition-colors ${
+                isRefreshDisabled
+                  ? 'bg-surface text-text-muted border-border cursor-not-allowed'
+                  : 'bg-white text-text-primary border-border hover:bg-surface'
+              }`}
+            >
+              {isRefreshing ? '업데이트 중' : cooldownLeft > 0 ? `${cooldownLeft}s` : '업데이트'}
+            </button>
+          )}
           <p className="text-xs text-text-secondary mb-1">총 자산</p>
           <p className="text-2xl font-bold">{formatKRW(animatedTotal)}</p>
           <p className={`text-sm font-semibold mt-1 ${isPositive ? 'text-red-500' : isNegative ? 'text-blue-500' : 'text-text-secondary'}`}>
             {isPositive ? '+' : ''}{formatKRW(animatedPL)} ({isPositive ? '+' : ''}{Number(displayPortfolio.total_profit_loss_pct).toFixed(2)}%)
           </p>
+          {refreshMessage && (
+            <p className={`text-[11px] mt-1 ${refreshMessage === '업데이트됨' ? 'text-emerald-600' : 'text-red-500'}`}>
+              {refreshMessage}
+            </p>
+          )}
           <div className="flex justify-around mt-4 pt-3 border-t border-border">
             <div><p className="text-xs text-text-secondary">보유 현금</p><p className="text-sm font-semibold">{formatKRW(displayPortfolio.current_cash)}</p></div>
             <div><p className="text-xs text-text-secondary">투자 금액</p><p className="text-sm font-semibold">{formatKRW(displayPortfolio.total_value - displayPortfolio.current_cash)}</p></div>
@@ -331,7 +397,10 @@ export default function Portfolio() {
       {/* 매매 모달 */}
       <TradeModal
         isOpen={tradeModal.isOpen}
-        onClose={() => { setTradeModal({ isOpen: false, stock: null, type: 'buy' }); fetchPortfolio(); }}
+        onClose={() => {
+          setTradeModal({ isOpen: false, stock: null, type: 'buy' });
+          refreshPortfolio(true);
+        }}
         stock={tradeModal.stock}
         tradeType={tradeModal.type}
       />

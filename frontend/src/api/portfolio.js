@@ -9,6 +9,10 @@ export const portfolioApi = {
   getPortfolioSummary: () =>
     fetchJson(`${API_BASE_URL}/api/v1/portfolio/summary`),
 
+  /** 포트폴리오 강제 업데이트 (summary + 보유종목 시세 캐시 무효화) */
+  refreshPortfolio: (invalidateScope = 'summary_and_holdings') =>
+    postJson(`${API_BASE_URL}/api/v1/portfolio/refresh`, { invalidate_scope: invalidateScope }),
+
   /** 매수/매도 실행 */
   executeTrade: (tradeData) =>
     postJson(`${API_BASE_URL}/api/v1/portfolio/trade`, tradeData),
@@ -34,8 +38,17 @@ export const portfolioApi = {
     fetchJson(`${API_BASE_URL}/api/v1/portfolio/rewards`),
 
   /** 종목 차트 데이터 */
-  getStockChart: (stockCode, days = 20) =>
-    fetchJson(`${API_BASE_URL}/api/v1/portfolio/stock/chart/${stockCode}?days=${days}`),
+  getStockChart: (stockCode, options = {}) => {
+    if (typeof options === 'number') {
+      return fetchJson(`${API_BASE_URL}/api/v1/portfolio/stock/chart/${stockCode}?days=${options}`);
+    }
+    const period = options?.period;
+    if (period) {
+      return fetchJson(`${API_BASE_URL}/api/v1/portfolio/stock/chart/${stockCode}?period=${period}`);
+    }
+    const days = options?.days || 20;
+    return fetchJson(`${API_BASE_URL}/api/v1/portfolio/stock/chart/${stockCode}?days=${days}`);
+  },
 
   /** 리더보드 조회 */
   getLeaderboard: (limit = 20, offset = 0) =>

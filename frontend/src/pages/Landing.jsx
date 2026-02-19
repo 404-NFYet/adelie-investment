@@ -142,6 +142,10 @@ export default function Landing() {
     goToSlide(currentIndex + 1, 1);
   };
 
+  const skipToLast = () => {
+    goToSlide(totalSlides - 1, 1);
+  };
+
   const handleDragEnd = (_, info) => {
     const offsetX = info?.offset?.x ?? 0;
     const velocityX = info?.velocity?.x ?? 0;
@@ -174,6 +178,17 @@ export default function Landing() {
             onDragEnd={handleDragEnd}
             className="relative flex flex-1 flex-col touch-pan-y"
           >
+            {!isLastSlide ? (
+              <button
+                type="button"
+                onClick={skipToLast}
+                aria-label="랜딩 건너뛰기"
+                className="absolute right-4 top-5 z-20 rounded-full border border-white/40 bg-white/25 px-3 py-1.5 text-xs font-semibold text-black backdrop-blur-md transition hover:bg-white/35"
+              >
+                건너뛰기
+              </button>
+            ) : null}
+
             {currentSlide.type === 'hero' ? (
               <>
                 <div className="pt-24 text-center">
@@ -229,8 +244,8 @@ export default function Landing() {
 
             {showControls ? (
               <>
-                <footer className="relative z-20 px-[41px] pb-[48px]">
-                  <div className="mb-[42px] flex justify-center gap-[10px]">
+                <footer className={`relative z-20 px-[41px] ${isLastSlide ? 'pb-[48px]' : 'pb-[24px]'}`}>
+                  <div className={`flex justify-center gap-[10px] ${isLastSlide ? 'mb-[42px]' : ''}`}>
                     {featureSlides.map((slide, index) => {
                       const slideIndex = index + 1;
                       return (
@@ -248,13 +263,15 @@ export default function Landing() {
                     })}
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => navigate('/auth')}
-                    className="w-full rounded-[20px] bg-primary py-[16px] text-[24px] font-bold text-white transition-transform active:scale-[0.99]"
-                  >
-                    아델리 시작하기
-                  </button>
+                  {isLastSlide ? (
+                    <button
+                      type="button"
+                      onClick={() => navigate('/auth')}
+                      className="w-full rounded-[20px] bg-primary py-[16px] text-[24px] font-bold text-white transition-transform active:scale-[0.99]"
+                    >
+                      아델리 시작하기
+                    </button>
+                  ) : null}
                 </footer>
 
                 <button

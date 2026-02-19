@@ -4,6 +4,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { useUser } from '../contexts/UserContext';
+import { usePortfolio } from '../contexts/PortfolioContext';
 import { postJson, API_BASE_URL } from '../api/client';
 
 const DWELL_THRESHOLD_MS = 180_000; // 3분
@@ -27,6 +28,7 @@ function markClaimed(page) {
 
 export default function useDwellReward(page) {
   const { user } = useUser();
+  const { refreshPortfolio } = usePortfolio();
   const startRef = useRef(Date.now());
   const claimedRef = useRef(false);
 
@@ -49,10 +51,11 @@ export default function useDwellReward(page) {
 
       const elapsed = Math.floor((Date.now() - startRef.current) / 1000);
       try {
-        await postJson(`${API_BASE_URL}/api/v1/portfolio/${userId}/dwell-reward`, {
+        await postJson(`${API_BASE_URL}/api/v1/portfolio/dwell-reward`, {
           page,
           dwell_seconds: elapsed,
         });
+        await refreshPortfolio(true);
         markClaimed(page);
         // 토스트 이벤트 발생 (ToastProvider에서 처리)
         window.dispatchEvent(new CustomEvent('adelie-toast', {
@@ -64,5 +67,5 @@ export default function useDwellReward(page) {
     }, DWELL_THRESHOLD_MS);
 
     return () => clearTimeout(timer);
-  }, [page, user?.id]);
+  }, [page, user?.id, refreshPortfolio]);
 }

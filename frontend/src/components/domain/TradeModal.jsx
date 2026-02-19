@@ -11,7 +11,7 @@ import { usePortfolio } from '../../contexts/PortfolioContext';
 
 export default function TradeModal({ isOpen, onClose, stock, tradeType, caseId }) {
   const { executeTrade, portfolio } = usePortfolio();
-  const [quantity, setQuantity] = useState(1);
+  const [quantityInput, setQuantityInput] = useState('1');
   const [price, setPrice] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
@@ -21,7 +21,7 @@ export default function TradeModal({ isOpen, onClose, stock, tradeType, caseId }
 
   useEffect(() => {
     if (isOpen && stock) {
-      setQuantity(1);
+      setQuantityInput('1');
       setError(null);
       setSuccess(null);
       setMarketClosed(false);
@@ -36,7 +36,10 @@ export default function TradeModal({ isOpen, onClose, stock, tradeType, caseId }
     }
   }, [isOpen, stock]);
 
-  const totalAmount = price ? price * quantity : 0;
+  const parsedQuantity = Number.parseInt(quantityInput, 10);
+  const quantity = Number.isFinite(parsedQuantity) ? parsedQuantity : 0;
+  const hasValidQuantity = quantity >= 1;
+  const totalAmount = price && hasValidQuantity ? price * quantity : 0;
 
   // 보유 종목 정보
   const holding = portfolio?.holdings?.find(h => h.stock_code === stock?.stock_code);
@@ -50,6 +53,7 @@ export default function TradeModal({ isOpen, onClose, stock, tradeType, caseId }
   // 매도 시 에러 메시지
   const getSellError = () => {
     if (tradeType !== 'sell') return null;
+    if (!hasValidQuantity) return '수량을 1주 이상 입력해주세요';
     if (holdingQty === 0) return '보유하지 않은 종목입니다';
     if (quantity > holdingQty) return `보유 수량(${holdingQty}주)을 초과할 수 없습니다`;
     return null;
@@ -57,10 +61,16 @@ export default function TradeModal({ isOpen, onClose, stock, tradeType, caseId }
 
   const sellError = getSellError();
   const isDisabled = isSubmitting || !price || marketClosed
+    || !hasValidQuantity
     || (tradeType === 'buy' && !canAffordBuy)
     || (tradeType === 'sell' && !!sellError);
 
   const handleConfirm = () => {
+    if (!hasValidQuantity) {
+      setError('수량을 1주 이상 입력해주세요');
+      return;
+    }
+    setError(null);
     setShowConfirm(true);
   };
 
@@ -184,20 +194,35 @@ export default function TradeModal({ isOpen, onClose, stock, tradeType, caseId }
                 <label htmlFor="trade-quantity" className="text-xs text-text-secondary mb-2 block">수량</label>
                 <div className="flex items-center gap-3 justify-center">
                   <button
-                    onClick={() => setQuantity(q => Math.max(1, q - 1))}
+                    onClick={() => {
+                      const base = Number.parseInt(quantityInput, 10);
+                      const safe = Number.isFinite(base) && base > 0 ? base : 1;
+                      setQuantityInput(String(Math.max(1, safe - 1)));
+                    }}
                     className="w-10 h-10 rounded-full bg-surface border border-border flex items-center justify-center text-lg font-bold"
                   >-</button>
                   <input
                     id="trade-quantity"
                     name="quantity"
                     type="number"
-                    value={quantity}
-                    onChange={e => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                    value={quantityInput}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      if (/^\d*$/.test(next)) setQuantityInput(next);
+                    }}
+                    onBlur={() => {
+                      const next = Number.parseInt(quantityInput, 10);
+                      if (!Number.isFinite(next) || next < 1) setQuantityInput('1');
+                    }}
                     className="w-24 text-center text-lg font-bold bg-surface border border-border rounded-xl py-2"
                     min="1"
                   />
                   <button
-                    onClick={() => setQuantity(q => q + 1)}
+                    onClick={() => {
+                      const base = Number.parseInt(quantityInput, 10);
+                      const safe = Number.isFinite(base) && base > 0 ? base : 0;
+                      setQuantityInput(String(safe + 1));
+                    }}
                     className="w-10 h-10 rounded-full bg-surface border border-border flex items-center justify-center text-lg font-bold"
                   >+</button>
                 </div>
