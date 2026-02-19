@@ -199,15 +199,15 @@ services:
     container_name: adelie-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: adelie_db
-      POSTGRES_USER: adelie
-      POSTGRES_PASSWORD: adelie
+      POSTGRES_DB: narrative_invest
+      POSTGRES_USER: narative
+      POSTGRES_PASSWORD: password
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U adelie -d adelie_db"]
+      test: ["CMD-SHELL", "pg_isready -U narative -d narrative_invest"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -306,8 +306,8 @@ else
 # 모드: local (로컬 Docker DB)
 
 # --- Database (로컬) ---
-DATABASE_URL=postgresql+asyncpg://adelie:adelie@localhost:5432/adelie_db
-SYNC_DATABASE_URL=postgresql://adelie:adelie@localhost:5432/adelie_db
+DATABASE_URL=postgresql+asyncpg://narative:password@localhost:5432/narrative_invest
+SYNC_DATABASE_URL=postgresql://narative:password@localhost:5432/narrative_invest
 
 # --- Redis (로컬) ---
 REDIS_URL=redis://localhost:6379/0
@@ -377,7 +377,7 @@ if [[ -d "database" && -f "database/alembic.ini" ]]; then
     if [[ "$DB_MODE" == "local" ]]; then
         # 로컬 PostgreSQL 준비 대기 (최대 30초)
         for i in $(seq 1 30); do
-            docker exec adelie-postgres pg_isready -U adelie -d adelie_db > /dev/null 2>&1 && break
+            docker exec adelie-postgres pg_isready -U narative -d narrative_invest > /dev/null 2>&1 && break
             [[ $i -eq 30 ]] && warn "PostgreSQL 준비 시간 초과"
             sleep 1
         done

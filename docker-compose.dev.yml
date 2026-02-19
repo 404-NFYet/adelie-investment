@@ -125,7 +125,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    command: sh -c "cd /app/database && alembic upgrade heads"
+    command: sh -c "cd /app && PYTHONPATH=/app alembic -c database/alembic.ini upgrade head"
     profiles:
       - migrate
 

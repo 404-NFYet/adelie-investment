@@ -10,7 +10,8 @@ SERVICES = frontend backend-api ai-pipeline
 .PHONY: help build push push-local dev dev-down deploy deploy-down \
         dev-frontend-local dev-api-local \
         test test-backend test-e2e test-load test-pipeline test-frontend \
-        migrate logs clean
+        migrate logs clean \
+        sync-dev-branches sync-lxd sync-all
 
 # --- 도움말 ---
 help:
@@ -40,9 +41,14 @@ help:
 	@echo "    make test-pipeline  파이프라인 검증 테스트"
 	@echo ""
 	@echo "  유틸리티:"
-	@echo "    make migrate        DB 마이그레이션 (Alembic)"
-	@echo "    make logs           배포 환경 로그 조회"
-	@echo "    make clean          Docker 시스템 정리"
+	@echo "    make migrate             DB 마이그레이션 (Alembic)"
+	@echo "    make logs                배포 환경 로그 조회"
+	@echo "    make clean               Docker 시스템 정리"
+	@echo ""
+	@echo "  싱크:"
+	@echo "    make sync-dev-branches   develop → dev/* 브랜치 병합 & push"
+	@echo "    make sync-lxd            각 LXD 서버에서 git pull 실행"
+	@echo "    make sync-all            브랜치 싱크 + LXD 서버 싱크"
 	@echo ""
 	@echo "  변수:"
 	@echo "    REGISTRY=$(REGISTRY)  TAG=$(TAG)"
@@ -109,14 +115,14 @@ deploy-logs:
 
 # --- Deploy-test (10.10.10.20): 로컬 빌드 → 푸시 → 서버 pull → 재시작 ---
 deploy-test: build push
-	ssh deploy-test 'cd ~/adelie-investment && git pull origin prod && \
+	ssh deploy-test 'cd ~/adelie-investment && git pull origin develop && \
 		docker compose -f docker-compose.prod.yml pull && \
 		docker compose -f docker-compose.prod.yml up -d --remove-orphans && \
 		docker exec adelie-frontend nginx -s reload 2>/dev/null || true'
 
 deploy-test-service:
 	$(MAKE) build-$(SVC) && docker push $(REGISTRY)/adelie-$(SVC):$(TAG)
-	ssh deploy-test 'cd ~/adelie-investment && git pull origin prod && \
+	ssh deploy-test 'cd ~/adelie-investment && git pull origin develop && \
 		docker compose -f docker-compose.prod.yml pull $(SVC) && \
 		docker compose -f docker-compose.prod.yml up -d $(SVC) && \
 		docker exec adelie-frontend nginx -s reload 2>/dev/null || true'
@@ -147,7 +153,33 @@ test-pipeline:
 
 # --- DB 마이그레이션 ---
 migrate:
-	cd database && alembic upgrade head
+	cd database && ../.venv/bin/alembic upgrade head
+
+# --- 브랜치/LXD 싱크 ---
+sync-dev-branches:
+	@echo "develop → dev/* 브랜치 싱크..."
+	@git config user.name "dorae222" && git config user.email "dhj9842@gmail.com"
+	@CURRENT=$$(git branch --show-current); \
+	for BRANCH in dev/frontend dev/backend dev/chatbot dev/pipeline dev/infra; do \
+		echo "  -> $$BRANCH"; \
+		git checkout $$BRANCH 2>/dev/null || { echo "  브랜치 없음, 건너뜀: $$BRANCH"; continue; }; \
+		git merge develop --no-edit -m "chore: develop 싱크 ($$(date +%Y-%m-%d))" 2>/dev/null || true; \
+		git push origin $$BRANCH; \
+	done; \
+	git checkout $$CURRENT
+	@echo "완료: 모든 dev/* 브랜치 싱크"
+
+sync-lxd:
+	@echo "LXD 서버 코드 싱크..."
+	lxc exec dev-yj99son  -- bash -c "cd ~/adelie-investment && git pull origin dev/frontend"
+	lxc exec dev-j2hoon10 -- bash -c "cd ~/adelie-investment && git pull origin dev/chatbot"
+	lxc exec dev-ryejinn  -- bash -c "cd ~/adelie-investment && git pull origin dev/pipeline"
+	lxc exec dev-jjjh02   -- bash -c "cd ~/adelie-investment && git pull origin dev/backend"
+	lxc exec dev-hj       -- bash -c "cd ~/adelie-investment && git pull origin dev/infra"
+	@echo "완료: 모든 LXD 서버 코드 싱크"
+
+sync-all: sync-dev-branches sync-lxd
+	@echo "전체 싱크 완료 (브랜치 + LXD 서버)"
 
 # --- 로그 ---
 logs:
