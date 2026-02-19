@@ -4,18 +4,9 @@ import { keywordsApi } from '../api';
 import DashboardHeader from '../components/layout/DashboardHeader';
 import { DEFAULT_HOME_ICON_KEY, getHomeIconSrc } from '../constants/homeIconCatalog';
 import { usePortfolio } from '../contexts/PortfolioContext';
+import useActivityFeed from '../hooks/useActivityFeed';
 import { formatKRW } from '../utils/formatNumber';
-
-const WEEK_PROGRESS = 85;
-const WEEK_DAYS = [
-  { label: '월', day: '21', done: true },
-  { label: '화', day: '22', done: true },
-  { label: '수', day: '23', done: true },
-  { label: '목', day: '24', current: true },
-  { label: '금', day: '25', done: false },
-  { label: '토', day: '26', done: false },
-  { label: '일', day: '27', done: false },
-];
+import { getKstWeekDays } from '../utils/kstDate';
 
 function QuizMissionCard() {
   return (
@@ -56,6 +47,7 @@ function QuizMissionCard() {
 export default function Home() {
   const navigate = useNavigate();
   const { portfolio, summary } = usePortfolio();
+  const { activitiesByDate, isLoading: isActivityLoading } = useActivityFeed();
 
   const [keywords, setKeywords] = useState([]);
   const [isLoadingKeywords, setIsLoadingKeywords] = useState(true);
@@ -93,6 +85,18 @@ export default function Home() {
     return fromPortfolio || fromSummary || 12450;
   }, [portfolio?.total_value, summary?.total_value]);
 
+  const weekDays = useMemo(() => getKstWeekDays(), []);
+
+  const weekActivityCount = useMemo(() => {
+    return weekDays.reduce((sum, day) => sum + (activitiesByDate[day.dateKey]?.length || 0), 0);
+  }, [activitiesByDate, weekDays]);
+
+  const weekActiveDays = useMemo(() => {
+    return weekDays.filter((day) => (activitiesByDate[day.dateKey]?.length || 0) > 0).length;
+  }, [activitiesByDate, weekDays]);
+
+  const weekProgress = Math.min(100, Math.round((weekActiveDays / 7) * 100));
+
   return (
     <div className="min-h-screen bg-[#f9fafb] pb-24">
       <DashboardHeader />
@@ -121,40 +125,47 @@ export default function Home() {
         <section>
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-[20px] font-bold leading-[1.4] tracking-[-0.02em] text-[#101828]">학습 스케줄</h2>
-            <button type="button" className="text-sm font-medium text-[#99a1af]">전체 캘린더 ›</button>
+            <button type="button" onClick={() => navigate('/education')} className="text-sm font-medium text-[#99a1af]">교육 캘린더 ›</button>
           </div>
 
           <div className="rounded-[28px] border border-[#f3f4f6] bg-white p-5 shadow-card sm:rounded-[32px] sm:p-6">
             <div>
-              <p className="text-xs font-bold text-[#99a1af]">이번 주 출석</p>
+              <p className="text-xs font-bold text-[#99a1af]">이번 주 활동</p>
               <div className="mt-1 flex items-center justify-between gap-3">
                 <p className="text-[16px] font-bold text-[#101828] sm:text-[18px]">주간 목표 달성 중 🔥</p>
                 <div className="flex shrink-0 items-center gap-2">
-                  <span className="text-sm font-black text-[#ff7648]">{WEEK_PROGRESS}%</span>
+                  <span className="text-sm font-black text-[#ff7648]">{weekProgress}%</span>
                   <div className="h-2 w-16 overflow-hidden rounded-full bg-[#f3f4f6]">
-                    <div className="h-full bg-[#ff7648]" style={{ width: `${WEEK_PROGRESS}%` }} />
+                    <div className="h-full bg-[#ff7648]" style={{ width: `${weekProgress}%` }} />
                   </div>
                 </div>
               </div>
+              <p className="mt-1 text-xs text-[#6b7280]">
+                {isActivityLoading ? '활동 데이터를 집계하는 중입니다...' : `거래/학습 총 ${weekActivityCount}건`}
+              </p>
             </div>
 
             <div className="mt-6 grid grid-cols-7 gap-1.5 sm:mt-7 sm:gap-2">
-              {WEEK_DAYS.map((item) => (
-                <div key={`${item.label}-${item.day}`} className="text-center">
-                  <p className={`text-xs font-bold ${item.current ? 'text-[#ff7648]' : 'text-[#99a1af]'}`}>{item.label}</p>
-                  <div
-                    className={`mt-2 mx-auto flex h-9 w-9 items-center justify-center rounded-xl border text-xs font-bold sm:h-11 sm:w-11 sm:rounded-2xl sm:text-sm ${
-                      item.current
-                        ? 'border-[#ff6900] bg-[#ff7648] text-white shadow-[0_10px_15px_rgba(255,118,72,0.2)]'
-                        : item.done
-                          ? 'border-[#ff6900] bg-white text-[#101828]'
-                          : 'border-[#f3f4f6] bg-white text-[#101828]'
-                    }`}
-                  >
-                    {item.day}
+              {weekDays.map((item) => {
+                const hasActivity = (activitiesByDate[item.dateKey]?.length || 0) > 0;
+
+                return (
+                  <div key={item.dateKey} className="text-center">
+                    <p className={`text-xs font-bold ${item.isToday ? 'text-[#ff7648]' : 'text-[#99a1af]'}`}>{item.label}</p>
+                    <div
+                      className={`mt-2 mx-auto flex h-9 w-9 items-center justify-center rounded-xl border text-xs font-bold sm:h-11 sm:w-11 sm:rounded-2xl sm:text-sm ${
+                        item.isToday
+                          ? 'border-[#ff6900] bg-[#ff7648] text-white shadow-[0_10px_15px_rgba(255,118,72,0.2)]'
+                          : hasActivity
+                            ? 'border-[#ff6900] bg-white text-[#101828]'
+                            : 'border-[#f3f4f6] bg-white text-[#101828]'
+                      }`}
+                    >
+                      {item.day}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </section>

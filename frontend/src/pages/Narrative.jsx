@@ -9,14 +9,14 @@ import ReactMarkdown from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
 import remarkMath from 'remark-math';
-import { narrativeApi } from '../api';
+import { learningApi, narrativeApi } from '../api';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import { useTermContext } from '../contexts/TermContext';
-import { formatKRW } from '../utils/formatNumber';
 import { buildNarrativePlot } from '../utils/narrativeChartAdapter';
 import ResponsiveEChart from '../components/charts/ResponsiveEChart';
 import ResponsivePlotly from '../components/charts/ResponsivePlotly';
 import { convertPlotlyToECharts } from '../utils/charts/plotlyToEcharts';
+import RewardResultScreen from '../components/narrative/RewardResultScreen';
 
 const STEP_CONFIGS = [
   {
@@ -82,12 +82,6 @@ const SWIPE_THRESHOLD = 70;
 const SWIPE_VELOCITY = 420;
 const RESUME_STORAGE_PREFIX = 'adelie:narrative:resume:';
 const RESUME_TTL_MS = 24 * 60 * 60 * 1000;
-
-const FEEDBACK_OPTIONS = [
-  { label: 'good', text: '유익했어요' },
-  { label: 'neutral', text: '보통이에요' },
-  { label: 'bad', text: '아쉬워요' },
-];
 
 const getResumeStorageKey = (caseId) => `${RESUME_STORAGE_PREFIX}${caseId}`;
 
@@ -244,91 +238,6 @@ function NarrativeSources({ sources = [] }) {
         })}
       </div>
     </section>
-  );
-}
-
-function NarrativeRewardScreen({ reward, onClose, caseId }) {
-  const [feedbackSent, setFeedbackSent] = useState(false);
-
-  const sendFeedback = async (label) => {
-    setFeedbackSent(true);
-    try {
-      await fetch('/api/v1/feedback', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ page: 'narrative', rating_label: label, case_id: caseId }),
-      });
-    } catch {
-      // feedback 실패는 화면 흐름을 막지 않음
-    }
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[2px]"
-    >
-      <div className="mx-auto flex min-h-screen w-full max-w-mobile items-center px-5 py-8">
-        <motion.section
-          initial={{ y: 24, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ type: 'spring', stiffness: 230, damping: 24 }}
-          className="w-full rounded-[30px] bg-white p-6 shadow-2xl"
-        >
-          <div className="mb-5 overflow-hidden rounded-2xl bg-[#f4f7ff]">
-            <img
-              src="/images/penguin-group.png"
-              alt="보상 축하"
-              className="h-[150px] w-full object-cover"
-            />
-          </div>
-
-          <p className="mb-2 text-center text-xs font-semibold tracking-wide text-primary">콘텐츠6</p>
-          <h2 className="text-center text-[clamp(1.4rem,5vw,1.8rem)] font-extrabold text-black">
-            브리핑 완료 보상
-          </h2>
-          <p className="mt-2 text-center text-[clamp(1.8rem,7vw,2.4rem)] font-black text-primary">
-            +{formatKRW(reward.base_reward)}
-          </p>
-          <p className="mt-2 text-center text-sm text-text-secondary">
-            학습 자금이 지급되었습니다
-          </p>
-          <p className="mb-5 mt-1 text-center text-xs text-text-muted">
-            7일 후 수익률이 양(+)이면 보너스가 추가됩니다
-          </p>
-
-          {!feedbackSent ? (
-            <div className="mb-5">
-              <p className="mb-2 text-center text-xs text-text-secondary">이번 내러티브는 어떠셨나요?</p>
-              <div className="flex justify-center gap-2">
-                {FEEDBACK_OPTIONS.map((fb) => (
-                  <button
-                    key={fb.label}
-                    type="button"
-                    onClick={() => sendFeedback(fb.label)}
-                    className="rounded-full border border-border px-3 py-1.5 text-xs text-text-secondary transition hover:border-primary hover:text-primary"
-                  >
-                    {fb.text}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <p className="mb-5 text-center text-xs font-medium text-primary">피드백 감사합니다.</p>
-          )}
-
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-full rounded-[16px] bg-primary py-3 text-sm font-semibold text-white transition hover:bg-primary-hover"
-          >
-            포트폴리오로 이동
-          </button>
-        </motion.section>
-      </div>
-    </motion.div>
   );
 }
 
@@ -504,11 +413,12 @@ export default function Narrative() {
   const [currentStep, setCurrentStep] = useState(0);
   const [direction, setDirection] = useState(0);
 
-  const [showReward, setShowReward] = useState(false);
+  const [rewardViewState, setRewardViewState] = useState('none');
   const [rewardData, setRewardData] = useState(null);
   const [rewardError, setRewardError] = useState('');
   const hasRestoredResumeRef = useRef(false);
   const scrollThrottleTimerRef = useRef(null);
+  const hasLoggedInProgressRef = useRef(false);
 
   const clearResumeState = useCallback(() => {
     if (!caseId) return;
@@ -535,8 +445,28 @@ export default function Narrative() {
     }
   }, [caseId]);
 
+  const upsertLearningProgress = useCallback(async (status, progressPercent) => {
+    const parsedCaseId = Number(caseId);
+    if (!Number.isInteger(parsedCaseId) || parsedCaseId <= 0) return;
+
+    try {
+      await learningApi.upsertProgress({
+        content_type: 'case',
+        content_id: parsedCaseId,
+        status,
+        progress_percent: progressPercent,
+      });
+    } catch {
+      // 학습 로그 실패는 화면 흐름을 막지 않음
+    }
+  }, [caseId]);
+
   useEffect(() => {
     hasRestoredResumeRef.current = false;
+    hasLoggedInProgressRef.current = false;
+    setRewardViewState('none');
+    setRewardData(null);
+    setRewardError('');
   }, [caseId]);
 
   useEffect(() => {
@@ -567,6 +497,12 @@ export default function Narrative() {
   const stepData = data?.steps?.[stepConfig.key];
   const stepTitle = stepData?.title || stepConfig.title;
   const isLastStep = currentStep === totalSteps - 1;
+
+  useEffect(() => {
+    if (!caseId || !data || isLoading || error || hasLoggedInProgressRef.current) return;
+    hasLoggedInProgressRef.current = true;
+    upsertLearningProgress('in_progress', 20);
+  }, [caseId, data, error, isLoading, upsertLearningProgress]);
 
   useEffect(() => {
     if (!caseId || !data || isLoading || error || hasRestoredResumeRef.current) return;
@@ -649,16 +585,19 @@ export default function Narrative() {
     }
 
     try {
+      setRewardError('');
       const reward = await claimReward(Number(caseId));
       if (reward) {
         setRewardData(reward);
-        setShowReward(true);
+        setRewardViewState('success');
+        upsertLearningProgress('completed', 100);
       }
     } catch (claimError) {
       const message = claimError?.message || '보상 청구에 실패했습니다.';
       if (message.includes('이미')) {
-        clearResumeState();
-        navigate('/home');
+        setRewardData(null);
+        setRewardViewState('already_claimed');
+        upsertLearningProgress('completed', 100);
         return;
       }
       setRewardError(message);
@@ -680,7 +619,7 @@ export default function Narrative() {
   };
 
   const closeReward = () => {
-    setShowReward(false);
+    setRewardViewState('none');
     clearResumeState();
     navigate('/portfolio');
   };
@@ -800,7 +739,7 @@ export default function Narrative() {
         </AnimatePresence>
       </main>
 
-      {rewardError ? (
+      {rewardError && rewardViewState === 'none' ? (
         <div className="fixed bottom-20 left-0 right-0 z-40 px-4">
           <div className="mx-auto w-full max-w-mobile rounded-xl bg-error px-4 py-3 text-center text-sm font-medium text-white">
             {rewardError}
@@ -808,11 +747,14 @@ export default function Narrative() {
         </div>
       ) : null}
 
-      <AnimatePresence>
-        {showReward && rewardData ? (
-          <NarrativeRewardScreen reward={rewardData} onClose={closeReward} caseId={caseId} />
-        ) : null}
-      </AnimatePresence>
+      {rewardViewState !== 'none' ? (
+        <RewardResultScreen
+          mode={rewardViewState}
+          rewardAmount={rewardData?.base_reward}
+          onBack={() => setRewardViewState('none')}
+          onPrimaryAction={closeReward}
+        />
+      ) : null}
     </div>
   );
 }

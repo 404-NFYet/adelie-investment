@@ -1,48 +1,38 @@
 /**
  * ChatFAB.jsx - AI 튜터 플로팅 액션 버튼
- * 임시 비활성화 상태 — 토스트 메시지 표시
  */
 import { useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { useToast } from '../../components';
+import { useTutor } from '../../contexts';
 
-// FAB이 노출되는 경로 목록
-const VISIBLE_PATHS = ['/narrative', '/case', '/story', '/comparison', '/companies'];
+const HIDDEN_PREFIXES = ['/auth', '/landing', '/onboarding', '/tutor'];
+const HIDDEN_EXACT = ['/'];
 
 export default function ChatFAB() {
   const location = useLocation();
-  const toast = useToast();
+  const { isOpen, openTutor } = useTutor();
 
-  const isVisible = VISIBLE_PATHS.some((p) => location.pathname.startsWith(p));
-  if (!isVisible) return null;
+  const shouldHide =
+    isOpen ||
+    HIDDEN_EXACT.includes(location.pathname) ||
+    HIDDEN_PREFIXES.some((prefix) => location.pathname.startsWith(prefix));
 
-  const handleClick = () => {
-    toast.info('AI 튜터가 빠르게 준비 될 예정이에요!');
-  };
+  if (shouldHide) return null;
 
   return (
     <motion.button
-      onClick={handleClick}
-      className="fixed bottom-24 right-4 z-30 w-14 h-14 rounded-full bg-gray-400 text-white
-                 shadow-lg flex items-center justify-center
-                 active:scale-95 transition-colors"
+      onClick={() => openTutor()}
+      className="fixed bottom-24 right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-white shadow-lg transition-colors active:scale-95"
       initial={{ scale: 0, opacity: 0 }}
-      animate={{ scale: 1, opacity: 0.6 }}
+      animate={{ scale: 1, opacity: 1 }}
       exit={{ scale: 0, opacity: 0 }}
       whileTap={{ scale: 0.9 }}
-      aria-label="AI 튜터 준비 중"
+      aria-label="AI 튜터 열기"
     >
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="w-6 h-6"
-      >
-        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6">
+        <path d="M12 3.2l1.85 4.3 4.3 1.85-4.3 1.85L12 15.5l-1.85-4.3-4.3-1.85 4.3-1.85L12 3.2z" />
+        <path d="M18.6 14.1l.95 2.2 2.2.95-2.2.95-.95 2.2-.95-2.2-2.2-.95 2.2-.95.95-2.2z" />
+        <path d="M6.4 14.8l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6.6-1.4z" />
       </svg>
     </motion.button>
   );
