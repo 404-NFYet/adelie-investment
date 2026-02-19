@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "53d4af738184",
+  "session_id": "8b65da3e-b651-430b-9e8c-147104dd24a1",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-19T02:09:59.877722629Z",
+  "branch": "develop",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "Makefile",
+    "docker-compose.dev.yml",
+    "lxd/docs/sync-guide.md",
+    "lxd/scripts/setup-dev-env.sh"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 30,
+    "cache_creation_tokens": 44829,
+    "cache_read_tokens": 1159970,
+    "output_tokens": 8145,
+    "api_call_count": 26
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-19T02:09:59.859940548Z",
+    "agent_lines": 262,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 262,
+    "agent_percentage": 100
+  }
+}
