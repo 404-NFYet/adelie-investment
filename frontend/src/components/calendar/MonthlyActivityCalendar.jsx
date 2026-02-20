@@ -19,12 +19,12 @@ export default function MonthlyActivityCalendar({
   const cells = buildKstMonthGrid(year, month);
 
   return (
-    <section className="rounded-[28px] border border-[rgba(148,163,184,0.24)] bg-white p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_12px_24px_-18px_rgba(15,23,42,0.22)] sm:rounded-[32px] sm:p-6">
+    <section className="rounded-[24px] bg-white p-5 shadow-sm sm:p-6">
       <div className="mb-4 flex items-center justify-between">
         <button
           type="button"
           onClick={onPrevMonth}
-          className="h-8 w-8 rounded-xl border border-[rgba(148,163,184,0.35)] text-text-secondary shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff6900]/45"
+          className="flex h-8 w-8 items-center justify-center rounded-xl text-text-secondary transition hover:bg-gray-50 hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45"
           aria-label="이전 달"
         >
           ‹
@@ -33,7 +33,7 @@ export default function MonthlyActivityCalendar({
         <button
           type="button"
           onClick={onNextMonth}
-          className="h-8 w-8 rounded-xl border border-[rgba(148,163,184,0.35)] text-text-secondary shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff6900]/45"
+          className="flex h-8 w-8 items-center justify-center rounded-xl text-text-secondary transition hover:bg-gray-50 hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45"
           aria-label="다음 달"
         >
           ›
@@ -51,28 +51,34 @@ export default function MonthlyActivityCalendar({
           const isSelected = selectedDateKey === cell.dateKey;
           const isToday = todayKey === cell.dateKey;
           const isActive = hasActivity(cell.dateKey);
+          const isCurrentMonth = cell.isCurrentMonth;
+
+          let cellClass = 'bg-transparent text-[#c1c8d2]';
+          if (isCurrentMonth) {
+            if (isToday && isSelected) {
+              cellClass = 'bg-primary text-white font-extrabold';
+            } else if (isToday) {
+              cellClass = 'bg-[#fff1e8] text-primary font-extrabold';
+            } else if (isSelected) {
+              cellClass = 'bg-[#f3f4f6] text-[#101828] font-bold';
+            } else if (isActive) {
+              cellClass = 'bg-[#fff7f2] font-extrabold text-[#101828]';
+            } else {
+              cellClass = 'bg-white text-[#101828]';
+            }
+          }
 
           return (
             <button
               key={cell.dateKey}
               type="button"
               onClick={() => onSelectDateKey(cell.dateKey)}
-              className={`relative flex h-10 items-center justify-center rounded-xl text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff6900]/40 sm:h-11 ${
-                isSelected
-                  ? 'bg-[#ff7648] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_10px_18px_rgba(255,118,72,0.22)]'
-                  : cell.isCurrentMonth
-                    ? isActive
-                      ? 'bg-white text-[#101828] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_4px_8px_rgba(15,23,42,0.06)]'
-                      : isToday
-                        ? 'bg-[#fff1e8] text-[#ff6900] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]'
-                        : 'bg-white text-[#101828] shadow-[inset_0_1px_0_rgba(255,255,255,0.88),0_3px_7px_rgba(15,23,42,0.05)]'
-                    : 'bg-transparent text-[#c1c8d2]'
-              }`}
+              className={`relative flex h-10 items-center justify-center rounded-xl text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff6900]/40 sm:h-11 ${cellClass}`}
               aria-label={`${cell.year}년 ${cell.month}월 ${cell.day}일`}
             >
               <span>{cell.day}</span>
-              {!isSelected && isActive && cell.isCurrentMonth ? (
-                <span className="absolute bottom-1 h-1.5 w-1.5 rounded-full bg-[#ff6900]" />
+              {isToday && isCurrentMonth ? (
+                <span className={`absolute bottom-1 h-1.5 w-1.5 rounded-full ${isSelected ? 'bg-white' : 'bg-primary'}`} />
               ) : null}
             </button>
           );

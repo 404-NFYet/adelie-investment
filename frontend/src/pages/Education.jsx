@@ -100,19 +100,6 @@ export default function Education() {
     return activitiesByDate[selectedDateKey] || [];
   }, [activitiesByDate, selectedDateKey]);
 
-  const monthPrefix = `${currentMonth.year}-${String(currentMonth.month).padStart(2, '0')}-`;
-  const monthlyActivityDays = useMemo(() => {
-    return Object.keys(activitiesByDate)
-      .filter((key) => key.startsWith(monthPrefix) && (activitiesByDate[key]?.length || 0) > 0)
-      .length;
-  }, [activitiesByDate, monthPrefix]);
-
-  const monthlyActivityCount = useMemo(() => {
-    return Object.entries(activitiesByDate)
-      .filter(([key]) => key.startsWith(monthPrefix))
-      .reduce((sum, [, items]) => sum + items.length, 0);
-  }, [activitiesByDate, monthPrefix]);
-
   const handlePrevMonth = () => {
     setCurrentMonth((prev) => shiftYearMonth(prev.year, prev.month, -1));
   };
@@ -154,10 +141,6 @@ export default function Education() {
             onNextMonth={handleNextMonth}
             hasActivity={hasActivity}
           />
-
-          <div className="rounded-2xl border border-border bg-white px-4 py-3 text-sm text-[#6b7280]">
-            이번 달 활동일 {monthlyActivityDays}일 · 총 {monthlyActivityCount}건
-          </div>
 
           <ActivityDayDashboard
             dateKey={selectedDateKey}

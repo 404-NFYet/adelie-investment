@@ -7,19 +7,19 @@ const STORAGE_KEY = 'adelie_daily_quiz_v1';
 const FALLBACK_KEYWORDS = [
   {
     title: '리스크 관리',
-    description: '분산 투자와 손절 기준을 사전에 정해 큰 손실을 방지하는 전략입니다.',
+    description: '큰 손실을 막기 위해 분산 투자하는 전략',
   },
   {
     title: '수급 변화',
-    description: '기관과 외국인 수급 흐름을 확인해 단기 변동성과 추세 전환 신호를 파악합니다.',
+    description: '외국인과 기관의 매매 흐름을 파악하는 것',
   },
   {
     title: '실적 모멘텀',
-    description: '실적 개선 기대가 주가에 선반영되는 구간을 점검하고 밸류에이션을 비교합니다.',
+    description: '기업의 이익이 늘어날 것이라는 기대감',
   },
   {
     title: '거시 변수',
-    description: '금리, 환율, 유가 같은 거시 지표가 업종별 수익성에 미치는 영향을 점검합니다.',
+    description: '금리나 환율 등 시장 전체에 영향을 주는 지표',
   },
 ];
 
@@ -105,19 +105,29 @@ function takeQuestionSeeds(keywords) {
   return { keywordPool: merged, seeds };
 }
 
+function shortenText(text) {
+  if (!text) return '';
+  const firstSentence = text.split(/[.?!](\s|$)/)[0].trim();
+  if (firstSentence.length > 35) {
+    return firstSentence.substring(0, 32) + '...';
+  }
+  return firstSentence;
+}
+
 function buildOptions(correctDescription, wrongPool, idx) {
   const wrongs = [];
   for (const candidate of wrongPool) {
-    const text = String(candidate || '').trim();
+    const text = shortenText(candidate);
     if (!text || text === correctDescription || wrongs.includes(text)) continue;
     wrongs.push(text);
     if (wrongs.length >= 3) break;
   }
 
   const fallbackWrongs = [
-    '단기 급등락보다 장기 추세를 먼저 확인합니다.',
-    '거래량과 뉴스 강도를 함께 분석해 신호의 신뢰도를 높입니다.',
-    '보유 비중과 손익 관리를 동시에 점검해 리스크를 줄입니다.',
+    '장기적인 가격 추세를 따라가는 전략',
+    '거래량 급증과 뉴스 강도만 분석하는 것',
+    '평균 단가를 낮추기 위해 계속 매수하는 것',
+    '오로지 차트의 기술적 지표만 보고 판단하는 것'
   ];
 
   for (const fallback of fallbackWrongs) {
@@ -140,15 +150,16 @@ function buildDailyQuestions(keywords, dateKey) {
   const fallbackDescriptions = keywordPool.map((item) => item.description).filter(Boolean);
 
   return seeds.map((seed, idx) => {
-    const correctDescription = seed.description || `${seed.title} 관련 시장 변화를 점검하는 내용입니다.`;
-    const wrongPool = fallbackDescriptions.filter((desc) => desc !== correctDescription);
+    const rawDesc = seed.description || `${seed.title} 관련 변화를 점검하는 것`;
+    const correctDescription = shortenText(rawDesc);
+    const wrongPool = fallbackDescriptions.filter((desc) => desc !== rawDesc);
     const { options, correctAnswer } = buildOptions(correctDescription, wrongPool, idx);
 
     return {
       id: `q-${idx + 1}`,
       scenarioId: `daily-${dateKey}-${idx + 1}`,
       title: seed.title,
-      prompt: `오늘 키워드 "${seed.title}"와 가장 관련 깊은 설명을 고르세요.`,
+      prompt: `다음 중 "${seed.title}"에 대한 가장 적절한 설명은?`,
       options,
       correctAnswer,
     };

@@ -32,41 +32,32 @@ export default function DailyQuizMissionCard({ keywords = [] }) {
 
   return (
     <>
-      <section className="rounded-[28px] border border-border bg-white p-5 sm:p-6 shadow-card">
-        <p className="inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary">
-          오늘의 미션
-        </p>
-        <div className="mt-2.5 flex items-stretch justify-between gap-3 sm:gap-4">
-          <div className="min-w-0 flex flex-1 flex-col justify-between">
-            <h3 className="text-[clamp(1.45rem,6.2vw,1.7rem)] font-extrabold leading-[1.22] tracking-[-0.02em] text-[#101828]">
-              오늘의 퀴즈 풀고
-              <br />
-              투자 지원금 받기
+      <section className="rounded-[24px] bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex-1">
+            <p className="text-[12px] font-bold text-primary">오늘의 미션</p>
+            <h3 className="mt-1 text-[20px] font-bold leading-[1.3] text-[#101828] break-keep">
+              오늘의 퀴즈 풀고<br />투자 지원금 받기
             </h3>
-            <p className="mt-2 inline-flex w-fit rounded-full bg-[#f3f4f6] px-3 py-1 text-xs font-medium text-[#6b7280]">
-              {statusText}
+            <p className="mt-2 text-[13px] font-medium text-[#6b7280]">
+              {statusText} · {paidCount}/{totalQuestions} 완료
             </p>
           </div>
-          <div className="flex h-[104px] w-[104px] shrink-0 items-center justify-center rounded-[28px] bg-[#f3f4f6] sm:h-[120px] sm:w-[120px] sm:rounded-[32px]">
+          <div className="flex h-[88px] w-[88px] shrink-0 items-center justify-center rounded-[24px] bg-[#fff4ed]">
             <img
               src={getHomeIconSrc('target-dynamic-color')}
               alt="오늘의 미션 아이콘"
-              className="h-16 w-16 object-contain sm:h-20 sm:w-20"
+              className="h-14 w-14 object-contain"
             />
           </div>
         </div>
-        <div className="mt-5 space-y-2">
-          <button
-            type="button"
-            onClick={() => setIsModalOpen(true)}
-            className="h-11 w-full rounded-2xl bg-[#ff6900] text-sm font-semibold text-white"
-          >
-            {buttonText}
-          </button>
-          <p className="text-center text-xs text-[#9ca3af]">
-            오늘 지급된 문항 {paidCount}/{totalQuestions}
-          </p>
-        </div>
+        <button
+          type="button"
+          onClick={() => setIsModalOpen(true)}
+          className="mt-5 flex h-12 w-full items-center justify-center rounded-2xl bg-primary text-[15px] font-bold text-white transition hover:bg-primary-hover active:scale-[0.98]"
+        >
+          {buttonText}
+        </button>
       </section>
 
       <DailyQuizModal

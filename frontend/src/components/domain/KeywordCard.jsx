@@ -58,86 +58,85 @@ export default React.memo(function KeywordCard({
   return (
     <div
       onClick={onClick}
-      className={`card card-interactive cursor-pointer ${selected ? 'ring-2 ring-primary' : ''}`}
+      className={`w-full cursor-pointer rounded-[20px] bg-white p-4 text-left transition hover:bg-gray-50 active:bg-gray-100 ${selected ? 'ring-2 ring-primary/40' : ''}`}
     >
-      {/* 1. 헤더: 섹터 태그 + 트렌드 배지 */}
-      <div className="card-header">
-        {sector && <span className="sector-tag">#{sector}</span>}
-        {trend_days > 0 && trend_type && (
-          <span className="trend-badge">
-            {trend_days}일 연속 {getTrendTypeLabel(trend_type)}
-          </span>
-        )}
+      <div className="flex items-start gap-3">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#fff4ed] text-[18px]">
+          📰
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="mb-1 flex items-center justify-between">
+            <h3 className="truncate text-[15px] font-bold text-[#101828]">
+              {title}
+            </h3>
+          </div>
+          <p className="line-limit-2 text-[13px] leading-relaxed text-[#6b7280]">
+            <HighlightedText content={description} />
+          </p>
+
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {sector && (
+              <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[11px] font-medium text-gray-600">
+                {sector}
+              </span>
+            )}
+            {trend_days > 0 && trend_type && (
+              <span className="rounded bg-[#fff4ed] px-1.5 py-0.5 text-[11px] font-medium text-[#c2410c]">
+                {trend_days}일 연속 {getTrendTypeLabel(trend_type)}
+              </span>
+            )}
+            {quality_score > 0 && (
+              <span className="rounded bg-[#f0fdf4] px-1.5 py-0.5 text-[11px] font-medium text-[#166534]">
+                품질 {quality_score}점
+              </span>
+            )}
+          </div>
+        </div>
       </div>
 
-      {/* 2. 제목 */}
-      <h3 className="text-lg font-bold mb-2">
-        {title}
-      </h3>
-
-      {/* 3. 설명 */}
-      <p className="text-secondary text-sm leading-relaxed mb-3">
-        <HighlightedText content={description} />
-      </p>
-
-      {/* 4. 카탈리스트 뉴스 (있으면) */}
-      {catalyst && typeof catalyst === 'string' && !catalyst.trimStart().startsWith('[') && !catalyst.trimStart().startsWith('{') && (
-        <div className="catalyst-box">
-          <span className="catalyst-icon"></span>
-          <div className="flex-1">
-            <p className="catalyst-title">{catalyst}</p>
-            <div className="flex items-center gap-2 mt-1">
-              {catalyst_source && (
-                <span className="catalyst-source">{catalyst_source}</span>
-              )}
+      {/* 부가 정보 섹션 (카탈리스트, 과거 사례, 종목 등) - 간결하게 변경 */}
+      {(catalyst || mirroring_hint || (stocks && stocks.length > 0)) && (
+        <div className="mt-3 ml-14 space-y-2 border-t border-gray-100 pt-3">
+          {catalyst && typeof catalyst === 'string' && !catalyst.trimStart().startsWith('[') && !catalyst.trimStart().startsWith('{') && (
+            <div className="flex flex-col gap-1 rounded-xl bg-gray-50 p-2.5">
+              <p className="text-[12px] font-medium text-[#101828]">카탈리스트</p>
+              <p className="text-[12px] text-[#6b7280]">{catalyst}</p>
               {catalyst_url && (
                 <a
                   href={catalyst_url}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={(e) => e.stopPropagation()}
-                  className="catalyst-link"
+                  className="mt-0.5 text-[11px] text-primary hover:underline"
                 >
-                  뉴스 원문 →
+                  뉴스 원문 보기 ›
                 </a>
               )}
             </div>
-          </div>
-        </div>
-      )}
+          )}
 
-      {/* 5. 과거 사례 힌트 */}
-      {mirroring_hint && (
-        <div className="mirroring-hint">
-          <span className="hint-icon"></span>
-          <p>
-            <strong>과거 사례:</strong> {mirroring_hint}
-            {event_year && sync_rate && (
-              <span className="similarity">
-                ({event_year}년, 유사도 {Math.round(sync_rate * 100)}%)
-              </span>
-            )}
-          </p>
-        </div>
-      )}
+          {mirroring_hint && (
+            <div className="flex flex-col gap-1 rounded-xl bg-[#f5f3ff] p-2.5">
+              <p className="text-[12px] font-medium text-[#4338ca]">과거 사례 힌트</p>
+              <p className="text-[12px] text-[#4338ca]">{mirroring_hint}</p>
+            </div>
+          )}
 
-      {/* 6. 관련 종목 프리뷰 (상위 2개) */}
-      {stocks && stocks.length > 0 && (
-        <div className="stocks-preview">
-          <span className="stocks-label">관련 종목:</span>
-          <div className="stock-chips">
-            {stocks.slice(0, 2).map((stock, idx) => (
-              <div key={stock.stock_code || idx} className="stock-chip">
-                <span className="stock-name">{stock.stock_name}</span>
-                {stock.reason && (
-                  <span className="stock-reason">({stock.reason})</span>
+          {stocks && stocks.length > 0 && (
+            <div className="flex flex-col gap-1 rounded-xl bg-gray-50 p-2.5">
+              <p className="text-[12px] font-medium text-[#101828]">관련 종목</p>
+              <div className="flex flex-wrap gap-1.5">
+                {stocks.slice(0, 3).map((stock, idx) => (
+                  <span key={stock.stock_code || idx} className="rounded bg-white px-1.5 py-0.5 text-[11px] text-gray-700 shadow-sm border border-gray-100">
+                    {stock.stock_name}
+                  </span>
+                ))}
+                {stocks.length > 3 && (
+                  <span className="text-[11px] text-gray-500">외 {stocks.length - 3}개</span>
                 )}
               </div>
-            ))}
-            {stocks.length > 2 && (
-              <span className="more-stocks">외 {stocks.length - 2}개</span>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -3,7 +3,7 @@
  * 코드 스플리팅 적용 (React.lazy + Suspense)
  */
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { UserProvider, useUser } from './contexts/UserContext';
 import { PortfolioProvider } from './contexts/PortfolioContext';
 import { TutorProvider } from './contexts/TutorContext';
@@ -27,12 +27,17 @@ const Comparison = lazy(() => import('./pages/Comparison'));
 const Story = lazy(() => import('./pages/Story'));
 const Companies = lazy(() => import('./pages/Companies'));
 const History = lazy(() => import('./pages/History'));
-const Matching = lazy(() => import('./pages/Matching'));
 const Narrative = lazy(() => import('./pages/Narrative'));
 const Notifications = lazy(() => import('./pages/Notifications'));
 const Portfolio = lazy(() => import('./pages/Portfolio'));
 const Profile = lazy(() => import('./pages/Profile'));
 const TutorChat = lazy(() => import('./pages/TutorChat'));
+
+function CaseRedirect() {
+  const { caseId } = useParams();
+  if (!caseId) return <Navigate to="/search" replace />;
+  return <Navigate to={`/narrative/${caseId}`} replace />;
+}
 
 function ProtectedRoute({ children }) {
   const { user, isLoading } = useUser();
@@ -65,7 +70,7 @@ function AppRoutes() {
         <Route path="/story" element={<ProtectedRoute><Story /></ProtectedRoute>} />
         <Route path="/companies" element={<ProtectedRoute><Companies /></ProtectedRoute>} />
         <Route path="/history" element={<ProtectedRoute><History /></ProtectedRoute>} />
-        <Route path="/case/:caseId" element={<ProtectedRoute><Matching /></ProtectedRoute>} />
+        <Route path="/case/:caseId" element={<ProtectedRoute><CaseRedirect /></ProtectedRoute>} />
         <Route path="/narrative/:caseId" element={<ProtectedRoute><Narrative /></ProtectedRoute>} />
         <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
         <Route path="/portfolio" element={<ProtectedRoute><Portfolio /></ProtectedRoute>} />

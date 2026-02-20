@@ -31,6 +31,7 @@ function normalizeTradeItem(trade) {
     meta: {
       stockCode: trade.stock_code,
       tradeType: trade.trade_type,
+      price: trade.price,
     },
   };
 }
@@ -53,6 +54,7 @@ function normalizeLearningItem(item) {
       contentType: item.content_type,
       contentId: item.content_id,
       status: item.status,
+      progressPercent: progressPercent,
     },
   };
 }

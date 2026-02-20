@@ -4,13 +4,13 @@ import { DEFAULT_HOME_ICON_KEY, getHomeIconSrc } from '../../constants/homeIconC
 function ProgressBar({ current, total }) {
   const ratio = total > 0 ? Math.round((current / total) * 100) : 0;
   return (
-    <div className="rounded-xl border border-[#eef2f7] bg-white px-3 py-3">
-      <div className="mb-2 flex items-center justify-between text-xs font-semibold text-[#6b7280]">
-        <span>{current}/{total} 문항</span>
-        <span>{ratio}%</span>
+    <div className="px-1 py-2">
+      <div className="mb-2.5 flex items-center justify-between text-[13px] font-bold text-[#6b7280]">
+        <span>질문 {current} / {total}</span>
+        <span className="text-primary">{ratio}%</span>
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-[#f3f4f6]">
-        <div className="h-full rounded-full bg-[#ff7648] transition-all" style={{ width: `${ratio}%` }} />
+      <div className="h-1.5 overflow-hidden rounded-full bg-gray-100">
+        <div className="h-full rounded-full bg-primary transition-all duration-300" style={{ width: `${ratio}%` }} />
       </div>
     </div>
   );
@@ -21,18 +21,22 @@ function OptionCard({ option, optionIndex, isSelected, onSelect }) {
     <button
       type="button"
       onClick={() => onSelect(optionIndex)}
-      className={`w-full rounded-[18px] border bg-white px-4 py-3 text-left shadow-card transition ${
+      className={`flex w-full items-center rounded-2xl p-4 text-left transition active:scale-[0.98] ${
         isSelected
-          ? 'border-[#ff6900] bg-[#fff6f0]'
-          : 'border-border hover:border-[#ffd0ba] hover:bg-[#fffaf7]'
+          ? 'bg-[#fff4ed] ring-1 ring-inset ring-primary'
+          : 'bg-gray-50 hover:bg-gray-100'
       }`}
     >
-      <div className="flex items-center gap-3">
-        <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-extrabold ${isSelected ? 'bg-[#ff6900] text-white' : 'bg-[#f3f4f6] text-[#6b7280]'}`}>
-          {String.fromCharCode(65 + optionIndex)}
-        </div>
-        <p className="text-sm font-semibold leading-[1.35] text-[#101828] break-keep">{option}</p>
+      <div className={`mr-3 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${isSelected ? 'border-primary bg-primary' : 'border-gray-300 bg-white'}`}>
+        {isSelected && (
+          <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+        )}
       </div>
+      <p className={`text-[15px] leading-[1.4] break-keep ${isSelected ? 'font-bold text-primary' : 'font-semibold text-[#101828]'}`}>
+        {option}
+      </p>
     </button>
   );
 }
@@ -126,23 +130,14 @@ export default function DailyQuizModal({
           <div className="space-y-4">
             <ProgressBar current={Math.min(step + 1, questions.length)} total={questions.length} />
 
-            <article className="rounded-[20px] border border-border bg-white px-4 py-4 shadow-card">
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-[11px] font-semibold text-[#99a1af]">문항 {step + 1}</p>
-                  <h4 className="mt-1 line-limit-2 text-[15px] font-bold leading-[1.35] text-[#101828] break-keep">
-                    {currentQuestion?.title || '오늘 키워드'}
-                  </h4>
-                </div>
-                <img
-                  src={getHomeIconSrc('target-dynamic-color') || getHomeIconSrc(DEFAULT_HOME_ICON_KEY)}
-                  alt="퀴즈 아이콘"
-                  className="h-12 w-12 shrink-0 object-contain"
-                />
+            <article className="mb-6 mt-2 px-1">
+              <div className="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 px-2 py-1 text-[11px] font-bold text-gray-500">
+                <span>🤔</span>
+                {currentQuestion?.title || '오늘의 퀴즈'}
               </div>
-              <p className="mt-3 text-sm font-medium leading-[1.45] text-[#111827] break-keep">
+              <h4 className="mt-3 text-[18px] font-bold leading-[1.4] text-[#101828] break-keep">
                 {currentQuestion?.prompt}
-              </p>
+              </h4>
             </article>
 
             <div className="space-y-2.5">
@@ -157,12 +152,12 @@ export default function DailyQuizModal({
               ))}
             </div>
 
-            <div className="flex items-center justify-between gap-2">
+            <div className="mt-6 flex items-center justify-between gap-3">
               <button
                 type="button"
                 onClick={() => setStep((prev) => Math.max(prev - 1, 0))}
                 disabled={step === 0 || isSubmitting}
-                className="h-11 min-w-[96px] rounded-xl border border-[#e5e7eb] bg-white px-4 text-sm font-semibold text-[#6b7280] disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex h-12 w-[100px] items-center justify-center rounded-2xl bg-gray-100 text-[15px] font-bold text-gray-600 transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 이전
               </button>
@@ -172,18 +167,18 @@ export default function DailyQuizModal({
                   type="button"
                   onClick={() => setStep((prev) => Math.min(prev + 1, questions.length - 1))}
                   disabled={answers[currentQuestion?.id] === undefined || isSubmitting}
-                  className="h-11 flex-1 rounded-xl bg-[#ff6900] px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex h-12 flex-1 items-center justify-center rounded-2xl bg-primary text-[15px] font-bold text-white transition hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  다음 카드
+                  다음 문항
                 </button>
               ) : (
                 <button
                   type="button"
                   onClick={handleSubmit}
                   disabled={answerCount < questions.length || isSubmitting}
-                  className="h-11 flex-1 rounded-xl bg-[#ff6900] px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex h-12 flex-1 items-center justify-center rounded-2xl bg-primary text-[15px] font-bold text-white transition hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  {isSubmitting ? '제출 중...' : '결과 확인'}
+                  {isSubmitting ? '제출 중...' : '결과 확인하기'}
                 </button>
               )}
             </div>
@@ -195,63 +190,67 @@ export default function DailyQuizModal({
             ) : null}
           </div>
         ) : (
-          <div className="space-y-3">
-            <article className="rounded-[20px] border border-border bg-white px-4 py-4 shadow-card">
-              <p className="text-xs font-semibold text-[#99a1af]">이번 결과</p>
-              <p className="mt-1 text-[22px] font-extrabold text-[#101828]">{result.score}/{result.total} 정답</p>
-              <p className="mt-2 text-sm text-[#4b5563]">
+          <div className="space-y-4 pt-2">
+            <div className="text-center">
+              <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-[#f0fdf4] text-[32px]">
+                {result.score === result.total ? '🎉' : '👏'}
+              </div>
+              <h3 className="text-[22px] font-bold text-[#101828]">
+                {result.score}문제 정답!
+              </h3>
+              <p className="mt-1.5 text-[14px] text-[#6b7280]">
                 {result.mode === 'practice'
                   ? '연습 모드로 완료했어요. 보상은 오늘 이미 지급됐습니다.'
-                  : `이번 제출로 ${Number(result.rewardTotal || 0).toLocaleString('ko-KR')}원을 지급받았습니다.`}
+                  : `이번 제출로 ${Number(result.rewardTotal || 0).toLocaleString()}원을 받았어요.`}
               </p>
+            </div>
 
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <div className="rounded-xl border border-[#eef2f7] bg-[#fcfcfd] px-3 py-2 text-xs font-semibold text-[#374151]">
-                  오늘 지급 {paidCount}/{totalQuestions}
-                </div>
-                <div className="rounded-xl border border-[#eef2f7] bg-[#fcfcfd] px-3 py-2 text-xs font-semibold text-[#374151]">
-                  상태: {hasClaimedAllRewards ? '오늘 완료' : hasPendingRewards ? '부분 지급' : '진행 중'}
-                </div>
+            <div className="mt-6 space-y-2">
+              <div className="flex items-center justify-between rounded-xl bg-white p-4 shadow-sm">
+                <span className="text-[14px] font-medium text-[#6b7280]">오늘 받은 보상 문항</span>
+                <span className="text-[15px] font-bold text-[#101828]">{paidCount}/{totalQuestions}개</span>
               </div>
+              
+              {result.remainingRewardQuestions > 0 && (
+                <div className="flex items-center justify-between rounded-xl bg-[#fff4ed] p-4">
+                  <span className="text-[14px] font-medium text-[#c2410c]">아직 못 받은 보상</span>
+                  <span className="text-[15px] font-bold text-[#c2410c]">{result.remainingRewardQuestions}개</span>
+                </div>
+              )}
+            </div>
 
-              {result.remainingRewardQuestions > 0 ? (
-                <p className="mt-3 text-xs font-semibold text-[#b45309]">미지급 문항 {result.remainingRewardQuestions}개가 남아 있어요.</p>
-              ) : null}
-            </article>
+            <div className="mt-8 space-y-2.5">
+              {result.mode === 'reward' && result.remainingRewardQuestions > 0 && (
+                <button
+                  type="button"
+                  onClick={handleRetryRewards}
+                  disabled={isSubmitting}
+                  className="flex h-14 w-full items-center justify-center rounded-2xl bg-[#fff4ed] text-[15px] font-bold text-primary transition active:scale-[0.98] disabled:opacity-40"
+                >
+                  {isSubmitting ? '재시도 중...' : '틀린 문제 다시 풀고 마저 받기'}
+                </button>
+              )}
 
-            {result.mode === 'reward' && result.remainingRewardQuestions > 0 ? (
               <button
                 type="button"
-                onClick={handleRetryRewards}
-                disabled={isSubmitting}
-                className="h-11 w-full rounded-xl border border-[#f97316] bg-[#fff7ed] text-sm font-semibold text-[#c2410c] disabled:cursor-not-allowed disabled:opacity-40"
+                onClick={onMovePortfolio}
+                className="flex h-14 w-full items-center justify-center rounded-2xl bg-primary text-[15px] font-bold text-white transition hover:bg-primary-hover active:scale-[0.98]"
               >
-                {isSubmitting ? '재시도 중...' : '미지급 보상 재시도'}
+                내 포트폴리오 보기
               </button>
-            ) : null}
 
-            <button
-              type="button"
-              onClick={onMovePortfolio}
-              className="h-11 w-full rounded-xl bg-[#ff6900] text-sm font-semibold text-white"
-            >
-              포트폴리오로 이동
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setResult(null);
-                setStep(0);
-                setAnswers({});
-                setSubmitError('');
-              }}
-              className="h-11 w-full rounded-xl border border-[#e5e7eb] bg-white text-sm font-semibold text-[#4b5563]"
-            >
-              다시 풀기(연습)
-            </button>
-
-            <div className="rounded-xl border border-[#eef2f7] bg-white px-3 py-2 text-xs text-[#6b7280]">
-              최근 기록: {dailyState?.lastAttemptAt ? new Date(dailyState.lastAttemptAt).toLocaleString('ko-KR') : '없음'}
+              <button
+                type="button"
+                onClick={() => {
+                  setResult(null);
+                  setStep(0);
+                  setAnswers({});
+                  setSubmitError('');
+                }}
+                className="flex h-14 w-full items-center justify-center rounded-2xl bg-gray-100 text-[15px] font-bold text-[#4b5563] transition hover:bg-gray-200 active:scale-[0.98]"
+              >
+                연습 모드로 다시 풀기
+              </button>
             </div>
           </div>
         )}

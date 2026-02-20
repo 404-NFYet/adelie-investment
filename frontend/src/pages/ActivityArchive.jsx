@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import AppHeader from '../components/layout/AppHeader';
 import useActivityFeed from '../hooks/useActivityFeed';
-import { formatDateDisplayFromKey, getKstTodayDateKey } from '../utils/kstDate';
+import { formatDateDisplayFromKey, getKstTodayDateKey, shiftDateKey } from '../utils/kstDate';
 
 function parseDateKey(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) return null;
@@ -28,34 +28,33 @@ function ActivityCard({ item, onClick }) {
     : '학습';
   const badgeClass = isTrade
     ? tradeType === 'buy'
-      ? 'bg-[#fff4ed] text-[#c2410c]'
-      : 'bg-[#eaf1ff] text-[#1d4ed8]'
-    : 'bg-[#eaf1ff] text-[#1d4ed8]';
+      ? 'bg-[#fee2e2] text-[#dc2626]'
+      : 'bg-[#dbeafe] text-[#2563eb]'
+    : 'bg-[#ffedd5] text-[#ea580c]';
+
+  const rightLabel = isTrade ? '단가' : (item?.meta?.status === 'completed' ? '상태' : '진행률');
+  const rightValue = isTrade
+    ? (item?.meta?.price ? `${Number(item.meta.price).toLocaleString()}원` : '-')
+    : (item?.meta?.status === 'completed' ? '완료' : `${item?.meta?.progressPercent || 0}%`);
 
   return (
     <button
       type="button"
       onClick={onClick}
-      className="w-full rounded-[20px] border border-border bg-white px-4 py-4 text-left shadow-card transition hover:border-[#ffcfb7] hover:bg-[#fffaf6]"
+      className="flex w-full items-center rounded-2xl bg-white px-2 py-3 text-left transition hover:bg-gray-50 active:bg-gray-100"
     >
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${badgeClass}`}>
-            {badgeText}
-          </span>
-          <h3 className="mt-2 line-limit-2 text-[15px] font-bold leading-[1.35] text-[#101828] break-keep">
-            {item.title}
-          </h3>
-          <p className="mt-1 text-xs text-[#6b7280]">{item.subtitle}</p>
-        </div>
-        <div className="flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-2xl bg-[#f3f4f6] text-center">
-          <span className="text-[11px] font-semibold text-[#99a1af]">시간</span>
-          <span className="mt-0.5 text-sm font-bold text-[#101828]">{item.timeLabel}</span>
-        </div>
+      <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[13px] font-bold ${badgeClass}`}>
+        {badgeText}
       </div>
-      <div className="mt-3 flex items-center justify-between text-xs">
-        <span className="font-medium text-[#99a1af]">{formatDateDisplayFromKey(item.dateKey)}</span>
-        <span className="font-semibold text-[#c2410c]">상세 보기 ›</span>
+      <div className="ml-3 min-w-0 flex-1">
+        <h3 className="truncate text-[15px] font-bold text-[#101828]">
+          {item.title}
+        </h3>
+        <p className="mt-0.5 truncate text-[13px] text-[#6b7280]">{item.subtitle}</p>
+      </div>
+      <div className="ml-3 flex shrink-0 flex-col items-end justify-center">
+        <span className="text-[16px] font-bold text-[#101828]">{rightValue}</span>
+        <span className="mt-0.5 text-[11px] font-medium text-[#99a1af]">{rightLabel}</span>
       </div>
     </button>
   );
@@ -71,6 +70,7 @@ export default function ActivityArchive() {
     ? searchParams.get('tradeType')
     : null;
   const selectedDateKey = parseDateKey(searchParams.get('date')) || getKstTodayDateKey();
+  const todayDateKey = getKstTodayDateKey();
 
   const filteredActivities = useMemo(() => {
     const source = Array.isArray(activities) ? activities : [];
@@ -87,35 +87,63 @@ export default function ActivityArchive() {
     [filteredActivities, selectedDateKey],
   );
 
-  const groupedPrevious = useMemo(() => {
-    const map = new Map();
-    for (const item of filteredActivities) {
-      if (item.dateKey === selectedDateKey) continue;
-      if (!map.has(item.dateKey)) map.set(item.dateKey, []);
-      map.get(item.dateKey).push(item);
-    }
-    return Array.from(map.entries()).map(([dateKey, items]) => ({ dateKey, items }));
-  }, [filteredActivities, selectedDateKey]);
-
   const title = getArchiveTitle(kind, tradeType);
+  const canMoveToNewer = selectedDateKey < todayDateKey;
+  const canMoveToOlder = true;
 
   return (
     <div className="min-h-screen bg-[#f9fafb] pb-24">
       <AppHeader showBack title={title} />
 
       <main className="container space-y-4 py-4">
-        <section className="rounded-[24px] border border-border bg-white p-4 shadow-card">
-          <p className="text-xs font-semibold text-[#99a1af]">기준 날짜</p>
-          <h2 className="mt-1 text-[18px] font-extrabold text-[#101828]">{formatDateDisplayFromKey(selectedDateKey)}</h2>
-          <p className="mt-1 text-xs text-[#6b7280]">
-            {kind === 'trade' ? '거래 요약 카드' : '학습 요약 카드'}와 이전 기록을 한 번에 볼 수 있어요.
-          </p>
+        <section className="flex items-center justify-between rounded-[24px] border border-border bg-white px-4 py-3 shadow-card">
           <button
             type="button"
-            onClick={() => navigate(`/education?date=${selectedDateKey}`)}
-            className="mt-3 h-9 rounded-xl border border-[#ffd7c2] bg-[#fff3eb] px-3 text-xs font-semibold text-[#c2410c]"
+            onClick={() => {
+              if (!canMoveToOlder) return;
+              const olderDate = shiftDateKey(selectedDateKey, -1);
+              if (olderDate) {
+                const newParams = new URLSearchParams(searchParams);
+                newParams.set('date', olderDate);
+                navigate(`?${newParams.toString()}`, { replace: true });
+              }
+            }}
+            disabled={!canMoveToOlder}
+            className={`flex h-10 w-10 items-center justify-center rounded-xl transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
+              canMoveToOlder
+                ? 'text-[#99a1af] hover:bg-gray-50 hover:text-[#101828]'
+                : 'cursor-not-allowed text-[#d1d5db]'
+            }`}
+            aria-label="과거 날짜"
           >
-            캘린더로 돌아가기
+            ‹
+          </button>
+          <div className="text-center">
+            <h2 className="text-[17px] font-bold text-[#101828]">{formatDateDisplayFromKey(selectedDateKey)}</h2>
+            <p className="mt-0.5 text-[11px] text-[#6b7280]">
+              {kind === 'trade' ? '거래 아카이브' : '학습 아카이브'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (!canMoveToNewer) return;
+              const newerDate = shiftDateKey(selectedDateKey, 1);
+              if (newerDate) {
+                const newParams = new URLSearchParams(searchParams);
+                newParams.set('date', newerDate);
+                navigate(`?${newParams.toString()}`, { replace: true });
+              }
+            }}
+            disabled={!canMoveToNewer}
+            className={`flex h-10 w-10 items-center justify-center rounded-xl transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
+              canMoveToNewer
+                ? 'text-[#99a1af] hover:bg-gray-50 hover:text-[#101828]'
+                : 'cursor-not-allowed text-[#d1d5db]'
+            }`}
+            aria-label="오늘에 가까운 날짜"
+          >
+            ›
           </button>
         </section>
 
@@ -163,39 +191,6 @@ export default function ActivityArchive() {
               )}
             </section>
 
-            <section className="space-y-3 pb-2">
-              <h3 className="text-[18px] font-bold text-[#101828]">이전 카드 모아보기</h3>
-              {groupedPrevious.length === 0 ? (
-                <div className="rounded-[20px] border border-border bg-white px-4 py-6 text-sm text-text-secondary">
-                  이전 카드가 없습니다.
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {groupedPrevious.map((group) => (
-                    <div key={group.dateKey} className="space-y-2">
-                      <p className="text-xs font-semibold text-[#99a1af]">{formatDateDisplayFromKey(group.dateKey)}</p>
-                      <div className="space-y-3">
-                        {group.items.map((item) => (
-                          <ActivityCard
-                            key={item.id}
-                            item={item}
-                            onClick={() => {
-                              if (item.type === 'learning') {
-                                const caseId = Number(item?.meta?.contentId || 0);
-                                if (Number.isInteger(caseId) && caseId > 0) navigate(`/narrative/${caseId}`);
-                                else navigate('/history');
-                                return;
-                              }
-                              navigate('/portfolio');
-                            }}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
           </>
         ) : null}
       </main>
