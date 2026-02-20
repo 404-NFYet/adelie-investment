@@ -15,7 +15,7 @@ export default function TutorModal() {
   const {
     isOpen, closeTutor, messages, isLoading, sendMessage,
     requestVisualization, currentTerm, sessions, activeSessionId,
-    createNewChat, deleteChat, loadChatHistory, suggestedQuestions,
+    createNewChat, deleteChat, loadChatHistory,
   } = useTutor();
   const { settings } = useUser();
   const [input, setInput] = useState('');
@@ -92,15 +92,6 @@ export default function TutorModal() {
                   <div className="text-center">
                     <PenguinMascot variant="welcome" message="안녕하세요! 시장에 대해 궁금한 점을 물어보세요." />
                   </div>
-                  {suggestedQuestions && suggestedQuestions.length > 0 && (
-                    <Message message={{
-                      id: 'suggestion-msg',
-                      role: 'assistant',
-                      content: `이 페이지에 대해 더 궁금하신 점이 있으신가요? 😊\n\n` +
-                        suggestedQuestions.map(q => `• ${q}`).join('\n') +
-                        `\n\n위 질문을 아래 입력창에 입력하거나, 궁금한 점을 자유롭게 물어보세요!`
-                    }} />
-                  )}
                 </div>
               ) : (
                 <>
