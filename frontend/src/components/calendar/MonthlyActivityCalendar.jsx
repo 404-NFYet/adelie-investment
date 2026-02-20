@@ -19,12 +19,12 @@ export default function MonthlyActivityCalendar({
   const cells = buildKstMonthGrid(year, month);
 
   return (
-    <section className="rounded-[28px] border border-border bg-white p-5 shadow-card sm:rounded-[32px] sm:p-6">
+    <section className="rounded-[28px] border border-[rgba(148,163,184,0.24)] bg-white p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_12px_24px_-18px_rgba(15,23,42,0.22)] sm:rounded-[32px] sm:p-6">
       <div className="mb-4 flex items-center justify-between">
         <button
           type="button"
           onClick={onPrevMonth}
-          className="h-8 w-8 rounded-xl border border-border text-text-secondary transition hover:text-text-primary"
+          className="h-8 w-8 rounded-xl border border-[rgba(148,163,184,0.35)] text-text-secondary shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff6900]/45"
           aria-label="이전 달"
         >
           ‹
@@ -33,7 +33,7 @@ export default function MonthlyActivityCalendar({
         <button
           type="button"
           onClick={onNextMonth}
-          className="h-8 w-8 rounded-xl border border-border text-text-secondary transition hover:text-text-primary"
+          className="h-8 w-8 rounded-xl border border-[rgba(148,163,184,0.35)] text-text-secondary shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff6900]/45"
           aria-label="다음 달"
         >
           ›
@@ -57,16 +57,16 @@ export default function MonthlyActivityCalendar({
               key={cell.dateKey}
               type="button"
               onClick={() => onSelectDateKey(cell.dateKey)}
-              className={`relative flex h-10 items-center justify-center rounded-xl border text-sm font-semibold transition sm:h-11 ${
+              className={`relative flex h-10 items-center justify-center rounded-xl text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff6900]/40 sm:h-11 ${
                 isSelected
-                  ? 'border-[#ff6900] bg-[#ff7648] text-white shadow-[0_10px_15px_rgba(255,118,72,0.2)]'
+                  ? 'bg-[#ff7648] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_10px_18px_rgba(255,118,72,0.22)]'
                   : cell.isCurrentMonth
                     ? isActive
-                      ? 'border-[#ff6900] bg-white text-[#101828]'
+                      ? 'bg-white text-[#101828] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_4px_8px_rgba(15,23,42,0.06)]'
                       : isToday
-                        ? 'border-[#ff6900] bg-[#fff1e8] text-[#ff6900]'
-                        : 'border-[#f3f4f6] bg-white text-[#101828]'
-                    : 'border-transparent bg-transparent text-[#c1c8d2]'
+                        ? 'bg-[#fff1e8] text-[#ff6900] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]'
+                        : 'bg-white text-[#101828] shadow-[inset_0_1px_0_rgba(255,255,255,0.88),0_3px_7px_rgba(15,23,42,0.05)]'
+                    : 'bg-transparent text-[#c1c8d2]'
               }`}
               aria-label={`${cell.year}년 ${cell.month}월 ${cell.day}일`}
             >

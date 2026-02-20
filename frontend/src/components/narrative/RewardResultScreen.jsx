@@ -8,7 +8,7 @@ const COPY = {
     prefix: '모의투자에 사용할 수 있는',
     suffix: '를 받았어요',
     cta: '모의투자 하러 가기',
-    image: '/images/penguin-group.png',
+    image: '/images/reward-success-penguin.png',
     imageAlt: '보상 축하 캐릭터',
   },
   already_claimed: {
@@ -28,9 +28,10 @@ export default function RewardResultScreen({
   onPrimaryAction,
 }) {
   const content = COPY[mode] || COPY.success;
+  const backgroundClass = mode === 'already_claimed' ? 'bg-white' : 'bg-[#efefef]';
 
   return (
-    <section className="fixed inset-0 z-50 bg-[#efefef]">
+    <section className={`fixed inset-0 z-50 ${backgroundClass}`}>
       <div className="mx-auto flex min-h-screen w-full max-w-mobile flex-col px-5 pb-8 pt-16">
         <button
           type="button"

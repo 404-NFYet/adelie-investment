@@ -1,51 +1,31 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { keywordsApi } from '../api';
 import { DEFAULT_HOME_ICON_KEY, getHomeIconSrc } from '../constants/homeIconCatalog';
+import ActivityDayDashboard from '../components/calendar/ActivityDayDashboard';
 import DashboardHeader from '../components/layout/DashboardHeader';
 import MonthlyActivityCalendar from '../components/calendar/MonthlyActivityCalendar';
-import ActivityDayList from '../components/calendar/ActivityDayList';
+import DailyQuizMissionCard from '../components/quiz/DailyQuizMissionCard';
 import useActivityFeed from '../hooks/useActivityFeed';
 import { getKstDateParts, getKstTodayDateKey, shiftYearMonth } from '../utils/kstDate';
 
-function QuizMissionCard() {
-  return (
-    <section className="rounded-[28px] border border-border bg-white p-5 sm:p-6 shadow-card">
-      <p className="inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary">
-        오늘의 미션
-      </p>
-      <div className="mt-2.5 flex items-stretch justify-between gap-3 sm:gap-4">
-        <div className="min-w-0 flex flex-1 flex-col justify-between">
-          <h3 className="text-[clamp(1.45rem,6.2vw,1.7rem)] font-extrabold leading-[1.22] tracking-[-0.02em] text-[#101828]">
-            오늘의 퀴즈 풀고
-            <br />
-            투자 지원금 받기
-          </h3>
-          <p className="mt-2 inline-flex w-fit rounded-full bg-[#f3f4f6] px-3 py-1 text-xs font-medium text-[#6b7280]">
-            진행 시간 02:45 남음
-          </p>
-        </div>
-        <div className="flex h-[104px] w-[104px] shrink-0 items-center justify-center rounded-[28px] bg-[#f3f4f6] sm:h-[120px] sm:w-[120px] sm:rounded-[32px]">
-          <img
-            src={getHomeIconSrc('target-dynamic-color')}
-            alt="오늘의 미션 아이콘"
-            className="h-16 w-16 object-contain sm:h-20 sm:w-20"
-          />
-        </div>
-      </div>
-      <button
-        type="button"
-        disabled
-        className="mt-5 h-11 w-full rounded-2xl border border-border bg-[#f9fafb] text-sm font-semibold text-text-muted cursor-not-allowed"
-      >
-        준비중
-      </button>
-    </section>
-  );
+function parseDateKey(dateKey) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || ''))) return null;
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year
+    || date.getUTCMonth() + 1 !== month
+    || date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return { year, month, day, dateKey: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}` };
 }
 
 export default function Education() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { activitiesByDate, isLoading: isActivityLoading, error: activityError } = useActivityFeed();
 
   const todayParts = useMemo(() => getKstDateParts(new Date()), []);
@@ -54,6 +34,10 @@ export default function Education() {
     month: todayParts.month,
   });
   const [selectedDateKey, setSelectedDateKey] = useState(getKstTodayDateKey());
+  const [highlightCalendar, setHighlightCalendar] = useState(false);
+
+  const calendarSectionRef = useRef(null);
+  const highlightedSourceRef = useRef('');
 
   const [keywords, setKeywords] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -76,6 +60,34 @@ export default function Education() {
 
     fetchKeywords();
   }, []);
+
+  useEffect(() => {
+    const dateParam = searchParams.get('date');
+    const source = searchParams.get('source');
+    const parsed = parseDateKey(dateParam);
+
+    if (parsed) {
+      setSelectedDateKey(parsed.dateKey);
+      setCurrentMonth({ year: parsed.year, month: parsed.month });
+    }
+
+    let timer = null;
+    if (source === 'home-calendar' && parsed) {
+      const sourceKey = `${source}:${parsed.dateKey}`;
+      if (highlightedSourceRef.current !== sourceKey) {
+        highlightedSourceRef.current = sourceKey;
+        setHighlightCalendar(true);
+        requestAnimationFrame(() => {
+          calendarSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+        timer = setTimeout(() => setHighlightCalendar(false), 1400);
+      }
+    }
+
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [searchParams]);
 
   const visibleCards = useMemo(
     () => keywords.slice(0, 3),
@@ -109,14 +121,25 @@ export default function Education() {
     setCurrentMonth((prev) => shiftYearMonth(prev.year, prev.month, 1));
   };
 
+  const handleSelectDateKey = (dateKey) => {
+    setSelectedDateKey(dateKey);
+    const parsed = parseDateKey(dateKey);
+    if (parsed) {
+      setCurrentMonth({ year: parsed.year, month: parsed.month });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#f9fafb] pb-24">
       <DashboardHeader />
 
       <main className="container space-y-7 py-5">
-        <QuizMissionCard />
+        <DailyQuizMissionCard keywords={keywords} />
 
-        <section className="space-y-4">
+        <section
+          ref={calendarSectionRef}
+          className={`space-y-4 rounded-[28px] p-1 transition-all ${highlightCalendar ? 'ring-2 ring-[#ff6900]/40 ring-offset-2 ring-offset-[#f9fafb]' : ''}`}
+        >
           <div className="flex items-center justify-between">
             <h2 className="text-[20px] font-bold leading-[1.4] tracking-[-0.02em] text-[#101828]">활동 캘린더</h2>
             <span className="text-sm font-medium text-[#99a1af]">월별 보기</span>
@@ -126,7 +149,7 @@ export default function Education() {
             year={currentMonth.year}
             month={currentMonth.month}
             selectedDateKey={selectedDateKey}
-            onSelectDateKey={setSelectedDateKey}
+            onSelectDateKey={handleSelectDateKey}
             onPrevMonth={handlePrevMonth}
             onNextMonth={handleNextMonth}
             hasActivity={hasActivity}
@@ -136,11 +159,18 @@ export default function Education() {
             이번 달 활동일 {monthlyActivityDays}일 · 총 {monthlyActivityCount}건
           </div>
 
-          <ActivityDayList
+          <ActivityDayDashboard
             dateKey={selectedDateKey}
             items={selectedActivities}
             isLoading={isActivityLoading}
             error={activityError}
+            onOpenArchive={({ kind, tradeType, dateKey }) => {
+              const params = new URLSearchParams();
+              params.set('kind', kind || 'learning');
+              params.set('date', dateKey || selectedDateKey);
+              if (tradeType) params.set('tradeType', tradeType);
+              navigate(`/education/archive?${params.toString()}`);
+            }}
           />
         </section>
 

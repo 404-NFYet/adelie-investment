@@ -2,47 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { keywordsApi } from '../api';
 import DashboardHeader from '../components/layout/DashboardHeader';
+import DailyQuizMissionCard from '../components/quiz/DailyQuizMissionCard';
 import { DEFAULT_HOME_ICON_KEY, getHomeIconSrc } from '../constants/homeIconCatalog';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import useActivityFeed from '../hooks/useActivityFeed';
 import { formatKRW } from '../utils/formatNumber';
-import { getKstWeekDays } from '../utils/kstDate';
-
-function QuizMissionCard() {
-  return (
-    <section className="rounded-[28px] border border-border bg-white p-5 sm:p-6 shadow-card">
-      <p className="inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary">
-        오늘의 미션
-      </p>
-      <div className="mt-2.5 flex items-stretch justify-between gap-3 sm:gap-4">
-        <div className="min-w-0 flex flex-1 flex-col justify-between">
-          <h3 className="text-[clamp(1.45rem,6.2vw,1.7rem)] font-extrabold leading-[1.22] tracking-[-0.02em] text-[#101828]">
-            오늘의 퀴즈 풀고
-            <br />
-            투자 지원금 받기
-          </h3>
-          <p className="mt-2 inline-flex w-fit rounded-full bg-[#f3f4f6] px-3 py-1 text-xs font-medium text-[#6b7280]">
-            진행 시간 02:45 남음
-          </p>
-        </div>
-        <div className="flex h-[104px] w-[104px] shrink-0 items-center justify-center rounded-[28px] bg-[#f3f4f6] sm:h-[120px] sm:w-[120px] sm:rounded-[32px]">
-          <img
-            src={getHomeIconSrc('target-dynamic-color')}
-            alt="오늘의 미션 아이콘"
-            className="h-16 w-16 object-contain sm:h-20 sm:w-20"
-          />
-        </div>
-      </div>
-      <button
-        type="button"
-        disabled
-        className="mt-5 h-11 w-full rounded-2xl border border-border bg-[#f9fafb] text-sm font-semibold text-text-muted cursor-not-allowed"
-      >
-        준비중
-      </button>
-    </section>
-  );
-}
+import { getKstTodayDateKey, getKstWeekDays } from '../utils/kstDate';
 
 export default function Home() {
   const navigate = useNavigate();
@@ -93,6 +58,7 @@ export default function Home() {
   }, [activitiesByDate, weekDays]);
 
   const weekProgress = Math.min(100, Math.round((weekActiveDays / 7) * 100));
+  const todayDateKey = useMemo(() => getKstTodayDateKey(), []);
 
   return (
     <div className="min-h-screen bg-[#f9fafb] pb-24">
@@ -122,7 +88,13 @@ export default function Home() {
         <section>
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-[20px] font-bold leading-[1.4] tracking-[-0.02em] text-[#101828]">학습 스케줄</h2>
-            <button type="button" onClick={() => navigate('/education')} className="text-sm font-medium text-[#99a1af]">교육 캘린더 ›</button>
+            <button
+              type="button"
+              onClick={() => navigate(`/education?date=${todayDateKey}`)}
+              className="text-sm font-medium text-[#99a1af]"
+            >
+              교육 캘린더 ›
+            </button>
           </div>
 
           <div className="rounded-[28px] border border-[#f3f4f6] bg-white p-5 shadow-card sm:rounded-[32px] sm:p-6">
@@ -149,7 +121,10 @@ export default function Home() {
                 return (
                   <div key={item.dateKey} className="text-center">
                     <p className={`text-xs font-bold ${item.isToday ? 'text-[#ff7648]' : 'text-[#99a1af]'}`}>{item.label}</p>
-                    <div
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/education?date=${item.dateKey}&source=home-calendar`)}
+                      aria-label={`${item.dateKey} 교육 캘린더로 이동`}
                       className={`mt-2 mx-auto flex h-9 w-9 items-center justify-center rounded-xl border text-xs font-bold sm:h-11 sm:w-11 sm:rounded-2xl sm:text-sm ${
                         item.isToday
                           ? 'border-[#ff6900] bg-[#ff7648] text-white shadow-[0_10px_15px_rgba(255,118,72,0.2)]'
@@ -159,7 +134,7 @@ export default function Home() {
                       }`}
                     >
                       {item.day}
-                    </div>
+                    </button>
                   </div>
                 );
               })}
@@ -167,7 +142,7 @@ export default function Home() {
           </div>
         </section>
 
-        <QuizMissionCard />
+        <DailyQuizMissionCard keywords={keywords} />
 
         <section className="pb-3">
           <div className="mb-4 flex items-center justify-between gap-3">

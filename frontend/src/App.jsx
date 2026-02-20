@@ -21,6 +21,7 @@ const Auth = lazy(() => import('./pages/Auth'));
 const Landing = lazy(() => import('./pages/Landing'));
 const Home = lazy(() => import('./pages/Home'));
 const Education = lazy(() => import('./pages/Education'));
+const ActivityArchive = lazy(() => import('./pages/ActivityArchive'));
 const Search = lazy(() => import('./pages/Search'));
 const Comparison = lazy(() => import('./pages/Comparison'));
 const Story = lazy(() => import('./pages/Story'));
@@ -57,6 +58,7 @@ function AppRoutes() {
         <Route path="/onboarding" element={<Navigate to="/" replace />} />
         <Route path="/auth" element={<Auth />} />
         <Route path="/education" element={<ProtectedRoute><Education /></ProtectedRoute>} />
+        <Route path="/education/archive" element={<ProtectedRoute><ActivityArchive /></ProtectedRoute>} />
         <Route path="/home" element={<ProtectedRoute><Home /></ProtectedRoute>} />
         <Route path="/search" element={<ProtectedRoute><Search /></ProtectedRoute>} />
         <Route path="/comparison" element={<ProtectedRoute><Comparison /></ProtectedRoute>} />
