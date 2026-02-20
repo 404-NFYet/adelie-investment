@@ -97,9 +97,17 @@ async def explain_term(
     
     # Check glossary database
     result = await db.execute(
-        select(Glossary).where(Glossary.term.ilike(f"%{term}%"))
+        select(Glossary).where(
+            Glossary.term.ilike(f"%{term}%"),
+            Glossary.difficulty == difficulty,
+        )
     )
     glossary_item = result.scalar_one_or_none()
+    if not glossary_item:
+        result = await db.execute(
+            select(Glossary).where(Glossary.term.ilike(f"%{term}%"))
+        )
+        glossary_item = result.scalar_one_or_none()
     
     if glossary_item:
         explanation = glossary_item.definition_full or glossary_item.definition_short
@@ -299,6 +307,7 @@ async def generate_tutor_response(
             if not session_obj:
                 session_obj = TutorSession(
                     session_uuid=uuid.UUID(session_id) if session_id else uuid.uuid4(),
+                    user_id=current_user["id"] if current_user else None,
                     context_type=request.context_type,
                     context_id=request.context_id,
                     title=request.message[:50],
