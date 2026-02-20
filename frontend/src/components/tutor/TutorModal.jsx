@@ -15,7 +15,7 @@ export default function TutorModal() {
   const {
     isOpen, closeTutor, messages, isLoading, sendMessage,
     requestVisualization, currentTerm, sessions, activeSessionId,
-    createNewChat, deleteChat, loadChatHistory,
+    createNewChat, deleteChat, loadChatHistory, suggestedQuestions,
   } = useTutor();
   const { settings } = useUser();
   const [input, setInput] = useState('');
@@ -51,8 +51,6 @@ export default function TutorModal() {
       try { await deleteChat(id); } catch (e) { console.error('삭제 실패:', e); }
     }
   };
-
-  const quickQuestions = ['PER이 뭔가요?', '오늘 시장 어때요?', '초보자 학습 팁'];
 
   return (
     <AnimatePresence>
@@ -90,14 +88,19 @@ export default function TutorModal() {
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4" style={{ height: 'calc(85vh - 140px)' }}>
               {messages.length === 0 ? (
-                <div className="text-center py-6">
-                  <PenguinMascot variant="welcome" message="안녕하세요! 시장에 대해 궁금한 점을 물어보세요." />
-                  <div className="space-y-2 mt-4">
-                    {quickQuestions.map((q) => (
-                      <button key={q} onClick={() => sendMessage(q, settings.difficulty)} className="block w-full text-left px-4 py-3 bg-surface rounded-xl text-sm text-text-primary hover:bg-border transition-colors">{q}</button>
-                    ))}
-                    <button onClick={() => requestVisualization('오늘 급등주 등락률 차트')} className="block w-full text-left px-4 py-3 bg-surface rounded-xl text-sm text-text-primary hover:bg-border transition-colors">오늘 급등주 차트 보기</button>
+                <div className="py-6 space-y-4">
+                  <div className="text-center">
+                    <PenguinMascot variant="welcome" message="안녕하세요! 시장에 대해 궁금한 점을 물어보세요." />
                   </div>
+                  {suggestedQuestions && suggestedQuestions.length > 0 && (
+                    <Message message={{
+                      id: 'suggestion-msg',
+                      role: 'assistant',
+                      content: `이 페이지에 대해 더 궁금하신 점이 있으신가요? 😊\n\n` +
+                        suggestedQuestions.map(q => `• ${q}`).join('\n') +
+                        `\n\n위 질문을 아래 입력창에 입력하거나, 궁금한 점을 자유롭게 물어보세요!`
+                    }} />
+                  )}
                 </div>
               ) : (
                 <>

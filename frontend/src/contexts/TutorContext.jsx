@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { API_BASE_URL } from '../config';
 
 const TutorContext = createContext(null);
@@ -13,6 +13,43 @@ export function TutorProvider({ children }) {
   const [isLoading, setIsLoading] = useState(false);
   const [contextInfo, setContextInfo] = useState(null);
   const [currentTerm, setCurrentTerm] = useState(null);
+  const [suggestedQuestions, setSuggestedQuestions] = useState([]);
+  const suggestionsCache = useRef(new Map());
+
+  // 추천 질문 로드 (contextInfo가 case일 경우)
+  useEffect(() => {
+    if (contextInfo?.type === 'case' && contextInfo?.id) {
+      const caseId = contextInfo.id;
+      if (suggestionsCache.current.has(caseId)) {
+        setSuggestedQuestions(suggestionsCache.current.get(caseId));
+        return;
+      }
+
+      const fetchSuggestions = async () => {
+        try {
+          const token = localStorage.getItem('token');
+          const res = await fetch(`${API_BASE_URL}/api/v1/tutor/suggestions?context_type=case&context_id=${caseId}`, {
+            headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+          });
+          if (res.ok) {
+            const data = await res.json();
+            const questions = data.questions || [];
+            suggestionsCache.current.set(caseId, questions);
+            setSuggestedQuestions(questions);
+          } else {
+            setSuggestedQuestions([]);
+          }
+        } catch (e) {
+          console.error('Failed to fetch suggestions:', e);
+          setSuggestedQuestions([]);
+        }
+      };
+
+      fetchSuggestions();
+    } else {
+      setSuggestedQuestions([]);
+    }
+  }, [contextInfo]);
 
   // sessionId를 localStorage에 저장
   useEffect(() => {
@@ -247,10 +284,12 @@ export function TutorProvider({ children }) {
     deleteChat,
     loadChatHistory,
     requestVisualization,
+    suggestedQuestions,
   }), [
     isOpen, openTutor, closeTutor, messages, isLoading, sendMessage,
     clearMessages, contextInfo, currentTerm, sessions, activeSessionId,
     createNewChat, deleteChat, loadChatHistory, requestVisualization,
+    suggestedQuestions,
   ]);
 
   return (

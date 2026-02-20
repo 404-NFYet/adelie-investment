@@ -31,6 +31,7 @@ from app.services.tutor_engine import (
     get_difficulty_prompt,
 )
 from app.services.stock_resolver import detect_stock_codes
+from app.services.guardrail import run_guardrail
 
 router = APIRouter(prefix="/tutor", tags=["AI tutor"])
 
@@ -140,6 +141,17 @@ async def generate_tutor_response(
     
     yield f"event: step\ndata: {json.dumps({'type': 'thinking', 'content': '질문을 분석하고 있습니다...'})}\n\n"
     
+    # 가드레일 검사
+    try:
+        guardrail_result = await run_guardrail(request.message)
+        if not guardrail_result.is_allowed:
+            # 차단 메시지를 스트리밍으로 전송
+            yield f"event: text_delta\ndata: {json.dumps({'content': guardrail_result.block_message})}\n\n"
+            yield f"event: done\ndata: {json.dumps({'session_id': session_id, 'total_tokens': 0, 'guardrail': guardrail_result.decision})}\n\n"
+            return
+    except Exception as e:
+        logger.warning(f"Guardrail check failed, falling open: {e}")
+        
     api_key = get_settings().OPENAI_API_KEY
     if not api_key:
         yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'OpenAI API key not configured'})}\n\n"
@@ -328,28 +340,53 @@ async def generate_tutor_response(
 
         if should_viz and full_response:
             try:
+                # 여기서 기존 gpt-4o-mini 호출 방식을 Anthropic SDK의 claude-sonnet-4-6 호출 방식으로 변경
+                import anthropic
+                import os
+                
                 viz_prompt = (
                     "다음 내용을 Plotly.js 차트 JSON으로 변환하세요.\n"
                     "반드시 아래 형식의 JSON만 반환하세요 (마크다운 코드블록 없이):\n"
                     '{"data": [트레이스 객체들], "layout": {레이아웃 옵션}}\n\n'
                     f"내용:\n{full_response[:500]}"
                 )
-                viz_response = await client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[
-                        {"role": "system", "content": (
+                
+                claude_api_key = os.getenv("CLAUDE_API_KEY") or get_settings().ANTHROPIC_API_KEY
+                if claude_api_key:
+                    claude_client = anthropic.AsyncAnthropic(api_key=claude_api_key)
+                    viz_response = await claude_client.messages.create(
+                        model="claude-3-5-haiku-20241022", # 비용 효율적인 Haiku 모델 적용
+                        max_tokens=2000,
+                        system=(
                             "당신은 Plotly.js 차트 전문가입니다. "
                             "주어진 내용을 시각화하는 Plotly JSON config를 생성하세요. "
                             '반드시 {"data": [...], "layout": {...}} 형식의 JSON만 반환하세요. '
                             "디자인 규칙: 주요 색상 #FF6B00(주황), 보조 색상 #FF8C33, "
                             "배경 투명(transparent), 한글 레이블 사용. "
                             "마크다운 코드블록(```)으로 감싸지 마세요. 오직 JSON만 반환하세요."
-                        )},
-                        {"role": "user", "content": viz_prompt},
-                    ],
-                    max_tokens=2000,
-                )
-                json_content = viz_response.choices[0].message.content.strip()
+                        ),
+                        messages=[{"role": "user", "content": viz_prompt}],
+                    )
+                    json_content = viz_response.content[0].text.strip()
+                else:
+                    # Fallback to OpenAI if Claude API key is not available
+                    viz_response = await client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {"role": "system", "content": (
+                                "당신은 Plotly.js 차트 전문가입니다. "
+                                "주어진 내용을 시각화하는 Plotly JSON config를 생성하세요. "
+                                '반드시 {"data": [...], "layout": {...}} 형식의 JSON만 반환하세요. '
+                                "디자인 규칙: 주요 색상 #FF6B00(주황), 보조 색상 #FF8C33, "
+                                "배경 투명(transparent), 한글 레이블 사용. "
+                                "마크다운 코드블록(```)으로 감싸지 마세요. 오직 JSON만 반환하세요."
+                            )},
+                            {"role": "user", "content": viz_prompt},
+                        ],
+                        max_tokens=2000,
+                    )
+                    json_content = viz_response.choices[0].message.content.strip()
+                    
                 # ```json 코드 블록 제거 (LLM이 감쌀 수 있음)
                 if json_content.startswith("```"):
                     json_content = json_content.split("```", 2)[1]
@@ -402,3 +439,66 @@ async def tutor_chat(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.get("/suggestions")
+async def get_tutor_suggestions(
+    context_type: str = Query(..., description="Context type, e.g., 'case'"),
+    context_id: int = Query(..., description="Context ID"),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Dynamic suggested questions based on context summary."""
+    if context_type != "case":
+        return {"questions": []}
+        
+    try:
+        from app.models.historical_case import HistoricalCase
+        
+        result = await db.execute(
+            select(HistoricalCase).where(HistoricalCase.id == context_id)
+        )
+        case = result.scalar_one_or_none()
+        
+        if not case or not case.summary:
+            return {"questions": []}
+            
+        summary_text = case.summary[:300]
+        
+        api_key = get_settings().OPENAI_API_KEY
+        if not api_key:
+            return {"questions": []}
+            
+        client = AsyncOpenAI(api_key=api_key)
+        
+        prompt = (
+            f"다음은 과거 금융 사례의 요약문입니다:\n\n{summary_text}\n\n"
+            "이 내용을 읽은 초보 투자자가 궁금해할 만한 핵심 질문 3가지를 작성해주세요. "
+            "반드시 아래 JSON 배열 형식으로만 응답하세요. 다른 텍스트는 출력하지 마세요.\n"
+            '{"questions": ["질문1", "질문2", "질문3"]}'
+        )
+        
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "당신은 초보 투자자의 학습을 돕는 금융 튜터입니다."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            max_tokens=300,
+        )
+        
+        content = response.choices[0].message.content.strip()
+        if content.startswith("```"):
+            lines = content.split("\n")
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].startswith("```"):
+                lines = lines[:-1]
+            content = "\n".join(lines).strip()
+            
+        parsed = json.loads(content)
+        questions = parsed.get("questions", [])
+        return {"questions": questions[:3]}
+    except Exception as e:
+        logger.warning(f"선택지 생성 실패: {e}")
+        return {"questions": []}
