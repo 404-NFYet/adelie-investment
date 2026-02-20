@@ -10,6 +10,7 @@ from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.auth import get_current_user
 from app.models.tutor import TutorSession, TutorMessage
 from app.services import get_redis_cache
 from app.services.chart_storage import get_chart_presigned_url
@@ -23,11 +24,15 @@ router = APIRouter(prefix="/tutor", tags=["tutor sessions"])
 async def list_sessions(
     limit: int = Query(20, le=50),
     db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ) -> list[dict]:
     """채팅 세션 목록 조회 (최신순, 활성만)."""
     result = await db.execute(
         select(TutorSession)
-        .where(TutorSession.is_active == True)  # noqa: E712
+        .where(
+            TutorSession.is_active == True,  # noqa: E712
+            TutorSession.user_id == current_user["id"],
+        )
         .order_by(desc(TutorSession.last_message_at).nulls_last(), desc(TutorSession.started_at))
         .limit(limit)
     )
@@ -61,6 +66,7 @@ async def list_sessions(
 async def get_session_messages(
     session_id: str,
     db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ) -> dict:
     """특정 세션의 메시지 목록 조회 (Redis 캐시 우선)."""
     cache = await get_redis_cache()
@@ -74,7 +80,10 @@ async def get_session_messages(
         raise HTTPException(status_code=400, detail="잘못된 세션 ID 형식입니다.")
 
     result = await db.execute(
-        select(TutorSession).where(TutorSession.session_uuid == session_uuid)
+        select(TutorSession).where(
+            TutorSession.session_uuid == session_uuid,
+            TutorSession.user_id == current_user["id"],
+        )
     )
     session = result.scalar_one_or_none()
     if not session:
@@ -117,9 +126,17 @@ async def get_session_messages(
 
 
 @router.post("/sessions/new")
-async def create_new_session(db: AsyncSession = Depends(get_db)) -> dict:
+async def create_new_session(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+) -> dict:
     """새 채팅 세션 생성."""
-    new_session = TutorSession(session_uuid=uuid.uuid4(), is_active=True, message_count=0)
+    new_session = TutorSession(
+        session_uuid=uuid.uuid4(),
+        is_active=True,
+        message_count=0,
+        user_id=current_user["id"],
+    )
     db.add(new_session)
     await db.commit()
     await db.refresh(new_session)
@@ -127,7 +144,11 @@ async def create_new_session(db: AsyncSession = Depends(get_db)) -> dict:
 
 
 @router.delete("/sessions/{session_id}")
-async def delete_session(session_id: str, db: AsyncSession = Depends(get_db)) -> dict:
+async def delete_session(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+) -> dict:
     """세션 소프트 삭제 (is_active=False)."""
     try:
         session_uuid = uuid.UUID(session_id)
@@ -135,7 +156,10 @@ async def delete_session(session_id: str, db: AsyncSession = Depends(get_db)) ->
         raise HTTPException(status_code=400, detail="잘못된 세션 ID 형식입니다.")
 
     result = await db.execute(
-        select(TutorSession).where(TutorSession.session_uuid == session_uuid)
+        select(TutorSession).where(
+            TutorSession.session_uuid == session_uuid,
+            TutorSession.user_id == current_user["id"],
+        )
     )
     session = result.scalar_one_or_none()
     if not session:

@@ -12,6 +12,7 @@ import remarkMath from 'remark-math';
 import { learningApi, narrativeApi } from '../api';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import { useTermContext } from '../contexts/TermContext';
+import { useTutor } from '../contexts';
 import { buildNarrativePlot } from '../utils/narrativeChartAdapter';
 import ResponsiveEChart from '../components/charts/ResponsiveEChart';
 import ResponsivePlotly from '../components/charts/ResponsivePlotly';
@@ -405,6 +406,14 @@ export default function Narrative() {
   const navigate = useNavigate();
   const { claimReward } = usePortfolio();
   const { openTermSheet } = useTermContext();
+  const { setContextInfo } = useTutor();
+
+  useEffect(() => {
+    if (caseId) {
+      setContextInfo({ type: 'case', id: Number(caseId) });
+    }
+    return () => setContextInfo(null);
+  }, [caseId, setContextInfo]);
 
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);

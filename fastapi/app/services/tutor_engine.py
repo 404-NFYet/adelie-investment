@@ -252,6 +252,7 @@ async def _auto_generate_chart(
 
 # --- 메인 응답 생성기 ---
 
+# DEPRECATED — tutor.py에서 직접 구현됨. 유지보수 혼선 방지를 위해 주석 처리하거나 참조만 유지하세요.
 async def generate_tutor_response(
     request: TutorChatRequest,
     db: AsyncSession,
