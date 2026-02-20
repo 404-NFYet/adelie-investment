@@ -16,25 +16,28 @@ export function TutorProvider({ children }) {
   const [suggestedQuestions, setSuggestedQuestions] = useState([]);
   const suggestionsCache = useRef(new Map());
 
-  // 추천 질문 로드 (contextInfo가 case일 경우)
+  // 추천 질문 로드 (contextInfo가 유효한 경우)
   useEffect(() => {
-    if (contextInfo?.type === 'case' && contextInfo?.id) {
-      const caseId = contextInfo.id;
-      if (suggestionsCache.current.has(caseId)) {
-        setSuggestedQuestions(suggestionsCache.current.get(caseId));
+    const validTypes = ['case', 'briefing'];
+    if (contextInfo?.type && validTypes.includes(contextInfo.type) && contextInfo?.id) {
+      const { type, id } = contextInfo;
+      const cacheKey = `${type}_${id}`;
+
+      if (suggestionsCache.current.has(cacheKey)) {
+        setSuggestedQuestions(suggestionsCache.current.get(cacheKey));
         return;
       }
 
       const fetchSuggestions = async () => {
         try {
           const token = localStorage.getItem('token');
-          const res = await fetch(`${API_BASE_URL}/api/v1/tutor/suggestions?context_type=case&context_id=${caseId}`, {
+          const res = await fetch(`${API_BASE_URL}/api/v1/tutor/suggestions?context_type=${type}&context_id=${id}`, {
             headers: token ? { 'Authorization': `Bearer ${token}` } : {},
           });
           if (res.ok) {
             const data = await res.json();
             const questions = data.questions || [];
-            suggestionsCache.current.set(caseId, questions);
+            suggestionsCache.current.set(cacheKey, questions);
             setSuggestedQuestions(questions);
           } else {
             setSuggestedQuestions([]);

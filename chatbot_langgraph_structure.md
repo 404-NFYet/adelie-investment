@@ -357,3 +357,19 @@ GET /api/v1/tutor/suggestions?context_type=case&context_id=143  →  200 OK
 6. `frontend/src/components/tutor/TutorModal.jsx`
    - 빈 채팅방(Empty state) 구역의 하드코딩된 질문 버튼들을 삭제.
    - 받아온 동적 제안 질문 배열을 챗봇의 첫 말풍선 텍스트(`Message` 컴포넌트) 형태로 렌더링하고 사용자 액션 유도 문구 추가.
+
+---
+
+## 🛠️ 8. 추가 수정 및 버그 픽스 (2026-02-20)
+
+### 1. 데일리 브리핑(Briefing) 동적 질문 미노출 문제 해결
+- **원인**: 기존 로직은 `context_type`이 `case`(내러티브)인 경우에만 동작하도록 백엔드/프론트엔드 곳곳에 하드코딩되어 있었습니다.
+- **조치**: 
+  - **백엔드 (`fastapi/app/api/routes/tutor.py`)**: `context_type`에 `briefing`이 들어올 경우 `DailyBriefing` 테이블에서 시장 요약(`market_summary`)을 조회하여 질문을 생성하도록 범위를 확장했습니다.
+  - **프론트엔드 (`frontend/src/contexts/TutorContext.jsx`)**: API 호출 시 `case`뿐만 아니라 `briefing` 등 다양한 `contextInfo`를 유연하게 동적 처리할 수 있도록 useEffect의 분기문을 개선했습니다. 식별용 캐싱 키도 `type`과 `id`를 결합한 형태로 수정했습니다.
+
+### 2. 사용자 맞춤형 동적 질문 미반영 문제 해결
+- **원인**: 백엔드 동적 질문 생성 시 오직 '본문의 요약'만을 제공하여, 모든 로그인 유저에게 똑같은 범용적 질문이 생성되었습니다.
+- **조치**: 
+  - **백엔드 (`fastapi/app/api/routes/tutor.py`)**: `/suggestions` 엔드포인트에 `current_user` 의존성을 추가했습니다. 해당 유저의 포트폴리오 정보(보유 자산, 보유 종목, 평균 구매 단가 등)를 DB에서 긁어오도록 로직을 추가했습니다.
+  - 이 데이터를 바탕으로 *"이 사용자의 포트폴리오 상황을 고려하여 개인화된 핵심 질문을 작성하라"*는 지시어를 프롬프트에 동적 삽입함으로써, 사용자가 자신과 관련된 내용(ex: 보유 종목의 영향성 등)을 물어볼 수 있도록 고도화했습니다.
