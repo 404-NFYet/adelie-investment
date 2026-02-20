@@ -3,7 +3,7 @@
   "checkpoint_id": "53d4af738184",
   "strategy": "manual-commit",
   "branch": "develop",
-  "checkpoints_count": 22,
+  "checkpoints_count": 23,
   "files_touched": [
     "CLAUDE.md",
     "Makefile",
@@ -42,9 +42,11 @@
     "frontend/src/pages/TutorChat.jsx",
     "frontend/src/utils/markdown.js",
     "infra/docker-compose.yml",
+    "infra/docker-dashboard/.streamlit/config.toml",
     "infra/docker-dashboard/pages/feedback.py",
     "infra/monitoring/docker-compose.yml",
     "infra/monitoring/grafana/provisioning/dashboards/adelie-overview.json",
+    "infra/monitoring/nginx-dashboard.conf",
     "infra/terraform/environments/localstack/main.tf",
     "infra/terraform/modules/s3/main.tf",
     "infra/terraform/modules/secrets/variables.tf",
@@ -157,13 +159,20 @@
       "context": "/53/d4af738184/14/context.md",
       "content_hash": "/53/d4af738184/14/content_hash.txt",
       "prompt": "/53/d4af738184/14/prompt.txt"
+    },
+    {
+      "metadata": "/53/d4af738184/15/metadata.json",
+      "transcript": "/53/d4af738184/15/full.jsonl",
+      "context": "/53/d4af738184/15/context.md",
+      "content_hash": "/53/d4af738184/15/content_hash.txt",
+      "prompt": "/53/d4af738184/15/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 8219,
-    "cache_creation_tokens": 1591113,
-    "cache_read_tokens": 45468231,
-    "output_tokens": 171028,
-    "api_call_count": 652
+    "input_tokens": 8266,
+    "cache_creation_tokens": 1690705,
+    "cache_read_tokens": 47812362,
+    "output_tokens": 186537,
+    "api_call_count": 693
   }
 }
