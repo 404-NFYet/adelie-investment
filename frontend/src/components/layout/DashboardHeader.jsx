@@ -30,13 +30,18 @@ export default function DashboardHeader({ subtitle = '오늘도 성장을 위한
       <div className="container py-3.5">
         <div className="flex items-center justify-between">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-border bg-white shadow-sm">
+            <button
+              type="button"
+              onClick={() => navigate('/home')}
+              className="flex h-11 w-11 items-center justify-center rounded-2xl border border-border bg-white shadow-sm transition hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              aria-label="홈으로 이동"
+            >
               <img
                 src="/images/penguin-3d.png"
                 alt="프로필"
                 className="h-8 w-8 object-contain"
               />
-            </div>
+            </button>
             <div className="min-w-0">
               <p className="truncate text-[clamp(1.1rem,4.6vw,1.25rem)] font-bold leading-tight tracking-[-0.02em] text-[#101828]">
                 {greeting}

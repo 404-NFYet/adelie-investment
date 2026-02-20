@@ -84,6 +84,17 @@ export function shiftYearMonth(year, month, delta) {
   };
 }
 
+export function shiftDateKey(dateKey, deltaDays) {
+  const [year, month, day] = String(dateKey || '').split('-').map(Number);
+  if (!year || !month || !day) return null;
+  const current = new Date(Date.UTC(year, month - 1, day + deltaDays));
+  return formatDateKeyFromParts({
+    year: current.getUTCFullYear(),
+    month: current.getUTCMonth() + 1,
+    day: current.getUTCDate(),
+  });
+}
+
 export function buildKstMonthGrid(year, month) {
   const firstDay = new Date(Date.UTC(year, month - 1, 1));
   const firstWeekday = firstDay.getUTCDay();

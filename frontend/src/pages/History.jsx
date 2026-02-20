@@ -37,17 +37,19 @@ function DateChip({ date, isSelected, onClick }) {
   return (
     <button
       onClick={onClick}
-      className={`flex-shrink-0 flex flex-col items-center px-3 py-2 rounded-xl transition-all min-w-[52px] ${
+      className={`flex-shrink-0 flex flex-col items-center justify-center px-3 py-2 rounded-[16px] transition-all min-w-[56px] ${
         isSelected
           ? 'bg-primary text-white shadow-sm'
-          : 'bg-surface text-text-secondary hover:bg-border-light'
+          : 'bg-white text-[#6b7280] hover:bg-gray-50 border border-border shadow-sm'
       }`}
     >
-      <span className="text-[10px] font-medium">
+      <span className={`text-[10px] ${isSelected ? 'font-medium' : 'font-semibold'}`}>
         {isToday ? '오늘' : dayNames[date.getDay()]}
       </span>
-      <span className="text-lg font-bold leading-tight">{date.getDate()}</span>
-      <span className="text-[10px]">{date.getMonth() + 1}월</span>
+      <span className={`text-[18px] mt-0.5 leading-none ${isSelected ? 'font-extrabold' : 'font-bold text-[#101828]'}`}>
+        {date.getDate()}
+      </span>
+      <span className="text-[10px] mt-1">{date.getMonth() + 1}월</span>
     </button>
   );
 }
@@ -82,20 +84,20 @@ export default function History() {
   const handleKeywordSelect = (keyword) => {
     setSelectedId(keyword.id);
     navigate(
-      `/case/${keyword.case_id}`,
+      `/narrative/${keyword.case_id}`,
       { state: { keyword, stocks: keyword.stocks || [] } }
     );
   };
 
   return (
-    <div className="min-h-screen bg-background pb-24">
+    <div className="min-h-screen bg-[#f9fafb] pb-24">
       <AppHeader showBack title="지난 브리핑" />
 
       <main className="container py-4">
         {/* 날짜 가로 스크롤 피커 */}
         <div
           ref={scrollRef}
-          className="flex gap-2 overflow-x-auto pb-4 scrollbar-hide -mx-4 px-4"
+          className="flex gap-2 overflow-x-auto pb-4 scrollbar-hide [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] -mx-4 px-4"
         >
           {dates.map((date) => (
             <DateChip
@@ -106,11 +108,6 @@ export default function History() {
             />
           ))}
         </div>
-
-        {/* 선택된 날짜 표시 */}
-        <p className="text-sm text-text-secondary mb-4">
-          {selectedDate.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}
-        </p>
 
         {/* 로딩 */}
         {isLoading && (
@@ -128,7 +125,7 @@ export default function History() {
 
         {/* 키워드 카드 목록 */}
         {!isLoading && keywords.length > 0 && (
-          <div className="space-y-4">
+          <div className="space-y-3">
             {keywords.map((keyword, index) => (
               <motion.div
                 key={keyword.id}
@@ -141,35 +138,8 @@ export default function History() {
                   category={keyword.category}
                   title={keyword.title}
                   description={keyword.description}
-                  sector={keyword.sector}
-                  stocks={keyword.stocks}
-                  trend_days={keyword.trend_days}
-                  trend_type={keyword.trend_type}
-                  catalyst={keyword.catalyst}
-                  catalyst_url={keyword.catalyst_url}
-                  catalyst_source={keyword.catalyst_source}
-                  mirroring_hint={keyword.mirroring_hint}
-                  quality_score={keyword.quality_score}
-                  sync_rate={keyword.sync_rate}
-                  event_year={keyword.event_year}
-                  selected={selectedId === keyword.id}
-                  onClick={() => setSelectedId(keyword.id)}
+                  onClick={() => handleKeywordSelect(keyword)}
                 />
-                {selectedId === keyword.id && (
-                  <motion.div
-                    className="flex justify-center mt-3"
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    transition={{ duration: 0.25 }}
-                  >
-                    <button
-                      className="btn-primary w-full max-w-xs"
-                      onClick={() => handleKeywordSelect(keyword)}
-                    >
-                      START BRIEFING →
-                    </button>
-                  </motion.div>
-                )}
               </motion.div>
             ))}
           </div>

@@ -41,8 +41,11 @@ const icons = {
 };
 
 function isActivePath(tabPath, pathname) {
-  if (tabPath === '/home' || tabPath === '/education') {
+  if (tabPath === '/home') {
     return pathname === tabPath;
+  }
+  if (tabPath === '/education') {
+    return pathname === tabPath || pathname.startsWith('/education/');
   }
   return pathname === tabPath || pathname.startsWith(`${tabPath}/`);
 }

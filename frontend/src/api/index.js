@@ -8,6 +8,7 @@ import { API_BASE_URL, fetchJson, postJson, deleteJson } from './client';
 export { portfolioApi } from './portfolio';
 export { narrativeApi } from './narrative';
 export { learningApi } from './learning';
+export { quizApi } from './quiz';
 
 export { authApi } from './auth';
 

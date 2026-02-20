@@ -3,7 +3,7 @@
  * 코드 스플리팅 적용 (React.lazy + Suspense)
  */
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { UserProvider, useUser } from './contexts/UserContext';
 import { PortfolioProvider } from './contexts/PortfolioContext';
 import { TutorProvider } from './contexts/TutorContext';
@@ -21,17 +21,23 @@ const Auth = lazy(() => import('./pages/Auth'));
 const Landing = lazy(() => import('./pages/Landing'));
 const Home = lazy(() => import('./pages/Home'));
 const Education = lazy(() => import('./pages/Education'));
+const ActivityArchive = lazy(() => import('./pages/ActivityArchive'));
 const Search = lazy(() => import('./pages/Search'));
 const Comparison = lazy(() => import('./pages/Comparison'));
 const Story = lazy(() => import('./pages/Story'));
 const Companies = lazy(() => import('./pages/Companies'));
 const History = lazy(() => import('./pages/History'));
-const Matching = lazy(() => import('./pages/Matching'));
 const Narrative = lazy(() => import('./pages/Narrative'));
 const Notifications = lazy(() => import('./pages/Notifications'));
 const Portfolio = lazy(() => import('./pages/Portfolio'));
 const Profile = lazy(() => import('./pages/Profile'));
 const TutorChat = lazy(() => import('./pages/TutorChat'));
+
+function CaseRedirect() {
+  const { caseId } = useParams();
+  if (!caseId) return <Navigate to="/search" replace />;
+  return <Navigate to={`/narrative/${caseId}`} replace />;
+}
 
 function ProtectedRoute({ children }) {
   const { user, isLoading } = useUser();
@@ -57,13 +63,14 @@ function AppRoutes() {
         <Route path="/onboarding" element={<Navigate to="/" replace />} />
         <Route path="/auth" element={<Auth />} />
         <Route path="/education" element={<ProtectedRoute><Education /></ProtectedRoute>} />
+        <Route path="/education/archive" element={<ProtectedRoute><ActivityArchive /></ProtectedRoute>} />
         <Route path="/home" element={<ProtectedRoute><Home /></ProtectedRoute>} />
         <Route path="/search" element={<ProtectedRoute><Search /></ProtectedRoute>} />
         <Route path="/comparison" element={<ProtectedRoute><Comparison /></ProtectedRoute>} />
         <Route path="/story" element={<ProtectedRoute><Story /></ProtectedRoute>} />
         <Route path="/companies" element={<ProtectedRoute><Companies /></ProtectedRoute>} />
         <Route path="/history" element={<ProtectedRoute><History /></ProtectedRoute>} />
-        <Route path="/case/:caseId" element={<ProtectedRoute><Matching /></ProtectedRoute>} />
+        <Route path="/case/:caseId" element={<ProtectedRoute><CaseRedirect /></ProtectedRoute>} />
         <Route path="/narrative/:caseId" element={<ProtectedRoute><Narrative /></ProtectedRoute>} />
         <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
         <Route path="/portfolio" element={<ProtectedRoute><Portfolio /></ProtectedRoute>} />
