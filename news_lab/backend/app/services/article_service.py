@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 
 import requests
 from bs4 import BeautifulSoup
+from openai import AsyncOpenAI
 
 from app.core.config import settings
 
@@ -323,6 +324,48 @@ def _extract_content(url: str, soup: BeautifulSoup) -> tuple[str, int, list[str]
         )
 
     return best, score, flags
+
+
+async def extract_clean_content(raw_text: str, title: str) -> str:
+    """LLM을 사용해 크롤링된 텍스트에서 기사 본문만 추출.
+
+    Args:
+        raw_text: BeautifulSoup으로 추출한 원본 텍스트 (노이즈 포함)
+        title: 기사 제목
+
+    Returns:
+        LLM이 추출한 깨끗한 본문 텍스트
+    """
+    if not settings.openai_api_key:
+        return raw_text
+
+    try:
+        client = AsyncOpenAI(api_key=settings.openai_api_key)
+        response = await client.chat.completions.create(
+            model=settings.llm_model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "당신은 뉴스 기사 본문 추출기입니다. "
+                        "입력에서 순수한 기사 본문만 추출하세요. "
+                        "광고, UI 텍스트(구독/공유/댓글/글자크기/스크랩/프린트/좋아요/싫어요), "
+                        "기자 이메일, 저작권 고지, 관련기사 목록, 날짜 메타데이터를 모두 제거하세요. "
+                        "기사 내용을 수정하거나 요약하지 말고 원문 그대로 반환하세요."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": f"제목: {title}\n\n다음에서 기사 본문만 추출하세요:\n\n{raw_text[:10000]}",
+                },
+            ],
+            max_tokens=3000,
+            temperature=0.0,
+        )
+        content = response.choices[0].message.content or raw_text
+        return content.strip() if content.strip() else raw_text
+    except Exception:
+        return raw_text
 
 
 def fetch_article(url: str) -> ArticleData:

@@ -60,7 +60,7 @@ export default function NewsFeedScreen({
           <div className="url-inline-form">
             <input
               type="url"
-              placeholder="금융 기사 URL을 붙여넣으세요"
+              placeholder="금융 기사 또는 YouTube URL을 붙여넣으세요"
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
             />

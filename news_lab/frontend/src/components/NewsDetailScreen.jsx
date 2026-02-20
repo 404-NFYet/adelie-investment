@@ -27,6 +27,28 @@ function GlossaryGroup({ title, items, onClickTerm }) {
   );
 }
 
+function SixWSection({ sixW }) {
+  const pairs = [
+    ['누가', sixW?.who],
+    ['무엇을', sixW?.what],
+    ['언제', sixW?.when],
+    ['어디서', sixW?.where],
+    ['왜', sixW?.why],
+    ['어떻게', sixW?.how],
+  ];
+
+  return (
+    <section className="sixw-grid">
+      {pairs.map(([label, value]) => (
+        <div className="summary-block sixw-block" key={label}>
+          <h4>{label}</h4>
+          <p>{value || '-'}</p>
+        </div>
+      ))}
+    </section>
+  );
+}
+
 export default function NewsDetailScreen({
   result,
   mode,
@@ -52,6 +74,8 @@ export default function NewsDetailScreen({
   const glossary = result.glossary || [];
   const wordGlossary = glossary.filter((item) => item.kind === 'word');
   const phraseGlossary = glossary.filter((item) => item.kind === 'phrase');
+  const explainSixW = explain.six_w || null;
+  const newsletterSixW = newsletter.six_w || explainSixW;
 
   return (
     <section className="screen detail-screen">
@@ -59,7 +83,11 @@ export default function NewsDetailScreen({
 
       <div className="detail-scroll">
         <article className="article-head">
-          <div className="source-badge plain">{result.article.source}</div>
+          {result.article_domain === 'youtube.com' ? (
+            <div className="source-badge youtube">▶ YouTube · {result.article.source}</div>
+          ) : (
+            <div className="source-badge plain">{result.article.source}</div>
+          )}
           <h2>{result.article.title}</h2>
           <div className="meta-row">
             <span>{formatPublished(result.article.published_at)}</span>
@@ -79,10 +107,30 @@ export default function NewsDetailScreen({
 
         {mode === 'explain' ? (
           <section className="article-body-panel">
-            <TermHighlighter content={explain.content_marked} onClickTerm={onClickTerm} />
+            <div className="summary-block adelie-heading">
+              <h4>아델리 브리핑</h4>
+              <p className="adelie-title">{explain.adelie_title || result.article.title}</p>
+              <p>{explain.lede || '-'}</p>
+            </div>
+            <SixWSection sixW={explainSixW} />
+            <div className="summary-block">
+              <h4>핵심 정리</h4>
+              <ul>
+                {(explain.takeaways || newsletter.takeaways || []).map((item, idx) => (
+                  <li key={`${item}-${idx}`}>{item}</li>
+                ))}
+              </ul>
+            </div>
+            {!explainSixW ? <TermHighlighter content={explain.content_marked} onClickTerm={onClickTerm} /> : null}
           </section>
         ) : (
           <section className="article-body-panel newsletter">
+            <div className="summary-block adelie-heading">
+              <h4>아델리 브리핑</h4>
+              <p className="adelie-title">{newsletter.adelie_title || result.article.title}</p>
+              <p>{newsletter.lede || '-'}</p>
+            </div>
+            <SixWSection sixW={newsletterSixW} />
             <div className="summary-block">
               <h4>배경</h4>
               <p>{newsletter.background || '-'}</p>

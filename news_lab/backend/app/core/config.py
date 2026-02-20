@@ -15,6 +15,9 @@ class Settings(BaseSettings):
 
     upstream_api_base: str = "http://localhost:8082/api/v1"
     request_timeout_seconds: int = 20
+    ytdlp_binary: str = "yt-dlp"
+    ytdlp_timeout_seconds: int = 20
+    youtube_cookies_file: str = ""
 
     max_article_chars: int = 12000
     min_article_chars: int = 200

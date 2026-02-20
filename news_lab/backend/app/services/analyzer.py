@@ -10,9 +10,10 @@ from openai import AsyncOpenAI
 
 from app.core.cache import cache_backend
 from app.core.config import settings
-from app.services.article_service import ArticleData, ArticleExtractionError, fetch_article
+from app.services.article_service import ArticleData, ArticleExtractionError, extract_clean_content, fetch_article
 from app.services.content_classifier import classify_finance_article
 from app.services.upstream_client import upstream_client
+from app.services.youtube_service import fetch_youtube, is_youtube_url
 
 
 class AnalyzeError(RuntimeError):
@@ -57,6 +58,8 @@ _ALLOWED_ACRONYMS = {
     "M&A",
 }
 
+_SIX_W_KEYS = ("who", "what", "when", "where", "why", "how")
+
 
 def _split_sentences(text: str) -> list[str]:
     chunks = re.split(r"(?<=[.!?])\s+|\n+", text)
@@ -84,6 +87,67 @@ def _relevance_score(article_text: str, generated_text: str) -> float:
         return 0.0
     overlap = len(article_tokens & generated_tokens)
     return overlap / max(len(generated_tokens), 1)
+
+
+def _safe_text(value: Any, default: str = "") -> str:
+    text = re.sub(r"\s+", " ", str(value or "").strip())
+    return text or default
+
+
+def _extract_time_hint(text: str) -> str:
+    patterns = [
+        r"\d{4}[./-]\d{1,2}[./-]\d{1,2}",
+        r"\d{1,2}월\s*\d{1,2}일",
+        r"(오늘|어제|이번\s*주|지난\s*주|이날|현지시간)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            return match.group(0)
+    return ""
+
+
+def _extract_location_hint(text: str) -> str:
+    candidates = ["한국", "미국", "중국", "일본", "유럽", "서울", "뉴욕", "워싱턴", "샌프란시스코"]
+    for candidate in candidates:
+        if candidate in text:
+            return candidate
+    return ""
+
+
+def _build_fallback_six_w(article: ArticleData, sentences: list[str]) -> dict[str, str]:
+    title = _safe_text(article.title)
+    who_default = f"{article.source} 관련 주체"
+    what_default = _safe_text(sentences[0] if sentences else title, "핵심 이슈가 발생했어요.")
+    when_hint = _extract_time_hint(f"{title} {article.content}") or "기사 보도 시점 기준이에요."
+    where_hint = _extract_location_hint(f"{title} {article.content}") or "주요 시장 전반"
+    why_default = _safe_text(sentences[1] if len(sentences) > 1 else "", "시장 기대와 리스크가 동시에 반영된 이슈예요.")
+    how_default = _safe_text(sentences[2] if len(sentences) > 2 else "", "투자 구조가 조정되는 방식으로 전개되고 있어요.")
+
+    who = title.split(",")[0].strip() if "," in title else title.split("·")[0].strip()
+    who = who or who_default
+
+    return {
+        "who": who,
+        "what": what_default,
+        "when": when_hint,
+        "where": where_hint,
+        "why": why_default,
+        "how": how_default,
+    }
+
+
+def _normalize_six_w(payload: dict[str, Any], article: ArticleData, fallback_sentences: list[str]) -> dict[str, str]:
+    raw = payload.get("six_w")
+    defaults = _build_fallback_six_w(article, fallback_sentences)
+
+    if not isinstance(raw, dict):
+        return defaults
+
+    normalized: dict[str, str] = {}
+    for key in _SIX_W_KEYS:
+        normalized[key] = _safe_text(raw.get(key), defaults[key])
+    return normalized
 
 
 def _extract_concepts(text: str) -> list[str]:
@@ -292,21 +356,26 @@ def _build_marked_text(text: str, glossary: list[dict[str, Any]]) -> str:
 def _heuristic_payload(article: ArticleData) -> dict[str, Any]:
     sentences = _split_sentences(article.content)
     background = " ".join(sentences[:2]) or article.content[:240]
-    importance = " ".join(sentences[2:4]) or "시장 참여자 심리에 영향을 줄 수 있는 이슈입니다."
+    importance = " ".join(sentences[2:4]) or "시장 참여자 심리에 영향을 줄 수 있는 이슈예요."
     takeaways = [
-        sentences[0] if len(sentences) > 0 else "핵심 이슈를 먼저 확인하세요.",
-        sentences[1] if len(sentences) > 1 else "수치의 방향성과 속도를 함께 보세요.",
-        sentences[2] if len(sentences) > 2 else "관련 산업 파급 효과를 분리해서 보세요.",
+        sentences[0] if len(sentences) > 0 else "핵심 이슈를 먼저 확인해보세요.",
+        sentences[1] if len(sentences) > 1 else "수치의 방향성과 속도를 같이 보시면 좋아요.",
+        sentences[2] if len(sentences) > 2 else "관련 산업 파급 효과를 나눠서 보는 게 좋아요.",
     ]
 
     concepts = _extract_concepts(f"{article.title} {article.content}")
     related = [w for w in re.split(r"\s+", article.title) if len(w) >= 2][:5]
+    lede = " ".join(sentences[:2]) or article.content[:260]
+    six_w = _build_fallback_six_w(article, sentences)
 
     regenerated_article = " ".join(sentences[:8]) or article.content[:1400]
     explain_text = " ".join(sentences[:5]) or article.content[:1000]
 
     return {
+        "adelie_title": article.title,
         "korean_title": article.title,
+        "lede": lede,
+        "six_w": six_w,
         "regenerated_article": regenerated_article,
         "explain_text": explain_text,
         "newsletter": {
@@ -331,8 +400,10 @@ async def _call_llm(client: AsyncOpenAI, prompt: str) -> dict[str, Any] | None:
                 {
                     "role": "system",
                     "content": (
-                        "당신은 금융 뉴스 교육 콘텐츠 편집자다. 원문 근거 문장에 기반해 사실만 요약한다. "
-                        "질문형 문장, 근거 없는 확장, 마크다운 문법 사용을 금지한다. 반드시 JSON만 반환한다."
+                        "당신은 아델리의 금융 뉴스 에디터다. 초보자 친화적인 해요체로 설명하고, "
+                        "원문 근거 문장에 기반해 사실만 재구성한다. "
+                        "단정적 투자 조언(~해야 한다) 금지, 질문형 문장 금지, 근거 없는 확장 금지, "
+                        "마크다운 문법(###, -, *) 사용 금지. 반드시 JSON만 반환한다."
                     ),
                 },
                 {"role": "user", "content": prompt},
@@ -349,6 +420,12 @@ async def _call_llm(client: AsyncOpenAI, prompt: str) -> dict[str, Any] | None:
             return None
         if not isinstance(data.get("explain_text"), str):
             return None
+        if not isinstance(data.get("adelie_title"), str):
+            data["adelie_title"] = str(data.get("korean_title", "") or "")
+        if not isinstance(data.get("lede"), str):
+            data["lede"] = ""
+        if not isinstance(data.get("six_w"), dict):
+            data["six_w"] = {}
         if not isinstance(data.get("korean_title"), str):
             data["korean_title"] = ""
         if not isinstance(data.get("regenerated_article"), str):
@@ -360,15 +437,29 @@ async def _call_llm(client: AsyncOpenAI, prompt: str) -> dict[str, Any] | None:
         return None
 
 
-async def _llm_payload(article: ArticleData, difficulty: str, market: str) -> dict[str, Any] | None:
+async def _llm_payload(article: ArticleData, difficulty: str, market: str, content_type: str = "article") -> dict[str, Any] | None:
     if not settings.openai_api_key:
         return None
 
     client = AsyncOpenAI(api_key=settings.openai_api_key)
+
+    # 컨텐츠 타입별 프롬프트 조정
+    if content_type == "youtube":
+        source_label = "YouTube 영상 자막"
+        intro_prompt = "다음 금융 YouTube 영상 자막을 한국어 학습용 요약으로 재구성해 JSON으로만 응답하세요.\n"
+    else:
+        source_label = "기사"
+        intro_prompt = "다음 금융 기사 원문을 한국어 학습용 요약으로 재구성해 JSON으로만 응답하세요.\n"
+
     prompt = (
-        "다음 금융 기사 원문을 한국어 학습용 요약으로 재구성해 JSON으로만 응답하세요.\n"
+        f"{intro_prompt}"
         "원문 근거가 없는 문장, 질문형 문장, 일반 상식 확장, 마크다운 기호(###, -, *)를 금지합니다.\n"
+        "원문에 없는 주제나 질문을 절대 생성하지 마세요.\n"
+        "톤은 아델리 학습 가이드 톤(친근한 해요체, 쉬운 설명, 단정적 조언 금지)으로 작성하세요.\n"
         "필수 키:\n"
+        "- adelie_title(string)\n"
+        "- lede(string, 2~3문장)\n"
+        "- six_w(object: who/what/when/where/why/how)\n"
         "- korean_title(string)\n"
         "- regenerated_article(string)\n"
         "- explain_text(string)\n"
@@ -378,10 +469,10 @@ async def _llm_payload(article: ArticleData, difficulty: str, market: str) -> di
         "glossary 키:\n"
         "- words: [{term, definition, importance(1~5)}], 최대 6\n"
         "- phrases: [{term, definition, importance(1~5)}], 최대 6\n"
-        "words에는 금융 용어만 넣고, phrases에는 기사 핵심 구절만 넣으세요.\n"
+        "words에는 금융 용어만 넣고, phrases에는 핵심 구절만 넣으세요.\n"
         f"difficulty={difficulty}, market={market}\n\n"
         f"제목: {article.title}\n"
-        f"출처: {article.source}\n"
+        f"출처: {article.source} ({source_label})\n"
         f"본문:\n{article.content[:8000]}"
     )
 
@@ -390,7 +481,7 @@ async def _llm_payload(article: ArticleData, difficulty: str, market: str) -> di
         return None
 
     combined = f"{data.get('korean_title', '')} {data.get('regenerated_article', '')} {data.get('explain_text', '')}"
-    if _korean_ratio(combined) < 0.12:
+    if _korean_ratio(combined) < 0.15:
         return None
     return data
 
@@ -406,6 +497,20 @@ def _render_newsletter_text(newsletter: dict[str, Any]) -> str:
         f"핵심 개념: {concepts}\n"
         f"관련 이슈: {related}\n"
         f"핵심 정리: {takeaways}"
+    )
+
+
+def _render_adelie_briefing(adelie_title: str, lede: str, six_w: dict[str, str], takeaways: list[str]) -> str:
+    return (
+        f"아델리 브리핑: {adelie_title}\n"
+        f"한눈에 보기: {lede}\n"
+        f"누가: {six_w.get('who', '')}\n"
+        f"무엇을: {six_w.get('what', '')}\n"
+        f"언제: {six_w.get('when', '')}\n"
+        f"어디서: {six_w.get('where', '')}\n"
+        f"왜: {six_w.get('why', '')}\n"
+        f"어떻게: {six_w.get('how', '')}\n"
+        f"핵심 정리: {' / '.join(takeaways[:5])}"
     )
 
 
@@ -487,23 +592,62 @@ async def analyze_url(url: str, difficulty: str, market: str) -> dict[str, Any]:
         cached["cached"] = True
         return cached
 
+    # YouTube URL 감지
+    youtube = is_youtube_url(url)
+
+    # Step 1: 기사/자막 콘텐츠 추출
     try:
-        article = await anyio.to_thread.run_sync(fetch_article, url)
+        if youtube:
+            article = await anyio.to_thread.run_sync(lambda: fetch_youtube(url, settings.max_article_chars))
+        else:
+            article = await anyio.to_thread.run_sync(fetch_article, url)
     except ArticleExtractionError as exc:
         raise AnalyzeError(str(exc), code=getattr(exc, "code", "CONTENT_EXTRACTION_FAILED")) from exc
 
-    if article.content_quality_score < 45:
-        raise AnalyzeError("본문 품질이 낮아 분석할 수 없습니다. 다른 기사 URL을 시도해주세요.", code="LOW_CONTENT_QUALITY")
+    # Step 2: 품질 게이트
+    if youtube:
+        # YouTube 자막은 500자 이상이면 통과 허용 (문장부호 부족으로 low score)
+        if article.content_quality_score < 45 and len(article.content) < 500:
+            raise AnalyzeError(
+                "자막 내용이 너무 짧습니다. 더 긴 자막이 있는 영상을 시도해주세요.",
+                code="LOW_CONTENT_QUALITY",
+            )
+    else:
+        # 기사는 기존 기준 적용
+        if article.content_quality_score < 45:
+            raise AnalyzeError(
+                "본문 품질이 낮아 분석할 수 없습니다. 다른 기사 URL을 시도해주세요.",
+                code="LOW_CONTENT_QUALITY",
+            )
 
-    finance_cls = classify_finance_article(article.title, article.content, article.source)
+    # Step 3: 금융 분류 (YouTube는 완화된 기준 적용)
+    finance_cls = classify_finance_article(
+        article.title, article.content, article.source, is_transcript=youtube
+    )
     if not finance_cls.is_finance_article:
-        raise AnalyzeError("금융 기사만 분석할 수 있습니다. 금융/경제 기사 URL을 입력해주세요.", code="NON_FINANCE_ARTICLE")
+        if youtube:
+            raise AnalyzeError(
+                "금융/경제 영상만 분석할 수 있습니다. 금융/경제 관련 URL을 입력해주세요.",
+                code="NON_FINANCE_ARTICLE",
+            )
+        else:
+            raise AnalyzeError(
+                "금융 기사만 분석할 수 있습니다. 금융/경제 기사 URL을 입력해주세요.",
+                code="NON_FINANCE_ARTICLE",
+            )
 
-    llm_data = await _llm_payload(article, difficulty, market)
+    # Step 4: LLM 전처리 (YouTube는 불필요 - 이미 자막은 순수 텍스트)
+    if not youtube:
+        article.content = await extract_clean_content(article.content, article.title)
+
+    # Step 5: LLM 분석
+    content_type = "youtube" if youtube else "article"
+    llm_data = await _llm_payload(article, difficulty, market, content_type=content_type)
     payload = llm_data or _heuristic_payload(article)
 
     generated_combo = " ".join(
         [
+            str(payload.get("lede", "")),
             str(payload.get("regenerated_article", "")),
             str(payload.get("explain_text", "")),
             str(payload.get("newsletter", {}).get("background", "")),
@@ -514,18 +658,24 @@ async def analyze_url(url: str, difficulty: str, market: str) -> dict[str, Any]:
         payload = _heuristic_payload(article)
 
     newsletter = payload.get("newsletter", {})
+    fallback_sentences = _split_sentences(article.content)
+    six_w = _normalize_six_w(payload, article, fallback_sentences)
+    lede = _safe_text(payload.get("lede"), " ".join(fallback_sentences[:2]) or article.content[:240])
     explain_text = str(payload.get("explain_text", "")).strip() or article.content[:1200]
     regenerated_article = str(payload.get("regenerated_article", "")).strip() or explain_text
-    article_title = str(payload.get("korean_title", "")).strip() or article.title
+    adelie_title = _safe_text(payload.get("adelie_title"), article.title)
+    article_title = _safe_text(payload.get("korean_title"), adelie_title)
+    takeaways = [str(x) for x in (newsletter.get("takeaways", []) or [])][:5]
 
     glossary = _normalize_glossary(payload, f"{article.content}\n{regenerated_article}\n{explain_text}")
     glossary = await _merge_upstream_glossary(glossary, f"{regenerated_article}\n{explain_text}", difficulty)
 
-    explain_base = f"재구성 본문: {regenerated_article}\n\n이해를 돕는 해설: {explain_text}"
+    explain_base = _render_adelie_briefing(adelie_title, lede, six_w, takeaways)
     newsletter_text = _render_newsletter_text(newsletter)
+    newsletter_brief = _render_adelie_briefing(adelie_title, lede, six_w, takeaways)
 
     explain_marked = _build_marked_text(explain_base, glossary)
-    newsletter_marked = _build_marked_text(newsletter_text, glossary)
+    newsletter_marked = _build_marked_text(f"{newsletter_brief}\n{newsletter_text}", glossary)
 
     evidence = _extract_numeric_evidence(f"{article.content}\n{newsletter_text}")
     chart_ready = len(evidence) >= 2
@@ -539,21 +689,29 @@ async def analyze_url(url: str, difficulty: str, market: str) -> dict[str, Any]:
             "published_at": article.published_at,
             "content": article.content,
             "image_url": article.image_url,
+            "content_type": content_type,
         },
         "explain_mode": {
             "content_marked": explain_marked,
             "highlighted_terms": glossary,
             "glossary": glossary,
+            "adelie_title": adelie_title,
+            "lede": lede,
+            "six_w": six_w,
+            "takeaways": takeaways,
         },
         "newsletter_mode": {
             "background": str(newsletter.get("background", "")).strip(),
             "importance": str(newsletter.get("importance", "")).strip(),
             "concepts": [str(x) for x in (newsletter.get("concepts", []) or [])][:6],
             "related": [str(x) for x in (newsletter.get("related", []) or [])][:6],
-            "takeaways": [str(x) for x in (newsletter.get("takeaways", []) or [])][:5],
+            "takeaways": takeaways,
             "content_marked": newsletter_marked,
             "highlighted_terms": glossary,
             "glossary": glossary,
+            "adelie_title": adelie_title,
+            "lede": lede,
+            "six_w": six_w,
         },
         "highlighted_terms": _merge_terms(glossary),
         "glossary": glossary,

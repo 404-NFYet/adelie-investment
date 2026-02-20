@@ -15,11 +15,19 @@ function stripMarkup(text) {
 function buildChartContext(result) {
   if (!result) return '';
   const newsletter = result.newsletter_mode || {};
+  const sixW = newsletter.six_w || result.explain_mode?.six_w || {};
   const explainText = stripMarkup(result.explain_mode?.content_marked || '');
 
   return [
     `제목: ${result.article?.title || ''}`,
     `출처: ${result.article?.source || ''}`,
+    `리드: ${newsletter.lede || result.explain_mode?.lede || ''}`,
+    `누가: ${sixW.who || ''}`,
+    `무엇을: ${sixW.what || ''}`,
+    `언제: ${sixW.when || ''}`,
+    `어디서: ${sixW.where || ''}`,
+    `왜: ${sixW.why || ''}`,
+    `어떻게: ${sixW.how || ''}`,
     `배경: ${newsletter.background || ''}`,
     `중요성: ${newsletter.importance || ''}`,
     `핵심개념: ${(newsletter.concepts || []).join(', ')}`,

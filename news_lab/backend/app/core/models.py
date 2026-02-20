@@ -39,6 +39,7 @@ class ArticlePayload(BaseModel):
     published_at: str | None = None
     content: str
     image_url: HttpUrl | None = None
+    content_type: Literal["article", "youtube"] | None = None
 
 
 class GlossaryItem(BaseModel):
@@ -48,10 +49,23 @@ class GlossaryItem(BaseModel):
     importance: int = Field(default=1, ge=1, le=5)
 
 
+class SixWPayload(BaseModel):
+    who: str = ""
+    what: str = ""
+    when: str = ""
+    where: str = ""
+    why: str = ""
+    how: str = ""
+
+
 class ExplainModePayload(BaseModel):
     content_marked: str
     highlighted_terms: list[dict] = Field(default_factory=list)
     glossary: list[GlossaryItem] = Field(default_factory=list)
+    adelie_title: str | None = None
+    lede: str | None = None
+    six_w: SixWPayload | None = None
+    takeaways: list[str] = Field(default_factory=list)
 
 
 class NewsletterModePayload(BaseModel):
@@ -63,6 +77,9 @@ class NewsletterModePayload(BaseModel):
     content_marked: str
     highlighted_terms: list[dict] = Field(default_factory=list)
     glossary: list[GlossaryItem] = Field(default_factory=list)
+    adelie_title: str | None = None
+    lede: str | None = None
+    six_w: SixWPayload | None = None
 
 
 class AnalyzeResponse(BaseModel):

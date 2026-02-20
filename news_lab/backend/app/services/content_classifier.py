@@ -71,7 +71,7 @@ def _collect_matches(text: str, candidates: set[str]) -> list[str]:
     return sorted(set(matched))
 
 
-def classify_finance_article(title: str, content: str, source: str = "") -> FinanceClassification:
+def classify_finance_article(title: str, content: str, source: str = "", is_transcript: bool = False) -> FinanceClassification:
     sample = f"{title}\n{content[:4000]}"
     finance = _collect_matches(sample, FINANCE_KEYWORDS)
     non_finance = _collect_matches(sample, POLITICAL_OR_GENERAL_KEYWORDS)
@@ -82,10 +82,15 @@ def classify_finance_article(title: str, content: str, source: str = "") -> Fina
 
     # Financial media bias (slight positive only)
     source_l = source.lower()
-    if any(token in source_l for token in ["hankyung", "mk.co.kr", "chosun", "marketwatch", "reuters", "cnbc"]):
+    if any(token in source_l for token in ["hankyung", "mk.co.kr", "chosun", "marketwatch", "reuters", "cnbc", "youtube.com"]):
         score += 1
 
-    is_finance = score >= 3 and len(finance) >= 2
+    # YouTube 자막은 완화된 기준 적용 (키워드 밀도가 낮음)
+    if is_transcript:
+        is_finance = score >= 2 and len(finance) >= 1
+    else:
+        is_finance = score >= 3 and len(finance) >= 2
+
     return FinanceClassification(
         is_finance_article=is_finance,
         score=score,

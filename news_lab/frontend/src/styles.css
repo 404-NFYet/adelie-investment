@@ -388,6 +388,16 @@ select {
   color: #ff6900;
 }
 
+.source-badge.youtube {
+  font-style: normal;
+  font-size: 16px;
+  background: #ff0000;
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
 .meta-row {
   display: flex;
   gap: 14px;
@@ -438,6 +448,8 @@ select {
   font-size: 17px;
   line-height: 1.62;
   letter-spacing: -0.2px;
+  display: grid;
+  gap: 10px;
 }
 
 .article-body-panel.newsletter {
@@ -456,6 +468,29 @@ select {
   margin: 0 0 4px;
   font-size: 14px;
   color: #475467;
+}
+
+.adelie-heading {
+  border-color: #ffd4b0;
+  background: #fff7f0;
+}
+
+.adelie-title {
+  margin: 0 0 6px;
+  font-size: 18px;
+  line-height: 1.45;
+  color: #7c2d12;
+  font-weight: 800;
+}
+
+.sixw-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.sixw-block {
+  min-height: 98px;
 }
 
 .summary-block p,
@@ -662,5 +697,9 @@ select {
   .article-head h2,
   .headline-section-title h2 {
     font-size: 34px;
+  }
+
+  .sixw-grid {
+    grid-template-columns: 1fr;
   }
 }

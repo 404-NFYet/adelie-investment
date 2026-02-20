@@ -6,6 +6,7 @@ from app.services.analyzer import (
     _build_marked_text,
     _extract_numeric_evidence,
     _normalize_glossary,
+    _normalize_six_w,
     _render_newsletter_text,
     analyze_url,
 )
@@ -81,6 +82,23 @@ def test_extract_numeric_evidence_detects_finance_numbers():
     assert any("원" in item for item in evidence)
 
 
+def test_normalize_six_w_fallback_has_all_keys():
+    article = ArticleData(
+        title="엔비디아, 오픈AI에 투자 전환",
+        url="https://example.com/finance",
+        source="example.com",
+        published_at=None,
+        content="19일 현지시간 엔비디아는 투자 구조를 조정했다. 미국 시장에서 AI 투자 기대가 확대됐다.",
+        image_url=None,
+        article_domain="example.com",
+        content_quality_score=90,
+        quality_flags=[],
+    )
+    six_w = _normalize_six_w({}, article, ["엔비디아가 투자 구조를 조정했어요."])
+    assert set(six_w.keys()) == {"who", "what", "when", "where", "why", "how"}
+    assert six_w["what"] != ""
+
+
 def test_analyze_url_rejects_non_finance_article(monkeypatch):
     article = ArticleData(
         title="민주당 복당 신청",
@@ -152,5 +170,7 @@ def test_analyze_url_sets_chart_gate(monkeypatch):
         result = await analyze_url(article.url, "beginner", "KR")
         assert result["chart_ready"] is True
         assert result["chart_unavailable_reason"] is None
+        assert result["article"]["content_type"] == "article"
+        assert set(result["explain_mode"]["six_w"].keys()) == {"who", "what", "when", "where", "why", "how"}
 
     anyio.run(_run)
