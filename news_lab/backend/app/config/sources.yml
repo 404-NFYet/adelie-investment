@@ -1,0 +1,31 @@
+markets:
+  KR:
+    - id: hankyung
+      name: Hankyung
+      homepage: https://www.hankyung.com
+      feed_url: https://www.hankyung.com/feed/all-news
+    - id: mk
+      name: Maeil Business Newspaper
+      homepage: https://www.mk.co.kr
+      feed_url: https://www.mk.co.kr/rss/30000001/
+    - id: asiae
+      name: Asiae
+      homepage: https://www.asiae.co.kr
+      feed_url: http://www.asiae.co.kr/rss/all.htm
+    - id: chosunbiz
+      name: ChosunBiz
+      homepage: https://biz.chosun.com
+      feed_url: https://biz.chosun.com/arc/outboundfeeds/rss/?outputType=xml
+  US:
+    - id: marketwatch
+      name: MarketWatch
+      homepage: https://www.marketwatch.com
+      feed_url: https://feeds.content.dowjones.io/public/rss/mw_topstories
+    - id: reuters
+      name: Reuters Business
+      homepage: https://www.reuters.com
+      feed_url: https://feeds.reuters.com/reuters/businessNews
+    - id: cnbc
+      name: CNBC
+      homepage: https://www.cnbc.com
+      feed_url: https://www.cnbc.com/id/100003114/device/rss/rss.html

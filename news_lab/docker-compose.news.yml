@@ -1,0 +1,25 @@
+services:
+  news-backend:
+    build:
+      context: ./backend
+    container_name: adelie-news-backend
+    ports:
+      - "8091:8091"
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      UPSTREAM_API_BASE: ${UPSTREAM_API_BASE:-http://host.docker.internal:8082/api/v1}
+      REDIS_URL: ${REDIS_URL:-}
+      CACHE_TTL_SECONDS: ${CACHE_TTL_SECONDS:-600}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  news-frontend:
+    build:
+      context: ./frontend
+    container_name: adelie-news-frontend
+    depends_on:
+      - news-backend
+    ports:
+      - "3011:3011"
+    environment:
+      VITE_NEWS_API_BASE: ${VITE_NEWS_API_BASE:-http://localhost:8091}
