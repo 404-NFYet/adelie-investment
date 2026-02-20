@@ -409,11 +409,40 @@ export default function Narrative() {
   const { setContextInfo } = useTutor();
 
   useEffect(() => {
-    if (caseId) {
-      setContextInfo({ type: 'case', id: Number(caseId) });
+    if (!caseId) {
+      setContextInfo(null);
+      return;
     }
+
+    let fullContextText = '';
+
+    // If data and steps exist, extract the current step's title and content for the chatbot context
+    if (data?.steps) {
+      const currentStepConfig = STEP_CONFIGS[currentStep];
+      const stepData = data.steps[currentStepConfig.key];
+      if (stepData) {
+        const stepTitle = stepData.title || currentStepConfig.title;
+        const stepContent = stepData.content || '';
+
+        fullContextText = `[${stepTitle}]\n`;
+
+        // Also include bullets if they exist (especially for the 'caution' or 'summary' steps)
+        if (stepData.bullets && stepData.bullets.length > 0) {
+          fullContextText += stepData.bullets.map(b => `- ${b}`).join('\n') + '\n\n';
+        }
+
+        fullContextText += stepContent;
+      }
+    }
+
+    setContextInfo({
+      type: 'case',
+      id: Number(caseId),
+      stepContent: fullContextText
+    });
+
     return () => setContextInfo(null);
-  }, [caseId, setContextInfo]);
+  }, [caseId, data, currentStep, setContextInfo]);
 
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
