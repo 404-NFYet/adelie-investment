@@ -3,6 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { keywordsApi } from '../api';
 import { DEFAULT_HOME_ICON_KEY, getHomeIconSrc } from '../constants/homeIconCatalog';
 import DashboardHeader from '../components/layout/DashboardHeader';
+import MonthlyActivityCalendar from '../components/calendar/MonthlyActivityCalendar';
+import ActivityDayList from '../components/calendar/ActivityDayList';
+import useActivityFeed from '../hooks/useActivityFeed';
+import { getKstDateParts, getKstTodayDateKey, shiftYearMonth } from '../utils/kstDate';
 
 function QuizMissionCard() {
   return (
@@ -42,6 +46,15 @@ function QuizMissionCard() {
 
 export default function Education() {
   const navigate = useNavigate();
+  const { activitiesByDate, isLoading: isActivityLoading, error: activityError } = useActivityFeed();
+
+  const todayParts = useMemo(() => getKstDateParts(new Date()), []);
+  const [currentMonth, setCurrentMonth] = useState({
+    year: todayParts.year,
+    month: todayParts.month,
+  });
+  const [selectedDateKey, setSelectedDateKey] = useState(getKstTodayDateKey());
+
   const [keywords, setKeywords] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -69,6 +82,33 @@ export default function Education() {
     [keywords],
   );
 
+  const hasActivity = (dateKey) => (activitiesByDate[dateKey]?.length || 0) > 0;
+
+  const selectedActivities = useMemo(() => {
+    return activitiesByDate[selectedDateKey] || [];
+  }, [activitiesByDate, selectedDateKey]);
+
+  const monthPrefix = `${currentMonth.year}-${String(currentMonth.month).padStart(2, '0')}-`;
+  const monthlyActivityDays = useMemo(() => {
+    return Object.keys(activitiesByDate)
+      .filter((key) => key.startsWith(monthPrefix) && (activitiesByDate[key]?.length || 0) > 0)
+      .length;
+  }, [activitiesByDate, monthPrefix]);
+
+  const monthlyActivityCount = useMemo(() => {
+    return Object.entries(activitiesByDate)
+      .filter(([key]) => key.startsWith(monthPrefix))
+      .reduce((sum, [, items]) => sum + items.length, 0);
+  }, [activitiesByDate, monthPrefix]);
+
+  const handlePrevMonth = () => {
+    setCurrentMonth((prev) => shiftYearMonth(prev.year, prev.month, -1));
+  };
+
+  const handleNextMonth = () => {
+    setCurrentMonth((prev) => shiftYearMonth(prev.year, prev.month, 1));
+  };
+
   return (
     <div className="min-h-screen bg-[#f9fafb] pb-24">
       <DashboardHeader />
@@ -76,10 +116,44 @@ export default function Education() {
       <main className="container space-y-7 py-5">
         <QuizMissionCard />
 
+        <section className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-[20px] font-bold leading-[1.4] tracking-[-0.02em] text-[#101828]">활동 캘린더</h2>
+            <span className="text-sm font-medium text-[#99a1af]">월별 보기</span>
+          </div>
+
+          <MonthlyActivityCalendar
+            year={currentMonth.year}
+            month={currentMonth.month}
+            selectedDateKey={selectedDateKey}
+            onSelectDateKey={setSelectedDateKey}
+            onPrevMonth={handlePrevMonth}
+            onNextMonth={handleNextMonth}
+            hasActivity={hasActivity}
+          />
+
+          <div className="rounded-2xl border border-border bg-white px-4 py-3 text-sm text-[#6b7280]">
+            이번 달 활동일 {monthlyActivityDays}일 · 총 {monthlyActivityCount}건
+          </div>
+
+          <ActivityDayList
+            dateKey={selectedDateKey}
+            items={selectedActivities}
+            isLoading={isActivityLoading}
+            error={activityError}
+          />
+        </section>
+
         <section>
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-[20px] font-bold leading-[1.4] tracking-[-0.02em] text-[#101828]">오늘의 교육 브리핑</h2>
-            <span className="text-sm font-medium text-[#99a1af]">카드 뉴스</span>
+            <button
+              type="button"
+              onClick={() => navigate('/history')}
+              className="text-sm font-medium text-[#99a1af]"
+            >
+              지난 브리핑 ›
+            </button>
           </div>
 
           {isLoading && (
@@ -123,8 +197,8 @@ export default function Education() {
                   <img
                     src={getHomeIconSrc(keyword.icon_key)}
                     alt={`${keyword.title || '키워드'} 아이콘`}
-                    onError={(e) => {
-                      e.currentTarget.src = getHomeIconSrc(DEFAULT_HOME_ICON_KEY);
+                    onError={(event) => {
+                      event.currentTarget.src = getHomeIconSrc(DEFAULT_HOME_ICON_KEY);
                     }}
                     className="h-20 w-20 flex-shrink-0 object-contain"
                   />

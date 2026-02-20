@@ -7,6 +7,7 @@ import { API_BASE_URL, fetchJson, postJson, deleteJson } from './client';
 // Re-export module APIs
 export { portfolioApi } from './portfolio';
 export { narrativeApi } from './narrative';
+export { learningApi } from './learning';
 
 export { authApi } from './auth';
 
@@ -50,4 +51,3 @@ export const notificationApi = {
   deleteRead: () =>
     deleteJson(`${API_BASE_URL}/api/v1/notifications/read`),
 };
-
