@@ -159,7 +159,17 @@ async def generate_tutor_response(
     
     # 컨텍스트 주입 (사용자가 보고 있는 페이지 기반)
     page_context = ""
-    if request.context_type and request.context_id:
+    if hasattr(request, "context_text") and request.context_text:
+        # 프론트엔드에서 전달된 현재 스텝의 텍스트 본문 사용 (우선)
+        page_context = (
+            "\n\n[현재 학습/화면 문맥]\n"
+            "사용자는 지금 애플리케이션 화면에서 아래의 내용을 직접 읽고 있는 중입니다:\n"
+            f'"""\n{request.context_text}\n"""\n'
+            "사용자가 질문을 할 때, 만약 사용자가 '이 화면', '방금 내용', '이 파트'와 같이 "
+            "주어를 생략하더라도 반드시 위 문맥과 연관지어 자연스럽게 답변하세요."
+        )
+    elif request.context_type and request.context_id:
+        # Fallback: context_text가 없는 경우 기존 DB 기반 요약 사용
         try:
             if request.context_type == "briefing":
                 ctx_result = await db.execute(text(
@@ -441,100 +451,3 @@ async def tutor_chat(
     )
 
 
-@router.get("/suggestions")
-async def get_tutor_suggestions(
-    context_type: str = Query(..., description="Context type, e.g., 'case'"),
-    context_id: int = Query(..., description="Context ID"),
-    db: AsyncSession = Depends(get_db),
-    current_user: Optional[dict] = Depends(get_current_user_optional)
-) -> dict:
-    """Dynamic suggested questions based on context summary and user portfolio."""
-    if context_type not in ["case", "briefing"]:
-        return {"questions": []}
-        
-    try:
-        from app.models.historical_case import HistoricalCase
-        from app.models.briefing import DailyBriefing
-        
-        summary_text = ""
-        prompt_context = ""
-        
-        if context_type == "case":
-            result = await db.execute(
-                select(HistoricalCase).where(HistoricalCase.id == context_id)
-            )
-            case = result.scalar_one_or_none()
-            if not case or not case.summary:
-                return {"questions": []}
-            summary_text = case.summary[:300]
-            prompt_context = "과거 금융 사례의 요약문"
-        elif context_type == "briefing":
-            result = await db.execute(
-                select(DailyBriefing).where(DailyBriefing.id == context_id)
-            )
-            briefing = result.scalar_one_or_none()
-            if not briefing or not briefing.market_summary:
-                return {"questions": []}
-            summary_text = briefing.market_summary[:300]
-            prompt_context = "오늘의 금융 시장 데일리 브리핑 요약문"
-            
-        # Get portfolio context
-        portfolio_context = ""
-        user_id = current_user["id"] if current_user else None
-        if user_id:
-            try:
-                portfolio_result = await db.execute(text(
-                    "SELECT current_cash, initial_cash FROM user_portfolios WHERE user_id = :uid LIMIT 1"
-                ), {"uid": user_id})
-                pf_row = portfolio_result.fetchone()
-                if pf_row:
-                    holdings_result = await db.execute(text(
-                        "SELECT stock_name, quantity, avg_buy_price FROM portfolio_holdings WHERE portfolio_id = (SELECT id FROM user_portfolios WHERE user_id = :uid LIMIT 1)"
-                    ), {"uid": user_id})
-                    holdings = holdings_result.fetchall()
-                    holdings_text = ", ".join(f"{h[0]} {h[1]}주(평균 {int(h[2]):,}원)" for h in holdings) if holdings else "없음"
-                    portfolio_context = f"\n\n[사용자 포트폴리오]\n보유 현금: {int(pf_row[0]):,}원 / 초기 자본: {int(pf_row[1]):,}원\n보유 종목: {holdings_text}"
-            except Exception:
-                pass
-        
-        api_key = get_settings().OPENAI_API_KEY
-        if not api_key:
-            return {"questions": []}
-            
-        client = AsyncOpenAI(api_key=api_key)
-        
-        user_prompt_addition = "이 사용자의 포트폴리오 상황을 고려하여, 이 사용자가 가장 궁금해할 만한 개인화된 핵심 질문 3가지를 작성해주세요." if portfolio_context else "이 내용을 읽은 초보 투자자가 궁금해할 만한 핵심 질문 3가지를 작성해주세요."
-        
-        prompt = (
-            f"다음은 {prompt_context}입니다:\n\n{summary_text}\n{portfolio_context}\n\n"
-            f"{user_prompt_addition} "
-            "질문은 챗봇에게 물어볼 수 있는 형태의 평문이어야 합니다. "
-            "반드시 아래 JSON 배열 형식으로만 응답하세요. 다른 텍스트는 출력하지 마세요.\n"
-            '{"questions": ["질문1", "질문2", "질문3"]}'
-        )
-        
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "당신은 초보 투자자의 학습을 돕는 금융 튜터입니다."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.7,
-            max_tokens=300,
-        )
-        
-        content = response.choices[0].message.content.strip()
-        if content.startswith("```"):
-            lines = content.split("\n")
-            if lines[0].startswith("```"):
-                lines = lines[1:]
-            if lines and lines[-1].startswith("```"):
-                lines = lines[:-1]
-            content = "\n".join(lines).strip()
-            
-        parsed = json.loads(content)
-        questions = parsed.get("questions", [])
-        return {"questions": questions[:3]}
-    except Exception as e:
-        logger.warning(f"선택지 생성 실패: {e}")
-        return {"questions": []}

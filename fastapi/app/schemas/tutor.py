@@ -12,6 +12,7 @@ class TutorChatRequest(BaseModel):
     message: str
     context_type: Optional[Literal["briefing", "case", "comparison", "glossary"]] = None
     context_id: Optional[int] = None
+    context_text: Optional[str] = None
     difficulty: str = "beginner"
 
 
