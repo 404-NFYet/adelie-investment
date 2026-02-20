@@ -1,27 +1,22 @@
 /**
- * SessionSidebar - 세션 목록 UI (접기/펼치기)
+ * SessionSidebar - 세션 목록 UI
  */
 import { formatRelativeDate } from '../../utils/dateFormat';
 
 export default function SessionSidebar({
-  sessions, activeSessionId, isOpen, onToggle,
+  sessions, activeSessionId, isOpen,
   onSessionClick, onDeleteSession,
 }) {
-  if (!sessions || sessions.length === 0) return null;
+  if (!isOpen) return null;
+  const safeSessions = Array.isArray(sessions) ? sessions : [];
 
   return (
-    <div className="border-t border-border">
-      <button
-        onClick={onToggle}
-        className="w-full px-4 py-2 flex items-center justify-between text-sm text-text-secondary hover:bg-surface transition-colors"
-      >
-        <span className="font-medium">대화 목록 ({sessions.length})</span>
-        <span className={`transform transition-transform ${isOpen ? 'rotate-180' : ''}`}>▼</span>
-      </button>
-
-      {isOpen && (
-        <div className="max-h-48 overflow-y-auto border-t border-border">
-          {sessions.map((session) => (
+    <div className="border-t border-border bg-surface-elevated">
+      {safeSessions.length === 0 ? (
+        <div className="px-4 py-4 text-sm text-text-secondary">이전 대화가 없습니다.</div>
+      ) : (
+        <div className="max-h-48 overflow-y-auto">
+          {safeSessions.map((session) => (
             <div
               key={session.id}
               onClick={() => onSessionClick(session.id)}

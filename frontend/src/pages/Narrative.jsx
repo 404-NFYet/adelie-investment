@@ -418,9 +418,12 @@ export default function Narrative() {
   const [rewardViewState, setRewardViewState] = useState('none');
   const [rewardData, setRewardData] = useState(null);
   const [rewardError, setRewardError] = useState('');
+  const [pendingResumeState, setPendingResumeState] = useState(null);
+  const [isResumeDialogOpen, setIsResumeDialogOpen] = useState(false);
   const hasRestoredResumeRef = useRef(false);
   const scrollThrottleTimerRef = useRef(null);
   const hasLoggedInProgressRef = useRef(false);
+  const totalSteps = STEP_CONFIGS.length;
 
   useEffect(() => {
     if (!caseId) {
@@ -428,31 +431,33 @@ export default function Narrative() {
       return;
     }
 
+    const currentStepConfig = STEP_CONFIGS[currentStep];
+    const currentStepData = data?.steps?.[currentStepConfig.key];
     let fullContextText = '';
 
     // If data and steps exist, extract the current step's title and content for the chatbot context
-    if (data?.steps) {
-      const currentStepConfig = STEP_CONFIGS[currentStep];
-      const stepData = data.steps[currentStepConfig.key];
-      if (stepData) {
-        const stepTitle = stepData.title || currentStepConfig.title;
-        const stepContent = stepData.content || '';
+    if (currentStepData) {
+      const stepTitle = currentStepData.title || currentStepConfig.title;
+      const stepContent = currentStepData.content || '';
 
-        fullContextText = `[${stepTitle}]\n`;
+      fullContextText = `[${stepTitle}]\n`;
 
-        // Also include bullets if they exist (especially for the 'caution' or 'summary' steps)
-        if (stepData.bullets && stepData.bullets.length > 0) {
-          fullContextText += stepData.bullets.map(b => `- ${b}`).join('\n') + '\n\n';
-        }
-
-        fullContextText += stepContent;
+      // Also include bullets if they exist (especially for the 'caution' or 'summary' steps)
+      if (currentStepData.bullets && currentStepData.bullets.length > 0) {
+        fullContextText += currentStepData.bullets.map((b) => `- ${b}`).join('\n') + '\n\n';
       }
+
+      fullContextText += stepContent;
     }
 
     setContextInfo({
       type: 'case',
       id: Number(caseId),
-      stepContent: fullContextText
+      stepContent: fullContextText,
+      stepKey: currentStepConfig.key,
+      stepTitle: currentStepData?.title || currentStepConfig.title,
+      stepTag: currentStepConfig.tag,
+      sourcePage: 'narrative',
     });
 
     return () => setContextInfo(null);
@@ -483,6 +488,43 @@ export default function Narrative() {
     }
   }, [caseId]);
 
+  const readValidResumeState = useCallback(() => {
+    if (!caseId) return null;
+    try {
+      const raw = localStorage.getItem(getResumeStorageKey(caseId));
+      if (!raw) return null;
+
+      const parsed = JSON.parse(raw);
+      const savedAt = Date.parse(parsed?.updatedAt || '');
+      if (!Number.isFinite(savedAt) || Date.now() - savedAt > RESUME_TTL_MS) {
+        clearResumeState();
+        return null;
+      }
+
+      const parsedStep = Number.isInteger(parsed?.stepIndex) ? parsed.stepIndex : 0;
+      const safeStepIndex = Math.min(Math.max(parsedStep, 0), totalSteps - 1);
+      const safeScrollY = Math.max(0, Number(parsed?.scrollY || 0));
+
+      return {
+        stepIndex: safeStepIndex,
+        scrollY: safeScrollY,
+      };
+    } catch {
+      clearResumeState();
+      return null;
+    }
+  }, [caseId, clearResumeState, totalSteps]);
+
+  const applyResumeState = useCallback((stepIndex, scrollY = 0) => {
+    setDirection(0);
+    setCurrentStep(stepIndex);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: scrollY, behavior: 'auto' });
+      });
+    });
+  }, []);
+
   const upsertLearningProgress = useCallback(async (status, progressPercent) => {
     const parsedCaseId = Number(caseId);
     if (!Number.isInteger(parsedCaseId) || parsedCaseId <= 0) return;
@@ -505,6 +547,8 @@ export default function Narrative() {
     setRewardViewState('none');
     setRewardData(null);
     setRewardError('');
+    setPendingResumeState(null);
+    setIsResumeDialogOpen(false);
   }, [caseId]);
 
   useEffect(() => {
@@ -530,7 +574,6 @@ export default function Narrative() {
       .finally(() => setIsLoading(false));
   }, [caseId]);
 
-  const totalSteps = STEP_CONFIGS.length;
   const stepConfig = STEP_CONFIGS[currentStep];
   const stepData = data?.steps?.[stepConfig.key];
   const stepTitle = stepData?.title || stepConfig.title;
@@ -545,40 +588,63 @@ export default function Narrative() {
   useEffect(() => {
     if (!caseId || !data || isLoading || error || hasRestoredResumeRef.current) return;
 
-    hasRestoredResumeRef.current = true;
+    let cancelled = false;
 
-    try {
-      const raw = localStorage.getItem(getResumeStorageKey(caseId));
-      if (!raw) {
-        window.scrollTo({ top: 0, behavior: 'auto' });
+    const restoreEntry = async () => {
+      const savedResume = readValidResumeState();
+
+      if (!savedResume || savedResume.stepIndex <= 0) {
+        hasRestoredResumeRef.current = true;
+        applyResumeState(0, 0);
         return;
       }
 
-      const parsed = JSON.parse(raw);
-      const savedAt = Date.parse(parsed?.updatedAt || '');
-      if (!Number.isFinite(savedAt) || Date.now() - savedAt > RESUME_TTL_MS) {
+      let isCompleted = false;
+      try {
+        const progressRes = await learningApi.getProgress({ contentType: 'case' });
+        const progressList = Array.isArray(progressRes?.data) ? progressRes.data : [];
+        const currentCaseProgress = progressList.find((item) => Number(item.content_id) === Number(caseId));
+        isCompleted = currentCaseProgress?.status === 'completed';
+      } catch {
+        // 학습 진도 조회 실패 시 로컬 resume 기준으로 처리
+      }
+
+      if (cancelled) return;
+
+      if (isCompleted) {
         clearResumeState();
-        window.scrollTo({ top: 0, behavior: 'auto' });
+        hasRestoredResumeRef.current = true;
+        applyResumeState(0, 0);
         return;
       }
 
-      const parsedStep = Number.isInteger(parsed?.stepIndex) ? parsed.stepIndex : 0;
-      const safeStepIndex = Math.min(Math.max(parsedStep, 0), totalSteps - 1);
-      const safeScrollY = Math.max(0, Number(parsed?.scrollY || 0));
+      setPendingResumeState(savedResume);
+      setIsResumeDialogOpen(true);
+    };
 
-      setDirection(0);
-      setCurrentStep(safeStepIndex);
+    restoreEntry();
 
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          window.scrollTo({ top: safeScrollY, behavior: 'auto' });
-        });
-      });
-    } catch {
-      clearResumeState();
-      window.scrollTo({ top: 0, behavior: 'auto' });
-    }
-  }, [caseId, clearResumeState, data, error, isLoading, totalSteps]);
+    return () => {
+      cancelled = true;
+    };
+  }, [applyResumeState, caseId, clearResumeState, data, error, isLoading, readValidResumeState]);
+
+  const handleResumeFromBeginning = useCallback(() => {
+    clearResumeState();
+    hasRestoredResumeRef.current = true;
+    setPendingResumeState(null);
+    setIsResumeDialogOpen(false);
+    applyResumeState(0, 0);
+  }, [applyResumeState, clearResumeState]);
+
+  const handleResumeFromSavedPoint = useCallback(() => {
+    const stepIndex = pendingResumeState?.stepIndex || 0;
+    const scrollY = pendingResumeState?.scrollY || 0;
+    hasRestoredResumeRef.current = true;
+    setPendingResumeState(null);
+    setIsResumeDialogOpen(false);
+    applyResumeState(stepIndex, scrollY);
+  }, [applyResumeState, pendingResumeState]);
 
   useEffect(() => {
     if (!caseId || !data || isLoading || error || !hasRestoredResumeRef.current) return;
@@ -628,6 +694,7 @@ export default function Narrative() {
       if (reward) {
         setRewardData(reward);
         setRewardViewState('success');
+        clearResumeState();
         upsertLearningProgress('completed', 100);
       }
     } catch (claimError) {
@@ -635,6 +702,7 @@ export default function Narrative() {
       if (message.includes('이미')) {
         setRewardData(null);
         setRewardViewState('already_claimed');
+        clearResumeState();
         upsertLearningProgress('completed', 100);
         return;
       }
@@ -784,6 +852,48 @@ export default function Narrative() {
           </div>
         </div>
       ) : null}
+
+      <AnimatePresence>
+        {isResumeDialogOpen ? (
+          <>
+            <motion.div
+              className="fixed inset-0 z-40 bg-black/45"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            />
+            <motion.div
+              className="fixed inset-0 z-50 flex items-center justify-center px-4"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 10 }}
+            >
+              <div className="w-full max-w-mobile rounded-2xl bg-surface-elevated p-6 shadow-xl">
+                <h3 className="text-base font-bold text-text-primary">중간 지점부터 보시겠습니까?</h3>
+                <p className="mt-2 text-sm leading-relaxed text-text-secondary">
+                  이전에 보던 내러티브 진행 지점이 있습니다.
+                </p>
+                <div className="mt-5 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleResumeFromBeginning}
+                    className="h-11 flex-1 rounded-xl border border-border bg-white px-4 text-sm font-semibold text-text-secondary"
+                  >
+                    처음부터 보기
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleResumeFromSavedPoint}
+                    className="h-11 flex-1 rounded-xl bg-primary px-4 text-sm font-semibold text-white"
+                  >
+                    이어보기
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        ) : null}
+      </AnimatePresence>
 
       {rewardViewState !== 'none' ? (
         <RewardResultScreen

@@ -1,5 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { API_BASE_URL } from '../config';
+import { authFetch } from '../api/client';
+
+const readResponseError = async (response) => {
+  const data = await response.json().catch(() => ({}));
+  return data.detail || data.message || `HTTP ${response.status}: ${response.statusText}`;
+};
 
 /**
  * Generic fetch hook for GET requests
@@ -32,18 +38,15 @@ export function useFetch(endpoint, options = {}) {
         }
       });
 
-      const response = await fetch(url.toString(), {
+      const response = await authFetch(url.toString(), {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          ...(localStorage.getItem('token')
-            ? { Authorization: `Bearer ${localStorage.getItem('token')}` }
-            : {}),
         },
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        throw new Error(await readResponseError(response));
       }
 
       const result = await response.json();
@@ -82,20 +85,16 @@ export function useMutation(endpoint, options = {}) {
       setError(null);
 
       try {
-        const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        const response = await authFetch(`${API_BASE_URL}${endpoint}`, {
           method,
           headers: {
             'Content-Type': 'application/json',
-            ...(localStorage.getItem('token')
-              ? { Authorization: `Bearer ${localStorage.getItem('token')}` }
-              : {}),
           },
           body: JSON.stringify(body),
         });
 
         if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.detail || `HTTP ${response.status}`);
+          throw new Error(await readResponseError(response));
         }
 
         const result = await response.json();
