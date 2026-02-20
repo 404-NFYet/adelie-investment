@@ -28,6 +28,39 @@ STEP_TITLES = {
     "summary": "투자 전 체크포인트",
 }
 
+_JARGON_EXPLAINERS: dict[str, str] = {
+    "리레이팅": "리레이팅은 같은 실적이어도 시장이 더 높은 가격을 붙여주는 흐름이에요.",
+    "밸류에이션": "밸류에이션은 회사 가치를 주가로 얼마나 높게 보는지에 대한 평가예요.",
+    "멀티플": "멀티플은 이익이나 매출 대비 주가가 몇 배인지 보여주는 숫자예요.",
+    "컨센서스": "컨센서스는 여러 증권사가 모아 본 평균 예상치예요.",
+    "펀더멘털": "펀더멘털은 회사가 실제로 돈을 버는 기초 체력을 뜻해요.",
+    "CAPEX": "CAPEX는 공장이나 장비에 쓰는 큰 설비투자 비용이에요.",
+}
+
+_KOR_SENTENCE_ENDINGS = (
+    "요.",
+    "다.",
+    "니다.",
+    "어요.",
+    "아요.",
+    "예요.",
+    "이에요.",
+    "였어요.",
+    "이었어요.",
+    "했습니다.",
+    "했다.",
+    "됩니다.",
+)
+
+
+def _has_batchim(char: str) -> bool:
+    if not char:
+        return False
+    code = ord(char)
+    if 0xAC00 <= code <= 0xD7A3:
+        return ((code - 0xAC00) % 28) != 0
+    return False
+
 
 def highlight_terms(content: str) -> str:
     """[[term]] 패턴을 <mark>term</mark> 으로 치환."""
@@ -121,15 +154,17 @@ def _build_from_llm(narrative_data: dict) -> dict:
         content = section.get("content", "")
         glossary = section.get("glossary", [])
         title = str(section.get("title", "") or "").strip() or STEP_TITLES.get(key, "")
+        bullets = section.get("bullets", [])
 
         # glossary 용어를 content에 하이라이팅
         content = _inject_glossary_marks(content, glossary)
         # 기존 [[term]] 패턴도 변환
         content = highlight_terms(content)
+        content = _postprocess_content(key, content, bullets)
 
         step_data = {
             "title": title,
-            "bullets": section.get("bullets", []),
+            "bullets": bullets,
             "content": content,
             "chart": None if key == "summary" else _sanitize_chart(section.get("chart")),
             "glossary": glossary,
@@ -139,6 +174,155 @@ def _build_from_llm(narrative_data: dict) -> dict:
             step_data["sources"] = section["sources"]
         steps[key] = step_data
     return steps
+
+
+def _postprocess_content(step_key: str, content: str, bullets: list[str] | None = None) -> str:
+    text = str(content or "")
+    if not text:
+        return text
+
+    # 라벨 잔여물 제거
+    text = text.replace("### 다른 점\n닮은 점 ", "### 다른 점\n")
+    text = re.sub(r"\n?\s*과거\s*사이클\s*흐름\s*$", "", text)
+    text = re.sub(r"\b(?:Trigger|Process|Outcome|Variables)\s*:\s*", "", text)
+    text = re.sub(r"\[(닮은 점|다른 점|과거 사이클 흐름)\]", r"\1", text)
+
+    def _split_sentences_keep_flow(s: str) -> list[str]:
+        return [p.strip() for p in re.split(r"(?<=[.!?。！？])\s+", s) if p.strip()]
+
+    def _smart_linebreak(s: str) -> str:
+        """문장마다가 아니라 의미 덩어리(2~3문장) 기준으로 줄바꿈."""
+        sentences = _split_sentences_keep_flow(s)
+        if len(sentences) <= 2:
+            return " ".join(sentences) if sentences else s.strip()
+
+        chunks: list[str] = []
+        buf: list[str] = []
+        buf_len = 0
+        for sent in sentences:
+            sent_len = len(sent)
+            buf.append(sent)
+            buf_len += sent_len + (1 if buf_len else 0)
+
+            # 2문장 이상 쌓였고 길이가 충분하면 한 덩어리로 끊는다.
+            if len(buf) >= 2 and (buf_len >= 115 or len(buf) >= 3):
+                chunks.append(" ".join(buf).strip())
+                buf = []
+                buf_len = 0
+
+        if buf:
+            chunks.append(" ".join(buf).strip())
+        return "\n".join(chunks)
+
+    # 본문은 흐름 덩어리 기준으로만 줄바꿈
+    lines = text.splitlines()
+    rendered: list[str] = []
+    for line in lines:
+        s = line.strip()
+        if not s:
+            rendered.append("")
+            continue
+        if s.startswith("### ") or s.startswith("- ") or re.match(r"^\d+[.)]\s+", s):
+            rendered.append(s)
+            continue
+        rendered.append(_smart_linebreak(s))
+    text = "\n".join(rendered).strip()
+
+    # history(과거 패턴) 섹션은 미완성 종결을 최소화한다.
+    if step_key == "history":
+        fixed_lines: list[str] = []
+        in_case_block = False
+        for line in text.splitlines():
+            s = line.strip()
+            if not s:
+                fixed_lines.append(line)
+                continue
+            if s.startswith("### "):
+                in_case_block = "참고할 과거 사례" in s
+                fixed_lines.append(line)
+                continue
+            if not re.search(r"[.!?。！？]$", s):
+                s = f"{s}."
+            # '랠리.', '사이클.'처럼 명사형 단문이 남으면 완결 문장으로 보정
+            if in_case_block and s.endswith(".") and not s.endswith(_KOR_SENTENCE_ENDINGS):
+                core = s[:-1].strip()
+                if core:
+                    last = core[-1]
+                    copula = "이라는" if _has_batchim(last) else "라는"
+                    s = f"{core}{copula} 흐름이었어요."
+            fixed_lines.append(s)
+        text = "\n".join(fixed_lines).strip()
+
+    # caution(놓치면 위험한 점) 섹션의 "대응 포인트"는 "라벨: 설명" 단위로 줄바꿈한다.
+    if step_key == "caution":
+        lines = text.splitlines()
+        in_action_points = False
+        action_buf: list[str] = []
+        rebuilt: list[str] = []
+
+        def _flush_action() -> None:
+            nonlocal action_buf
+            if not action_buf:
+                return
+            merged = " ".join(part.strip() for part in action_buf if part.strip())
+            # "문장 끝 + 다음 라벨: 설명" 패턴에서만 줄바꿈
+            merged = re.sub(
+                r"([.!?。！？])\s+([가-힣A-Za-z0-9·()/\-\s]{2,30}:\s)",
+                r"\1\n\2",
+                merged,
+            )
+            rebuilt.extend([ln.strip() for ln in merged.splitlines() if ln.strip()])
+            action_buf = []
+
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("### "):
+                _flush_action()
+                rebuilt.append(stripped)
+                in_action_points = "대응 포인트" in stripped
+                continue
+            if in_action_points:
+                if not stripped:
+                    _flush_action()
+                    rebuilt.append("")
+                    in_action_points = False
+                else:
+                    action_buf.append(stripped)
+            else:
+                rebuilt.append(line)
+
+        _flush_action()
+        text = "\n".join(rebuilt).strip()
+
+    # 분량이 너무 짧으면 기존 bullets를 보조 설명으로 붙여 핵심 손실을 줄임
+    sentence_count = len([p for p in re.split(r"(?<=[.!?。！？])\s+", text) if p.strip() and not p.strip().startswith("###")])
+    if sentence_count < 4 and bullets and step_key != "caution":
+        extras: list[str] = []
+        for b in bullets:
+            btxt = str(b or "").strip().lstrip("- ").strip()
+            if not btxt:
+                continue
+            if not re.search(r"[.!?。！？]$", btxt):
+                btxt += "."
+            if btxt not in text:
+                extras.append(btxt)
+            if sentence_count + len(extras) >= 4:
+                break
+        if extras:
+            text = f"{text}\n" + "\n".join(extras)
+
+    # 어려운 용어 문장은 삭제하지 않고 쉬운 설명 문장을 덧붙임
+    explain_lines: list[str] = []
+    plain_text = re.sub(r"<[^>]+>", "", text)
+    for term, explanation in _JARGON_EXPLAINERS.items():
+        if term in plain_text and explanation not in plain_text:
+            explain_lines.append(explanation)
+        if len(explain_lines) >= 2:
+            break
+    if explain_lines and step_key in {"concept_explain", "history", "application"}:
+        text = f"{text}\n" + "\n".join(explain_lines)
+
+    return text.strip()
 
 
 def _build_fallback(

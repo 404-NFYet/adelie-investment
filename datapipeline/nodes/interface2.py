@@ -9,6 +9,7 @@ generate_interface2.py의 4단계 로직을 LangGraph 노드로 분리:
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import time
@@ -209,6 +210,70 @@ def _build_unvalidated_interface2(
         "historical_case": historical_case_output.get("historical_case", historical_case_output),
         "narrative": narrative_output.get("narrative", narrative_output),
     }
+
+
+def _non_empty_text(value: Any) -> str | None:
+    if isinstance(value, str):
+        text = value.strip()
+        return text or None
+    return None
+
+
+def _normalize_validated_interface2(
+    validated: Any,
+    fallback: dict[str, Any],
+) -> dict[str, Any]:
+    """LLM 검증 출력이 불완전해도 RawNarrative 스키마를 만족하도록 보정."""
+    if not isinstance(validated, dict):
+        return copy.deepcopy(fallback)
+
+    normalized = copy.deepcopy(fallback)
+
+    theme = _non_empty_text(validated.get("theme"))
+    if theme:
+        normalized["theme"] = theme
+
+    one_liner = _non_empty_text(validated.get("one_liner"))
+    if one_liner:
+        normalized["one_liner"] = one_liner
+
+    in_concept = validated.get("concept")
+    if isinstance(in_concept, dict):
+        out_concept = normalized.get("concept")
+        if isinstance(out_concept, dict):
+            for key in ("name", "definition", "relevance"):
+                value = _non_empty_text(in_concept.get(key))
+                if value:
+                    out_concept[key] = value
+
+    in_hc = validated.get("historical_case")
+    if isinstance(in_hc, dict):
+        out_hc = normalized.get("historical_case")
+        if isinstance(out_hc, dict):
+            for key in ("period", "title", "summary", "outcome", "lesson"):
+                value = _non_empty_text(in_hc.get(key))
+                if value:
+                    out_hc[key] = value
+
+    in_narr = validated.get("narrative")
+    out_narr = normalized.get("narrative")
+    if isinstance(in_narr, dict) and isinstance(out_narr, dict):
+        for section_key in NARRATIVE_SECTION_KEYS:
+            in_section = in_narr.get(section_key)
+            out_section = out_narr.get(section_key)
+            if not isinstance(in_section, dict) or not isinstance(out_section, dict):
+                continue
+            for key in ("purpose", "content", "viz_hint"):
+                value = _non_empty_text(in_section.get(key))
+                if value:
+                    out_section[key] = value
+            in_bullets = in_section.get("bullets")
+            if isinstance(in_bullets, list):
+                cleaned = [str(item).strip() for item in in_bullets if str(item).strip()]
+                if cleaned:
+                    out_section["bullets"] = cleaned
+
+    return normalized
 
 
 # ── Mock 함수들 (테스트용) ──
@@ -494,7 +559,10 @@ def validate_interface2_node(state: dict) -> dict:
                     raise
 
         # validated_interface_2 추출
-        validated = result.get("validated_interface_2", fallback_validated)
+        validated = _normalize_validated_interface2(
+            result.get("validated_interface_2", fallback_validated),
+            fallback_validated,
+        )
 
         # summary는 텍스트 체크리스트 섹션으로 고정 (차트 생성 방지)
         summary_section = validated.get("narrative", {}).get("summary")
