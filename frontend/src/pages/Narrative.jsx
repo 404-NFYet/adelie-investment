@@ -408,6 +408,20 @@ export default function Narrative() {
   const { openTermSheet } = useTermContext();
   const { setContextInfo } = useTutor();
 
+  const [data, setData] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const [currentStep, setCurrentStep] = useState(0);
+  const [direction, setDirection] = useState(0);
+
+  const [rewardViewState, setRewardViewState] = useState('none');
+  const [rewardData, setRewardData] = useState(null);
+  const [rewardError, setRewardError] = useState('');
+  const hasRestoredResumeRef = useRef(false);
+  const scrollThrottleTimerRef = useRef(null);
+  const hasLoggedInProgressRef = useRef(false);
+
   useEffect(() => {
     if (!caseId) {
       setContextInfo(null);
@@ -443,20 +457,6 @@ export default function Narrative() {
 
     return () => setContextInfo(null);
   }, [caseId, data, currentStep, setContextInfo]);
-
-  const [data, setData] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  const [currentStep, setCurrentStep] = useState(0);
-  const [direction, setDirection] = useState(0);
-
-  const [rewardViewState, setRewardViewState] = useState('none');
-  const [rewardData, setRewardData] = useState(null);
-  const [rewardError, setRewardError] = useState('');
-  const hasRestoredResumeRef = useRef(false);
-  const scrollThrottleTimerRef = useRef(null);
-  const hasLoggedInProgressRef = useRef(false);
 
   const clearResumeState = useCallback(() => {
     if (!caseId) return;
