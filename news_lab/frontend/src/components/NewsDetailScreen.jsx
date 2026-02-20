@@ -10,19 +10,6 @@ function formatPublished(isoDate) {
   return date.toLocaleString('ko-KR', { hour12: false });
 }
 
-function SourceBadge({ source }) {
-  const normalized = String(source || '').toLowerCase();
-  if (normalized.includes('chosun')) {
-    return (
-      <div className="source-badge chosun">
-        <span>Chosun</span>
-        <strong>Biz</strong>
-      </div>
-    );
-  }
-  return <div className="source-badge plain">{source}</div>;
-}
-
 function GlossaryGroup({ title, items, onClickTerm }) {
   return (
     <section className="glossary-group">
@@ -72,11 +59,11 @@ export default function NewsDetailScreen({
 
       <div className="detail-scroll">
         <article className="article-head">
-          <SourceBadge source={result.article.source} />
+          <div className="source-badge plain">{result.article.source}</div>
           <h2>{result.article.title}</h2>
           <div className="meta-row">
             <span>{formatPublished(result.article.published_at)}</span>
-            <span className="dot">&#128172; 0</span>
+            <span>품질 점수 {result.content_quality_score}</span>
           </div>
           <a href={result.article.url} target="_blank" rel="noreferrer" className="origin-link">원문 링크 열기</a>
         </article>
@@ -106,11 +93,11 @@ export default function NewsDetailScreen({
             </div>
             <div className="summary-block">
               <h4>핵심 개념</h4>
-              <p>{newsletter.concepts.join(', ') || '-'}</p>
+              <p>{(newsletter.concepts || []).join(', ') || '-'}</p>
             </div>
             <div className="summary-block">
               <h4>관련 이슈</h4>
-              <p>{newsletter.related.join(', ') || '-'}</p>
+              <p>{(newsletter.related || []).join(', ') || '-'}</p>
             </div>
             <div className="summary-block">
               <h4>핵심 정리</h4>
@@ -120,7 +107,6 @@ export default function NewsDetailScreen({
                 ))}
               </ul>
             </div>
-            <TermHighlighter content={newsletter.content_marked} onClickTerm={onClickTerm} />
           </section>
         )}
 

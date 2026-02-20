@@ -17,7 +17,7 @@ function toRelativeKorean(publishedAt) {
 function fallbackImageBySource(source) {
   const key = String(source || '').toLowerCase();
   if (key.includes('cnbc')) return 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&w=800&q=60';
-  if (key.includes('yahoo')) return 'https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?auto=format&fit=crop&w=800&q=60';
+  if (key.includes('reuters')) return 'https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?auto=format&fit=crop&w=800&q=60';
   return 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1200&q=60';
 }
 
@@ -45,14 +45,6 @@ export default function NewsFeedScreen({
     <section className="screen feed-screen">
       <TopHeader variant="feed" />
 
-      <div className="section-tabs">
-        <button type="button" className="section-tab">추천</button>
-        <button type="button" className="section-tab">팔로잉</button>
-        <button type="button" className="section-tab active">뉴스</button>
-        <button type="button" className="section-tab">콘텐츠</button>
-        <div className="profile-dot">&#128100;</div>
-      </div>
-
       <div className="feed-scroll">
         <section className="quick-panel">
           <div className="market-switch" role="tablist" aria-label="시장 선택">
@@ -68,7 +60,7 @@ export default function NewsFeedScreen({
           <div className="url-inline-form">
             <input
               type="url"
-              placeholder="기사 URL을 붙여넣으세요"
+              placeholder="금융 기사 URL을 붙여넣으세요"
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
             />
@@ -103,7 +95,7 @@ export default function NewsFeedScreen({
 
         <section className="headline-section">
           <div className="headline-section-title">
-            <h2>실시간 주요 뉴스</h2>
+            <h2>실시간 금융 뉴스</h2>
             <span>&#8250;</span>
           </div>
 

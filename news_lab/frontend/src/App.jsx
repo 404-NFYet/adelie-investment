@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { newsApi } from './api';
-import BottomNav from './components/BottomNav';
 import NewsDetailScreen from './components/NewsDetailScreen';
 import NewsFeedScreen from './components/NewsFeedScreen';
 import TermDrawer from './components/TermDrawer';
@@ -100,6 +99,15 @@ export default function App() {
       return;
     }
 
+    if (!analysis.chart_ready) {
+      setChartState({
+        status: 'unavailable',
+        html: '',
+        error: analysis.chart_unavailable_reason || '기사에서 수치 근거를 찾지 못해 차트를 생성하지 않습니다.',
+      });
+      return;
+    }
+
     const seq = ++chartRequestSeq.current;
     const dataContext = buildChartContext(analysis);
 
@@ -143,7 +151,7 @@ export default function App() {
       setScreen('detail');
       void generateChart(data);
     } catch (e) {
-      setAnalyzeError(`${e.message} (다른 URL을 시도해주세요)`);
+      setAnalyzeError(String(e.message || '분석에 실패했습니다.'));
     } finally {
       setAnalyzing(false);
     }
@@ -204,8 +212,6 @@ export default function App() {
               onRetryChart={() => generateChart(result)}
             />
           )}
-
-          <BottomNav />
         </div>
       </div>
 

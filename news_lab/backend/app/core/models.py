@@ -74,6 +74,13 @@ class AnalyzeResponse(BaseModel):
     fetch_status: Literal["ok", "missing_url", "fetch_failed", "parse_failed"] = "ok"
     cached: bool = False
 
+    content_quality_score: int = 0
+    quality_flags: list[str] = Field(default_factory=list)
+    article_domain: str = ""
+    is_finance_article: bool = False
+    chart_ready: bool = False
+    chart_unavailable_reason: str | None = None
+
 
 class VisualizeRequest(BaseModel):
     description: str = Field(min_length=1, max_length=500)

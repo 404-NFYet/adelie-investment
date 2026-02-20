@@ -5,6 +5,17 @@ const EMPTY_HTML = '<html><body style="font-family:Pretendard,Noto Sans KR,sans-
 export default function ChartPanel({ chartState, onRetry }) {
   const iframeSrc = useMemo(() => chartState?.html || EMPTY_HTML, [chartState?.html]);
 
+  if (chartState?.status === 'unavailable') {
+    return (
+      <section className="chart-panel">
+        <div className="chart-panel-head">
+          <h4>시각화</h4>
+        </div>
+        <div className="chart-unavailable">{chartState?.error || '기사에 수치 근거가 부족해 차트를 생성하지 않습니다.'}</div>
+      </section>
+    );
+  }
+
   return (
     <section className="chart-panel">
       <div className="chart-panel-head">

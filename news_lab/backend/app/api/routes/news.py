@@ -44,12 +44,15 @@ async def analyze(payload: AnalyzeRequest) -> AnalyzeResponse:
     try:
         clean_url = validate_public_article_url(str(payload.url))
     except UrlValidationError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail={"code": "INVALID_URL", "message": str(exc)}) from exc
 
     try:
         result = await analyze_url(clean_url, payload.difficulty, payload.market)
     except AnalyzeError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=422,
+            detail={"code": exc.code, "message": str(exc)},
+        ) from exc
 
     return AnalyzeResponse.model_validate(result)
 
@@ -59,7 +62,7 @@ async def visualize(payload: VisualizeRequest) -> dict:
     try:
         result = await upstream_client.visualize(payload.description, payload.data_context)
     except UpstreamError as exc:
-        raise HTTPException(status_code=502, detail=f"Visualization upstream failed: {exc}") from exc
+        raise HTTPException(status_code=502, detail={"code": "VISUALIZE_UPSTREAM_FAILED", "message": f"Visualization upstream failed: {exc}"}) from exc
 
     return result
 

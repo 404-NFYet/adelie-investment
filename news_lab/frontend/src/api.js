@@ -1,5 +1,15 @@
 const API_BASE = import.meta.env.VITE_NEWS_API_BASE || 'http://localhost:8091';
 
+function parseErrorMessage(data, status) {
+  if (typeof data?.detail === 'string') return data.detail;
+  if (typeof data?.detail?.message === 'string') {
+    const code = data?.detail?.code ? `[${data.detail.code}] ` : '';
+    return `${code}${data.detail.message}`;
+  }
+  if (typeof data?.message === 'string') return data.message;
+  return `요청 실패 (${status})`;
+}
+
 async function request(path, options = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: {
@@ -11,8 +21,7 @@ async function request(path, options = {}) {
 
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const message = data?.detail || data?.message || `요청 실패 (${res.status})`;
-    throw new Error(message);
+    throw new Error(parseErrorMessage(data, res.status));
   }
   return data;
 }

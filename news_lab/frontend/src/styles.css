@@ -99,23 +99,13 @@ select {
   letter-spacing: -0.5px;
 }
 
-.feed-title-wrap p {
-  margin: 0;
-  font-size: 14px;
-  line-height: 20px;
-  color: #2b7fff;
-  font-weight: 700;
+.feed-title-wrap.single {
+  width: 100%;
 }
 
-.feed-title-wrap p span {
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 16px;
+.header-spacer {
+  width: 28px;
+  height: 28px;
 }
 
 .icon-btn {
@@ -136,47 +126,11 @@ select {
   background: #f3f4f6;
 }
 
-.section-tabs {
-  height: 65px;
-  padding: 8px 24px;
-  border-bottom: 1px solid #f3f4f6;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.section-tab {
-  border: 0;
-  background: transparent;
-  color: #99a1af;
-  font-size: 16px;
-  font-weight: 700;
-  padding: 10px 2px;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-}
-
-.section-tab.active {
-  color: #101828;
-  border-bottom-color: #101828;
-}
-
-.profile-dot {
-  margin-left: auto;
-  width: 40px;
-  height: 40px;
-  border-radius: 999px;
-  background: #f3f4f6;
-  display: grid;
-  place-items: center;
-  color: #98a2b3;
-}
-
 .feed-scroll,
 .detail-scroll {
   flex: 1;
   overflow: auto;
-  padding: 16px 24px 88px;
+  padding: 16px 24px 28px;
 }
 
 .quick-panel {
@@ -623,6 +577,16 @@ select {
   background: #fff;
 }
 
+.chart-unavailable {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  min-height: 110px;
+  padding: 14px 12px;
+  color: #475467;
+  background: #fff;
+  line-height: 1.5;
+}
+
 .chart-frame {
   width: 100%;
   min-height: 320px;
@@ -634,39 +598,6 @@ select {
 .state-text {
   color: #6b7280;
   margin: 0;
-}
-
-.bottom-nav {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 62px;
-  border-top: 1px solid #e5e7eb;
-  background: #fff;
-  padding: 9px 16px 8px;
-  display: flex;
-  justify-content: space-between;
-}
-
-.nav-item {
-  border: 0;
-  background: transparent;
-  color: #364153;
-  display: grid;
-  justify-items: center;
-  gap: 2px;
-  font-size: 10px;
-  cursor: pointer;
-}
-
-.nav-item.active {
-  color: #ff6900;
-}
-
-.nav-icon {
-  font-size: 18px;
-  line-height: 1;
 }
 
 .drawer-overlay {
