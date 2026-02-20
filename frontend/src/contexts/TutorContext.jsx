@@ -1,27 +1,89 @@
-import { createContext, useContext, useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { API_BASE_URL } from '../config';
+import { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
+import { API_BASE_URL, authFetch, fetchJson, postJson, deleteJson } from '../api/client';
 
 const TutorContext = createContext(null);
 const SESSION_KEY = 'adelie_tutor_session';
 
+const DEFAULT_AGENT_STATUS = {
+  phase: 'idle',
+  text: '응답 대기 중',
+};
+
+const parseVisualizationPayload = (content) => {
+  if (!content) return null;
+  if (typeof content === 'object') return content;
+  try {
+    return JSON.parse(content);
+  } catch {
+    return null;
+  }
+};
+
+const mapHistoryMessage = (message, index) => {
+  if (message.message_type === 'visualization') {
+    const parsed = parseVisualizationPayload(message.content);
+    return {
+      id: `${message.id || Date.now()}-viz-${index}`,
+      role: 'visualization',
+      content: parsed?.html || parsed?.content || message.chart_url || message.content || null,
+      format: parsed?.chartData ? 'json' : (parsed?.format || 'html'),
+      chartData: parsed?.chartData || null,
+      executionTime: message.execution_time_ms || parsed?.execution_time_ms,
+      timestamp: message.created_at,
+      isStreaming: false,
+    };
+  }
+
+  return {
+    id: `${message.id || Date.now()}-${index}`,
+    role: message.role,
+    content: message.content,
+    timestamp: message.created_at,
+    isStreaming: false,
+  };
+};
+
 export function TutorProvider({ children }) {
   const [isOpen, setIsOpen] = useState(false);
   const [sessionId, setSessionId] = useState(() => {
-    try { return localStorage.getItem(SESSION_KEY) || null; } catch { return null; }
+    try {
+      return localStorage.getItem(SESSION_KEY) || null;
+    } catch {
+      return null;
+    }
   });
   const [messages, setMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [contextInfo, setContextInfo] = useState(null);
   const [currentTerm, setCurrentTerm] = useState(null);
+  const [sessions, setSessions] = useState([]);
+  const [activeSessionId, setActiveSessionId] = useState(() => {
+    try {
+      return localStorage.getItem(SESSION_KEY) || null;
+    } catch {
+      return null;
+    }
+  });
+  const [agentStatus, setAgentStatus] = useState(DEFAULT_AGENT_STATUS);
 
-
-  // sessionId를 localStorage에 저장
   useEffect(() => {
     try {
       if (sessionId) localStorage.setItem(SESSION_KEY, sessionId);
       else localStorage.removeItem(SESSION_KEY);
-    } catch {}
+    } catch {
+      // ignore localStorage errors
+    }
   }, [sessionId]);
+
+  const refreshSessions = useCallback(async () => {
+    try {
+      const sessionList = await fetchJson(`${API_BASE_URL}/api/v1/tutor/sessions`);
+      setSessions(Array.isArray(sessionList) ? sessionList : []);
+    } catch (error) {
+      console.error('세션 목록 조회 실패:', error);
+      setSessions([]);
+    }
+  }, []);
 
   const openTutor = useCallback((termOrContext = null) => {
     setIsOpen(true);
@@ -30,11 +92,13 @@ export function TutorProvider({ children }) {
     } else if (termOrContext) {
       setContextInfo(termOrContext);
     }
-  }, []);
+    refreshSessions();
+  }, [refreshSessions]);
 
   const closeTutor = useCallback(() => {
     setIsOpen(false);
     setCurrentTerm(null);
+    setAgentStatus(DEFAULT_AGENT_STATUS);
   }, []);
 
   const sendMessage = useCallback(
@@ -49,6 +113,11 @@ export function TutorProvider({ children }) {
       };
       setMessages((prev) => [...prev, userMessage]);
       setIsLoading(true);
+      if (sessionId) setActiveSessionId(sessionId);
+      setAgentStatus({
+        phase: 'thinking',
+        text: '질문을 분석 중입니다.',
+      });
 
       const assistantMessage = {
         id: Date.now() + 1,
@@ -60,12 +129,10 @@ export function TutorProvider({ children }) {
       setMessages((prev) => [...prev, assistantMessage]);
 
       try {
-        const token = localStorage.getItem('token');
-        const response = await fetch(`${API_BASE_URL}/api/v1/tutor/chat`, {
+        const response = await authFetch(`${API_BASE_URL}/api/v1/tutor/chat`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
           },
           body: JSON.stringify({
             session_id: sessionId,
@@ -78,11 +145,12 @@ export function TutorProvider({ children }) {
         });
 
         if (!response.ok) throw new Error('Failed to get response');
+        if (!response.body) throw new Error('Response body is empty');
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let fullContent = '';
-        let buffer = ''; // 불완전 청크 버퍼
+        let buffer = '';
 
         while (true) {
           const { done, value } = await reader.read();
@@ -90,7 +158,6 @@ export function TutorProvider({ children }) {
 
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split('\n');
-          // 마지막 라인이 불완전할 수 있으므로 버퍼에 유지
           buffer = lines.pop() || '';
 
           for (const line of lines) {
@@ -100,23 +167,41 @@ export function TutorProvider({ children }) {
             try {
               const data = JSON.parse(trimmed.slice(6));
 
-              // thinking/tool_call 이벤트는 무시 (펭귄 모션 그래픽으로 대체)
-              if (data.type === 'thinking' || data.type === 'tool_call') {
+              if (data.type === 'thinking') {
+                setAgentStatus({
+                  phase: 'thinking',
+                  text: data.content || '질문을 분석 중입니다.',
+                });
                 continue;
               }
 
-              // text_delta: 스트리밍 텍스트 누적
+              if (data.type === 'tool_call') {
+                setAgentStatus({
+                  phase: 'tool_call',
+                  text: `도구 실행 중: ${data.tool || '분석 도구'}`,
+                  tool: data.tool || undefined,
+                });
+                continue;
+              }
+
               if (data.content) {
+                if (!fullContent) {
+                  setAgentStatus({
+                    phase: 'answering',
+                    text: '답변을 생성 중입니다.',
+                  });
+                }
                 fullContent += data.content;
                 setMessages((prev) =>
-                  prev.map((m) => m.id === assistantMessage.id ? { ...m, content: fullContent } : m)
+                  prev.map((m) => (m.id === assistantMessage.id ? { ...m, content: fullContent } : m))
                 );
               }
 
-              // done: 세션 ID 업데이트
-              if (data.session_id) setSessionId(data.session_id);
+              if (data.session_id) {
+                setSessionId(data.session_id);
+                setActiveSessionId(data.session_id);
+              }
 
-              // visualization: 차트 렌더링 (JSON chartData 우선, HTML 폴백)
               if (data.type === 'visualization' && (data.chartData || data.content)) {
                 const vizMessage = {
                   id: Date.now() + Math.random(),
@@ -131,7 +216,6 @@ export function TutorProvider({ children }) {
                 continue;
               }
 
-              // done: sources 수집
               if (data.type === 'done' && data.sources) {
                 setMessages((prev) =>
                   prev.map((m) =>
@@ -140,7 +224,6 @@ export function TutorProvider({ children }) {
                 );
               }
 
-              // sources 별도 이벤트 (tutor_engine 경유 시)
               if (data.type === 'sources' && data.sources) {
                 setMessages((prev) =>
                   prev.map((m) =>
@@ -149,8 +232,11 @@ export function TutorProvider({ children }) {
                 );
               }
 
-              // error: 에러 표시
               if (data.type === 'error' && data.error) {
+                setAgentStatus({
+                  phase: 'idle',
+                  text: '응답 대기 중',
+                });
                 setMessages((prev) =>
                   prev.map((m) =>
                     m.id === assistantMessage.id
@@ -159,17 +245,28 @@ export function TutorProvider({ children }) {
                   )
                 );
               }
-            } catch (e) {
-              // JSON 파싱 실패 -- 불완전 데이터, 무시
+
+              if (data.type === 'done') {
+                setAgentStatus({
+                  phase: 'idle',
+                  text: '응답 대기 중',
+                });
+              }
+            } catch {
+              // ignore malformed SSE chunk
             }
           }
         }
 
         setMessages((prev) =>
-          prev.map((m) => m.id === assistantMessage.id ? { ...m, isStreaming: false } : m)
+          prev.map((m) => (m.id === assistantMessage.id ? { ...m, isStreaming: false } : m))
         );
       } catch (error) {
         console.error('Tutor error:', error);
+        setAgentStatus({
+          phase: 'idle',
+          text: '응답 대기 중',
+        });
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantMessage.id
@@ -179,49 +276,56 @@ export function TutorProvider({ children }) {
         );
       } finally {
         setIsLoading(false);
+        setAgentStatus({
+          phase: 'idle',
+          text: '응답 대기 중',
+        });
+        refreshSessions();
       }
     },
-    [sessionId, contextInfo]
+    [sessionId, contextInfo, refreshSessions]
   );
 
-  // 세션 관리
-  const [sessions, setSessions] = useState([]);
-  const [activeSessionId, setActiveSessionId] = useState(null);
+  const createNewChat = useCallback(async () => {
+    const created = await postJson(`${API_BASE_URL}/api/v1/tutor/sessions/new`, {});
+    const nextSessionId = created?.session_id || null;
 
-  const createNewChat = useCallback(() => {
     setMessages([]);
-    setSessionId(null);
     setCurrentTerm(null);
-    setActiveSessionId(null);
-  }, []);
+    setAgentStatus(DEFAULT_AGENT_STATUS);
+    setSessionId(nextSessionId);
+    setActiveSessionId(nextSessionId);
 
-  const deleteChat = useCallback((id) => {
-    setSessions(prev => prev.filter(s => s.id !== id));
+    await refreshSessions();
+    return nextSessionId;
+  }, [refreshSessions]);
+
+  const deleteChat = useCallback(async (id) => {
+    await deleteJson(`${API_BASE_URL}/api/v1/tutor/sessions/${id}`);
+
     if (activeSessionId === id) {
-      createNewChat();
+      setMessages([]);
+      setSessionId(null);
+      setCurrentTerm(null);
+      setActiveSessionId(null);
+      setAgentStatus(DEFAULT_AGENT_STATUS);
     }
-  }, [activeSessionId, createNewChat]);
+
+    await refreshSessions();
+  }, [activeSessionId, refreshSessions]);
 
   const loadChatHistory = useCallback(async (id) => {
     setActiveSessionId(id);
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/tutor/sessions/${id}/messages`);
-      if (!res.ok) return;
-      const data = await res.json();
-      const loaded = (data.messages || []).map((m, i) => ({
-        id: Date.now() + i,
-        role: m.role,
-        content: m.content,
-        timestamp: m.created_at,
-        isStreaming: false,
-      }));
-      setMessages(loaded);
-      setSessionId(id);
-    } catch {}
+
+    const data = await fetchJson(`${API_BASE_URL}/api/v1/tutor/sessions/${id}/messages`);
+    const loaded = (data.messages || []).map((message, index) => mapHistoryMessage(message, index));
+
+    setMessages(loaded);
+    setSessionId(id);
+    setAgentStatus(DEFAULT_AGENT_STATUS);
   }, []);
 
   const requestVisualization = useCallback((query) => {
-    // 시각화 요청을 챗봇 메시지로 전달
     sendMessage(`${query} (차트로 보여주세요)`, 'beginner');
   }, [sendMessage]);
 
@@ -229,6 +333,8 @@ export function TutorProvider({ children }) {
     setMessages([]);
     setSessionId(null);
     setCurrentTerm(null);
+    setActiveSessionId(null);
+    setAgentStatus(DEFAULT_AGENT_STATUS);
   }, []);
 
   const value = useMemo(() => ({
@@ -248,11 +354,27 @@ export function TutorProvider({ children }) {
     createNewChat,
     deleteChat,
     loadChatHistory,
+    refreshSessions,
     requestVisualization,
+    agentStatus,
   }), [
-    isOpen, openTutor, closeTutor, messages, isLoading, sendMessage,
-    clearMessages, contextInfo, currentTerm, sessions, activeSessionId,
-    createNewChat, deleteChat, loadChatHistory, requestVisualization,
+    isOpen,
+    openTutor,
+    closeTutor,
+    messages,
+    isLoading,
+    sendMessage,
+    clearMessages,
+    contextInfo,
+    currentTerm,
+    sessions,
+    activeSessionId,
+    createNewChat,
+    deleteChat,
+    loadChatHistory,
+    refreshSessions,
+    requestVisualization,
+    agentStatus,
   ]);
 
   return (

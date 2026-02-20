@@ -14,8 +14,8 @@ import ChatInput from './ChatInput';
 export default function TutorModal() {
   const {
     isOpen, closeTutor, messages, isLoading, sendMessage,
-    requestVisualization, currentTerm, sessions, activeSessionId,
-    createNewChat, deleteChat, loadChatHistory,
+    currentTerm, sessions, activeSessionId, contextInfo, agentStatus,
+    createNewChat, deleteChat, loadChatHistory, refreshSessions,
   } = useTutor();
   const { settings } = useUser();
   const [input, setInput] = useState('');
@@ -25,7 +25,14 @@ export default function TutorModal() {
   const termSentRef = useRef(null);
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
-  useEffect(() => { if (isOpen) setTimeout(() => inputRef.current?.focus(), 100); }, [isOpen]);
+  useEffect(() => {
+    if (isOpen) {
+      refreshSessions();
+      setTimeout(() => inputRef.current?.focus(), 100);
+    } else {
+      setIsSessionsOpen(false);
+    }
+  }, [isOpen, refreshSessions]);
   useEffect(() => {
     if (isOpen && currentTerm && currentTerm !== termSentRef.current && !isLoading) {
       termSentRef.current = currentTerm;
@@ -58,7 +65,7 @@ export default function TutorModal() {
         <>
           <motion.div className="fixed inset-0 bg-black/50 z-40" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={closeTutor} />
           <motion.div
-            className="fixed inset-x-0 bottom-0 bg-background rounded-t-3xl z-50 max-w-mobile mx-auto"
+            className="fixed inset-x-0 bottom-0 bg-background rounded-t-3xl z-50 max-w-mobile mx-auto flex flex-col"
             style={{ height: '85vh' }}
             initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
@@ -75,18 +82,27 @@ export default function TutorModal() {
                 </div>
                 <div className="flex items-center gap-2">
                   <button onClick={handleNewChat} className="px-3 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors">새 대화</button>
+                  <button onClick={() => setIsSessionsOpen((prev) => !prev)} className="px-3 py-1.5 text-sm bg-surface text-text-primary border border-border rounded-lg hover:bg-surface-elevated transition-colors">대화 목록</button>
                   <button onClick={closeTutor} className="p-2 rounded-lg hover:bg-surface transition-colors text-text-secondary">✕</button>
                 </div>
               </div>
+              <div className="border-t border-border bg-surface px-4 py-2">
+                <p className="text-[11px] text-text-secondary">
+                  현재 보고 있는 화면: {contextInfo?.stepTitle || '일반 질문 모드'}
+                </p>
+                <p className="mt-1 text-[11px] text-text-secondary">
+                  AI 상태: {agentStatus?.text || '응답 대기 중'}
+                </p>
+              </div>
               <SessionSidebar
                 sessions={sessions} activeSessionId={activeSessionId}
-                isOpen={isSessionsOpen} onToggle={() => setIsSessionsOpen(!isSessionsOpen)}
+                isOpen={isSessionsOpen}
                 onSessionClick={handleSessionClick} onDeleteSession={handleDeleteSession}
               />
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4" style={{ height: 'calc(85vh - 140px)' }}>
+            <div className="flex-1 overflow-y-auto p-4">
               {messages.length === 0 ? (
                 <div className="py-6 space-y-4">
                   <div className="text-center">
