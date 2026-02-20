@@ -1,26 +1,30 @@
 /**
- * TutorChat.jsx - AI 튜터 대화 내역 페이지
- * 임시 비활성화 상태 — 준비 중 안내
+ * TutorChat.jsx - AI 튜터 진입점
+ * /tutor 직접 접근 시 TutorModal을 자동으로 오픈
  */
-import AppHeader from '../components/layout/AppHeader';
+import { useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useTutor } from '../contexts';
 
 export default function TutorChat() {
-  return (
-    <div className="min-h-screen bg-background pb-24">
-      <AppHeader title="AI 튜터" />
+  const { openTutor, isOpen } = useTutor();
+  const navigate = useNavigate();
+  const hasEverBeenOpen = useRef(false);
 
-      <div className="max-w-mobile mx-auto px-4 pt-4 flex flex-col items-center justify-center" style={{ minHeight: '60vh' }}>
-        <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#FF6B00" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-          </svg>
-        </div>
-        <h2 className="text-lg font-bold text-text-primary mb-2">AI 튜터 준비 중</h2>
-        <p className="text-sm text-text-secondary text-center leading-relaxed">
-          더 나은 학습 경험을 위해 준비하고 있어요.<br />
-          빠르게 준비 될 예정이에요!
-        </p>
-      </div>
-    </div>
-  );
+  // 마운트 시 모달 자동 오픈
+  useEffect(() => {
+    openTutor();
+  }, [openTutor]);
+
+  // isOpen이 실제로 true가 된 이후에만 닫힘 감지 → 홈 이동
+  useEffect(() => {
+    if (isOpen) {
+      hasEverBeenOpen.current = true;
+    } else if (hasEverBeenOpen.current) {
+      navigate('/home', { replace: true });
+    }
+  }, [isOpen, navigate]);
+
+  // 빈 배경 — TutorModal이 오버레이로 표시됨
+  return <div className="min-h-screen bg-background" />;
 }
