@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pandas as pd
 from pykrx import stock as pykrx_stock
+from datapipeline.constants.home_icons import resolve_icon_key
 
 # 프로젝트 루트 추가
 project_root = Path(__file__).resolve().parent.parent.parent
@@ -643,6 +644,13 @@ async def save_to_db(date, stocks, news_map, keywords):
             "description": kw.get("description", ""),
             "category": kw.get("trend_type", ""),
             "tagline": kw.get("sector", ""),
+            "icon_key": resolve_icon_key(
+                title=kw.get("title", ""),
+                description=kw.get("description", ""),
+                category=kw.get("trend_type", ""),
+                trend_type=kw.get("trend_type", ""),
+                icon_key=kw.get("icon_key"),
+            ),
             "sector": kw.get("sector", ""),  # 직접 필드 추가
             "trend_days": kw.get("trend_days", 0),  # 직접 필드 추가
             "trend_type": kw.get("trend_type", ""),  # 직접 필드 추가
