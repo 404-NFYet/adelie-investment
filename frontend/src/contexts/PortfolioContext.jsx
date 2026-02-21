@@ -77,18 +77,25 @@ export function PortfolioProvider({ children }) {
     return result;
   }, [userId, refreshPortfolio]);
 
-  // 초기 로드 (인증된 사용자만) + 로그아웃 시 상태 초기화
+  // 초기 로드 (인증된 사용자만)
+  const loadData = useCallback(async () => {
+    if (!userId) return;
+    await Promise.all([fetchSummary(), fetchPortfolio()]);
+  }, [userId]); // fetchSummary/fetchPortfolio는 [userId] 의존이므로 userId 변경 시 동일하게 갱신
+
   useEffect(() => {
-    if (userId) {
-      fetchSummary();
-      fetchPortfolio();
-    } else {
+    loadData();
+  }, [loadData]);
+
+  // 로그아웃 시 상태 초기화
+  useEffect(() => {
+    if (!userId) {
       setPortfolio(null);
       setSummary(null);
       setError(null);
       setIsLoading(false);
     }
-  }, [fetchSummary, fetchPortfolio, userId]);
+  }, [userId]);
 
   const value = useMemo(() => ({
     portfolio,
