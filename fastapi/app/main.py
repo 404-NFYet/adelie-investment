@@ -65,6 +65,15 @@ async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     # Startup
     logger.info("Starting %s v%s ...", settings.APP_NAME, settings.APP_VERSION)
+
+    # JWT_SECRET 기본값/빈값 거부 — 프로덕션 보안 필수
+    _DEFAULT_JWT = "narrative-invest-jwt-secret-change-in-production"
+    if not settings.JWT_SECRET or settings.JWT_SECRET == _DEFAULT_JWT:
+        raise RuntimeError(
+            "JWT_SECRET이 기본값입니다. .env에서 반드시 변경하세요. "
+            "생성 명령: openssl rand -hex 32"
+        )
+
     # Initialize Redis connection
     redis_cache = await get_redis_cache()
     if redis_cache.client:
