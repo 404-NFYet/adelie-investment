@@ -3,12 +3,25 @@
   "checkpoint_id": "234de7d2eb07",
   "strategy": "manual-commit",
   "branch": "develop",
-  "checkpoints_count": 0,
+  "checkpoints_count": 1,
   "files_touched": [
+    ".dockerignore",
+    ".env.example",
+    "CLAUDE.md",
+    "docker-compose.staging.yml",
+    "fastapi/app/api/routes/pipeline.py",
+    "fastapi/app/core/scheduler.py",
+    "fastapi/app/services/market_calendar.py",
+    "fastapi/requirements-dev.txt",
+    "fastapi/requirements.txt",
     "frontend/src/components/layout/ChatFAB.jsx",
     "infra/docker-compose.yml",
     "infra/docker-dashboard/pages/feedback.py",
-    "infra/monitoring/docker-compose.yml"
+    "infra/monitoring/alertmanager.yml",
+    "infra/monitoring/docker-compose.yml",
+    "infra/monitoring/prometheus.yml",
+    "infra/monitoring/rules/adelie-alerts.yml",
+    "lxd/Makefile"
   ],
   "sessions": [
     {
@@ -24,13 +37,20 @@
       "context": "/23/4de7d2eb07/1/context.md",
       "content_hash": "/23/4de7d2eb07/1/content_hash.txt",
       "prompt": "/23/4de7d2eb07/1/prompt.txt"
+    },
+    {
+      "metadata": "/23/4de7d2eb07/2/metadata.json",
+      "transcript": "/23/4de7d2eb07/2/full.jsonl",
+      "context": "/23/4de7d2eb07/2/context.md",
+      "content_hash": "/23/4de7d2eb07/2/content_hash.txt",
+      "prompt": "/23/4de7d2eb07/2/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 94,
-    "cache_creation_tokens": 360198,
-    "cache_read_tokens": 7030799,
-    "output_tokens": 34245,
-    "api_call_count": 83
+    "input_tokens": 176,
+    "cache_creation_tokens": 486713,
+    "cache_read_tokens": 11754259,
+    "output_tokens": 62439,
+    "api_call_count": 153
   }
 }

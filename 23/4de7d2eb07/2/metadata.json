@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "234de7d2eb07",
+  "session_id": "ead950e7-237a-4ee3-a939-7814ffee20a1",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-21T11:32:45.698112224Z",
+  "branch": "develop",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".dockerignore",
+    ".env.example",
+    "CLAUDE.md",
+    "docker-compose.staging.yml",
+    "fastapi/app/api/routes/pipeline.py",
+    "fastapi/app/core/scheduler.py",
+    "fastapi/app/services/market_calendar.py",
+    "fastapi/requirements-dev.txt",
+    "fastapi/requirements.txt",
+    "infra/monitoring/alertmanager.yml",
+    "infra/monitoring/docker-compose.yml",
+    "infra/monitoring/prometheus.yml",
+    "infra/monitoring/rules/adelie-alerts.yml",
+    "lxd/Makefile"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 82,
+    "cache_creation_tokens": 126515,
+    "cache_read_tokens": 4723460,
+    "output_tokens": 28194,
+    "api_call_count": 70
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-21T11:32:45.547236388Z",
+    "agent_lines": 0,
+    "human_added": 10,
+    "human_modified": 346,
+    "human_removed": 0,
+    "total_committed": 10,
+    "agent_percentage": 0
+  }
+}
