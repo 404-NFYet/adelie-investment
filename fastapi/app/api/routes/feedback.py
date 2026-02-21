@@ -58,7 +58,7 @@ async def submit_feedback(feedback: FeedbackCreate, db: AsyncSession = Depends(g
         await db.execute(
             text("""
                 INSERT INTO user_feedback (page, rating, category, comment, device_info, created_at)
-                VALUES (:page, :rating, :category, :comment, :device_info::jsonb, NOW())
+                VALUES (:page, :rating, :category, :comment, CAST(:device_info AS JSONB), NOW())
             """),
             {
                 "page": feedback.page,
