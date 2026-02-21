@@ -3,7 +3,7 @@
   "checkpoint_id": "234de7d2eb07",
   "strategy": "manual-commit",
   "branch": "develop",
-  "checkpoints_count": 4,
+  "checkpoints_count": 5,
   "files_touched": [
     ".dockerignore",
     ".env.example",
@@ -12,6 +12,8 @@
     "database/scripts/sync_dev_data.sh",
     "datapipeline/db/writer.py",
     "docker-compose.staging.yml",
+    "docs/README.md",
+    "docs/getting-started/database-guide.md",
     "fastapi/app/api/routes/pipeline.py",
     "fastapi/app/api/routes/tutor.py",
     "fastapi/app/core/auth.py",
@@ -80,13 +82,20 @@
       "context": "/23/4de7d2eb07/5/context.md",
       "content_hash": "/23/4de7d2eb07/5/content_hash.txt",
       "prompt": "/23/4de7d2eb07/5/prompt.txt"
+    },
+    {
+      "metadata": "/23/4de7d2eb07/6/metadata.json",
+      "transcript": "/23/4de7d2eb07/6/full.jsonl",
+      "context": "/23/4de7d2eb07/6/context.md",
+      "content_hash": "/23/4de7d2eb07/6/content_hash.txt",
+      "prompt": "/23/4de7d2eb07/6/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 6264,
-    "cache_creation_tokens": 810851,
-    "cache_read_tokens": 24828992,
-    "output_tokens": 114728,
-    "api_call_count": 323
+    "input_tokens": 6302,
+    "cache_creation_tokens": 901194,
+    "cache_read_tokens": 26869080,
+    "output_tokens": 126679,
+    "api_call_count": 353
   }
 }

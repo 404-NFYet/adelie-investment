@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "234de7d2eb07",
+  "session_id": "7694ae8f-f6e2-4284-8b4e-242b4639d643",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-21T13:23:04.316766791Z",
+  "branch": "develop",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "docs/README.md",
+    "docs/getting-started/database-guide.md"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 38,
+    "cache_creation_tokens": 90343,
+    "cache_read_tokens": 2040088,
+    "output_tokens": 11951,
+    "api_call_count": 30
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-21T13:23:04.241113987Z",
+    "agent_lines": 0,
+    "human_added": 15,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 15,
+    "agent_percentage": 0
+  }
+}
