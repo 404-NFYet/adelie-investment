@@ -1,0 +1,26 @@
+groups:
+  - name: service
+    rules:
+      - alert: ServiceDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "서비스 다운: {{ $labels.job }} @ {{ $labels.instance }}"
+
+      - alert: DiskSpaceWarning
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 15
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "디스크 15% 미만: {{ $labels.instance }}"
+
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{job="fastapi",status=~"5.."}[5m]) / rate(http_requests_total{job="fastapi"}[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "FastAPI 에러율 5% 초과"

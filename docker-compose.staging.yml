@@ -1,0 +1,90 @@
+# ============================================================
+# Adelie Investment - Staging 환경 (10.10.10.21)
+# develop 브랜치 최신 이미지 반영 — 팀원 공유 테스트용
+# 사용: docker compose -f docker-compose.staging.yml up -d
+# ============================================================
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: staging-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-narative}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-narrative_invest}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-narative}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: staging-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: staging-minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin123}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+
+  backend-api:
+    image: ${REGISTRY:-dorae222}/adelie-backend-api:latest
+    container_name: staging-backend-api
+    restart: unless-stopped
+    expose:
+      - "8082"
+    env_file: .env
+    environment:
+      TZ: Asia/Seoul
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-narative}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-narrative_invest}
+      REDIS_URL: redis://redis:6379/1
+      REDIS_HOST: redis
+      MINIO_ENDPOINT: http://minio:9000
+      DEBUG: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    image: ${REGISTRY:-dorae222}/adelie-frontend:latest
+    container_name: staging-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend-api:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+
+networks:
+  default:
+    name: staging-network

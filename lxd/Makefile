@@ -8,7 +8,7 @@ REGISTRY ?= dorae222
 TAG ?= latest
 
 .PHONY: help push push-local deploy-test deploy-test-service \
-        sync-dev-branches sync-lxd sync-all
+        deploy-staging sync-dev-branches sync-lxd sync-all
 
 help:
 	@echo ""
@@ -82,6 +82,13 @@ sync-lxd:
 	lxc exec dev-jjjh02   -- bash -c "cd /home/ubuntu/adelie-investment && git pull origin dev/backend"
 	lxc exec dev-hj       -- bash -c "cd /home/ubuntu/adelie-investment && git pull origin dev/infra"
 	@echo "완료: 모든 LXD 서버 코드 싱크"
+
+# --- Staging (10.10.10.21) ---
+deploy-staging:
+	ssh staging 'cd ~/adelie-investment && git pull origin develop && \
+		docker compose -f docker-compose.staging.yml pull && \
+		docker compose -f docker-compose.staging.yml up -d --remove-orphans'
+	@echo "✅ staging(10.10.10.21) 배포 완료"
 
 sync-all: sync-dev-branches sync-lxd
 	@echo "전체 싱크 완료 (브랜치 + LXD 서버)"
