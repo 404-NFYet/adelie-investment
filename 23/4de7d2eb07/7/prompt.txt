@@ -1,0 +1,239 @@
+Implement the following plan:
+
+# 모의투자 404 수정 + 문의사항 저장/대시보드 표시
+
+## Context
+
+**3개의 독립적인 버그:**
+
+1. **모의투자 페이지 404** (최우선): 브라우저 콘솔에서 `GET /api/v1/portfolio 404 Not Found` 확인.
+   - 원인: `pykrx` 패키지가 `fastapi/requirements.txt`에 누락 → 컨테이너에 미설치
+   - → `stock_price_service.py`가 `from pykrx import stock`으로 top-level import
+   - → `portfolio.py`가 `stock_price_service`를 import
+   - → main.py의 graceful import 실패로 `/api/v1/portfolio/*` 라우터 전체 미등록 → 404
+
+2. **문의사항 저장 미확인**: `Profile.jsx` ContactSection이 `fetch()` 응답에서 `response.ok` 미체크
+   - → 서버 500/422 응답도 "성공"으로 처리해 "문의가 접수되었습니다!" 표시하지만 DB 미저장 가능
+
+3. **대시보드 문의사항 식별 어려움**: `user_feedback(page='contact')` 항목이 일반 피드백과 섞여 있어
+   - 대시보드에서 문의사항만 빠르게 확인하는 전용 뷰 부재
+
+---
+
+## 수정 1: pykrx 추가 — `fastapi/requirements.txt`
+
+**담당**: dorae222 (인프라/Docker, 현재 git config)
+
+```diff
+ # Database drivers
+ pgvector==0.3.6
++
++# 한국 주식 시장 데이터
++pykrx>=1.0.0
+```
+
+추가 위치: requirements.txt 하단.
+
+> datapipeline/requirements.txt에서 `pykrx>=1.0.0`으로 이미 사용 중 — 동일 버전 적용.
+
+---
+
+## 수정 2: pykrx import 방어 — `fastapi/app/services/stock_price_service.py` (line 9)
+
+top-level import 실패 시 라우트 전체가 미등록되는 것을 방지하는 방어 코드 추가.
+
+```python
+# Before
+from pykrx import stock
+
+# After
+try:
+    from pykrx import stock as _pykrx_stock
+    HAS_PYKRX = True
+except ImportError:
+    _pykrx_stock = None
+    HAS_PYKRX = False
+    logger.warning("pykrx 미설치 — 주가 조회 시 KIS 전용 모드로 동작")
+```
+
+`_fetch_price_sync` 함수 내에서 `stock` → `_pykrx_stock` 치환 + `HAS_PYKRX` 가드 추가:
+```python
+def _fetch_price_sync(stock_code: str) -> Optional[dict]:
+    if not HAS_PYKRX:
+        return None
+    # 기존 로직 (stock → _pykrx_stock 으로 교체)
+    ...
+```
+
+---
+
+## 수정 3: 문의사항 에러 핸들링 — `frontend/src/pages/Profile.jsx` (lines 13-28)
+
+**담당**: YJ99Son (프론트엔드)
+
+```javascript
+// Before
+const [submitted, setSubmitted] = useState(false);
+...
+try {
+  await fetch('/api/v1/feedback', { method: 'POST', ... });
+  setSubmitted(true);
+} catch {}
+
+// After
+const [submitted, setSubmitted] = useState(false);
+const [submitError, setSubmitError] = useState(false);
+...
+try {
+  const res = await fetch('/api/v1/feedback', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ page: 'contact', rating: null, comment: message }),
+  });
+  if (!res.ok) throw new Error(`서버 오류: ${res.status}`);
+  setSubmitted(true);
+} catch {
+  setSubmitError(true);
+} finally {
+  setSubmitting(false);
+}
+```
+
+에러 UI (submit 버튼 아래 추가):
+```jsx
+{submitError && (
+  <p className="text-xs text-red-500 mt-2 text-center">
+    전송에 실패했습니다. 잠시 후 다시 시도해 주세요.
+  </p>
+)}
+```
+
+> `setSubmitting(false)` 중복 제거: try/catch에서 finally로 이동.
+
+---
+
+## 수정 4: 대시보드 문의사항 뷰 — `infra/docker-dashboard/pages/feedback.py`
+
+**담당**: dorae222
+
+`tab_general` 블록 상단에 문의사항 전용 섹션 추가 (render_section_header 뒤, 기존 summary 앞):
+
+```python
+# 문의사항 전용 섹션
+st.subheader("🙋 문의사항")
+try:
+    contacts = _query("""
+        SELECT
+            id,
+            to_char(created_at AT TIME ZONE 'Asia/Seoul', 'MM-DD HH24:MI') AS 접수일시,
+            COALESCE(user_id::text, '비회원') AS 사용자,
+            comment AS 내용
+        FROM user_feedback
+        WHERE page = 'contact'
+        ORDER BY created_at DESC
+        LIMIT 50
+    """)
+    if contacts.empty:
+        st.info("접수된 문의사항이 없습니다.")
+    else:
+        st.metric("총 문의 수", len(contacts))
+        st.dataframe(contacts, use_container_width=True, hide_index=True)
+        st.download_button(
+            "📥 CSV 다운로드",
+            contacts.to_csv(index=False).encode('utf-8-sig'),
+            file_name=f"inquiries_{datetime.now().strftime('%Y%m%d')}.csv",
+            mime="text/csv",
+        )
+except Exception as e:
+    st.warning(f"문의사항 조회 실패: {e}")
+
+st.divider()
+```
+
+---
+
+## 수정 파일 요약
+
+| 파일 | 변경 | 담당자 |
+|------|------|--------|
+| `fastapi/requirements.txt` | `pykrx>=1.0.0` 추가 | dorae222 |
+| `fastapi/app/services/stock_price_service.py` | pykrx import 방어 (try/except + HAS_PYKRX) | dorae222 |
+| `frontend/src/pages/Profile.jsx` | ContactSection response.ok 체크 + 에러 UI | YJ99Son |
+| `infra/docker-dashboard/pages/feedback.py` | 문의사항 전용 섹션 추가 | dorae222 |
+
+---
+
+## 커밋 계획
+
+1. **백엔드 핫픽스** (git: dorae222, 즉시 빌드/배포 필요)
+   ```
+   fix: pykrx 누락으로 인한 portfolio API 404 수정
+   ```
+   파일: `fastapi/requirements.txt`, `fastapi/app/services/stock_price_service.py`
+
+2. **프론트엔드 수정** (git: YJ99Son / syjin2008@naver.com)
+   ```
+   fix: 문의사항 제출 에러 핸들링 추가
+   ```
+   파일: `frontend/src/pages/Profile.jsx`
+
+3. **대시보드 수정** (git: dorae222)
+   ```
+   fix: 대시보드 문의사항 전용 섹션 추가
+   ```
+   파일: `infra/docker-dashboard/pages/feedback.py`
+
+4. **미완료 push**: 이미 커밋된 `630578c (docs: DB 운영 가이드)` → push
+
+---
+
+## 배포 순서
+
+```bash
+# 1. develop 브랜치 push (docs 커밋 포함)
+git push origin develop
+
+# 2. backend-api 이미지 재빌드 & 푸시 (pykrx 포함)
+make build-api && make push
+
+# 3. deploy-test 재배포
+ssh deploy-test 'cd ~/adelie-investment && docker compose -f docker-compose.prod.yml pull backend-api && docker compose -f docker-compose.prod.yml up -d backend-api'
+
+# 4. dashboard 재빌드 (문의사항 섹션 반영)
+ssh deploy-test 'cd ~/adelie-investment/infra/monitoring && docker compose up -d --build dashboard'
+```
+
+---
+
+## 검증
+
+1. **Portfolio 404 수정 확인**:
+   ```bash
+   ssh deploy-test "docker exec adelie-backend-api python -c \"from app.api.routes import portfolio; print('OK', len(portfolio.router.routes))\""
+   # 기대: OK 12
+   curl -H "Authorization: Bearer <JWT>" https://demo.adelie-invest.com/api/v1/portfolio
+   # 기대: 200 + portfolio data
+   ```
+
+2. **문의사항 저장 확인**:
+   Profile 페이지 → 문의 입력 → 보내기 → "문의가 접수되었습니다!" 확인 후:
+   ```bash
+   ssh deploy-test "docker exec adelie-postgres psql -U narative -d narrative_invest -c \"SELECT id, comment, created_at FROM user_feedback WHERE page='contact' ORDER BY created_at DESC LIMIT 3\""
+   ```
+
+3. **대시보드 확인**: `dashboard.adelie-invest.com` → 피드백 관리 → "문의사항" 섹션에서 항목 노출
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+배포서버까지 업데이트가 진행되었는가? 아니라면 진행해라
+
+---
+
+frontend도 진행했나?
+
+---
+
+아직 문의사항이 올바르게 작동하지 않는 것 같다.
