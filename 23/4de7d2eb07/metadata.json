@@ -3,18 +3,31 @@
   "checkpoint_id": "234de7d2eb07",
   "strategy": "manual-commit",
   "branch": "develop",
-  "checkpoints_count": 1,
+  "checkpoints_count": 2,
   "files_touched": [
     ".dockerignore",
     ".env.example",
     "CLAUDE.md",
+    "datapipeline/db/writer.py",
     "docker-compose.staging.yml",
     "fastapi/app/api/routes/pipeline.py",
+    "fastapi/app/api/routes/tutor.py",
+    "fastapi/app/core/auth.py",
+    "fastapi/app/core/config.py",
+    "fastapi/app/core/database.py",
     "fastapi/app/core/scheduler.py",
+    "fastapi/app/main.py",
+    "fastapi/app/services/auth_service.py",
     "fastapi/app/services/market_calendar.py",
     "fastapi/requirements-dev.txt",
     "fastapi/requirements.txt",
     "frontend/src/components/layout/ChatFAB.jsx",
+    "frontend/src/contexts/PortfolioContext.jsx",
+    "frontend/src/contexts/TutorChatContext.jsx",
+    "frontend/src/contexts/TutorContext.jsx",
+    "frontend/src/contexts/TutorSessionContext.jsx",
+    "frontend/src/contexts/TutorUIContext.jsx",
+    "frontend/src/contexts/index.js",
     "infra/docker-compose.yml",
     "infra/docker-dashboard/pages/feedback.py",
     "infra/monitoring/alertmanager.yml",
@@ -44,13 +57,20 @@
       "context": "/23/4de7d2eb07/2/context.md",
       "content_hash": "/23/4de7d2eb07/2/content_hash.txt",
       "prompt": "/23/4de7d2eb07/2/prompt.txt"
+    },
+    {
+      "metadata": "/23/4de7d2eb07/3/metadata.json",
+      "transcript": "/23/4de7d2eb07/3/full.jsonl",
+      "context": "/23/4de7d2eb07/3/context.md",
+      "content_hash": "/23/4de7d2eb07/3/content_hash.txt",
+      "prompt": "/23/4de7d2eb07/3/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 176,
-    "cache_creation_tokens": 486713,
-    "cache_read_tokens": 11754259,
-    "output_tokens": 62439,
-    "api_call_count": 153
+    "input_tokens": 1190,
+    "cache_creation_tokens": 619006,
+    "cache_read_tokens": 17401292,
+    "output_tokens": 86771,
+    "api_call_count": 216
   }
 }

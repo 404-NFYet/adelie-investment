@@ -1,0 +1,368 @@
+Implement the following plan:
+
+# 코드 품질 개선 전체 계획 (2026-02-21)
+
+## Context
+
+프론트엔드·백엔드 심층 분석 결과 도출된 보안 취약점, 버그, 성능 이슈를 순차적으로 모두 수정한다.
+TypeScript 미사용. 최종적으로 빌드→Docker Hub push→deploy-test 배포까지 완료한다.
+
+---
+
+## 수정 단위 (커밋 6개)
+
+---
+
+### 커밋 1 — 보안 긴급 패치 (백엔드)
+
+**담당: dorae222 (인프라)**
+
+#### 1-1. JWT_SECRET 기본값 startup 검증
+**파일:** `fastapi/app/main.py`
+
+`lifespan()` startup 블록에 추가:
+```python
+# JWT_SECRET 기본값/빈값 거부
+_DEFAULT_JWT = "narrative-invest-jwt-secret-change-in-production"
+if not settings.JWT_SECRET or settings.JWT_SECRET == _DEFAULT_JWT:
+    raise RuntimeError(
+        "JWT_SECRET이 기본값입니다. .env에서 반드시 변경하세요. "
+        "생성 명령: openssl rand -hex 32"
+    )
+```
+
+#### 1-2. 토큰 프리픽스 로그 제거
+**파일:** `fastapi/app/core/auth.py:49`
+
+```python
+# 수정 전
+logger.warning(f"Invalid token error: {e}, token_prefix: {token[:50] if token else 'None'}...")
+# 수정 후
+logger.warning("Invalid token: %s", type(e).__name__)
+```
+
+> **참고 — datapipeline 모델명(gpt-5-mini, gpt-5.2):**
+> `multi_provider_client.py`에 `"gpt-5"` 접두사 모델을 위한 전용 파라미터 분기가 명시적으로 구현되어 있고, `.env.example`에도 `OPENAI_FALLBACK_MODEL=gpt-5.2`로 동일하게 설정됨 → 정지훈의 의도적 forward-looking 설계. **config.py 기본값 변경 금지.** 실제 배포 서버 `.env`의 환경변수 오버라이드 값 기준 유지.
+
+---
+
+### 커밋 2 — 백엔드 버그 수정 + 설정 정리
+
+**담당: jjjh02 (백엔드)**
+
+#### 2-1. tutor.py 가드레일 차단 후 DB 저장 제거
+**파일:** `fastapi/app/api/routes/tutor.py:153~209`
+
+현재 구조:
+```
+yield 차단메시지   ← 스트림 전송
+try: DB 저장(세션+메시지)  ← 차단 후에도 저장 시도
+yield done
+return
+```
+
+수정 후 구조:
+```python
+if not guardrail_result.is_allowed:
+    yield f"event: text_delta\ndata: {json.dumps({'content': guardrail_result.block_message})}\n\n"
+    yield f"event: done\ndata: {json.dumps({'session_id': session_id, 'total_tokens': 0, 'guardrail': guardrail_result.decision})}\n\n"
+    return  # DB 저장 없이 즉시 종료
+```
+→ 차단된 메시지는 DB에 저장하지 않는다.
+
+#### 2-2. writer.py URL 변환 버그 수정
+**파일:** `datapipeline/db/writer.py:30`
+
+```python
+# 수정 전 (redundant replace)
+return url.replace("+asyncpg", "").replace("postgresql://", "postgresql://")
+# 수정 후
+return url.replace("+asyncpg", "")
+```
+
+#### 2-3. DB 연결 풀 크기 감소
+**파일:** `fastapi/app/core/database.py:21~24`
+
+```python
+# 수정 전: pool_size=50, max_overflow=100 (합계 150)
+# 수정 후
+engine = create_async_engine(
+    settings.DATABASE_URL,
+    echo=settings.DEBUG,
+    pool_pre_ping=True,
+    pool_size=10,        # 50 → 10
+    max_overflow=20,     # 100 → 20
+    pool_timeout=30,
+    pool_recycle=1800,
+)
+```
+
+#### 2-4. JWT 설정 통일 + 액세스 토큰 만료 단축
+**파일:** `fastapi/app/core/config.py:27~33`
+
+```python
+# 수정 전 (3종류 혼재)
+JWT_SECRET: str = "narrative-invest-jwt-secret-change-in-production"
+JWT_EXPIRE_MINUTES: int = 30
+ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(60, ...)
+JWT_ACCESS_EXPIRATION: int = Field(0, ...)  # ms
+JWT_REFRESH_EXPIRATION: int = Field(0, ...)  # ms
+
+# 수정 후 (2가지로 통일)
+JWT_SECRET: str = ""  # 기본값 제거 → main.py startup에서 검증
+JWT_ALGORITHM: str = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(15, ...)  # 60→15분 (refresh token 자동갱신으로 UX 영향 없음)
+REFRESH_TOKEN_EXPIRE_DAYS: int = Field(7, ...)
+# JWT_EXPIRE_MINUTES, JWT_ACCESS_EXPIRATION, JWT_REFRESH_EXPIRATION 제거
+```
+
+`fastapi/app/services/auth_service.py`에서 `_get_access_exp_seconds()` 함수 단순화:
+```python
+def _get_access_exp_seconds(settings) -> int:
+    return settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+
+def _get_refresh_exp_seconds(settings) -> int:
+    return settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400
+```
+
+---
+
+### 커밋 3 — tutor.py 리팩토링
+
+**담당: J2hoon10 (AI)**
+
+**파일:** `fastapi/app/api/routes/tutor.py`
+
+현재 145줄짜리 `generate_tutor_response()` 단일 함수를 3개 헬퍼로 분리:
+
+```python
+async def _collect_context(request: TutorChatRequest, db: AsyncSession) -> str:
+    """컨텍스트 수집만 담당 — briefing/case/portfolio 쿼리."""
+    ...
+
+async def _build_llm_messages(
+    user_message: str,
+    context_text: str,
+    history: list,
+    difficulty: str,
+) -> list:
+    """LLM 메시지 배열 구성만 담당."""
+    ...
+
+async def _save_tutor_session(
+    db: AsyncSession,
+    session_uuid: str,
+    user_id: int | None,
+    request: TutorChatRequest,
+    user_content: str,
+    assistant_content: str,
+    sources: list,
+) -> None:
+    """DB 저장만 담당 — 세션 upsert + 메시지 insert."""
+    ...
+```
+
+`generate_tutor_response()`는 위 3개 함수를 조합하는 오케스트레이터로만 남긴다.
+→ 함수 크기 145줄 → 각 30~40줄 수준으로 분산.
+
+---
+
+### 커밋 4 — 프론트엔드: 미사용 라이브러리 제거 + 마이너 수정
+
+**담당: YJ99Son (프론트엔드)**
+
+#### 4-1. 미사용 차트 라이브러리 제거
+**파일:** `frontend/package.json`
+
+```json
+// 제거 (실제 사용 없음)
+"chart.js": "^4.5.1",
+"react-chartjs-2": "^5.3.1",
+"echarts": "^6.0.0",
+"echarts-for-react": "^3.0.6"
+```
+
+- `ResponsiveEChart.jsx`는 실제 페이지/컴포넌트에서 미사용 확인 후 삭제
+- `PlotlyChart.jsx`, `ResponsivePlotly.jsx` (Plotly.js)는 유지 — 실제 사용 중
+
+```bash
+cd frontend && npm uninstall chart.js react-chartjs-2 echarts echarts-for-react
+```
+
+#### 4-2. PortfolioContext → contexts/index.js export 추가
+**파일:** `frontend/src/contexts/index.js`
+
+```js
+// 추가
+export { PortfolioProvider, usePortfolio } from './PortfolioContext';
+```
+
+#### 4-3. PortfolioContext useEffect 의존성 정리
+**파일:** `frontend/src/contexts/PortfolioContext.jsx`
+
+```jsx
+// 수정 전: [fetchSummary, fetchPortfolio, userId] — 3개 의존성
+useEffect(() => {
+  if (userId) {
+    fetchSummary();
+    fetchPortfolio();
+  } else { /* 초기화 */ }
+}, [fetchSummary, fetchPortfolio, userId]);
+
+// 수정 후: userId만 의존 (fetchSummary/fetchPortfolio는 useCallback [userId]로 안정화됨)
+const loadData = useCallback(async () => {
+  if (!userId) return;
+  await Promise.all([fetchSummary(), fetchPortfolio()]);
+}, [userId]);  // fetchSummary/fetchPortfolio는 [userId] 의존이므로 userId 변경 시 동일하게 갱신
+
+useEffect(() => {
+  loadData();
+}, [loadData]);
+```
+
+---
+
+### 커밋 5 — TutorContext 분리 + SSE 배칭
+
+**담당: YJ99Son (프론트엔드)**
+
+#### 5-1. TutorContext 3개 Context로 분리
+**신규 파일:**
+- `frontend/src/contexts/TutorUIContext.jsx` — UI 상태 (isOpen, openTutor, closeTutor, currentTerm, contextInfo, requestVisualization, agentStatus)
+- `frontend/src/contexts/TutorSessionContext.jsx` — 세션 관리 (sessions, activeSessionId, createNewChat, deleteChat, refreshSessions)
+- `frontend/src/contexts/TutorChatContext.jsx` — 채팅 상태 (messages, isLoading, sessionId, sendMessage, clearMessages, loadChatHistory)
+
+**수정 파일:**
+- `frontend/src/contexts/TutorContext.jsx` — `TutorProvider`가 3개 Provider를 중첩, `useTutor()`는 하위 호환 유지용 wrapper로 3개 context 값을 합쳐서 반환
+  ```jsx
+  // useTutor() 하위 호환 wrapper
+  export function useTutor() {
+    return {
+      ...useTutorUI(),
+      ...useTutorSession(),
+      ...useTutorChat(),
+    };
+  }
+  ```
+- `frontend/src/contexts/index.js` — 신규 훅 export 추가
+
+기존 컴포넌트는 `useTutor()` 그대로 사용 → 변경 최소화.
+고성능이 필요한 컴포넌트는 `useTutorChat()` 등 특정 context만 구독 가능.
+
+#### 5-2. SSE 메시지 배칭 (startTransition 적용)
+**파일:** `frontend/src/contexts/TutorChatContext.jsx`
+
+```jsx
+import { startTransition } from 'react';
+
+// 스트리밍 청크 업데이트를 낮은 우선순위 트랜지션으로 처리
+startTransition(() => {
+  setMessages((prev) =>
+    prev.map((m) => m.id === assistantMessage.id ? { ...m, content: fullContent } : m)
+  );
+});
+```
+→ React 18 `startTransition`으로 SSE 청크 업데이트를 낮은 우선순위로 처리.
+→ 타이핑/버튼 클릭 등 사용자 인터랙션이 메시지 업데이트보다 우선 처리됨.
+
+**App.jsx 업데이트:**
+```jsx
+// TutorProvider 내부가 3개 Provider 포함하므로 App.jsx 변경 없음
+<TutorProvider>  {/* 내부에서 TutorUIProvider > TutorSessionProvider > TutorChatProvider 중첩 */}
+```
+
+---
+
+### 커밋 6 — 빌드 · 배포
+
+**담당: dorae222 (인프라)**
+
+```bash
+# 1. 백엔드 이미지 빌드 + push
+make build-api
+docker push dorae222/adelie-backend-api:latest
+
+# 2. 프론트엔드 이미지 빌드 + push (차트 라이브러리 제거로 번들 크기 감소)
+make build-frontend
+docker push dorae222/adelie-frontend:latest
+
+# 3. deploy-test 배포
+make -f lxd/Makefile deploy-test
+# 또는
+ssh deploy-test 'cd ~/adelie-investment && git pull origin develop && \
+  docker compose -f docker-compose.prod.yml pull && \
+  docker compose -f docker-compose.prod.yml up -d --remove-orphans'
+
+# 4. 헬스체크
+curl https://demo.adelie-invest.com/api/v1/health
+curl https://demo.adelie-invest.com/api/v1/keywords/today
+```
+
+---
+
+## 수정 파일 목록 요약
+
+| 파일 | 커밋 | 변경 내용 |
+|------|------|----------|
+| `fastapi/app/main.py` | 1 | JWT_SECRET startup 검증 추가 |
+| `fastapi/app/core/auth.py:49` | 1 | token[:50] 로그 제거 |
+| `fastapi/app/api/routes/tutor.py:153~209` | 2 | 가드레일 차단 후 DB 저장 제거 |
+| `datapipeline/db/writer.py:30` | 2 | redundant replace() 제거 |
+| `fastapi/app/core/database.py:21~24` | 2 | pool_size 50→10, max_overflow 100→20 |
+| `fastapi/app/core/config.py:27~33` | 2 | JWT 설정 통일, 액세스 토큰 60→15분 |
+| `fastapi/app/services/auth_service.py` | 2 | _get_access_exp_seconds 단순화 |
+| `fastapi/app/api/routes/tutor.py` (전체) | 3 | _collect_context/_build_llm_messages/_save_tutor_session 분리 |
+| `frontend/package.json` | 4 | chart.js, echarts 및 래퍼 제거 |
+| `frontend/src/components/charts/ResponsiveEChart.jsx` | 4 | 파일 삭제 |
+| `frontend/src/contexts/index.js` | 4 | PortfolioProvider/usePortfolio export 추가 |
+| `frontend/src/contexts/PortfolioContext.jsx` | 4 | useEffect 의존성 정리 |
+| `frontend/src/contexts/TutorUIContext.jsx` | 5 | 신규 생성 |
+| `frontend/src/contexts/TutorSessionContext.jsx` | 5 | 신규 생성 |
+| `frontend/src/contexts/TutorChatContext.jsx` | 5 | 신규 생성 (SSE 배칭 포함) |
+| `frontend/src/contexts/TutorContext.jsx` | 5 | wrapper로 수정 (하위 호환) |
+| `frontend/src/contexts/index.js` | 5 | 신규 훅 export 추가 |
+
+---
+
+## 범위 외 (복잡도 대비 효과 낮음, 다음 스프린트)
+
+- `rate_limit.py` Redis 오류 fallback 변경 — deny 시 Redis 장애가 전체 서비스 장애로 연결, 위험성 높음. 현재 allow 동작 유지.
+- 튜터 메시지 DB 암호화 — 운영 키 관리 체계 없이 적용 불가.
+- `_get_jwt_key()` null byte padding 개선 — JWT_SECRET 최소 32바이트 검증으로 실질적 위험 제거됨.
+
+---
+
+## 검증 방법
+
+```bash
+# 커밋 1 검증 — JWT_SECRET 미설정 시 startup 실패 확인
+JWT_SECRET="" uvicorn app.main:app --host 0.0.0.0 --port 8082
+# → RuntimeError: JWT_SECRET이 기본값입니다. 출력 후 종료
+
+# 커밋 2 검증 — 가드레일 차단 후 DB 저장 없음 확인
+# 금지어 포함 메시지 전송 후 tutor_messages 테이블에 레코드 없어야 함
+docker exec adelie-postgres psql -U narative -d narrative_invest \
+  -c "SELECT count(*) FROM tutor_messages WHERE content LIKE '%[금지어]%'"
+
+# 커밋 4 검증 — 번들 크기 확인
+cd frontend && npm run build
+ls -lh dist/assets/*.js | sort -k5 -h  # 최대 파일 크기 확인
+
+# 커밋 5 검증 — TutorContext 분리 후 채팅 기능 정상 동작
+curl https://demo.adelie-invest.com  # 메인 페이지 로드
+# 튜터 채팅창 열어 질문 → SSE 스트리밍 정상 응답 확인
+
+# 배포 검증
+curl -s https://demo.adelie-invest.com/api/v1/health | jq .
+```
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+기존 로그인 되던 계정이 안되는데 이를 확인하고 수정해라
+
+---
+
+[Request interrupted by user for tool use]
