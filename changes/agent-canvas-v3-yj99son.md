@@ -178,3 +178,17 @@
 ### 8-7) 투자 탭 에이전트 진입 보강
 - `frontend/src/pages/Portfolio.jsx`
   - 종목 상세 -> `/agent` 전환 시 `resetConversation: true` 명시
+
+### 8-8) 같은 세션 이전 응답 스와이프 탐색 UX 추가
+- `frontend/src/pages/AgentCanvasPage.jsx`
+  - 세션 내 assistant 응답을 스냅샷 목록으로 관리
+  - 기본은 최신 응답을 표시하고, 새 응답이 추가되면 최신으로 자동 포커스
+  - 터치 제스처 임계값 적용: `160px` 이상 당겨야 이전/다음 응답으로 이동
+    - 위로 길게 스와이프: 이전 응답
+    - 아래로 길게 스와이프: 다음 응답
+  - 임계값 미달/경계 도달 시 안내 문구 노출
+  - 현재 탐색 위치 `n/m` 표시 + “같은 세션 응답 탐색” 안내 바 추가
+  - 과거 응답 탐색 중일 때 상태 문구(`이전 응답 탐색 중`) 표시
+- `frontend/src/utils/agent/composeCanvasState.js`
+  - `assistantText` override 입력 지원
+  - 캔버스 렌더링 시 선택된 스냅샷 응답을 강제로 반영 가능하게 확장

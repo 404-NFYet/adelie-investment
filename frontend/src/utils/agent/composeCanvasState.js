@@ -91,8 +91,9 @@ export default function composeCanvasState({
   contextPayload = null,
   aiStatus = null,
   userPrompt = '',
+  assistantText: assistantTextOverride = '',
 }) {
-  const assistantText = pickAssistantText(messages).trim();
+  const assistantText = (assistantTextOverride || pickAssistantText(messages) || '').trim();
   const paragraphs = splitParagraphs(assistantText);
   const sentences = splitSentences(assistantText);
   const structured = hasStructuredSignal(assistantText);
