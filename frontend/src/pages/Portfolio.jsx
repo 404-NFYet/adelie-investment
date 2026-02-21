@@ -203,6 +203,7 @@ export default function Portfolio() {
         mode: 'stock',
         stockContext,
         initialPrompt: `${stock.stock_name} 지금 흐름을 같이 분석해줘`,
+        resetConversation: true,
       },
     });
   };

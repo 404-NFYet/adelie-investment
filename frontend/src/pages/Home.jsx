@@ -102,16 +102,16 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-[#f9fafb] pb-44">
-      <DashboardHeader subtitle={`${formatKoreanDate(todayDateKey)} · 장 마감`} />
+      <DashboardHeader />
 
       <main className="container space-y-5 py-4">
         <section className="relative overflow-hidden rounded-[28px] bg-[#ff7648] px-6 pb-6 pt-5 text-white shadow-[0_20px_25px_-5px_rgba(255,118,72,0.2)]">
           <div className="absolute -right-14 top-14 h-44 w-44 rounded-full bg-[#ff9a6d]/30" />
           <div className="relative">
             <p className="text-[11px] font-black uppercase tracking-[0.1em] text-white/80">총 자산</p>
-            <p className="mt-2 text-[44px] font-bold leading-none tracking-[-0.03em]">
+            <p className="mt-2 text-[38px] font-bold leading-none tracking-[-0.03em]">
               {formatKRW(totalAsset).replace('원', '')}
-              <span className="ml-1 text-[18px] font-bold text-white/70">원</span>
+              <span className="ml-1 text-[16px] font-bold text-white/70">원</span>
             </p>
             <button
               type="button"
@@ -126,7 +126,7 @@ export default function Home() {
 
         <section>
           <div className="mb-3 flex items-center justify-between px-1">
-            <h2 className="text-[31px] font-extrabold tracking-[-0.02em] text-[#101828]">학습 스케줄</h2>
+            <h2 className="text-[24px] font-extrabold tracking-[-0.02em] text-[#101828]">학습 스케줄</h2>
             <button
               type="button"
               onClick={() => navigate(`/education?date=${todayDateKey}`)}
@@ -140,7 +140,7 @@ export default function Home() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-bold text-[#99a1af]">이번 주 출석</p>
-                <p className="mt-1 text-[19px] font-bold text-[#101828]">주간 목표 달성 중 🔥</p>
+                <p className="mt-1 text-[17px] font-bold text-[#101828]">주간 목표 달성 중 🔥</p>
                 <p className="mt-1 text-xs text-[#6a7282]">
                   {isActivityLoading ? '활동 집계 중...' : `거래/학습 총 ${weekActivityCount}건`}
                 </p>
@@ -183,7 +183,7 @@ export default function Home() {
 
         <section>
           <div className="mb-3 flex items-center justify-between px-1">
-            <h2 className="text-[31px] font-extrabold tracking-[-0.02em] text-[#101828]">오늘의 이슈</h2>
+            <h2 className="text-[24px] font-extrabold tracking-[-0.02em] text-[#101828]">오늘의 이슈</h2>
             <span className="text-xs font-semibold text-[#99a1af]">{formatKoreanDate(todayDateKey)}</span>
           </div>
 
@@ -205,14 +205,14 @@ export default function Home() {
                     </div>
                   </div>
                   <span className="rounded-full border border-[#f3f4f6] bg-[#f9fafb] px-3 py-1 text-[11px] font-bold text-[#6a7282]">
-                    아델리 브리핑
+                    {issueCard.category || '오늘의 이슈'}
                   </span>
                 </div>
 
-                <h3 className="text-[32px] font-extrabold leading-[1.22] tracking-[-0.02em] text-[#101828]">
+                <h3 className="text-[25px] font-extrabold leading-[1.28] tracking-[-0.02em] text-[#101828]">
                   {issueCard.title}
                 </h3>
-                <p className="mt-3 text-[17px] leading-8 tracking-[-0.01em] text-[#6a7282]">
+                <p className="mt-3 text-[15px] leading-7 tracking-[-0.01em] text-[#6a7282]">
                   {issueCard.description || marketSummary || '오늘 시장의 핵심 이슈를 함께 분석해봐요.'}
                 </p>
 
@@ -236,7 +236,7 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => openAgentFromHome('아델리와 알아보기')}
-                  className="mt-5 w-full rounded-2xl border border-[#ffd7c5] bg-[#fff6f2] py-3 text-sm font-semibold text-[#ff7648]"
+                  className="mt-5 w-full rounded-2xl bg-primary py-3 text-sm font-semibold text-white"
                 >
                   아델리와 알아보기
                 </button>
@@ -251,7 +251,7 @@ export default function Home() {
 
         <section>
           <div className="mb-3 flex items-center justify-between px-1">
-            <h2 className="text-[27px] font-extrabold tracking-[-0.02em] text-[#101828]">오늘의 미션</h2>
+            <h2 className="text-[22px] font-extrabold tracking-[-0.02em] text-[#101828]">오늘의 미션</h2>
             <span className="rounded-lg bg-[#f3f4f6] px-2 py-1 text-xs font-bold text-[#99a1af]">+500P</span>
           </div>
 
@@ -281,7 +281,7 @@ export default function Home() {
                     }}
                   />
                 </div>
-                <p className="line-limit-2 text-[22px] font-extrabold leading-8 tracking-[-0.01em] text-[#101828]">{item.title}</p>
+                <p className="line-limit-2 text-[18px] font-extrabold leading-7 tracking-[-0.01em] text-[#101828]">{item.title}</p>
                 <span className={`mt-3 inline-block rounded-lg px-2.5 py-1 text-[11px] font-bold ${index === 1 ? 'bg-[#e5e7eb] text-[#99a1af]' : 'bg-[rgba(255,118,72,0.1)] text-[#ff7648]'}`}>
                   {index === 1 ? '완료' : '초급'}
                 </span>

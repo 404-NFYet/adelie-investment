@@ -53,6 +53,7 @@ export function TutorChatProvider({ children }) {
       if (!message.trim()) return;
 
       const DEFAULT_STATUS = { phase: 'idle', text: '응답 대기 중' };
+      let hasError = false;
 
       const userMessage = {
         id: Date.now(),
@@ -184,7 +185,8 @@ export function TutorChatProvider({ children }) {
         );
       } catch (error) {
         console.error('Tutor error:', error);
-        if (setAgentStatus) setAgentStatus(DEFAULT_STATUS);
+        hasError = true;
+        if (setAgentStatus) setAgentStatus({ phase: 'error', text: '오류가 발생했습니다.' });
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantMessage.id
@@ -194,7 +196,7 @@ export function TutorChatProvider({ children }) {
         );
       } finally {
         setIsLoading(false);
-        if (setAgentStatus) setAgentStatus(DEFAULT_STATUS);
+        if (setAgentStatus && !hasError) setAgentStatus(DEFAULT_STATUS);
       }
     },
     [sessionId]
@@ -213,9 +215,13 @@ export function TutorChatProvider({ children }) {
   }, []);
 
   const clearMessages = useCallback(() => {
-    setMessages([]);
-    setSessionId(null);
-    try { localStorage.removeItem('adelie_tutor_session'); } catch {}
+    setMessages((prev) => (prev.length > 0 ? [] : prev));
+    setSessionId((prev) => (prev === null ? prev : null));
+    try {
+      if (localStorage.getItem('adelie_tutor_session') !== null) {
+        localStorage.removeItem('adelie_tutor_session');
+      }
+    } catch {}
   }, []);
 
   return (

@@ -14,9 +14,9 @@ const HIDDEN_PREFIXES = [
 const HIDDEN_EXACT = ['/'];
 
 const tabs = [
-  { id: 'home', label: '홈', path: '/home' },
   { id: 'portfolio', label: '투자', path: '/portfolio' },
-  { id: 'my', label: 'MY', path: '/profile' },
+  { id: 'home', label: '홈', path: '/home' },
+  { id: 'education', label: '교육', path: '/education' },
 ];
 
 const icons = {
@@ -32,22 +32,26 @@ const icons = {
       <path d="M18 8h2v2" />
     </svg>
   ),
-  my: (
+  education: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-      <circle cx="12" cy="7" r="4" />
+      <path d="m22 10-10-5-10 5 10 5 10-5z" />
+      <path d="M6 12v5c0 1.1 2.7 2 6 2s6-.9 6-2v-5" />
     </svg>
   ),
 };
 
-function isActivePath(tabPath, pathname) {
+function isActivePath(tabPath, pathname, stateMode) {
+  if (tabPath === '/portfolio') {
+    if (pathname.startsWith('/agent')) return stateMode === 'stock';
+    return pathname === tabPath || pathname.startsWith('/portfolio/');
+  }
+
   if (tabPath === '/home') {
+    if (pathname.startsWith('/agent')) return stateMode !== 'stock';
     return pathname === tabPath;
   }
-  if (tabPath === '/portfolio') {
-    return pathname === tabPath || pathname.startsWith('/portfolio/') || pathname.startsWith('/agent');
-  }
-  return pathname === tabPath || pathname.startsWith(`${tabPath}/`);
+
+  return pathname === tabPath || pathname.startsWith('/education/');
 }
 
 export default function BottomNav() {
@@ -61,11 +65,13 @@ export default function BottomNav() {
     return null;
   }
 
+  const stateMode = location.pathname.startsWith('/agent') ? (location.state?.mode || 'home') : null;
+
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-20 max-w-mobile mx-auto bg-surface-elevated border-t border-border py-2">
       <div className="flex justify-around">
         {tabs.map((tab) => {
-          const isActive = isActivePath(tab.path, location.pathname);
+          const isActive = isActivePath(tab.path, location.pathname, stateMode);
 
           return (
             <button

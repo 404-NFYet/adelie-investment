@@ -9,6 +9,14 @@ function pickAssistantText(messages) {
   return '';
 }
 
+function splitParagraphs(text) {
+  if (!text) return [];
+  return text
+    .split(/\n{2,}/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 function splitSentences(text) {
   if (!text) return [];
   return text
@@ -33,24 +41,48 @@ function extractBullets(text, fallbackSentences) {
   return fallbackSentences.slice(2, 5).map((line) => line.replace(/\s+/g, ' ').trim()).filter(Boolean);
 }
 
-function buildTitle(mode, contextPayload, firstSentence) {
+function hasStructuredSignal(text) {
+  if (!text) return false;
+
+  const bulletPattern = /(^|\n)\s*([\-•*]|\d+\.)\s+\S+/m;
+  const headingPattern = /(^|\n)\s*(핵심|요약|정리|포인트|근거|리스크|액션)\s*[:：]/m;
+  const markdownHeadingPattern = /(^|\n)\s*#{2,4}\s+\S+/m;
+
+  return bulletPattern.test(text) || headingPattern.test(text) || markdownHeadingPattern.test(text);
+}
+
+function buildTitle(mode, contextPayload, userPrompt) {
   if (mode === 'stock' && contextPayload?.stock_name) {
-    return `${contextPayload.stock_name} 체크포인트`; 
+    return `${contextPayload.stock_name} 캔버스`;
   }
 
-  if (firstSentence && firstSentence.length <= 40) {
-    return firstSentence;
+  if (userPrompt && userPrompt.length <= 28) {
+    return userPrompt;
   }
 
-  return '오늘 이슈 핵심 정리';
+  if (mode === 'education') return '학습 캔버스';
+  if (mode === 'home') return '오늘 시장 흐름';
+
+  return '에이전트 캔버스';
 }
 
 function buildActions(mode) {
   if (mode === 'stock') {
-    return ['내 포트폴리오 영향은?', '과거 비슷한 사례 보기'];
+    return ['내 포트폴리오 영향은?', '리스크 포인트만 추려줘'];
+  }
+
+  if (mode === 'education') {
+    return ['핵심 개념만 복습하기', '이걸 투자에 연결해줘'];
   }
 
   return ['모의투자에 반영하기', '과거 비슷한 사례 보기'];
+}
+
+function buildModeLabel(mode) {
+  if (mode === 'stock') return '종목 컨텍스트';
+  if (mode === 'education') return '학습 컨텍스트';
+  if (mode === 'my') return 'MY 컨텍스트';
+  return '홈 컨텍스트';
 }
 
 export default function composeCanvasState({
@@ -60,23 +92,27 @@ export default function composeCanvasState({
   aiStatus = null,
   userPrompt = '',
 }) {
-  const assistantText = pickAssistantText(messages);
+  const assistantText = pickAssistantText(messages).trim();
+  const paragraphs = splitParagraphs(assistantText);
   const sentences = splitSentences(assistantText);
+  const structured = hasStructuredSignal(assistantText);
 
-  const keyPoint = sentences[0] || '핵심 요약을 만드는 중입니다.';
-  const explanation = sentences.slice(1, 3).join(' ') || '질문 맥락에 맞춘 설명을 준비하고 있습니다.';
-  const bullets = extractBullets(assistantText, sentences);
-  const quote = sentences[sentences.length - 1] || keyPoint;
+  const keyPoint = sentences[0] || paragraphs[0] || '';
+  const explanation = sentences.slice(1, 3).join(' ') || paragraphs[1] || '';
+  const bullets = structured ? extractBullets(assistantText, sentences) : [];
+  const quote = structured ? (sentences[sentences.length - 1] || '') : '';
 
   return {
-    title: buildTitle(mode, contextPayload, sentences[0]),
-    modeLabel: mode === 'stock' ? '종목 튜터' : '아델리 브리핑',
+    title: buildTitle(mode, contextPayload, userPrompt),
+    modeLabel: buildModeLabel(mode),
+    viewType: assistantText ? (structured ? 'structured' : 'plain') : 'empty',
     keyPoint,
     explanation,
     bullets,
     quote,
+    textBlocks: paragraphs.length > 0 ? paragraphs : (assistantText ? [assistantText] : []),
     actions: buildActions(mode),
-    aiStatus: aiStatus || '응답 대기 중',
+    aiStatus: aiStatus || '대기 중',
     userPrompt,
     rawAssistantText: assistantText,
   };

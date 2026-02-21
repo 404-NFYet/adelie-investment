@@ -25,77 +25,106 @@ export function useTutor() {
   const session = useTutorSession();
   const chat = useTutorChat();
 
+  const {
+    openTutor: openTutorUI,
+    closeTutor,
+    contextInfo,
+    setContextInfo,
+    currentTerm,
+    setCurrentTerm,
+    agentStatus,
+    setAgentStatus,
+    requestVisualization: requestVisualizationUI,
+    DEFAULT_AGENT_STATUS,
+  } = ui;
+  const {
+    sessions,
+    activeSessionId,
+    refreshSessions,
+    createNewChat: createNewChatSession,
+    deleteChat: deleteChatSession,
+    setActiveSessionId,
+  } = session;
+  const {
+    messages,
+    isLoading,
+    sendMessage: sendChatMessage,
+    clearMessages: clearChatMessages,
+    loadChatHistory: loadChatHistoryRaw,
+    setSessionId,
+  } = chat;
+
   const openTutor = useCallback((termOrContext = null) => {
-    ui.openTutor(termOrContext, session.refreshSessions);
-  }, [ui, session.refreshSessions]);
+    openTutorUI(termOrContext, refreshSessions);
+  }, [openTutorUI, refreshSessions]);
 
   const createNewChat = useCallback(async () => {
-    return session.createNewChat((nextSessionId) => {
-      chat.clearMessages();
-      ui.setCurrentTerm(null);
-      ui.setAgentStatus(ui.DEFAULT_AGENT_STATUS);
-      chat.setSessionId(nextSessionId);
-      session.setActiveSessionId(nextSessionId);
+    return createNewChatSession((nextSessionId) => {
+      clearChatMessages();
+      setCurrentTerm(null);
+      setAgentStatus(DEFAULT_AGENT_STATUS);
+      setSessionId(nextSessionId);
+      setActiveSessionId(nextSessionId);
     });
-  }, [session, chat, ui]);
+  }, [createNewChatSession, clearChatMessages, setCurrentTerm, setAgentStatus, DEFAULT_AGENT_STATUS, setSessionId, setActiveSessionId]);
 
   const deleteChat = useCallback(async (id) => {
-    return session.deleteChat(id, () => {
-      chat.clearMessages();
-      chat.setSessionId(null);
-      ui.setCurrentTerm(null);
-      ui.setAgentStatus(ui.DEFAULT_AGENT_STATUS);
+    return deleteChatSession(id, () => {
+      clearChatMessages();
+      setSessionId(null);
+      setCurrentTerm(null);
+      setAgentStatus(DEFAULT_AGENT_STATUS);
     });
-  }, [session, chat, ui]);
+  }, [deleteChatSession, clearChatMessages, setSessionId, setCurrentTerm, setAgentStatus, DEFAULT_AGENT_STATUS]);
 
   const loadChatHistory = useCallback(async (id) => {
-    return chat.loadChatHistory(id, session.setActiveSessionId);
-  }, [chat, session]);
+    return loadChatHistoryRaw(id, setActiveSessionId);
+  }, [loadChatHistoryRaw, setActiveSessionId]);
 
   const sendMessage = useCallback(async (message, difficulty = 'beginner') => {
-    await chat.sendMessage(
+    await sendChatMessage(
       message,
       difficulty,
-      ui.contextInfo,
-      ui.setAgentStatus,
+      contextInfo,
+      setAgentStatus,
       (newSessionId) => {
-        session.setActiveSessionId(newSessionId);
+        setActiveSessionId(newSessionId);
       },
     );
-    await session.refreshSessions();
-  }, [chat, ui, session]);
+    await refreshSessions();
+  }, [sendChatMessage, contextInfo, setAgentStatus, setActiveSessionId, refreshSessions]);
 
   const requestVisualization = useCallback((query) => {
-    ui.requestVisualization(query, (msg, diff) => sendMessage(msg, diff));
-  }, [ui, sendMessage]);
+    requestVisualizationUI(query, (msg, diff) => sendMessage(msg, diff));
+  }, [requestVisualizationUI, sendMessage]);
 
   const clearMessages = useCallback(() => {
-    chat.clearMessages();
-    ui.setCurrentTerm(null);
-    session.setActiveSessionId(null);
-    ui.setAgentStatus(ui.DEFAULT_AGENT_STATUS);
-  }, [chat, ui, session]);
+    clearChatMessages();
+    setCurrentTerm(null);
+    setActiveSessionId(null);
+    setAgentStatus(DEFAULT_AGENT_STATUS);
+  }, [clearChatMessages, setCurrentTerm, setActiveSessionId, setAgentStatus, DEFAULT_AGENT_STATUS]);
 
   return {
     // UI
     isOpen: ui.isOpen,
     openTutor,
-    closeTutor: ui.closeTutor,
-    contextInfo: ui.contextInfo,
-    setContextInfo: ui.setContextInfo,
-    currentTerm: ui.currentTerm,
-    setCurrentTerm: ui.setCurrentTerm,
-    agentStatus: ui.agentStatus,
+    closeTutor,
+    contextInfo,
+    setContextInfo,
+    currentTerm,
+    setCurrentTerm,
+    agentStatus,
     requestVisualization,
     // Session
-    sessions: session.sessions,
-    activeSessionId: session.activeSessionId,
-    refreshSessions: session.refreshSessions,
+    sessions,
+    activeSessionId,
+    refreshSessions,
     createNewChat,
     deleteChat,
     // Chat
-    messages: chat.messages,
-    isLoading: chat.isLoading,
+    messages,
+    isLoading,
     sendMessage,
     clearMessages,
     loadChatHistory,

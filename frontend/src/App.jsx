@@ -33,6 +33,7 @@ const Portfolio = lazy(() => import('./pages/Portfolio'));
 const Profile = lazy(() => import('./pages/Profile'));
 const TutorChat = lazy(() => import('./pages/TutorChat'));
 const AgentCanvasPage = lazy(() => import('./pages/AgentCanvasPage'));
+const AgentHistoryPage = lazy(() => import('./pages/AgentHistoryPage'));
 
 function CaseRedirect() {
   const { caseId } = useParams();
@@ -78,6 +79,7 @@ function AppRoutes() {
         <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
         <Route path="/tutor" element={<ProtectedRoute><TutorChat /></ProtectedRoute>} />
         <Route path="/agent" element={<ProtectedRoute><AgentCanvasPage /></ProtectedRoute>} />
+        <Route path="/agent/history" element={<ProtectedRoute><AgentHistoryPage /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>
