@@ -3,11 +3,13 @@
   "checkpoint_id": "234de7d2eb07",
   "strategy": "manual-commit",
   "branch": "develop",
-  "checkpoints_count": 3,
+  "checkpoints_count": 4,
   "files_touched": [
     ".dockerignore",
     ".env.example",
     "CLAUDE.md",
+    "Makefile",
+    "database/scripts/sync_dev_data.sh",
     "datapipeline/db/writer.py",
     "docker-compose.staging.yml",
     "fastapi/app/api/routes/pipeline.py",
@@ -71,13 +73,20 @@
       "context": "/23/4de7d2eb07/4/context.md",
       "content_hash": "/23/4de7d2eb07/4/content_hash.txt",
       "prompt": "/23/4de7d2eb07/4/prompt.txt"
+    },
+    {
+      "metadata": "/23/4de7d2eb07/5/metadata.json",
+      "transcript": "/23/4de7d2eb07/5/full.jsonl",
+      "context": "/23/4de7d2eb07/5/context.md",
+      "content_hash": "/23/4de7d2eb07/5/content_hash.txt",
+      "prompt": "/23/4de7d2eb07/5/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 6182,
-    "cache_creation_tokens": 731897,
-    "cache_read_tokens": 20204838,
-    "output_tokens": 98446,
-    "api_call_count": 249
+    "input_tokens": 6264,
+    "cache_creation_tokens": 810851,
+    "cache_read_tokens": 24828992,
+    "output_tokens": 114728,
+    "api_call_count": 323
   }
 }
