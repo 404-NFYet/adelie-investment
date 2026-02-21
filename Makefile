@@ -10,7 +10,7 @@ SERVICES = frontend backend-api ai-pipeline
 .PHONY: help build dev dev-down deploy deploy-down \
         dev-frontend-local dev-api-local \
         test test-backend test-e2e test-load test-pipeline test-frontend \
-        migrate logs clean
+        migrate logs clean sync-dev-data
 
 # --- 도움말 ---
 help:
@@ -41,6 +41,7 @@ help:
 	@echo ""
 	@echo "  유틸리티:"
 	@echo "    make migrate             DB 마이그레이션 (Alembic)"
+	@echo "    make sync-dev-data       prod DB 콘텐츠 → 개발 DB 동기화"
 	@echo "    make logs                배포 환경 로그 조회"
 	@echo "    make clean               Docker 시스템 정리"
 	@echo ""
@@ -123,6 +124,11 @@ test-pipeline:
 # --- DB 마이그레이션 ---
 migrate:
 	cd database && ../.venv/bin/alembic upgrade head
+
+# --- 개발 DB 데이터 동기화 ---
+sync-dev-data:
+	bash database/scripts/sync_dev_data.sh
+	@echo "프로덕션 콘텐츠 데이터가 dev DB로 복사됨"
 
 # --- 로그 ---
 logs:

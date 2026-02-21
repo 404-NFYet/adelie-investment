@@ -8,7 +8,8 @@ REGISTRY ?= dorae222
 TAG ?= latest
 
 .PHONY: help push push-local deploy-test deploy-test-service \
-        deploy-staging sync-dev-branches sync-lxd sync-all
+        deploy-staging sync-dev-branches sync-lxd sync-all \
+        check-lxd-git sync-dev-data
 
 help:
 	@echo ""
@@ -25,6 +26,10 @@ help:
 	@echo "    sync-dev-branches      develop → dev/* 브랜치 병합 & push"
 	@echo "    sync-lxd               각 LXD 서버에서 git pull 실행"
 	@echo "    sync-all               위 두 작업 순차 실행"
+	@echo ""
+	@echo "  LXD 개발 환경:"
+	@echo "    check-lxd-git          각 LXD 서버 git 설정(user/email/remote/SSH) 점검"
+	@echo "    sync-dev-data          prod DB 콘텐츠 → 각 LXD 로컬 dev DB 동기화"
 	@echo ""
 	@echo "  변수:"
 	@echo "    REGISTRY=$(REGISTRY)  TAG=$(TAG)"
@@ -92,3 +97,31 @@ deploy-staging:
 
 sync-all: sync-dev-branches sync-lxd
 	@echo "전체 싱크 완료 (브랜치 + LXD 서버)"
+
+# --- LXD 서버 git 설정 점검 ---
+check-lxd-git:
+	@echo "=== LXD 서버 git 설정 점검 ==="
+	@for srv in dev-yj99son dev-j2hoon10 dev-jjjh02 dev-ryejinn dev-hj; do \
+		echo ""; \
+		echo "### $$srv ###"; \
+		lxc exec $$srv -- bash -c " \
+			cd /home/ubuntu/adelie-investment 2>/dev/null || { echo '  ❌ 프로젝트 디렉토리 없음'; exit 0; }; \
+			REMOTE=\$$(git remote get-url origin 2>/dev/null | sed 's|https://[^@]*@|https://***@|g' || echo '미설정'); \
+			NAME=\$$(git config user.name 2>/dev/null || echo '❌ 미설정'); \
+			EMAIL=\$$(git config user.email 2>/dev/null || echo '❌ 미설정'); \
+			SSH_RESULT=\$$(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -T git@github.com 2>&1 | grep -v '^Warning:' | head -1 || true); \
+			[ -z \"\$$SSH_RESULT\" ] && SSH_RESULT='❌ SSH 미인증 (공개키 GitHub 미등록)'; \
+			echo \"  remote : \$$REMOTE\"; \
+			echo \"  user   : \$$NAME <\$$EMAIL>\"; \
+			echo \"  ssh    : \$$SSH_RESULT\"; \
+		" 2>/dev/null || echo "  ❌ LXC 연결 실패"; \
+	done
+	@echo ""
+	@echo "=== 점검 완료 ==="
+
+# --- prod DB 콘텐츠 → 각 LXD 로컬 dev DB 동기화 ---
+# HOST(dev-hj)에서 실행: deploy-test prod 덤프 → 각 LXD 서버 로컬 postgres에 적용
+sync-dev-data:
+	@echo "=== deploy-test → 각 LXD 로컬 dev DB 콘텐츠 동기화 ==="
+	@bash $(ROOT)/database/scripts/sync_dev_data.sh
+	@echo "=== 동기화 완료 ==="
