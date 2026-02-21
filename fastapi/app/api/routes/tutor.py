@@ -41,17 +41,17 @@ async def get_term_explanation_from_llm(term: str, difficulty: str) -> str:
     api_key = get_settings().OPENAI_API_KEY
     if not api_key:
         raise HTTPException(status_code=500, detail="OpenAI API key not configured")
-    
+
     client = AsyncOpenAI(api_key=api_key)
-    
+
     difficulty_context = {
         "beginner": "주식 초보자도 이해할 수 있도록 아주 쉽게, 일상적인 비유를 사용해서",
         "elementary": "기본적인 투자 용어를 아는 사람에게",
         "intermediate": "투자 경험이 있는 중급자에게",
     }
-    
+
     context = difficulty_context.get(difficulty, difficulty_context["beginner"])
-    
+
     response = await client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
@@ -66,7 +66,7 @@ async def get_term_explanation_from_llm(term: str, difficulty: str) -> str:
         ],
         max_tokens=300,
     )
-    
+
     return response.choices[0].message.content
 
 
@@ -78,10 +78,10 @@ async def explain_term(
 ) -> dict:
     """
     Get AI-generated explanation for a term with Redis caching.
-    
+
     - **term**: The term to explain
     - **difficulty**: Explanation difficulty level
-    
+
     Returns cached explanation if available (TTL: 24h).
     """
     # Check Redis cache first
@@ -94,7 +94,7 @@ async def explain_term(
             "explanation": cached,
             "cached": True,
         }
-    
+
     # Check glossary database
     result = await db.execute(
         select(Glossary).where(
@@ -108,7 +108,7 @@ async def explain_term(
             select(Glossary).where(Glossary.term.ilike(f"%{term}%"))
         )
         glossary_item = result.scalar_one_or_none()
-    
+
     if glossary_item:
         explanation = glossary_item.definition_full or glossary_item.definition_short
         # Cache glossary explanation
@@ -120,7 +120,7 @@ async def explain_term(
             "source": "glossary",
             "cached": False,
         }
-    
+
     # Generate from LLM
     try:
         explanation = await get_term_explanation_from_llm(term, difficulty)
@@ -137,38 +137,16 @@ async def explain_term(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-async def generate_tutor_response(
+async def _collect_context(
     request: TutorChatRequest,
     db: AsyncSession,
-    http_request: Request,
-    current_user: Optional[dict] = None,
-) -> AsyncGenerator[str, None]:
-    """Generate streaming response for AI tutor."""
-    
-    session_id = request.session_id or str(uuid.uuid4())
-    
-    yield f"event: step\ndata: {json.dumps({'type': 'thinking', 'content': '질문을 분석하고 있습니다...'})}\n\n"
-    
-    # 가드레일 검사
-    try:
-        guardrail_result = await run_guardrail(request.message)
-        if not guardrail_result.is_allowed:
-            # 차단 메시지를 스트리밍으로 전송 후 즉시 종료 (DB 저장 없음)
-            yield f"event: text_delta\ndata: {json.dumps({'content': guardrail_result.block_message})}\n\n"
-            yield f"event: done\ndata: {json.dumps({'session_id': session_id, 'total_tokens': 0, 'guardrail': guardrail_result.decision})}\n\n"
-            return
-    except Exception as e:
-        logger.warning("Guardrail check failed, falling open: %s", type(e).__name__)
-        
-    api_key = get_settings().OPENAI_API_KEY
-    if not api_key:
-        yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'OpenAI API key not configured'})}\n\n"
-        return
-    
-    # 컨텍스트 주입 (사용자가 보고 있는 페이지 기반)
+    user_id: Optional[int],
+) -> tuple[str, list, list, object]:
+    """컨텍스트 수집 — 브리핑/사례/포트폴리오 쿼리 및 출처 수집."""
     page_context = ""
+
+    # 프론트엔드에서 전달된 현재 스텝 텍스트 본문 (우선)
     if hasattr(request, "context_text") and request.context_text:
-        # 프론트엔드에서 전달된 현재 스텝의 텍스트 본문 사용 (우선)
         page_context = (
             "\n\n[현재 학습/화면 문맥]\n"
             "사용자는 지금 애플리케이션 화면에서 아래의 내용을 직접 읽고 있는 중입니다:\n"
@@ -177,7 +155,7 @@ async def generate_tutor_response(
             "주어를 생략하더라도 반드시 위 문맥과 연관지어 자연스럽게 답변하세요."
         )
     elif request.context_type and request.context_id:
-        # Fallback: context_text가 없는 경우 기존 DB 기반 요약 사용
+        # Fallback: context_text가 없는 경우 DB 기반 요약 사용
         try:
             if request.context_type == "briefing":
                 ctx_result = await db.execute(text(
@@ -197,7 +175,6 @@ async def generate_tutor_response(
             pass  # 컨텍스트 로드 실패해도 대화는 계속
 
     # 포트폴리오 컨텍스트 주입 (개인화된 조언용)
-    user_id = current_user["id"] if current_user else None
     if user_id:
         try:
             portfolio_result = await db.execute(text(
@@ -217,6 +194,8 @@ async def generate_tutor_response(
     # 출처 수집 (glossary, DB 사례/리포트, 주가/기업관계)
     sources = []
     extra_context = ""
+    chart_data = None
+    detected_stocks = []
     try:
         glossary_context, glossary_sources = await _collect_glossary_context(request.message, db)
         db_context, db_sources = await _collect_db_context(request.message, db)
@@ -234,16 +213,25 @@ async def generate_tutor_response(
     except Exception as e:
         logger.warning("출처 수집 실패 (무시): %s", e)
 
+    return page_context, sources, detected_stocks, chart_data, extra_context
+
+
+async def _build_llm_messages(
+    request: TutorChatRequest,
+    db: AsyncSession,
+    page_context: str,
+    extra_context: str,
+) -> list:
+    """LLM 메시지 배열 구성 — 시스템 프롬프트 + 이전 대화 + 현재 질문."""
     system_prompt = get_difficulty_prompt(request.difficulty)
     if page_context:
         system_prompt += page_context
     if extra_context:
         system_prompt += extra_context
-
     # 용어 설명은 LLM이 응답 내에서 자연스럽게 처리하도록 프롬프트에 지시
     system_prompt += "\n\n투자 용어가 나오면 괄호 안에 쉬운 설명을 덧붙여주세요. 예: PER(주가수익비율, 주가를 이익으로 나눈 값)."
-    
-    # Load previous messages for multi-turn
+
+    # 이전 대화 내역 로드 (멀티턴)
     prev_msgs = []
     if request.session_id:
         try:
@@ -262,28 +250,114 @@ async def generate_tutor_response(
                     prev_msgs.append({"role": msg.role, "content": msg.content})
         except Exception as e:
             logger.warning("Failed to load previous messages: %s", e)
-    
-    messages = [
+
+    return [
         {"role": "system", "content": system_prompt},
         *prev_msgs,
         {"role": "user", "content": request.message},
     ]
-    
+
+
+async def _save_tutor_session(
+    db: AsyncSession,
+    session_uuid_str: str,
+    user_id: Optional[int],
+    request: TutorChatRequest,
+    assistant_content: str,
+) -> None:
+    """DB 저장 — 세션 upsert + 사용자/어시스턴트 메시지 insert."""
+    try:
+        session_obj = None
+        if request.session_id:
+            existing = await db.execute(
+                select(TutorSession).where(TutorSession.session_uuid == uuid.UUID(request.session_id))
+            )
+            session_obj = existing.scalar_one_or_none()
+
+        if not session_obj:
+            session_obj = TutorSession(
+                session_uuid=uuid.UUID(session_uuid_str),
+                user_id=user_id,
+                context_type=request.context_type,
+                context_id=request.context_id,
+                title=request.message[:50],
+                message_count=0,
+            )
+            db.add(session_obj)
+            await db.flush()
+
+        db.add(TutorMessage(
+            session_id=session_obj.id,
+            role="user",
+            content=request.message,
+            message_type="text",
+        ))
+        db.add(TutorMessage(
+            session_id=session_obj.id,
+            role="assistant",
+            content=assistant_content,
+            message_type="text",
+        ))
+
+        session_obj.message_count = (session_obj.message_count or 0) + 2
+        session_obj.last_message_at = datetime.utcnow()
+        await db.commit()
+    except Exception as e:
+        logger.warning("Failed to save tutor session: %s", e)
+
+
+async def generate_tutor_response(
+    request: TutorChatRequest,
+    db: AsyncSession,
+    http_request: Request,
+    current_user: Optional[dict] = None,
+) -> AsyncGenerator[str, None]:
+    """Generate streaming response for AI tutor."""
+
+    session_id = request.session_id or str(uuid.uuid4())
+    user_id = current_user["id"] if current_user else None
+
+    yield f"event: step\ndata: {json.dumps({'type': 'thinking', 'content': '질문을 분석하고 있습니다...'})}\n\n"
+
+    # 가드레일 검사
+    try:
+        guardrail_result = await run_guardrail(request.message)
+        if not guardrail_result.is_allowed:
+            # 차단 메시지를 스트리밍으로 전송 후 즉시 종료 (DB 저장 없음)
+            yield f"event: text_delta\ndata: {json.dumps({'content': guardrail_result.block_message})}\n\n"
+            yield f"event: done\ndata: {json.dumps({'session_id': session_id, 'total_tokens': 0, 'guardrail': guardrail_result.decision})}\n\n"
+            return
+    except Exception as e:
+        logger.warning("Guardrail check failed, falling open: %s", type(e).__name__)
+
+    api_key = get_settings().OPENAI_API_KEY
+    if not api_key:
+        yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'OpenAI API key not configured'})}\n\n"
+        return
+
+    # 컨텍스트 수집
+    page_context, sources, detected_stocks, chart_data, extra_context = await _collect_context(
+        request, db, user_id
+    )
+
+    # LLM 메시지 배열 구성
+    messages = await _build_llm_messages(request, db, page_context, extra_context)
+
     try:
         client = AsyncOpenAI(api_key=api_key)
-        
+
         response = await client.chat.completions.create(
             model="gpt-4o-mini",
             messages=messages,
             max_tokens=1000,
             stream=True,
         )
-        
+
         total_tokens = 0
         full_response = ""
         stream_start = time.monotonic()
         chunk_count = 0
-        
+
         async for chunk in response:
             chunk_count += 1
 
@@ -301,55 +375,13 @@ async def generate_tutor_response(
                 content = chunk.choices[0].delta.content
                 full_response += content
                 yield f"event: text_delta\ndata: {json.dumps({'content': content})}\n\n"
-            
+
             if chunk.usage:
                 total_tokens = chunk.usage.total_tokens
-        
-        try:
-            # 기존 세션이 있으면 재사용, 없으면 생성
-            session_obj = None
-            if request.session_id:
-                existing = await db.execute(
-                    select(TutorSession).where(TutorSession.session_uuid == uuid.UUID(request.session_id))
-                )
-                session_obj = existing.scalar_one_or_none()
 
-            if not session_obj:
-                session_obj = TutorSession(
-                    session_uuid=uuid.UUID(session_id) if session_id else uuid.uuid4(),
-                    user_id=current_user["id"] if current_user else None,
-                    context_type=request.context_type,
-                    context_id=request.context_id,
-                    title=request.message[:50],
-                    message_count=0,
-                )
-                db.add(session_obj)
-                await db.flush()
+        # DB 저장
+        await _save_tutor_session(db, session_id, user_id, request, full_response)
 
-            user_msg = TutorMessage(
-                session_id=session_obj.id,
-                role="user",
-                content=request.message,
-                message_type="text",
-            )
-            db.add(user_msg)
-
-            assistant_msg = TutorMessage(
-                session_id=session_obj.id,
-                role="assistant",
-                content=full_response,
-                message_type="text",
-            )
-            db.add(assistant_msg)
-
-            # 세션 메타데이터 업데이트
-            session_obj.message_count = (session_obj.message_count or 0) + 2
-            session_obj.last_message_at = datetime.utcnow()
-
-            await db.commit()
-        except Exception as e:
-            logger.warning("Failed to save tutor session: %s", e)
-        
         # 시각화 자동 감지: should_auto_visualize() + chart_data 존재 여부로 판단
         from app.services.stock_resolver import should_auto_visualize
         should_viz = should_auto_visualize(request.message, bool(detected_stocks))
@@ -359,22 +391,21 @@ async def generate_tutor_response(
 
         if should_viz and full_response:
             try:
-                # 여기서 기존 gpt-4o-mini 호출 방식을 Anthropic SDK의 claude-sonnet-4-6 호출 방식으로 변경
                 import anthropic
                 import os
-                
+
                 viz_prompt = (
                     "다음 내용을 Plotly.js 차트 JSON으로 변환하세요.\n"
                     "반드시 아래 형식의 JSON만 반환하세요 (마크다운 코드블록 없이):\n"
                     '{"data": [트레이스 객체들], "layout": {레이아웃 옵션}}\n\n'
                     f"내용:\n{full_response[:500]}"
                 )
-                
+
                 claude_api_key = os.getenv("CLAUDE_API_KEY") or get_settings().ANTHROPIC_API_KEY
                 if claude_api_key:
                     claude_client = anthropic.AsyncAnthropic(api_key=claude_api_key)
                     viz_response = await claude_client.messages.create(
-                        model="claude-3-5-haiku-20241022", # 비용 효율적인 Haiku 모델 적용
+                        model="claude-3-5-haiku-20241022",
                         max_tokens=2000,
                         system=(
                             "당신은 Plotly.js 차트 전문가입니다. "
@@ -388,7 +419,7 @@ async def generate_tutor_response(
                     )
                     json_content = viz_response.content[0].text.strip()
                 else:
-                    # Fallback to OpenAI if Claude API key is not available
+                    # Claude API 키 없으면 OpenAI fallback
                     viz_response = await client.chat.completions.create(
                         model="gpt-4o-mini",
                         messages=[
@@ -405,7 +436,7 @@ async def generate_tutor_response(
                         max_tokens=2000,
                     )
                     json_content = viz_response.choices[0].message.content.strip()
-                    
+
                 # ```json 코드 블록 제거 (LLM이 감쌀 수 있음)
                 if json_content.startswith("```"):
                     json_content = json_content.split("```", 2)[1]
@@ -418,14 +449,14 @@ async def generate_tutor_response(
                 if "data" in chart_data and isinstance(chart_data["data"], list):
                     yield f"event: visualization\ndata: {json.dumps({'type': 'visualization', 'format': 'json', 'chartData': chart_data})}\n\n"
             except Exception as viz_err:
-                logger.warning(f"시각화 생성 실패: {viz_err}")
+                logger.warning("시각화 생성 실패: %s", viz_err)
 
         done_data = {'session_id': session_id, 'total_tokens': total_tokens}
         if sources:
             done_data['type'] = 'done'
             done_data['sources'] = sources
         yield f"event: done\ndata: {json.dumps(done_data)}\n\n"
-        
+
     except asyncio.TimeoutError:
         logger.warning("OpenAI API 호출 타임아웃")
         yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'AI 응답 시간 초과'})}\n\n"
@@ -458,5 +489,3 @@ async def tutor_chat(
             "X-Accel-Buffering": "no",
         },
     )
-
-
