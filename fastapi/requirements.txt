@@ -9,18 +9,17 @@ asyncpg==0.30.0
 sqlalchemy[asyncio]==2.0.36
 alembic==1.14.0
 redis==5.2.0
-python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
-bcrypt<4.0
+bcrypt<4.0.0
 PyJWT>=2.8.0
 slowapi>=0.1.9
 APScheduler>=3.10.0
 prometheus-fastapi-instrumentator>=0.21.0
+cachetools>=5.0.0
 
 # AI / LLM
 openai>=1.50.0,<2.0.0
 anthropic>=0.40.0
-pykrx>=1.0.0
 
 # LangChain ecosystem (for pipeline orchestration)
 langchain>=1.0.0
@@ -30,13 +29,4 @@ langsmith>=0.3.0
 mcp>=1.0.0
 
 # Database drivers
-psycopg2-binary>=2.9.0
 pgvector==0.3.6
-
-# Financial data
-finance-datareader>=0.9.0
-feedparser>=6.0.0
-
-# Test dependencies
-pytest>=8.0.0
-pytest-asyncio>=0.24.0

@@ -162,10 +162,18 @@ async def register_user(
             detail="difficulty_level은 beginner, elementary, intermediate 중 하나여야 합니다.",
         )
 
+    try:
+        hashed = _pwd_context.hash(password)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="비밀번호가 너무 깁니다 (최대 72바이트).",
+        )
+
     user = User(
         email=email,
         username=username,
-        password_hash=_pwd_context.hash(password),
+        password_hash=hashed,
         difficulty_level=normalized_level,
     )
     db.add(user)
@@ -211,7 +219,14 @@ async def register_user(
 async def login_user(db: AsyncSession, *, email: str, password: str) -> dict:
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
-    if not user or not _pwd_context.verify(password, user.password_hash):
+    try:
+        password_ok = user and _pwd_context.verify(password, user.password_hash)
+    except ValueError:
+        # bcrypt 버전 비호환 or 72바이트 초과 비밀번호 처리
+        logger.warning("bcrypt verify error for user: %s", email)
+        password_ok = False
+
+    if not password_ok:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="이메일 또는 비밀번호가 올바르지 않습니다.",
