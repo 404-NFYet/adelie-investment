@@ -153,62 +153,12 @@ async def generate_tutor_response(
     try:
         guardrail_result = await run_guardrail(request.message)
         if not guardrail_result.is_allowed:
-            # 차단 메시지를 스트리밍으로 전송
+            # 차단 메시지를 스트리밍으로 전송 후 즉시 종료 (DB 저장 없음)
             yield f"event: text_delta\ndata: {json.dumps({'content': guardrail_result.block_message})}\n\n"
-            
-            # 차단되어도 대화 흐름을 유지할 수 있도록 DB 세션/메시지 저장 처리
-            try:
-                import uuid
-                from datetime import datetime
-                from sqlalchemy import select
-                from app.models.tutor import TutorSession, TutorMessage
-                
-                session_obj = None
-                if request.session_id:
-                    existing = await db.execute(
-                        select(TutorSession).where(TutorSession.session_uuid == uuid.UUID(request.session_id))
-                    )
-                    session_obj = existing.scalar_one_or_none()
-
-                if not session_obj:
-                    user_id = current_user["id"] if current_user else None
-                    session_obj = TutorSession(
-                        session_uuid=uuid.UUID(session_id),
-                        user_id=user_id,
-                        context_type=request.context_type,
-                        context_id=request.context_id,
-                        title=request.message[:50],
-                        message_count=0,
-                    )
-                    db.add(session_obj)
-                    await db.flush()
-
-                user_msg = TutorMessage(
-                    session_id=session_obj.id,
-                    role="user",
-                    content=request.message,
-                    message_type="text",
-                )
-                db.add(user_msg)
-
-                assistant_msg = TutorMessage(
-                    session_id=session_obj.id,
-                    role="assistant",
-                    content=guardrail_result.block_message,
-                    message_type="text",
-                )
-                db.add(assistant_msg)
-
-                session_obj.message_count = (session_obj.message_count or 0) + 2
-                session_obj.last_message_at = datetime.utcnow()
-                await db.commit()
-            except Exception as e:
-                logger.warning("가드레일 차단 내역 DB 저장 실패: %s", e)
-
             yield f"event: done\ndata: {json.dumps({'session_id': session_id, 'total_tokens': 0, 'guardrail': guardrail_result.decision})}\n\n"
             return
     except Exception as e:
-        logger.warning(f"Guardrail check failed, falling open: {e}")
+        logger.warning("Guardrail check failed, falling open: %s", type(e).__name__)
         
     api_key = get_settings().OPENAI_API_KEY
     if not api_key:

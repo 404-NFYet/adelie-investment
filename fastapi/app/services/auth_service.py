@@ -30,18 +30,11 @@ _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def _get_access_exp_seconds(settings) -> int:
-    if settings.JWT_ACCESS_EXPIRATION:
-        return max(int(settings.JWT_ACCESS_EXPIRATION // 1000), 1)
-    if settings.ACCESS_TOKEN_EXPIRE_MINUTES:
-        return max(int(settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60), 60)
-    return max(int(settings.JWT_EXPIRE_MINUTES * 60), 60)
+    return settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
 
 
 def _get_refresh_exp_seconds(settings) -> int:
-    if settings.JWT_REFRESH_EXPIRATION:
-        return max(int(settings.JWT_REFRESH_EXPIRATION // 1000), 1)
-    # 7 days default
-    return 60 * 60 * 24 * 7
+    return settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400
 
 
 def _build_token(subject: str, expires_in: int, extra_claims: dict | None = None) -> str:

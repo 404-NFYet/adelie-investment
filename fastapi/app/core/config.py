@@ -24,13 +24,11 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
 
-    # JWT (반드시 .env에서 설정 필요)
-    JWT_SECRET: str = "narrative-invest-jwt-secret-change-in-production"
+    # JWT (반드시 .env에서 설정 필요 — main.py startup에서 기본값 검증)
+    JWT_SECRET: str = ""
     JWT_ALGORITHM: str = "HS256"
-    JWT_EXPIRE_MINUTES: int = 30
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(60, validation_alias="ACCESS_TOKEN_EXPIRE_MINUTES")
-    JWT_ACCESS_EXPIRATION: int = Field(0, validation_alias="JWT_ACCESS_EXPIRATION")  # ms
-    JWT_REFRESH_EXPIRATION: int = Field(0, validation_alias="JWT_REFRESH_EXPIRATION")  # ms
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(15, validation_alias="ACCESS_TOKEN_EXPIRE_MINUTES")
+    REFRESH_TOKEN_EXPIRE_DAYS: int = Field(7, validation_alias="REFRESH_TOKEN_EXPIRE_DAYS")
 
     # Registration guardrails
     REGISTRATION_BLOCKED_DOMAINS: str = (

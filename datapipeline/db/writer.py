@@ -28,7 +28,7 @@ def _get_database_url() -> Optional[str]:
     url = os.getenv("DATABASE_URL", "")
     if not url:
         return None
-    return url.replace("+asyncpg", "").replace("postgresql://", "postgresql://")
+    return url.replace("+asyncpg", "")
 
 
 async def save_briefing_to_db(
