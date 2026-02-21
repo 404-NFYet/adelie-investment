@@ -45,6 +45,36 @@ tab_general, tab_briefing, tab_usage = st.tabs(
 with tab_general:
     render_section_header("일반 피드백", "💬")
 
+    # 문의사항 전용 섹션
+    st.subheader("🙋 문의사항")
+    try:
+        contacts = _query("""
+            SELECT
+                id,
+                to_char(created_at AT TIME ZONE 'Asia/Seoul', 'MM-DD HH24:MI') AS 접수일시,
+                COALESCE(user_id::text, '비회원') AS 사용자,
+                comment AS 내용
+            FROM user_feedback
+            WHERE page = 'contact'
+            ORDER BY created_at DESC
+            LIMIT 50
+        """)
+        if contacts.empty:
+            st.info("접수된 문의사항이 없습니다.")
+        else:
+            st.metric("총 문의 수", len(contacts))
+            st.dataframe(contacts, use_container_width=True, hide_index=True)
+            st.download_button(
+                "📥 CSV 다운로드",
+                contacts.to_csv(index=False).encode('utf-8-sig'),
+                file_name=f"inquiries_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv",
+            )
+    except Exception as e:
+        st.warning(f"문의사항 조회 실패: {e}")
+
+    st.divider()
+
     # 요약 메트릭
     try:
         summary = _query("""
