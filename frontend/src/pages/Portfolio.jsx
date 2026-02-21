@@ -3,6 +3,7 @@
  */
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import { portfolioApi } from '../api';
 import { useUser } from '../contexts/UserContext';
@@ -98,6 +99,7 @@ function TradeHistory({ trades }) {
 
 /* ── 메인 컴포넌트 ── */
 export default function Portfolio() {
+  const navigate = useNavigate();
   const { user, isLoading: isUserLoading } = useUser();
   const { portfolio, isLoading, error, fetchPortfolio, refreshPortfolio } = usePortfolio();
   const [activeTab, setActiveTab] = useState('holdings');
@@ -180,6 +182,29 @@ export default function Portfolio() {
   const handleTrade = (stock, type) => {
     setStockDetail({ isOpen: false, stock: null });
     setTradeModal({ isOpen: true, stock, type });
+  };
+
+  const handleAskAgentFromStock = (stock) => {
+    if (!stock) return;
+
+    const holding = displayPortfolio?.holdings?.find((item) => item.stock_code === stock.stock_code);
+    const stockContext = {
+      mode: 'stock',
+      stock_code: stock.stock_code,
+      stock_name: stock.stock_name,
+      has_holding: Boolean(holding),
+      quantity: holding?.quantity || 0,
+      avg_buy_price: holding?.avg_buy_price || null,
+      profit_loss_pct: holding?.profit_loss_pct || null,
+    };
+
+    navigate('/agent', {
+      state: {
+        mode: 'stock',
+        stockContext,
+        initialPrompt: `${stock.stock_name} 지금 흐름을 같이 분석해줘`,
+      },
+    });
   };
 
   const handleManualRefresh = async () => {
@@ -392,6 +417,7 @@ export default function Portfolio() {
         onClose={() => setStockDetail({ isOpen: false, stock: null })}
         stock={stockDetail.stock}
         onTrade={handleTrade}
+        onAskAgent={handleAskAgentFromStock}
       />
 
       {/* 매매 모달 */}

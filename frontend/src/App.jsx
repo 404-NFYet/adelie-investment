@@ -11,8 +11,8 @@ import { TermProvider } from './contexts/TermContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { TutorModal, ErrorBoundary, ToastProvider } from './components';
 import TermBottomSheet from './components/domain/TermBottomSheet';
-import ChatFAB from './components/layout/ChatFAB';
 import BottomNav from './components/layout/BottomNav';
+import AgentDock from './components/agent/AgentDock';
 import PenguinLoading from './components/common/PenguinLoading';
 import UpdatePrompt from './components/common/UpdatePrompt';
 
@@ -32,6 +32,7 @@ const Notifications = lazy(() => import('./pages/Notifications'));
 const Portfolio = lazy(() => import('./pages/Portfolio'));
 const Profile = lazy(() => import('./pages/Profile'));
 const TutorChat = lazy(() => import('./pages/TutorChat'));
+const AgentCanvasPage = lazy(() => import('./pages/AgentCanvasPage'));
 
 function CaseRedirect() {
   const { caseId } = useParams();
@@ -76,6 +77,7 @@ function AppRoutes() {
         <Route path="/portfolio" element={<ProtectedRoute><Portfolio /></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
         <Route path="/tutor" element={<ProtectedRoute><TutorChat /></ProtectedRoute>} />
+        <Route path="/agent" element={<ProtectedRoute><AgentCanvasPage /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>
@@ -97,7 +99,7 @@ export default function App() {
                     <AppRoutes />
                     <TermBottomSheet />
                     <TutorModal />
-                    <ChatFAB />
+                    <AgentDock />
                     <BottomNav />
                   </div>
                 </ToastProvider>

@@ -14,18 +14,12 @@ const HIDDEN_PREFIXES = [
 const HIDDEN_EXACT = ['/'];
 
 const tabs = [
-  { id: 'education', label: '교육', path: '/education' },
   { id: 'home', label: '홈', path: '/home' },
-  { id: 'portfolio', label: '모의투자', path: '/portfolio' },
+  { id: 'portfolio', label: '투자', path: '/portfolio' },
+  { id: 'my', label: 'MY', path: '/profile' },
 ];
 
 const icons = {
-  education: (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M2 6l10-4 10 4-10 4L2 6z" />
-      <path d="M6 10v5c0 1.7 2.7 3 6 3s6-1.3 6-3v-5" />
-    </svg>
-  ),
   home: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
@@ -38,14 +32,20 @@ const icons = {
       <path d="M18 8h2v2" />
     </svg>
   ),
+  my: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+      <circle cx="12" cy="7" r="4" />
+    </svg>
+  ),
 };
 
 function isActivePath(tabPath, pathname) {
   if (tabPath === '/home') {
     return pathname === tabPath;
   }
-  if (tabPath === '/education') {
-    return pathname === tabPath || pathname.startsWith('/education/');
+  if (tabPath === '/portfolio') {
+    return pathname === tabPath || pathname.startsWith('/portfolio/') || pathname.startsWith('/agent');
   }
   return pathname === tabPath || pathname.startsWith(`${tabPath}/`);
 }

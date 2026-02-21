@@ -80,7 +80,7 @@ function normalizeChartData(rawChart) {
   };
 }
 
-export default function StockDetail({ isOpen, onClose, stock, onTrade }) {
+export default function StockDetail({ isOpen, onClose, stock, onTrade, onAskAgent }) {
   const [price, setPrice] = useState(null);
   const [chart, setChart] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -229,6 +229,14 @@ export default function StockDetail({ isOpen, onClose, stock, onTrade }) {
               오늘은 휴장일입니다. 거래가 제한됩니다.
             </div>
           )}
+
+          <button
+            type="button"
+            onClick={() => onAskAgent?.(stock)}
+            className="mb-3 w-full rounded-xl border border-[#ffd7c5] bg-[#fff6f2] py-3 text-sm font-semibold text-[#ff7648] transition-colors hover:bg-[#ffece3]"
+          >
+            이 종목 물어보기
+          </button>
 
           {/* 매수/매도 버튼 */}
           <div className="flex gap-3">
