@@ -13,19 +13,25 @@ function ContactSection() {
   const [message, setMessage] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(false);
 
   const handleSubmit = async () => {
     if (!message.trim()) return;
     setSubmitting(true);
+    setSubmitError(false);
     try {
-      await fetch('/api/v1/feedback', {
+      const res = await fetch('/api/v1/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ page: 'contact', rating: null, comment: message }),
       });
+      if (!res.ok) throw new Error(`서버 오류: ${res.status}`);
       setSubmitted(true);
-    } catch {}
-    setSubmitting(false);
+    } catch {
+      setSubmitError(true);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (submitted) {
@@ -61,6 +67,11 @@ function ContactSection() {
       >
         {submitting ? '전송 중...' : '보내기'}
       </button>
+      {submitError && (
+        <p className="text-xs text-red-500 mt-2 text-center">
+          전송에 실패했습니다. 잠시 후 다시 시도해 주세요.
+        </p>
+      )}
     </>
   );
 }
