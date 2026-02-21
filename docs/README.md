@@ -9,6 +9,7 @@
 | [빠른 시작](getting-started/setup.md) | 개발 환경 설정, Docker 실행, 검증 체크리스트 |
 | [도커 가이드](getting-started/docker-guide.md) | Docker Compose 명령어, 서비스별 설명, Docker Hub 워크플로우 |
 | [워크플로우](getting-started/workflow.md) | Git 브랜치 전략, 커밋 규칙, PR 프로세스 |
+| [DB 운영 가이드](getting-started/database-guide.md) | dev/prod DB 환경, Alembic 협업 규칙, 콘텐츠 동기화 |
 
 ## 아키텍처 (Architecture)
 
