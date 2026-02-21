@@ -6,7 +6,14 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
-from pykrx import stock
+try:
+    from pykrx import stock as _pykrx_stock
+    HAS_PYKRX = True
+except ImportError:
+    _pykrx_stock = None
+    HAS_PYKRX = False
+    import logging as _logging
+    _logging.getLogger(__name__).warning("pykrx 미설치 — 주가 조회 시 KIS 전용 모드로 동작")
 
 from app.services.kis_service import get_kis_service
 from app.services.redis_cache import get_redis_cache
@@ -19,12 +26,14 @@ PYKRX_TIMEOUT = 5.0   # pykrx 동기 호출 타임아웃 (초)
 
 def _fetch_price_sync(stock_code: str) -> Optional[dict]:
     """동기 pykrx 호출 (스레드풀에서 실행)."""
+    if not HAS_PYKRX:
+        return None
     today = datetime.now()
     for days_back in range(5):
         try_date = today - timedelta(days=days_back)
         try_date_str = try_date.strftime("%Y%m%d")
 
-        df = stock.get_market_ohlcv_by_date(try_date_str, try_date_str, stock_code)
+        df = _pykrx_stock.get_market_ohlcv_by_date(try_date_str, try_date_str, stock_code)
         if df.empty:
             continue
 
@@ -36,7 +45,7 @@ def _fetch_price_sync(stock_code: str) -> Optional[dict]:
         df = df.rename(columns={k: v for k, v in eng_to_kor.items() if k in df.columns})
 
         row = df.iloc[0]
-        name = stock.get_market_ticker_name(stock_code)
+        name = _pykrx_stock.get_market_ticker_name(stock_code)
 
         return {
             "stock_code": stock_code,

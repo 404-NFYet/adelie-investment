@@ -30,3 +30,6 @@ mcp>=1.0.0
 
 # Database drivers
 pgvector==0.3.6
+
+# 한국 주식 시장 데이터
+pykrx>=1.0.0
