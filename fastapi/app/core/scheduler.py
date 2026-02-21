@@ -2,8 +2,13 @@
 
 import asyncio
 import logging
+import os
 import sys
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
+
+KST = timezone(timedelta(hours=9))
+DISCORD_WEBHOOK = os.getenv("DISCORD_PIPELINE_WEBHOOK", "")
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -13,18 +18,40 @@ logger = logging.getLogger("narrative_api.scheduler")
 _scheduler: AsyncIOScheduler | None = None
 
 
+async def _notify_discord(title: str, message: str, color: int = 15158332) -> None:
+    """Discord webhook으로 임베드 알림 전송."""
+    if not DISCORD_WEBHOOK:
+        return
+    import httpx
+    payload = {
+        "embeds": [{
+            "title": title,
+            "description": message,
+            "color": color,
+        }]
+    }
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            await client.post(DISCORD_WEBHOOK, json=payload)
+    except Exception as e:
+        logger.warning("Discord 알림 전송 실패: %s", e)
+
+
 async def _is_trading_day() -> bool:
     """오늘이 한국 주식시장 영업일인지 확인."""
+    today_str = datetime.now(KST).strftime("%Y%m%d")
     try:
         from app.services.market_calendar import is_kr_market_open_today
-        return await is_kr_market_open_today()
+        result = await is_kr_market_open_today()
+        logger.info("영업일 체크: %s → %s", today_str, "영업일" if result else "휴장일")
+        return result
     except Exception as e:
         logger.warning("영업일 확인 실패 (실행 진행): %s", e)
         return True  # 실패 시 실행
 
 
 async def _run_datapipeline_subprocess() -> bool:
-    """datapipeline.run을 subprocess로 실행 (30분 타임아웃)."""
+    """datapipeline.run을 subprocess로 실행 (60분 타임아웃)."""
     # Docker: /app, 로컬: 프로젝트 루트
     cwd = Path("/app") if Path("/app/datapipeline").exists() else Path(__file__).resolve().parents[3]
     logger.info("datapipeline subprocess 시작 (cwd=%s)", cwd)
@@ -38,11 +65,11 @@ async def _run_datapipeline_subprocess() -> bool:
             cwd=str(cwd),
         )
         try:
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=1800)
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=3600)
         except asyncio.TimeoutError:
             proc.kill()
             await proc.wait()
-            logger.error("datapipeline 타임아웃 (30분)")
+            logger.error("datapipeline 타임아웃 (60분)")
             return False
 
         if proc.returncode == 0:
@@ -108,10 +135,23 @@ async def run_morning_pipeline():
 
     logger.info("=== 모닝 파이프라인 시작 ===")
     ok = await _run_datapipeline_subprocess()
+
     if ok:
         await _post_pipeline_hooks()
+        today = datetime.now(KST).strftime("%Y-%m-%d")
+        await _notify_discord(
+            f"✅ 모닝 파이프라인 완료 ({today})",
+            "오늘의 브리핑 데이터가 생성됐습니다.",
+            color=3066993,  # 초록
+        )
     else:
         logger.error("모닝 파이프라인 실패")
+        await _notify_discord(
+            "❌ 모닝 파이프라인 실패",
+            f"날짜: {datetime.now(KST).strftime('%Y-%m-%d %H:%M KST')}\n"
+            "수동 실행: `POST /api/v1/pipeline/run?force=true`",
+            color=15158332,  # 빨강
+        )
     logger.info("=== 모닝 파이프라인 완료 ===")
 
 

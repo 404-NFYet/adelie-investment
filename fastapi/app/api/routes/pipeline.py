@@ -1,5 +1,6 @@
 """Pipeline API routes."""
 
+import logging
 import sys
 import time
 import uuid
@@ -7,8 +8,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.auth import get_current_user
+
+logger = logging.getLogger("narrative_api.pipeline")
 
 # Add datapipeline to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent.parent / "datapipeline"))
@@ -117,6 +122,35 @@ async def trigger_pipeline(
         results=results,
         total_duration=total_duration,
     )
+
+
+@router.post("/run", summary="LangGraph 파이프라인 수동 실행")
+async def run_full_pipeline(
+    background_tasks: BackgroundTasks,
+    force: bool = Query(False, description="휴장일이어도 강제 실행"),
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    """
+    데이터 수집 + 내러티브 생성 전체 파이프라인을 백그라운드로 실행한다.
+    - 영업일 체크 후 실행 (force=true면 스킵)
+    - 스케줄러와 동일한 _run_datapipeline_subprocess() 호출
+    """
+    from app.core.scheduler import _run_datapipeline_subprocess, _post_pipeline_hooks
+    from app.services.market_calendar import is_kr_market_open_today
+
+    if not force:
+        is_trading = await is_kr_market_open_today()
+        if not is_trading:
+            return {"status": "skipped", "reason": "휴장일 (force=true로 강제 실행 가능)"}
+
+    async def _run():
+        ok = await _run_datapipeline_subprocess()
+        if ok:
+            await _post_pipeline_hooks()
+        logger.info("수동 파이프라인 실행 결과: %s", "성공" if ok else "실패")
+
+    background_tasks.add_task(_run)
+    return {"status": "started", "message": "파이프라인을 백그라운드에서 실행 중"}
 
 
 @router.get("/status/{job_id}")

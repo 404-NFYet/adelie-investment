@@ -8,16 +8,20 @@ pykrx의 get_nearest_business_day_in_a_week 활용:
 import asyncio
 import logging
 from datetime import datetime, timezone, timedelta
-from functools import lru_cache
+
+from cachetools import TTLCache, cached
 
 KST = timezone(timedelta(hours=9))
 
 logger = logging.getLogger(__name__)
 
+# 날짜별 1일 TTL — 365일치 유지 (공휴일 정보는 하루 단위로 캐싱)
+_business_day_cache: TTLCache = TTLCache(maxsize=365, ttl=86400)
 
-@lru_cache(maxsize=32)
+
+@cached(_business_day_cache)
 def _check_business_day(date_str: str) -> bool:
-    """pykrx로 영업일 여부를 확인한다 (동기, 캐싱).
+    """pykrx로 영업일 여부를 확인한다 (동기, TTL=1일 캐싱).
 
     Args:
         date_str: "YYYYMMDD" 형식 날짜 문자열
