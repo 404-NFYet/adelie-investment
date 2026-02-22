@@ -249,6 +249,31 @@ psql -h 10.10.10.20 -p 5432 -U narative -d narrative_invest
 | `/seed [collect\|generate\|all]` | 데이터 파이프라인 실행 (시장 데이터 수집 + 케이스 생성) |
 | `/migrate [upgrade\|current\|history\|revision\|downgrade]` | Alembic DB 마이그레이션 관리 |
 
+## Skills 활용 가이드
+
+| 작업 영역 | 사용 스킬 | 적용 시점 |
+|---------|---------|---------|
+| React 컴포넌트 작성·리뷰 | `vercel-react-best-practices` | 번들 최적화, 렌더링 개선, 데이터 페칭 패턴 |
+| Python 테스트 작성 | `python-testing-patterns` | pytest 픽스처, async 테스트, LLM 모킹 |
+| FastAPI 라우터·서비스 | `fastapi-templates` | repository 패턴, 에러 처리, 의존성 주입 |
+| LangGraph 파이프라인 | `langgraph` | 그래프 구성, checkpointer, 병렬 분기 |
+| PostgreSQL 쿼리·스키마 | `postgresql-best-practices` | 인덱스 전략, EXPLAIN ANALYZE, JSONB 패턴 |
+| Docker·배포 | `docker-expert` | 멀티스테이지 빌드, 헬스체크, 리소스 제한 |
+| E2E 테스트 | `webapp-testing` | Playwright 선택자, 스크린샷, 서버 라이프사이클 |
+| Playwright E2E 작성 | `playwright-cli` | 셀렉터 전략, 모바일 뷰포트, trace 분석 |
+| AWS Terraform 작성 | `terraform-style-guide` | 모듈 구조, 리소스 명명 규칙, state 관리 |
+| Redis 캐싱 패턴 | `redis-development` | TTL 전략, pipeline, pub/sub |
+| API 보안 리뷰 | `api-security-best-practices` | JWT 검증, rate limit, SQL injection |
+| GitHub Actions 개선 | `github-actions-templates` | ECR push, ECS deploy, 캐시 전략 |
+
+### 프로젝트별 스킬 우선 적용 규칙
+- `vercel-react-best-practices`: async-parallel, bundle-barrel-imports 우선
+  (SWR 미사용, 3개 차트 라이브러리 번들 분리 주의)
+- `python-testing-patterns`: asyncio 픽스처 + LLM provider mock 필수
+  (OpenAI, Perplexity, Claude 실제 호출 금지)
+- `langgraph`: checkpointer 없는 노드에 새 노드 추가 시 반드시 에러 라우터 추가
+- `fastapi-templates`: 신규 라우터 작성 시 repository 계층 분리 필수
+
 ## 인프라 서버 역할 (2026-02-21 기준)
 
 ### 서버별 역할
