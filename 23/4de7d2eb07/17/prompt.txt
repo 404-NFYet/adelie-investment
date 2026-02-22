@@ -1,0 +1,290 @@
+Implement the following plan:
+
+# 커밋 + LXD 싱크 + Docker 빌드 + 배포 통합 계획
+
+## Context
+
+Phase 0~8 구현 완료 (33개 수정/삭제 + 23개 신규 파일, 28개 테스트 통과).
+커밋 → Docker 이미지 빌드 → LXD 서버 싱크 → deploy-test 배포까지 전 과정을 실행한다.
+
+---
+
+## 현황 진단 결과
+
+### Git 상태
+- **현재 브랜치**: `feature/dashboard-chatbot` (upstream 없음)
+- **develop 대비**: 3 커밋 ahead + 56개 파일 변경 (미커밋)
+- **git config**: dorae222 / dhj9842@gmail.com
+- **Docker Hub**: dorae222 로그인 확인
+
+### LXD 서버 상태
+
+| 서버 | 브랜치 | 상태 | 비고 |
+|------|--------|------|------|
+| dev-yj99son | `feat/agent-canvas-v3-yj99son` | ↑0 ↓0, 컨테이너 정상 | dev/frontend 아닌 feature 브랜치 |
+| dev-j2hoon10 | `dev/chatbot` | ↑26 ↓0, 컨테이너 정상 | 로컬 머지 26건 미푸시 |
+| dev-jjjh02 | `dev/backend` | ↑26 ↓0, 컨테이너 정상 | 로컬 머지 26건 미푸시 |
+| dev-ryejinn | `dev/pipeline` | ↑26 ↓0, 컨테이너 정상 | 로컬 머지 26건 미푸시 |
+| dev-hj | `dev/infra` | ↑26 ↓0, 컨테이너 정상 | 로컬 머지 26건 미푸시 |
+
+### 서버 상태
+
+| 서버 | 상태 | 비고 |
+|------|------|------|
+| deploy-test (10.10.10.20) | develop @ `1e04722` (origin/develop `aded113` 이후 커밋), 컨테이너 정상 | fast-forward 가능 |
+| staging (10.10.10.21) | **접속 불가** (No route to host) | 배포 대상에서 제외 |
+
+### 발견된 이슈 (배포 차단)
+
+#### 이슈 1: Alembic Docker 경로 오류 (PRE-EXISTING)
+- `database/alembic/env.py`가 `_project_root / "fastapi"`를 sys.path에 추가
+- Docker 컨테이너에서 `/app/fastapi` 경로 존재하지 않음 → `ModuleNotFoundError: No module named 'app'`
+- **수정**: env.py에 Docker fallback 경로 추가
+
+#### 이슈 2: Alembic psycopg2 미설치 (PRE-EXISTING)
+- env.py가 `+asyncpg` → sync 변환하지만, 컨테이너에 `psycopg2` 미설치
+- PYTHONPATH 수정 후에도 `ModuleNotFoundError: No module named 'psycopg2'`
+- **수정**: `fastapi/requirements.txt`에 `psycopg2-binary` 추가
+
+#### 이슈 3: dev-yj99son 브랜치 불일치
+- `feat/agent-canvas-v3-yj99son`에서 작업 중 (sync-lxd는 `dev/frontend` pull)
+- **대응**: sync-lxd 시 dev-yj99son 건너뛰기 (작업 충돌 방지)
+
+#### 이슈 4: staging 서버 다운
+- SSH 연결 불가 → staging 배포 제외
+- **대응**: deploy-test만 배포, staging은 서버 복구 후 별도 처리
+
+---
+
+## 사전 수정 (커밋 전 코드 패치)
+
+### 패치 1: `database/alembic/env.py` — Docker 호환 경로
+```python
+# 기존 (line 12-14):
+# Add the fastapi directory to Python path
+_project_root = Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(_project_root / "fastapi"))
+
+# 수정:
+_project_root = Path(__file__).resolve().parent.parent.parent
+_fastapi_dir = _project_root / "fastapi"
+if _fastapi_dir.exists():
+    sys.path.insert(0, str(_fastapi_dir))        # 로컬: /project/fastapi
+else:
+    sys.path.insert(0, str(_project_root))        # Docker: /app (app/ 모듈 직접 접근)
+```
+
+### 패치 2: `fastapi/requirements.txt` — psycopg2-binary 추가
+```
+# 기존 asyncpg==0.30.0 다음 줄에 추가:
+psycopg2-binary>=2.9.0
+```
+
+---
+
+## 실행 계획
+
+### Step 1: 사전 패치 적용
+1. `database/alembic/env.py` 수정 (Docker 경로 호환)
+2. `fastapi/requirements.txt`에 `psycopg2-binary>=2.9.0` 추가
+
+### Step 2: 5개 논리 커밋 생성
+
+**Commit 1** (dorae222 / dhj9842@gmail.com)
+```
+chore: Phase 0 코드 정리 및 파이프라인 설정 업데이트
+```
+파일:
+- D `fastapi/app/api/routes/briefing.py`
+- D `frontend/src/pages/Matching.jsx`
+- D `frontend/src/pages/Onboarding.jsx`
+- M `datapipeline/config.py`, `graph.py`, `requirements.txt`, `run.py`
+- M `fastapi/Dockerfile`, `fastapi/app/api/routes/cases.py`, `fastapi/requirements-dev.txt`
+- M `database/alembic/env.py` ← 패치 1
+- N `fastapi/app/core/exceptions.py`
+- N `fastapi/app/repositories/` (전체)
+
+**Commit 2** (jjjh02 / jinnyshur0104@gmail.com)
+```
+feat: 피드백 설문 및 콘텐츠 반응 백엔드 구축
+```
+파일:
+- M `fastapi/app/api/routes/feedback.py`
+- M `fastapi/app/main.py`
+- M `fastapi/app/schemas/__init__.py`
+- M `fastapi/requirements.txt` ← 패치 2 포함
+- N `fastapi/app/schemas/feedback.py`
+- N `database/alembic/versions/20260223_content_reactions.py`
+- N `database/alembic/versions/20260223_feedback_surveys.py`
+
+**Commit 3** (YJ99Son / syjin2008@naver.com)
+```
+feat: 피드백 설문 페이지 및 반응 컴포넌트 구현
+```
+파일: (20개)
+- N `FeedbackSurvey.jsx`, `ReactionButtons.jsx`, `UpdateNotice.jsx`, `BriefingFeedback.jsx`, `feedback.js`, `useFeedbackTrigger.js`
+- M `App.jsx`, `FeedbackWidget.jsx`, `InstallPrompt.jsx`, `Education.jsx`, `Home.jsx`, `Narrative.jsx`, `Portfolio.jsx`, `Profile.jsx`, `pages/index.js`, `api/index.js`, `index.html`, `package.json`, `package-lock.json`, `vite.config.js`
+
+**Commit 4** (dorae222 / dhj9842@gmail.com)
+```
+feat: 사용 로그 트래킹 및 대시보드 피드백 통계
+```
+파일:
+- M `frontend/src/utils/analytics.js`
+- M `frontend/src/components/tutor/MessageBubble.jsx`
+- M `infra/docker-dashboard/pages/feedback.py`
+- N `infra/docker-dashboard/pages/feedback_tracker.py`
+
+**Commit 5** (ryejinn / arj1018@ewhain.net)
+```
+test: 피드백 시스템 테스트 체계 구축
+```
+파일:
+- M `pytest.ini`, `tests/conftest.py`
+- N `tests/schemas/__init__.py`, `tests/schemas/test_feedback_schemas.py`
+- N `tests/api/__init__.py`, `tests/api/test_api_feedback.py`
+- N `frontend/e2e/feedback.spec.js`, `frontend/e2e/feedback-survey.spec.js`
+
+### Step 3: develop 머지 + push + prod 싱크
+```bash
+git checkout develop
+git merge feature/dashboard-chatbot --no-edit   # fast-forward
+git push origin develop
+
+# prod 브랜치도 develop으로 싱크 (5 commits behind)
+git checkout prod
+git merge develop --no-edit
+git push origin prod
+git checkout develop
+
+# feature 브랜치 remote 업데이트
+git push origin feature/dashboard-chatbot
+```
+
+### Step 4: Docker 이미지 빌드 + push
+```bash
+make build                          # 3개 이미지: frontend, backend-api, ai-pipeline
+make -f lxd/Makefile push           # Docker Hub push (dorae222/adelie-*)
+```
+
+### Step 5: deploy-test 배포 (10.10.10.20)
+```bash
+ssh deploy-test 'cd ~/adelie-investment && git pull origin develop && \
+  docker compose -f docker-compose.prod.yml pull && \
+  docker compose -f docker-compose.prod.yml up -d --remove-orphans && \
+  docker exec adelie-frontend nginx -s reload 2>/dev/null || true'
+```
+
+### Step 6: DB 마이그레이션 (deploy-test)
+```bash
+# 새 이미지에 psycopg2-binary + env.py 수정 포함
+ssh deploy-test 'docker exec adelie-backend-api sh -c \
+  "cd /app/database && alembic upgrade head"'
+```
+- 현재: `20260218_unique_portfolio`
+- 목표: `20260223_feedback_surveys` (content_reactions → feedback_surveys 순차 적용)
+
+### Step 7: 대시보드 재배포 (별도 compose)
+```bash
+ssh deploy-test 'cd ~/adelie-investment/infra/monitoring && \
+  docker compose up -d --build dashboard && \
+  docker compose up -d nginx'
+```
+
+### Step 8: dev/* 브랜치 싱크
+```bash
+make -f lxd/Makefile sync-dev-branches    # develop → dev/* 5개 브랜치 머지+push
+```
+
+### Step 9: LXD 5대 서버 전체 싱크
+
+**dev-yj99son** (feature 브랜치 유지 + develop 머지):
+```bash
+lxc exec dev-yj99son -- bash -c "cd /home/ubuntu/adelie-investment && \
+  git fetch origin && \
+  git merge origin/develop --no-edit && \
+  docker compose -f docker-compose.dev.yml build frontend 2>&1 | tail -3 && \
+  docker compose -f docker-compose.dev.yml up -d"
+```
+> 현재 `feat/agent-canvas-v3-yj99son`에서 작업 중이므로, 브랜치를 바꾸지 않고 최신 develop을 머지하여 최신 코드 반영.
+
+**나머지 4대** (dev/* 브랜치 리셋):
+```bash
+for srv_branch in "dev-j2hoon10:dev/chatbot" "dev-jjjh02:dev/backend" \
+                  "dev-ryejinn:dev/pipeline" "dev-hj:dev/infra"; do
+  srv="${srv_branch%%:*}"; branch="${srv_branch##*:}"
+  lxc exec $srv -- bash -c "cd /home/ubuntu/adelie-investment && \
+    git fetch origin && git reset --hard origin/$branch && \
+    docker compose -f docker-compose.dev.yml pull 2>/dev/null; \
+    docker compose -f docker-compose.dev.yml up -d" && echo "  OK: $srv" || echo "  FAIL: $srv"
+done
+```
+> `git reset --hard` 사용 이유: 각 컨테이너에 26건의 로컬 머지 커밋이 있고, sync-dev-branches로 원격 dev/*가 최신 develop으로 업데이트되었으므로 원격 기준으로 리셋이 안전.
+
+### Step 10: staging 시도 (실패 시 스킵)
+```bash
+ssh -o ConnectTimeout=10 staging 'cd ~/adelie-investment && git pull origin develop && \
+  docker compose -f docker-compose.staging.yml pull && \
+  docker compose -f docker-compose.staging.yml up -d --remove-orphans' 2>&1 || \
+  echo "WARN: staging 서버 접속 불가 — 서버 복구 후 별도 배포 필요"
+```
+
+### Step 11: 전체 검증
+```bash
+# 1) deploy-test 헬스체크
+curl -sf https://demo.adelie-invest.com/api/v1/health && echo "API OK"
+curl -sf -o /dev/null https://demo.adelie-invest.com/ && echo "Frontend OK"
+
+# 2) 피드백 API 동작 확인 (404가 아닌지)
+curl -s -o /dev/null -w "%{http_code}" \
+  https://demo.adelie-invest.com/api/v1/feedback/stats && echo " Feedback Stats"
+
+# 3) 신규 테이블 존재 확인
+ssh deploy-test 'docker exec adelie-postgres psql -U narative -d narrative_invest \
+  -c "SELECT tablename FROM pg_tables WHERE tablename IN ('"'"'content_reactions'"'"','"'"'feedback_surveys'"'"');"'
+
+# 4) 대시보드 헬스체크
+curl -sf -o /dev/null https://dashboard.adelie-invest.com/ && echo "Dashboard OK"
+
+# 5) LXD 5대 전체 헬스체크
+make -f lxd/Makefile health-lxd
+
+# 6) Alembic 버전 확인
+ssh deploy-test 'docker exec adelie-backend-api sh -c "cd /app/database && alembic current"'
+
+# 7) Git 브랜치 동기화 확인
+git log --oneline -1 origin/develop
+git log --oneline -1 origin/prod
+for b in dev/frontend dev/backend dev/chatbot dev/pipeline dev/infra; do
+  echo "$b: $(git log --oneline -1 origin/$b)"
+done
+```
+
+---
+
+## 주요 파일 경로
+
+| 구분 | 경로 |
+|------|------|
+| Alembic env.py (수정) | `database/alembic/env.py` |
+| FastAPI requirements (수정) | `fastapi/requirements.txt` |
+| lxd Makefile | `lxd/Makefile` |
+| prod compose | `docker-compose.prod.yml` |
+| monitoring compose | `infra/monitoring/docker-compose.yml` |
+
+## 비고
+
+- **staging**: 서버 다운 (No route to host) — Step 10에서 시도 후 실패 시 스킵
+- **Phase 4 대시보드 코어**: deploy.py/api_tester.py/Dockerfile HEALTHCHECK (미구현, 별도 이슈)
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+내 말은 영진님의 내용을 develop 및 배포 브랜치에 반영하여야 한다는 것이고, 이에 따라 업데이트들을 진행하고 배포 반영까지 해야 한다는 것이다.
+통합을 해야 한다. 그리고 staging 서버는 필요없지 않나? 필요없다면 제거하고 참조 문서들을 업데이트해라.
+
+---
+
+[Request interrupted by user for tool use]

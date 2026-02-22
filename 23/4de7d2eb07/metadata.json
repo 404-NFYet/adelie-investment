@@ -2,8 +2,8 @@
   "cli_version": "0.4.2",
   "checkpoint_id": "234de7d2eb07",
   "strategy": "manual-commit",
-  "branch": "feature/dashboard-chatbot",
-  "checkpoints_count": 13,
+  "branch": "develop",
+  "checkpoints_count": 14,
   "files_touched": [
     ".dockerignore",
     ".env.example",
@@ -13,6 +13,7 @@
     "Makefile",
     "README.md",
     "changes/dorae222.md",
+    "database/alembic/env.py",
     "database/alembic/versions/20260223_devassistant_tables.py",
     "database/alembic/versions/20260223_feedback_surveys.py",
     "database/scripts/sync_dev_data.sh",
@@ -271,13 +272,20 @@
       "context": "/23/4de7d2eb07/16/context.md",
       "content_hash": "/23/4de7d2eb07/16/content_hash.txt",
       "prompt": "/23/4de7d2eb07/16/prompt.txt"
+    },
+    {
+      "metadata": "/23/4de7d2eb07/17/metadata.json",
+      "transcript": "/23/4de7d2eb07/17/full.jsonl",
+      "context": "/23/4de7d2eb07/17/context.md",
+      "content_hash": "/23/4de7d2eb07/17/content_hash.txt",
+      "prompt": "/23/4de7d2eb07/17/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 12054,
-    "cache_creation_tokens": 2442273,
-    "cache_read_tokens": 79733091,
-    "output_tokens": 382639,
-    "api_call_count": 1014
+    "input_tokens": 12138,
+    "cache_creation_tokens": 2529526,
+    "cache_read_tokens": 84285375,
+    "output_tokens": 392544,
+    "api_call_count": 1092
   }
 }
