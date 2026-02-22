@@ -21,7 +21,7 @@ function OptionCard({ option, optionIndex, isSelected, onSelect }) {
     <button
       type="button"
       onClick={() => onSelect(optionIndex)}
-      className={`flex w-full items-center rounded-2xl p-4 text-left transition active:scale-[0.98] ${
+      className={`flex w-full items-center rounded-2xl p-3 text-left transition active:scale-[0.98] ${
         isSelected
           ? 'bg-[#fff4ed] ring-1 ring-inset ring-primary'
           : 'bg-gray-50 hover:bg-gray-100'
@@ -110,7 +110,7 @@ export default function DailyQuizModal({
 
   return (
     <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/40 px-4 pb-0 pt-10 sm:items-center sm:pb-8">
-      <section className="w-full max-w-mobile rounded-t-[30px] bg-[#f9fafb] px-4 pb-6 pt-5 shadow-2xl sm:rounded-[30px] sm:px-5 sm:pt-6">
+      <section className="w-full max-w-mobile rounded-t-[30px] bg-[#f9fafb] px-4 pb-6 pt-5 shadow-2xl sm:rounded-[30px] sm:px-5 sm:pt-6 max-h-[80dvh] overflow-y-auto">
         <div className="mb-4 flex items-center justify-between">
           <div>
             <span className="inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary">오늘의 미션</span>
@@ -127,10 +127,10 @@ export default function DailyQuizModal({
         </div>
 
         {!result ? (
-          <div className="space-y-4">
+          <div className="space-y-3">
             <ProgressBar current={Math.min(step + 1, questions.length)} total={questions.length} />
 
-            <article className="mb-6 mt-2 px-1">
+            <article className="mb-3 mt-1 px-1">
               <div className="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 px-2 py-1 text-[11px] font-bold text-gray-500">
                 <span>🤔</span>
                 {currentQuestion?.title || '오늘의 퀴즈'}
@@ -152,7 +152,7 @@ export default function DailyQuizModal({
               ))}
             </div>
 
-            <div className="mt-6 flex items-center justify-between gap-3">
+            <div className="sticky bottom-0 mt-4 flex items-center justify-between gap-3 bg-[#f9fafb] pt-2">
               <button
                 type="button"
                 onClick={() => setStep((prev) => Math.max(prev - 1, 0))}
