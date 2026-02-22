@@ -18,7 +18,9 @@ from utils.docker_cmd import (
 
 
 def inject_custom_css():
-    """화이트 모드 호환 커스텀 CSS 주입"""
+    """화이트 모드 호환 커스텀 CSS 주입 (세션당 1회)"""
+    if st.session_state.get("_css_injected"):
+        return
     st.markdown("""
     <style>
     /* ── 카드 공통 ─────────────────────────── */
@@ -223,6 +225,7 @@ def inject_custom_css():
     }
     </style>
     """, unsafe_allow_html=True)
+    st.session_state["_css_injected"] = True
 
 
 def render_metric_card(title: str, value: str, delta: str | None = None, icon: str | None = None):
@@ -339,7 +342,7 @@ def render_gauge_chart(label: str, value: float, max_val: float = 100):
 # ── 기존 공통 UI 컴포넌트 (하위 호환 유지) ─────────────────────
 
 
-def render_server_status(host: str, key_prefix: str) -> bool:
+def render_server_status(host: str, key_prefix: str, server_name: str = "") -> bool:
     """서버 온라인/오프라인 상태 표시. Returns True if online."""
     col1, col2 = st.columns([3, 1])
     with col1:
@@ -347,8 +350,8 @@ def render_server_status(host: str, key_prefix: str) -> bool:
         if online:
             st.markdown(render_status_badge("Online"), unsafe_allow_html=True)
         else:
-            st.markdown(render_status_badge("Offline"), unsafe_allow_html=True)
-            st.caption("SSH 연결 불가")
+            label = server_name or host
+            st.info(f"🔌 {label} 오프라인 — SSH 연결 불가")
     with col2:
         if st.button("새로고침", use_container_width=True, key=f"{key_prefix}_refresh"):
             st.rerun()

@@ -8,6 +8,14 @@ from sqlalchemy import create_engine, text
 
 from config import DB_CONFIG
 
+# 캐시 TTL 상수 (초 단위)
+CACHE_TTL = {
+    "meta":     300,   # 테이블 목록, 스키마
+    "metrics":   60,   # 비즈니스 메트릭
+    "health":    30,   # 서버 헬스 상태
+    "pipeline": 120,   # 파이프라인 이력
+}
+
 # 위험한 SQL 키워드 차단
 _DANGEROUS_PATTERN = re.compile(
     r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|GRANT|REVOKE)\b",
@@ -38,7 +46,7 @@ def execute_query(sql: str, params: dict | None = None) -> pd.DataFrame:
         return pd.read_sql_query(text(sql), conn, params=params)
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=CACHE_TTL["meta"])
 def get_tables() -> pd.DataFrame:
     """전체 테이블 목록 + 행 수 (5분 캐시)"""
     sql = """

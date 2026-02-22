@@ -229,9 +229,17 @@ def render_team_page(name: str, server_info: dict):
     st.title(f"🖥️ {name}")
     st.caption(f"{server_info['ssh_alias']} ({host})")
 
-    # 서버 상태 (오프라인이면 나머지 비표시)
-    online = render_server_status(host, key_prefix)
+    # 서버 상태 (오프라인이면 안내 카드만 표시)
+    online = render_server_status(host, key_prefix, server_name=name)
     if not online:
+        st.markdown(f"""
+        <div class="metric-card" style="text-align:center; padding:24px; border-left:4px solid #DC3545;">
+            <div style="font-size:40px; margin-bottom:8px;">🔌</div>
+            <div style="font-size:18px; font-weight:700; color:#721C24;">{name} 서버 오프라인</div>
+            <div style="font-size:13px; color:#6C757D; margin-top:6px;">{host} — SSH 연결 불가</div>
+            <div style="font-size:12px; color:#ADB5BD; margin-top:4px;">우측 새로고침 버튼으로 재시도하세요</div>
+        </div>
+        """, unsafe_allow_html=True)
         return
 
     # 서버 정보 수집 (1회 SSH)
