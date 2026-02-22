@@ -23,6 +23,9 @@ KST = timezone(timedelta(hours=9))
 def kst_today():
     return datetime.now(KST).date()
 
+# ── Redis ──
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
 # ── API Keys ──
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY", "")

@@ -1,17 +1,31 @@
 # ============================================================
-# Adelie Investment - FastAPI Backend
+# Adelie Investment - FastAPI Backend (멀티스테이지 빌드)
 # ============================================================
-FROM python:3.11-slim
-WORKDIR /app
 
-# 시스템 의존성 설치
+# ── Builder: 컴파일 도구 포함, Python 패키지 설치 ──
+FROM python:3.11-slim AS builder
+
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends gcc libpq-dev curl && \
+    apt-get install -y --no-install-recommends gcc libpq-dev && \
     rm -rf /var/lib/apt/lists/*
 
-# Python 의존성 설치 (캐시 최적화)
-COPY fastapi/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY fastapi/requirements.txt /tmp/requirements.txt
+RUN pip install --user --no-cache-dir -r /tmp/requirements.txt
+
+
+# ── Runtime: 빌드 도구 제외, 최소 런타임만 포함 ──
+FROM python:3.11-slim
+
+# 런타임 시스템 의존성만 설치 (libpq5: PostgreSQL 클라이언트 라이브러리)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends libpq5 curl && \
+    rm -rf /var/lib/apt/lists/*
+
+# builder에서 설치된 Python 패키지 복사
+COPY --from=builder /root/.local /root/.local
+ENV PATH=/root/.local/bin:$PATH
+
+WORKDIR /app
 
 # 소스 복사
 COPY fastapi/ ./
@@ -19,6 +33,7 @@ COPY shared/ ./shared/
 COPY chatbot/ ./chatbot/
 COPY datapipeline/ ./datapipeline/
 COPY database/ ./database/
+
 # 기존 경로 호환 심링크 (scheduler, pipeline route)
 RUN ln -sf /app/datapipeline/scripts /app/scripts && \
     ln -sf /app/datapipeline/collectors /app/collectors

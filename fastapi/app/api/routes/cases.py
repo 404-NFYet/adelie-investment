@@ -1,5 +1,6 @@
 """Historical cases API routes."""
 
+import json
 import sys
 from pathlib import Path
 from typing import Optional
@@ -10,6 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from openai import OpenAI
 
 from app.core.config import get_settings
+from app.services.redis_cache import get_redis_cache
+
+# 캐시 TTL
+CASE_STORY_TTL = 60 * 60       # 1시간
+CASE_COMPARISON_TTL = 60 * 60  # 1시간
 
 # chatbot 모듈 경로 추가
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent.parent / "chatbot"))
@@ -131,15 +137,26 @@ async def get_story(
 ) -> StoryResponse:
     """
     Get storytelling content for a historical case.
-    
+
     The content is adjusted based on the difficulty level.
     """
+    # Redis 캐시 확인
+    cache_key = f"cases:story:{case_id}:{difficulty}"
+    cache = await get_redis_cache()
+    if cache.client:
+        try:
+            cached = await cache.client.get(cache_key)
+            if cached:
+                return StoryResponse(**json.loads(cached))
+        except Exception:
+            pass
+
     # Get case from database
     result = await db.execute(
         select(HistoricalCase).where(HistoricalCase.id == case_id)
     )
     case = result.scalar_one_or_none()
-    
+
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
     
@@ -158,7 +175,7 @@ async def get_story(
     word_count = len(content.split())
     reading_time = max(1, word_count // 200)
     
-    return StoryResponse(
+    response = StoryResponse(
         case_id=case.id,
         title=case.title,
         difficulty=difficulty,
@@ -167,6 +184,19 @@ async def get_story(
         reading_time_minutes=reading_time,
         thinking_point=thinking_point,
     )
+
+    # 결과 캐싱
+    if cache.client:
+        try:
+            await cache.client.setex(
+                cache_key,
+                CASE_STORY_TTL,
+                json.dumps(response.model_dump(), ensure_ascii=False),
+            )
+        except Exception:
+            pass
+
+    return response
 
 
 @router.get("/comparison/{case_id}", response_model=ComparisonResponse)

@@ -27,7 +27,7 @@ import logging
 from typing import Annotated, Any, Optional, TypedDict
 
 from langgraph.graph import END, START, StateGraph
-from .config import SECTION_MAP
+from .config import SECTION_MAP, REDIS_URL
 
 from .nodes.crawlers import crawl_news_node, crawl_research_node
 from .nodes.curation import (
@@ -251,6 +251,18 @@ def check_error(state: BriefingPipelineState) -> str:
 
 # ── 그래프 빌더 ──
 
+def _build_checkpointer():
+    """Redis 체크포인터 초기화. Redis 미연결 시 None 반환 (체크포인팅 비활성화)."""
+    try:
+        from langgraph.checkpoint.redis.aio import AsyncRedisSaver
+        checkpointer = AsyncRedisSaver.from_conn_string(REDIS_URL)
+        logger.info("LangGraph Redis 체크포인터 활성화: %s", REDIS_URL)
+        return checkpointer
+    except Exception as e:
+        logger.warning("LangGraph 체크포인터 비활성화 (Redis 미연결): %s", e)
+        return None
+
+
 def build_graph() -> Any:
     """브리핑 파이프라인 LangGraph 컴파일."""
     graph = StateGraph(BriefingPipelineState)
@@ -351,4 +363,5 @@ def build_graph() -> Any:
     graph.add_edge("assemble_output", "save_to_db")
     graph.add_edge("save_to_db", END)
 
-    return graph.compile()
+    checkpointer = _build_checkpointer()
+    return graph.compile(checkpointer=checkpointer)
