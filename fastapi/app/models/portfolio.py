@@ -47,6 +47,31 @@ class PortfolioHolding(Base):
     stock_name: Mapped[str] = mapped_column(String(100), nullable=False)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     avg_buy_price: Mapped[float] = mapped_column(Numeric(15, 2), nullable=False, comment="평균 매입가")
+    position_side: Mapped[str] = mapped_column(
+        String(10),
+        nullable=False,
+        default="long",
+        server_default="long",
+        comment="long | short",
+    )
+    leverage: Mapped[float] = mapped_column(
+        Numeric(6, 2),
+        nullable=False,
+        default=1.0,
+        server_default="1.0",
+        comment="레버리지 배수",
+    )
+    borrow_rate_bps: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+        comment="공매도 차입수수료 (bps/일)",
+    )
+    last_funding_at: Mapped[Optional[datetime]] = mapped_column(
+        nullable=True,
+        comment="차입수수료 마지막 정산 시각",
+    )
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -70,7 +95,46 @@ class SimulationTrade(Base):
     stock_code: Mapped[str] = mapped_column(String(10), nullable=False)
     stock_name: Mapped[str] = mapped_column(String(100), nullable=False)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    filled_quantity: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+        comment="실제 체결 수량",
+    )
     price: Mapped[float] = mapped_column(Numeric(15, 2), nullable=False)
+    requested_price: Mapped[Optional[float]] = mapped_column(Numeric(15, 2), nullable=True, comment="요청 가격")
+    executed_price: Mapped[Optional[float]] = mapped_column(Numeric(15, 2), nullable=True, comment="실제 체결 가격")
+    slippage_bps: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True, comment="슬리피지 (bps)")
+    fee_amount: Mapped[Optional[float]] = mapped_column(Numeric(15, 2), nullable=True, comment="수수료")
+    order_kind: Mapped[str] = mapped_column(
+        String(10),
+        nullable=False,
+        default="market",
+        server_default="market",
+        comment="market | limit",
+    )
+    order_status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="filled",
+        server_default="filled",
+        comment="pending | partial | filled | cancelled",
+    )
+    position_side: Mapped[str] = mapped_column(
+        String(10),
+        nullable=False,
+        default="long",
+        server_default="long",
+        comment="long | short",
+    )
+    leverage: Mapped[float] = mapped_column(
+        Numeric(6, 2),
+        nullable=False,
+        default=1.0,
+        server_default="1.0",
+        comment="레버리지 배수",
+    )
     total_amount: Mapped[float] = mapped_column(Numeric(15, 2), nullable=False)
     trade_reason: Mapped[Optional[str]] = mapped_column(Text, comment="거래 사유 (학습 기록)")
     traded_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
