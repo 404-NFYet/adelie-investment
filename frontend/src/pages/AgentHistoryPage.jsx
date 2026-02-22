@@ -75,10 +75,10 @@ export default function AgentHistoryPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f9fafb] pb-[calc(var(--bottom-nav-h,68px)+var(--agent-dock-h,104px)+16px)]">
+    <div className="min-h-screen bg-[#f9fafb] pb-[calc(var(--bottom-nav-h,68px)+var(--agent-dock-h,88px)+16px)]">
       <header className="sticky top-0 z-10 border-b border-[#f3f4f6] bg-white/95 backdrop-blur">
         <div className="container py-3.5">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center justify-between gap-2">
             <button
               type="button"
               onClick={handleBack}
@@ -90,7 +90,7 @@ export default function AgentHistoryPage() {
               </svg>
             </button>
 
-            <h1 className="text-[17px] font-bold tracking-[-0.01em] text-[#101828]">대화 기록</h1>
+            <h1 className="truncate flex-1 text-center text-[17px] font-bold tracking-[-0.01em] text-[#101828]">대화 기록</h1>
 
             <button
               type="button"
@@ -109,7 +109,7 @@ export default function AgentHistoryPage() {
             저장된 대화가 없습니다.
           </div>
         ) : (
-          <div className="space-y-2.5">
+          <div className="space-y-2">
             {safeSessions.map((session) => {
               const isOpening = openingSessionId === session.id;
               const isDeleting = deletingSessionId === session.id;

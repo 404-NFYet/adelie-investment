@@ -137,21 +137,66 @@ Prometheus의 데이터 보존 기간은 30일로 설정하고, Grafana 설정�
 
 ---
 
+---
+
+## Phase 5: 인프라 운영 자동화 + AWS 전환 준비 (2026-02-17 ~ 02-22)
+
+### Situation
+
+Phase 4까지 구축된 인프라가 안정적으로 운영되기 시작했으나, LXD 개발 환경에서 반복적인 수동 작업이 필요한 문제가 발생하였다. JWT_SECRET 기본값 미설정으로 일부 LXD 서버의 backend-api 컨테이너가 UNHEALTHY 상태가 되었고, frontend dev 이미지가 Docker Hub에 존재하지 않아 5대 서버에서 pull 실패가 반복되었다. 동시에, AWS 이전을 위한 Terraform IaC가 LocalStack 방식에서 실제 AWS 배포 방식으로 전환이 필요했으며, staging 환경 서버(10.10.10.21)가 신규 추가되면서 Makefile과 SSH 설정 등 인프라 관리 도구의 업데이트가 요구되었다.
+
+### Task
+
+- LXD 개발 서버 JWT_SECRET 자동 수정 + frontend dev 이미지 로컬 빌드 자동화
+- lxd/Makefile에 개발환경 헬스체크 및 자동 복구 타겟 추가
+- AWS 이전용 Terraform IaC 재구성 (LocalStack → 실제 AWS 모듈 구조)
+- staging 서버(10.10.10.21) SSH 설정 및 배포 파이프라인 연동
+- Alertmanager 기반 모니터링 경보 체계 구축
+- 원격 브랜치 정리 및 prod 브랜치 develop 동기화
+
+### Action
+
+**LXD 개발환경 자동화를 강화하였다.** `lxd/Makefile`에 `health-lxd` 타겟을 추가하여 5대 서버의 git 브랜치 현황과 Docker 컨테이너 상태를 한 명령으로 조회할 수 있도록 하였다. `fix-lxd-jwt` 타겟을 추가하여 `.env`의 JWT_SECRET이 기본값인 서버를 자동 감지하고 `openssl rand -hex 32`로 갱신한 뒤 backend-api를 재시작하는 자동 복구 흐름을 구현하였다. `sync-lxd` 타겟을 강화하여 `git pull` 이후 frontend dev 이미지 로컬 빌드(`docker compose build frontend`) 및 `up -d`까지 포함하는 원스텝 동기화가 가능하게 하였다.
+
+**AWS Terraform IaC를 실제 배포 구조로 재구성하였다.** LocalStack 기반 에뮬레이션 환경(`environments/localstack/`)에서 실제 AWS staging/prod 환경(`environments/staging/`, `environments/prod/`)으로 Terraform 모듈 구조를 전환하였다. 신규 모듈 5종(network, compute, database, storage, cdn)을 작성하고 기존 8종(vpc, bastion, ecr, ecs, rds, elasticache, s3, secrets)을 대체하였다. 루트 수준 `variables.tf`(103라인)와 `outputs.tf`(36라인)로 환경별 설정을 통합 관리할 수 있도록 리팩토링하였다. GitHub Actions `deploy-aws.yml`(150라인)을 신규 작성하여 ECR 이미지 빌드/푸시 → ECS 롤링 배포 워크플로우를 구성하였다(수동 트리거, Phase 5 AWS 전환 전 대기 상태).
+
+**staging 서버 인프라를 추가하였다.** `docker-compose.staging.yml`(90라인)을 신규 작성하여 staging(10.10.10.21) 전용 Compose 설정을 분리하고, `lxd/Makefile`에 `deploy-staging` 타겟을 추가하였다. SSH 설정(`~/.ssh/config`)에 staging 호스트를 등록하여 `ssh staging` 단명령으로 접속 가능하게 하였다. 초기 설치 절차(git clone, .env 복사, compose pull, alembic migrate)를 CLAUDE.md에 문서화하였다.
+
+**Alertmanager 기반 경보 체계를 구축하였다.** `infra/monitoring/alertmanager.yml`과 `infra/monitoring/rules/adelie-alerts.yml`을 신규 작성하고, `prometheus.yml`에 staging 서버와 alertmanager 스크레이핑 설정을 추가하였다. `docker-compose.yml`에 alertmanager 서비스를 추가하여 Prometheus 임계값 초과 시 Discord 채널로 자동 알림이 발송되도록 하였다.
+
+**불필요한 원격 브랜치 7개를 정리하였다.** 개발이 완료되어 develop에 모두 포함된 `chore/pipeline-sync-*` 3개, `chore/sync-*` 2개, `dev/frontend-ui-v1`, `feature/infra-aws-localstack`을 삭제하였다. `hotfix/pipeline`(0 ahead)도 삭제하고, `hotfix/chatbot`의 챗봇 가드레일/추천 질문 기능은 PR #29로 develop 반영을 요청하였다. `prod` 브랜치를 develop 최신(1e04722)으로 fast-forward 동기화하였다.
+
+**데이터 파이프라인 운영 편의성을 향상하였다.** `POST /api/v1/pipeline/run` 엔드포인트를 추가하여 영업일 체크를 포함한 전체 파이프라인 수동 트리거 및 force 모드(휴장일 실행)를 API로 지원하였다. `scheduler.py`에 Discord 알림, 타임아웃 60분, 영업일 체크 로그를 강화하였다. `market_calendar.py`의 `@lru_cache`를 `cachetools.TTLCache(maxsize=365, ttl=86400)`로 교체하여 불필요한 반복 API 호출을 방지하였다.
+
+### Result
+
+- `health-lxd` / `fix-lxd-jwt` 타겟 추가: LXD 5대 서버 헬스체크 + JWT 자동 복구 원스텝 실행
+- `sync-lxd` 강화: git pull → frontend 빌드 → up -d 일관된 원스텝 동기화
+- AWS Terraform 재구성: LocalStack 모듈 8종 → 실 AWS 모듈 5종 (network/compute/database/storage/cdn) + staging/prod 환경 분리
+- GitHub Actions `deploy-aws.yml` 신규 (ECR→ECS 롤링 배포 자동화 준비)
+- staging 서버(10.10.10.21) 추가: `docker-compose.staging.yml` + `deploy-staging` Makefile 타겟
+- Alertmanager 경보 체계: Prometheus 규칙 + Discord 알림 연동
+- 원격 브랜치 7개 삭제 (26개 → 19개), prod 브랜치 develop 동기화
+- `POST /api/v1/pipeline/run` 엔드포인트 + force 모드
+
+---
+
 ## 전체 정량적 성과 요약
 
 | 지표 | 수치 |
 |------|------|
-| 총 커밋 수 | 약 63개 |
-| 활동 기간 | 2026-01-20 ~ 02-17 (약 4주) |
-| LXD 컨테이너 | 7개 (합계 34CPU / 84GB RAM) |
-| Docker Compose 환경 | 3종 (dev / test / prod) |
+| 총 커밋 수 | 약 80개 이상 |
+| 활동 기간 | 2026-01-20 ~ 02-22 (약 5주) |
+| LXD 컨테이너 | 7개 (합계 34CPU / 84GB RAM) + staging 서버 추가 |
+| Docker Compose 환경 | 4종 (dev / test / prod / staging) |
 | 프로덕션 서비스 | 6개 (postgres, redis, minio, frontend, backend-api, ai-pipeline) |
-| Prometheus scrape target | 10개 (node 7 + cAdvisor 2 + FastAPI 1) |
-| Grafana 대시보드 | 3종 (2,497라인 JSON) |
-| Terraform 모듈 | 8종 (VPC, Bastion, ECR, ECS, RDS, ElastiCache, S3, Secrets) |
+| Prometheus scrape target | 10개 이상 (node 7 + cAdvisor 2 + FastAPI 1 + staging) |
+| Grafana 대시보드 | 3종 (2,497라인 JSON) + Alertmanager 경보 연동 |
+| Terraform 모듈 | 5종 재구성 (network/compute/database/storage/cdn) |
 | Streamlit 대시보드 | 6페이지, 1,725라인 |
-| GitHub Actions 워크플로우 | 2종 (CI + Deploy) |
+| GitHub Actions 워크플로우 | 3종 (CI + Deploy + Deploy-AWS) |
 | 에셋 용량 절감 | 96% (8.2MB → 330KB) |
 | Docker 로그 로테이션 | 서비스당 최대 30MB (10MB x 3 파일) |
-| 문서 작성/개편 | 신규 24종, 업데이트 18종, 정리(삭제) 35종 |
-| STAR 보고서 | 5인분 작성 |
+| 문서 작성/개편 | 신규 24종 이상, 업데이트 18종 이상 |
+| 원격 브랜치 정리 | 26개 → 19개 (7개 삭제) |
+| lxd/Makefile 타겟 | health-lxd, fix-lxd-jwt 추가, sync-lxd 강화 |

@@ -105,11 +105,36 @@ frontend/
 ```bash
 make test-e2e
 # 또는
-cd tests/e2e
-npx playwright test
+cd frontend && npx playwright test
+
+# 특정 ID 필터링
+npx playwright test --grep "FE-SMOKE"
+npx playwright test --grep "FE-PORT"
+
+# HTML 리포트
+npx playwright test --reporter=html && npx playwright show-report
 ```
-- 테스트 파일: `tests/e2e/specs/*.spec.js`
-- 크리티컬 패스 위주로 작성 (로그인, 키워드 조회, 케이스 상세, 튜터 채팅)
+
+- 테스트 파일: `frontend/e2e/*.spec.js` (18개 파일, ~90개 테스트)
+- 상세 가이드: [`frontend/e2e/README.md`](../../frontend/e2e/README.md)
+- 테스트 ID 체계: `FE-{도메인}-{번호}` (예: `FE-PORT-01`, `FE-NARR-03`)
+
+#### 신규 컴포넌트 작성 시 E2E 필수 사항
+
+인터랙티브 요소(버튼, 입력창, 모달 트리거)에 `data-testid` 추가:
+
+```jsx
+// ✅ 필수: 클릭/입력 대상 요소에 testid 부여
+<button data-testid="profile-logout-btn" onClick={handleLogout}>
+  로그아웃
+</button>
+<input data-testid="stock-search-input" placeholder="종목 검색" />
+```
+
+형식: `{도메인}-{역할}-{타입}` (kebab-case)
+예: `portfolio-buy-btn`, `profile-difficulty-select`, `narrative-next-btn`
+
+**PR 체크리스트에 추가**: 새 컴포넌트 PR → `frontend/e2e/` 테스트 업데이트 또는 신규 작성
 
 ### 브라우저 테스트
 - Chrome DevTools → Responsive 모드 (480px width)

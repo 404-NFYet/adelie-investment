@@ -13,7 +13,7 @@ function ActionButtons({ actions, onActionClick }) {
           key={action.id || action.label}
           type="button"
           onClick={() => onActionClick(action)}
-          className="rounded-[12px] border border-[var(--agent-border)] bg-white px-3 py-2.5 text-[13px] font-medium text-[#4E5968] active:bg-[#F2F4F6]"
+          className="rounded-[12px] border border-[var(--agent-border)] bg-white px-3 py-2.5 text-[12px] font-medium text-[#4E5968] break-keep active:bg-[#F2F4F6]"
         >
           {action.label || action}
         </button>
@@ -44,13 +44,15 @@ export default function AgentCanvasSections({
   return (
     <>
       <section className="rounded-[var(--agent-radius-sm)] border border-[var(--agent-border)] bg-white px-4 py-4">
-        <div
-          ref={contentRef}
-          className="prose prose-sm max-w-none touch-pan-y text-[14px] leading-[1.75] text-[#333D4B] prose-headings:text-[#191F28] prose-strong:text-[#191F28] prose-code:rounded prose-code:bg-[#F2F4F6] prose-code:px-1 prose-code:py-0.5 prose-code:text-[#374151]"
-        >
-          <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeRaw, rehypeKatex]}>
-            {markdownText}
-          </ReactMarkdown>
+        <div className="max-w-full overflow-x-auto">
+          <div
+            ref={contentRef}
+            className="prose prose-sm max-w-none touch-pan-y text-[14px] leading-[1.75] text-[#333D4B] prose-headings:text-[#191F28] prose-strong:text-[#191F28] prose-code:rounded prose-code:bg-[#F2F4F6] prose-code:px-1 prose-code:py-0.5 prose-code:text-[#374151]"
+          >
+            <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeRaw, rehypeKatex]}>
+              {markdownText}
+            </ReactMarkdown>
+          </div>
         </div>
       </section>
 

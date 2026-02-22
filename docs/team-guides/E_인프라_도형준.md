@@ -282,6 +282,85 @@ cd ~/adelie-investment
 ./lxd/setup-git-worktree.sh dev/feature-branch
 ```
 
+## LXD 개발환경 운영 (2026-02-22 이후)
+
+### lxd/Makefile 타겟 요약
+
+```bash
+# 5대 서버 전체 헬스체크 (브랜치 + 컨테이너 상태)
+make -f lxd/Makefile health-lxd
+
+# JWT_SECRET 기본값 서버 자동 수정 + backend-api 재시작
+make -f lxd/Makefile fix-lxd-jwt
+
+# git pull → frontend 빌드 → up -d (원스텝 동기화)
+make -f lxd/Makefile sync-lxd
+
+# staging(10.10.10.21) 배포
+make -f lxd/Makefile deploy-staging
+
+# deploy-test 전체 배포
+make -f lxd/Makefile deploy-test
+```
+
+### 자주 발생하는 LXD 이슈
+
+| 증상 | 원인 | 해결 |
+|------|------|------|
+| backend-api UNHEALTHY | JWT_SECRET 기본값 | `make -f lxd/Makefile fix-lxd-jwt` |
+| frontend pull 실패 | Docker Hub 미존재 | `make -f lxd/Makefile sync-lxd` (로컬 빌드) |
+| git pull 충돌 | 로컬 커밋 존재 | `lxc exec dev-X -- bash -c "cd ~/adelie-investment && git stash && git pull"` |
+
+### staging 서버 (10.10.10.21) 관리
+
+```bash
+# 연결 확인
+ssh staging 'hostname && docker ps'
+
+# develop 최신 배포
+make -f lxd/Makefile deploy-staging
+
+# 초기 설치 (신규 서버)
+ssh staging 'git clone https://github.com/404-NFYet/adelie-investment.git ~/adelie-investment && cd ~/adelie-investment && git checkout develop'
+scp deploy-test:~/adelie-investment/.env staging:~/adelie-investment/.env
+ssh staging 'cd ~/adelie-investment && docker compose -f docker-compose.staging.yml up -d'
+ssh staging 'docker exec staging-backend-api sh -c "cd /app/database && alembic upgrade head"'
+```
+
+## AWS Terraform IaC (2026-02-22 이후)
+
+### 모듈 구조
+
+```
+infra/terraform/
+├── variables.tf          # 루트 변수 (103라인)
+├── outputs.tf            # 루트 출력 (36라인)
+├── modules/
+│   ├── network/          # VPC, 서브넷, IGW, 보안그룹
+│   ├── compute/          # ECS Fargate, ECR, IAM
+│   ├── database/         # RDS PostgreSQL
+│   ├── storage/          # S3, ElastiCache Redis
+│   └── cdn/              # CloudFront
+└── environments/
+    ├── staging/main.tf   # staging 환경 (10.10.10.21 → AWS 이전 후)
+    └── prod/main.tf      # production 환경
+```
+
+### 배포 준비 (AWS 이전 Phase 5 예정)
+
+```bash
+# 초기화 (staging 환경)
+cd infra/terraform/environments/staging
+terraform init
+terraform plan -var-file="terraform.tfvars"
+terraform apply
+
+# ECR 이미지 빌드/푸시 (GitHub Actions deploy-aws.yml 트리거)
+gh workflow run deploy-aws.yml -f environment=staging
+```
+
+> ⚠️ AWS 이전은 Phase 5 일정 확정 후 진행. 현재는 기존 LXD + deploy-test 운영 유지.
+
 ## 커밋 전 체크리스트
 - [ ] `git config user.name` = dorae222
 - [ ] `git config user.email` = dhj9842@gmail.com

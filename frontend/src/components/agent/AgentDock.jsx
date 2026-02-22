@@ -304,7 +304,7 @@ export default function AgentDock() {
             <button
               type="button"
               onClick={() => submitPrompt(suggestedPrompt)}
-              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[#FF6B00] text-white shadow-sm active:scale-95"
+              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[#FF6B00] text-white shadow-sm active:scale-95"
               aria-label="추천 문구 사용"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -323,7 +323,7 @@ export default function AgentDock() {
 
             <button
               type="submit"
-              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[#F2F4F6] text-[#6B7684] transition-colors active:bg-[#E8EBED] disabled:opacity-30"
+              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[#F2F4F6] text-[#6B7684] transition-colors active:bg-[#E8EBED] disabled:opacity-30"
               aria-label="질문 전송"
               disabled={isRouting}
             >

@@ -21,7 +21,7 @@ function OptionCard({ option, optionIndex, isSelected, onSelect }) {
     <button
       type="button"
       onClick={() => onSelect(optionIndex)}
-      className={`flex w-full items-center rounded-2xl p-4 text-left transition active:scale-[0.98] ${
+      className={`flex w-full items-center rounded-2xl p-3 text-left transition active:scale-[0.98] ${
         isSelected
           ? 'bg-[#fff4ed] ring-1 ring-inset ring-primary'
           : 'bg-gray-50 hover:bg-gray-100'
@@ -109,9 +109,9 @@ export default function DailyQuizModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/40 px-4 pb-0 pt-10 sm:items-center sm:pb-8">
-      <section className="w-full max-w-mobile rounded-t-[30px] bg-[#f9fafb] px-4 pb-6 pt-5 shadow-2xl sm:rounded-[30px] sm:px-5 sm:pt-6">
-        <div className="mb-4 flex items-center justify-between">
+    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/40 px-4 pb-0 pt-10">
+      <section className="w-full max-w-mobile rounded-t-[30px] bg-[#f9fafb] px-4 pb-6 pt-5 shadow-2xl max-h-[80dvh] overflow-y-auto">
+        <div className="sticky top-0 z-10 bg-[#f9fafb] pb-3 mb-1 flex items-center justify-between">
           <div>
             <span className="inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary">오늘의 미션</span>
             <h3 className="mt-2 text-[20px] font-extrabold text-[#101828]">퀴즈 카드 뉴스</h3>
@@ -119,7 +119,7 @@ export default function DailyQuizModal({
           <button
             type="button"
             onClick={onClose}
-            className="h-9 w-9 rounded-xl border border-[#e5e7eb] bg-white text-[#6b7280] transition hover:text-[#101828]"
+            className="h-10 w-10 rounded-xl border border-[#e5e7eb] bg-white text-[#6b7280] transition hover:text-[#101828]"
             aria-label="퀴즈 닫기"
           >
             ✕
@@ -127,10 +127,10 @@ export default function DailyQuizModal({
         </div>
 
         {!result ? (
-          <div className="space-y-4">
+          <div className="space-y-3">
             <ProgressBar current={Math.min(step + 1, questions.length)} total={questions.length} />
 
-            <article className="mb-6 mt-2 px-1">
+            <article className="mb-3 mt-1 px-1">
               <div className="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 px-2 py-1 text-[11px] font-bold text-gray-500">
                 <span>🤔</span>
                 {currentQuestion?.title || '오늘의 퀴즈'}
@@ -152,12 +152,12 @@ export default function DailyQuizModal({
               ))}
             </div>
 
-            <div className="mt-6 flex items-center justify-between gap-3">
+            <div className="sticky bottom-0 mt-4 flex items-center justify-between gap-3 bg-[#f9fafb] pt-2">
               <button
                 type="button"
                 onClick={() => setStep((prev) => Math.max(prev - 1, 0))}
                 disabled={step === 0 || isSubmitting}
-                className="flex h-12 w-[100px] items-center justify-center rounded-2xl bg-gray-100 text-[15px] font-bold text-gray-600 transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex h-12 min-w-[76px] items-center justify-center rounded-2xl bg-gray-100 text-[15px] font-bold text-gray-600 transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 이전
               </button>

@@ -111,7 +111,7 @@ export default function Landing() {
       hasAutoAdvancedRef.current = true;
       setDirection(1);
       setCurrentIndex(1);
-    }, 1000);
+    }, 3000);
 
     return () => clearTimeout(timer);
   }, [currentIndex, isAuthenticated, isLoading]);
@@ -161,8 +161,8 @@ export default function Landing() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <main className="relative mx-auto flex min-h-screen w-full max-w-[430px] flex-col overflow-hidden">
+    <div className="min-h-[100dvh] bg-background">
+      <main className="relative mx-auto flex min-h-[100dvh] w-full max-w-mobile flex-col overflow-hidden">
         <AnimatePresence mode="wait" custom={direction}>
           <motion.section
             key={currentSlide.id}
@@ -191,8 +191,8 @@ export default function Landing() {
 
             {currentSlide.type === 'hero' ? (
               <>
-                <div className="pt-24 text-center">
-                  <p className="text-[88px] leading-none font-black tracking-[-0.03em] text-black">
+                <div className="pt-16 text-center">
+                  <p className="text-[clamp(3rem,20vw,5.5rem)] leading-none font-black tracking-[-0.03em] text-black">
                     {currentSlide.brand}
                   </p>
                   <p className="mt-5 text-[24px] leading-tight text-black">
@@ -204,19 +204,19 @@ export default function Landing() {
                 <img
                   src={currentSlide.image}
                   alt="ADELIE 랜딩 메인 비주얼"
-                  className="pointer-events-none absolute bottom-[-58px] left-1/2 z-0 w-[170%] max-w-none -translate-x-[58%] select-none"
+                  className="pointer-events-none absolute [bottom:calc(-1*clamp(1.5rem,8vw,3.6rem))] left-1/2 z-0 w-[clamp(130%,calc(40vw_+_90%),170%)] max-w-none -translate-x-[58%] select-none"
                 />
               </>
             ) : (
               <>
-                <section className="px-[37px] pt-[112px]">
+                <section className="px-4 pt-[clamp(2rem,12vw,5rem)]">
                   <h1 className="line-limit-2 text-[clamp(2rem,8.2vw,2.35rem)] leading-[1.2] font-extrabold tracking-[-0.03em] whitespace-pre-wrap text-black">
                     {currentSlide.title[0]}
                     {'\n'}
                     {currentSlide.title[1]}
                   </h1>
 
-                  <div className="mt-6 text-[20px] leading-[1.35] text-black">
+                  <div className="mt-4 text-[18px] leading-[1.35] text-black">
                     {currentSlide.body.map((line, lineIdx) => (
                       <p key={`${currentSlide.id}-line-${lineIdx}`}>
                         {line.map((part, partIdx) => (
@@ -236,7 +236,7 @@ export default function Landing() {
                   <img
                     src={currentSlide.image}
                     alt={`${currentSlide.title[0]} 비주얼`}
-                    className={`pointer-events-none select-none ${currentSlide.imageClass}`}
+                    className={`pointer-events-none select-none max-w-[80vw] h-auto ${currentSlide.imageClass}`}
                   />
                 </div>
               </>
