@@ -3,6 +3,7 @@
  */
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import { portfolioApi } from '../api';
 import { useUser } from '../contexts/UserContext';
@@ -14,6 +15,8 @@ import AppHeader from '../components/layout/AppHeader';
 import { PenguinMascot } from '../components';
 import { API_BASE_URL } from '../config';
 import useCountUp from '../hooks/useCountUp';
+import buildActionCatalog from '../utils/agent/buildActionCatalog';
+import buildUiSnapshot from '../utils/agent/buildUiSnapshot';
 import { formatKRW } from '../utils/formatNumber';
 
 /* ── 보유 종목 카드 ── */
@@ -98,6 +101,7 @@ function TradeHistory({ trades }) {
 
 /* ── 메인 컴포넌트 ── */
 export default function Portfolio() {
+  const navigate = useNavigate();
   const { user, isLoading: isUserLoading } = useUser();
   const { portfolio, isLoading, error, fetchPortfolio, refreshPortfolio } = usePortfolio();
   const [activeTab, setActiveTab] = useState('holdings');
@@ -182,6 +186,62 @@ export default function Portfolio() {
     setTradeModal({ isOpen: true, stock, type });
   };
 
+  const handleAskAgentFromStock = (stock) => {
+    if (!stock) return;
+
+    const holding = displayPortfolio?.holdings?.find((item) => item.stock_code === stock.stock_code);
+    const actionCatalog = buildActionCatalog({
+      pathname: '/portfolio',
+      mode: 'stock',
+      stockContext: stock,
+    });
+    const uiSnapshot = buildUiSnapshot({
+      pathname: '/portfolio',
+      mode: 'stock',
+      visibleSections: ['portfolio_summary', 'holdings', 'stock_detail'],
+      selectedEntities: {
+        stock_code: stock.stock_code,
+        stock_name: stock.stock_name,
+      },
+      filters: {
+        tab: activeTab,
+      },
+      portfolioSummary: {
+        total_value: displayPortfolio?.total_value,
+        current_cash: displayPortfolio?.current_cash,
+        total_profit_loss_pct: displayPortfolio?.total_profit_loss_pct,
+        holdings_count: Array.isArray(displayPortfolio?.holdings) ? displayPortfolio.holdings.length : 0,
+      },
+    });
+
+    const stockContext = {
+      mode: 'stock',
+      stock_code: stock.stock_code,
+      stock_name: stock.stock_name,
+      has_holding: Boolean(holding),
+      quantity: holding?.quantity || 0,
+      avg_buy_price: holding?.avg_buy_price || null,
+      profit_loss_pct: holding?.profit_loss_pct || null,
+      ui_snapshot: uiSnapshot,
+      action_catalog: actionCatalog,
+      interaction_state: {
+        source: 'portfolio_stock_detail',
+        mode: 'stock',
+        route: '/portfolio',
+        trigger: 'ask_stock_agent',
+      },
+    };
+
+    navigate('/agent', {
+      state: {
+        mode: 'stock',
+        stockContext,
+        initialPrompt: `${stock.stock_name} 지금 흐름을 같이 분석해줘`,
+        resetConversation: true,
+      },
+    });
+  };
+
   const handleManualRefresh = async () => {
     if (isRefreshDisabled) return;
     setIsRefreshing(true);
@@ -221,7 +281,7 @@ export default function Portfolio() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-background pb-24">
+      <div className="min-h-screen bg-background pb-[calc(var(--bottom-nav-h,68px)+var(--agent-dock-h,104px)+16px)]">
         <AppHeader />
         <main className="container py-6">
           <div className="card text-center py-12">
@@ -241,7 +301,7 @@ export default function Portfolio() {
   const isNegative = displayPortfolio.total_profit_loss < 0;
 
   return (
-    <div className="min-h-screen bg-background pb-24">
+    <div className="min-h-screen bg-background pb-[calc(var(--bottom-nav-h,68px)+var(--agent-dock-h,104px)+16px)]">
       <AppHeader />
       <main className="container py-2 space-y-2">
         {/* 총 자산 카드 */}
@@ -392,6 +452,7 @@ export default function Portfolio() {
         onClose={() => setStockDetail({ isOpen: false, stock: null })}
         stock={stockDetail.stock}
         onTrade={handleTrade}
+        onAskAgent={handleAskAgentFromStock}
       />
 
       {/* 매매 모달 */}

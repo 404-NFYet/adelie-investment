@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     PERPLEXITY_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
+    TUTOR_CHAT_MODEL: str = "gpt-5-mini"
+    TUTOR_REASONING_EFFORT: str = ""
+    TUTOR_ROUTE_MODEL: str = "gpt-4o-mini"
+    TUTOR_ROUTE_CONFIDENCE_THRESHOLD: float = 0.7
+    TUTOR_USE_RESPONSES_API: bool = True
 
     # Pipeline 설정
     TARGET_SCENARIO_COUNT: int = 3

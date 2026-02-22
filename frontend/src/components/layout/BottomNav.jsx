@@ -14,18 +14,12 @@ const HIDDEN_PREFIXES = [
 const HIDDEN_EXACT = ['/'];
 
 const tabs = [
-  { id: 'education', label: '교육', path: '/education' },
+  { id: 'portfolio', label: '투자', path: '/portfolio' },
   { id: 'home', label: '홈', path: '/home' },
-  { id: 'portfolio', label: '모의투자', path: '/portfolio' },
+  { id: 'education', label: '교육', path: '/education' },
 ];
 
 const icons = {
-  education: (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M2 6l10-4 10 4-10 4L2 6z" />
-      <path d="M6 10v5c0 1.7 2.7 3 6 3s6-1.3 6-3v-5" />
-    </svg>
-  ),
   home: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
@@ -38,16 +32,26 @@ const icons = {
       <path d="M18 8h2v2" />
     </svg>
   ),
+  education: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m22 10-10-5-10 5 10 5 10-5z" />
+      <path d="M6 12v5c0 1.1 2.7 2 6 2s6-.9 6-2v-5" />
+    </svg>
+  ),
 };
 
-function isActivePath(tabPath, pathname) {
+function isActivePath(tabPath, pathname, stateMode) {
+  if (tabPath === '/portfolio') {
+    if (pathname.startsWith('/agent')) return stateMode === 'stock';
+    return pathname === tabPath || pathname.startsWith('/portfolio/');
+  }
+
   if (tabPath === '/home') {
+    if (pathname.startsWith('/agent')) return stateMode !== 'stock';
     return pathname === tabPath;
   }
-  if (tabPath === '/education') {
-    return pathname === tabPath || pathname.startsWith('/education/');
-  }
-  return pathname === tabPath || pathname.startsWith(`${tabPath}/`);
+
+  return pathname === tabPath || pathname.startsWith('/education/');
 }
 
 export default function BottomNav() {
@@ -61,11 +65,13 @@ export default function BottomNav() {
     return null;
   }
 
+  const stateMode = location.pathname.startsWith('/agent') ? (location.state?.mode || 'home') : null;
+
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-20 max-w-mobile mx-auto bg-surface-elevated border-t border-border py-2">
+    <nav className="fixed bottom-0 left-0 right-0 z-20 mx-auto h-[var(--bottom-nav-h,68px)] max-w-mobile border-t border-border bg-surface-elevated py-2">
       <div className="flex justify-around">
         {tabs.map((tab) => {
-          const isActive = isActivePath(tab.path, location.pathname);
+          const isActive = isActivePath(tab.path, location.pathname, stateMode);
 
           return (
             <button

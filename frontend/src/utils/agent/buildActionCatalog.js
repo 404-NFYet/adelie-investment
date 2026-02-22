@@ -1,0 +1,115 @@
+function baseActions() {
+  return [
+    {
+      id: 'nav_home',
+      label: '홈으로 이동',
+      description: '현재 화면을 홈 탭으로 전환합니다.',
+      risk: 'low',
+      params_schema: {},
+    },
+    {
+      id: 'nav_portfolio',
+      label: '투자 탭으로 이동',
+      description: '현재 화면을 투자 탭으로 전환합니다.',
+      risk: 'low',
+      params_schema: {},
+    },
+    {
+      id: 'nav_education',
+      label: '교육 탭으로 이동',
+      description: '현재 화면을 교육 탭으로 전환합니다.',
+      risk: 'low',
+      params_schema: {},
+    },
+    {
+      id: 'open_agent_history',
+      label: '대화 기록 열기',
+      description: '에이전트 대화 기록 목록 화면으로 이동합니다.',
+      risk: 'low',
+      params_schema: {},
+    },
+  ];
+}
+
+export default function buildActionCatalog({
+  pathname = '/home',
+  mode = 'home',
+  stockContext = null,
+} = {}) {
+  const actions = [...baseActions()];
+
+  if (pathname.startsWith('/home') || mode === 'home') {
+    actions.push(
+      {
+        id: 'open_home_issue_agent',
+        label: '오늘 이슈 분석 시작',
+        description: '홈 컨텍스트로 캔버스 분석 화면을 엽니다.',
+        risk: 'low',
+        params_schema: {
+          prompt: 'string?',
+        },
+      },
+    );
+  }
+
+  if (pathname.startsWith('/portfolio') || mode === 'stock') {
+    actions.push(
+      {
+        id: 'open_stock_agent',
+        label: '종목 분석 캔버스 열기',
+        description: '선택 종목 컨텍스트로 캔버스 분석 화면을 엽니다.',
+        risk: 'low',
+        params_schema: {
+          stock_code: 'string?',
+          stock_name: 'string?',
+        },
+      },
+      {
+        id: 'buy_stock',
+        label: '매수 화면으로 이동',
+        description: '매수 흐름으로 이동합니다. 사용자 확인이 필요합니다.',
+        risk: 'high',
+        params_schema: {
+          stock_code: 'string?',
+          stock_name: 'string?',
+        },
+      },
+      {
+        id: 'sell_stock',
+        label: '매도 화면으로 이동',
+        description: '매도 흐름으로 이동합니다. 사용자 확인이 필요합니다.',
+        risk: 'high',
+        params_schema: {
+          stock_code: 'string?',
+          stock_name: 'string?',
+        },
+      },
+    );
+  }
+
+  if (pathname.startsWith('/agent') || pathname.startsWith('/home') || pathname.startsWith('/education')) {
+    actions.push(
+      {
+        id: 'open_learning_history',
+        label: '학습 히스토리 보기',
+        description: '교육 아카이브 화면으로 이동합니다.',
+        risk: 'low',
+        params_schema: {},
+      },
+    );
+  }
+
+  if (stockContext?.stock_code) {
+    actions.push({
+      id: 'open_external_stock_info',
+      label: '외부 종목 정보 열기',
+      description: '외부 종목 정보 페이지를 새 창으로 엽니다. 사용자 확인이 필요합니다.',
+      risk: 'high',
+      params_schema: {
+        stock_code: 'string',
+      },
+    });
+  }
+
+  return actions;
+}
