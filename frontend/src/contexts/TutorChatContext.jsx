@@ -3,7 +3,7 @@ import { API_BASE_URL, authFetch } from '../api/client';
 import { buildSessionCardMeta, writeSessionCardMeta } from '../utils/agent/sessionCardMetaStore';
 
 const TutorChatContext = createContext(null);
-const STREAM_FLUSH_INTERVAL_MS = 240;
+const STREAM_FLUSH_INTERVAL_MS = 180;
 
 const parseVisualizationPayload = (content) => {
   if (!content) return null;
@@ -193,6 +193,7 @@ export function TutorChatProvider({ children }) {
       let pendingBuffer = '';
       let renderedContent = '';
       let lastFlushAt = Date.now();
+      let doneReceived = false;
       const normalizedOptions = {
         useWebSearch: Boolean(options?.useWebSearch),
         responseMode: options?.responseMode || 'plain',
@@ -326,13 +327,16 @@ export function TutorChatProvider({ children }) {
 
       const processSseLine = (line, eventName = '') => {
         const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith('data: ')) return;
+        if (!trimmed || !trimmed.startsWith('data:')) return;
 
         try {
-          const data = JSON.parse(trimmed.slice(6));
-          const normalizedEventType = data.type || eventName || '';
+          const payload = trimmed.slice(5).trimStart();
+          const data = JSON.parse(payload);
+          const dataType = typeof data.type === 'string' ? data.type.trim() : '';
+          const eventType = typeof eventName === 'string' ? eventName.trim() : '';
+          const normalizedEventType = dataType || eventType;
 
-          if (!data.type && normalizedEventType) {
+          if (!dataType && normalizedEventType) {
             data.type = normalizedEventType;
           }
 
@@ -417,6 +421,7 @@ export function TutorChatProvider({ children }) {
           }
 
           if (data.type === 'done') {
+            doneReceived = true;
             if (Array.isArray(data.sources)) {
               pendingSources = data.sources;
             }
@@ -446,6 +451,13 @@ export function TutorChatProvider({ children }) {
           }
 
           if (typeof data.content === 'string') {
+            const contentType = typeof data.type === 'string' ? data.type : '';
+            const isTextDelta = !contentType
+              || contentType === 'text_delta'
+              || contentType === 'response.output_text.delta'
+              || contentType === 'message_delta';
+            if (!isTextDelta) return;
+
             const sanitized = sanitizeStreamDelta(data.content);
             if (!sanitized) return;
 
@@ -534,11 +546,13 @@ export function TutorChatProvider({ children }) {
 
         flushBuffer(true);
 
-        syncAssistantState(renderedContent, {
-          isStreaming: false,
-          isError: hasError,
-          status: hasError ? 'error' : 'done',
-        });
+        if (!doneReceived) {
+          syncAssistantState(renderedContent, {
+            isStreaming: false,
+            isError: hasError,
+            status: hasError ? 'error' : 'done',
+          });
+        }
 
         persistSessionMeta(
           resolvedSessionId,

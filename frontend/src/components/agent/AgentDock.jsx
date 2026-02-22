@@ -26,9 +26,6 @@ function getVisibleSectionsByMode(mode) {
 }
 
 const SEARCH_TOGGLE_KEY = 'adelie_agent_web_search';
-const DEV_GLOW_ALPHA_DEFAULT = 0.34;
-const DEV_GLOW_BLUR_DEFAULT = 28;
-const DEV_GLOW_SPREAD_DEFAULT = 0.22;
 
 function readSearchToggle(mode) {
   try {
@@ -47,10 +44,6 @@ export default function AgentDock() {
   const [inlineMessage, setInlineMessage] = useState(null);
   const [isRouting, setIsRouting] = useState(false);
   const [searchEnabled, setSearchEnabled] = useState(() => readSearchToggle(mode));
-  const [showGlowTuner, setShowGlowTuner] = useState(false);
-  const [glowAlpha, setGlowAlpha] = useState(DEV_GLOW_ALPHA_DEFAULT);
-  const [glowBlur, setGlowBlur] = useState(DEV_GLOW_BLUR_DEFAULT);
-  const [glowSpread, setGlowSpread] = useState(DEV_GLOW_SPREAD_DEFAULT);
   const location = useLocation();
   const navigate = useNavigate();
   const { messages, agentStatus, isStreamingActive } = useTutor();
@@ -85,20 +78,6 @@ export default function AgentDock() {
       document.documentElement.style.setProperty('--keyboard-offset', '0px');
     };
   }, [keyboardOffset]);
-
-  useEffect(() => {
-    if (!import.meta.env.DEV) return undefined;
-
-    document.documentElement.style.setProperty('--agent-glow-alpha', String(glowAlpha));
-    document.documentElement.style.setProperty('--agent-glow-blur', `${glowBlur}px`);
-    document.documentElement.style.setProperty('--agent-glow-spread', String(glowSpread));
-
-    return () => {
-      document.documentElement.style.removeProperty('--agent-glow-alpha');
-      document.documentElement.style.removeProperty('--agent-glow-blur');
-      document.documentElement.style.removeProperty('--agent-glow-spread');
-    };
-  }, [glowAlpha, glowBlur, glowSpread]);
 
   const baseContextPayload = useMemo(() => {
     if (mode === 'stock' && location.state?.stockContext) {
@@ -214,6 +193,9 @@ export default function AgentDock() {
     : (hasActiveSession ? '진행 중인 대화가 있어요' : '질문하세요');
   const shouldShowChevron = hasActiveSession && !isAgentRoute;
   const pulseActive = isRouting || isAgentControlling || isStreamingActive;
+  const statusDotClass = pulseActive || hasActiveSession || isAgentRoute
+    ? 'agent-status-dot-pulse'
+    : '';
 
   const submitPrompt = async (prompt) => {
     const normalized = String(prompt || '').trim();
@@ -281,26 +263,6 @@ export default function AgentDock() {
       style={{ bottom: `calc(${hideBottomNav ? '0px' : 'var(--bottom-nav-h,68px)'} + var(--keyboard-offset,0px))` }}
     >
       <div className="w-full max-w-mobile space-y-1.5">
-        {import.meta.env.DEV && showGlowTuner && (
-          <div className="pointer-events-auto rounded-[14px] border border-[var(--agent-border,#E8EBED)] bg-white px-3 py-2 shadow-[var(--agent-shadow)]">
-            <p className="mb-1 text-[11px] font-semibold text-[#6B7684]">Glow Tuner</p>
-            <div className="space-y-2">
-              <label className="block text-[10px] text-[#8B95A1]">
-                Alpha {glowAlpha.toFixed(2)}
-                <input type="range" min="0.12" max="0.56" step="0.01" value={glowAlpha} onChange={(e) => setGlowAlpha(Number(e.target.value))} className="w-full" />
-              </label>
-              <label className="block text-[10px] text-[#8B95A1]">
-                Blur {glowBlur}px
-                <input type="range" min="10" max="46" step="1" value={glowBlur} onChange={(e) => setGlowBlur(Number(e.target.value))} className="w-full" />
-              </label>
-              <label className="block text-[10px] text-[#8B95A1]">
-                Spread {glowSpread.toFixed(2)}
-                <input type="range" min="0.08" max="0.45" step="0.01" value={glowSpread} onChange={(e) => setGlowSpread(Number(e.target.value))} className="w-full" />
-              </label>
-            </div>
-          </div>
-        )}
-
         {/* 인라인 메시지 (트레이 대체 — 필요할 때만 노출) */}
         {inlineMessage?.text && (
           <div className="pointer-events-auto flex items-center justify-between gap-2 rounded-[14px] border border-[var(--agent-border,#E8EBED)] bg-white px-3 py-2 shadow-[var(--agent-shadow)]">
@@ -322,128 +284,107 @@ export default function AgentDock() {
 
         {/* 볼드 입력바 */}
         <AgentControlPulse active={pulseActive}>
-          <div className="pointer-events-auto relative rounded-[20px] bg-white shadow-[0_10px_26px_rgba(255,107,0,0.26)] ring-1 ring-[#FF6B00]/14">
-          <div className="pointer-events-none absolute left-2 top-2 flex items-center gap-1">
-            <span className="agent-sparkle-primary">
-              ✦
-            </span>
-            <span className="agent-sparkle-secondary">
-              ✦
-            </span>
-          </div>
-          {/* 상단 상태 라인 (항상 노출) */}
-          <div className="flex items-center gap-2 border-b border-[#F2F4F6] px-3 py-1.5">
-            <button
-              type="button"
-              onClick={hasActiveSession ? handleResumeChat : undefined}
-              className={`flex min-w-0 flex-1 items-center gap-2 text-left ${hasActiveSession ? 'active:bg-[#F7F8FA]' : ''}`}
-            >
-              <span className={`h-1.5 w-1.5 rounded-full ${hasActiveSession ? 'bg-[#FF6B00]' : 'bg-[#16A34A]'}`} />
-              <div className="min-w-0">
-                <p className={`truncate text-[12px] font-medium ${hasActiveSession ? 'text-[#4E5968]' : 'text-[#166534]'}`}>
-                  {dockStatusText}
-                </p>
-                {!hasActiveSession && !isAgentRoute && (
-                  <p className="truncate text-[11px] text-[#16A34A]/80">
-                    한 줄로 물어보세요
+          <div className="pointer-events-auto relative rounded-[20px] bg-white shadow-[0_18px_34px_rgba(255,107,0,0.34)]">
+            {/* 상단 상태 라인 (항상 노출) */}
+            <div className="flex items-center gap-2 border-b border-[#F2F4F6] px-3 py-1.5">
+              <button
+                type="button"
+                onClick={hasActiveSession ? handleResumeChat : undefined}
+                className={`flex min-w-0 flex-1 items-center gap-2 text-left ${hasActiveSession ? 'active:bg-[#F7F8FA]' : ''}`}
+              >
+                <span className={`h-1.5 w-1.5 rounded-full ${hasActiveSession ? 'bg-[#FF6B00]' : 'bg-[#16A34A]'} ${statusDotClass}`} />
+                <div className="min-w-0">
+                  <p className={`truncate text-[12px] font-medium ${hasActiveSession ? 'text-[#4E5968]' : 'text-[#166534]'}`}>
+                    {dockStatusText}
                   </p>
+                  {!hasActiveSession && !isAgentRoute && (
+                    <p className="truncate text-[11px] text-[#16A34A]/80">
+                      한 줄로 물어보세요
+                    </p>
+                  )}
+                </div>
+                {shouldShowChevron && (
+                  <svg className="ml-auto text-[#B0B8C1]" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="m9 18 6-6-6-6" />
+                  </svg>
                 )}
-              </div>
-              {shouldShowChevron && (
-                <svg className="ml-auto text-[#B0B8C1]" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="m9 18 6-6-6-6" />
-                </svg>
-              )}
-            </button>
-
-            <div className="ml-auto flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => setSearchEnabled((prev) => !prev)}
-                className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition-colors ${
-                  searchEnabled
-                    ? 'bg-[#FFF2E8] text-[#FF6B00]'
-                    : 'bg-[#F2F4F6] text-[#8B95A1]'
-                }`}
-                aria-label={searchEnabled ? '인터넷 검색 켜짐' : '인터넷 검색 꺼짐'}
-                title={searchEnabled ? '인터넷 검색: 켜짐' : '인터넷 검색: 꺼짐'}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="9" />
-                  <path d="M3 12h18" />
-                  <path d="M12 3a15 15 0 0 1 0 18" />
-                  <path d="M12 3a15 15 0 0 0 0 18" />
-                </svg>
               </button>
 
-              <button
-                type="button"
-                onClick={() => navigate('/agent/history', { state: { mode, contextPayload: buildControlContextPayload('') } })}
-                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[#F2F4F6] text-[#6B7684] transition-colors active:bg-[#E8EBED]"
-                aria-label="대화 기록 보기"
-                title="대화 기록 보기"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 8v5l3 2" />
-                  <circle cx="12" cy="12" r="9" />
-                </svg>
-              </button>
-
-              {import.meta.env.DEV && (
+              <div className="ml-auto flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => setShowGlowTuner((prev) => !prev)}
+                  onClick={() => setSearchEnabled((prev) => !prev)}
                   className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition-colors ${
-                    showGlowTuner ? 'bg-[#FFF2E8] text-[#FF6B00]' : 'bg-[#F2F4F6] text-[#8B95A1]'
+                    searchEnabled
+                      ? 'bg-[#FFF2E8] text-[#FF6B00]'
+                      : 'bg-[#F2F4F6] text-[#8B95A1]'
                   }`}
-                  aria-label="글로우 튜너 토글"
-                  title="글로우 튜너"
+                  aria-label={searchEnabled ? '인터넷 검색 켜짐' : '인터넷 검색 꺼짐'}
+                  title={searchEnabled ? '인터넷 검색: 켜짐' : '인터넷 검색: 꺼짐'}
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="m12 3 1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8L12 3z" />
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M3 12h18" />
+                    <path d="M12 3a15 15 0 0 1 0 18" />
+                    <path d="M12 3a15 15 0 0 0 0 18" />
                   </svg>
                 </button>
-              )}
+
+                <button
+                  type="button"
+                  onClick={() => navigate('/agent/history', { state: { mode, contextPayload: buildControlContextPayload('') } })}
+                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[#F2F4F6] text-[#6B7684] transition-colors active:bg-[#E8EBED]"
+                  aria-label="대화 기록 보기"
+                  title="대화 기록 보기"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 8v5l3 2" />
+                    <circle cx="12" cy="12" r="9" />
+                  </svg>
+                </button>
+              </div>
             </div>
-          </div>
 
-          <form
-            onSubmit={handleSubmit}
-            className="flex h-12 items-center gap-2.5 px-3"
-          >
-            <button
-              type="button"
-              onClick={() => submitPrompt(suggestedPrompt)}
-              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[#FF6B00] text-white shadow-sm active:scale-95"
-              aria-label="추천 문구 사용"
+            <form
+              onSubmit={handleSubmit}
+              className="flex h-12 items-center gap-2.5 px-3"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 3.2l1.85 4.3 4.3 1.85-4.3 1.85L12 15.5l-1.85-4.3-4.3-1.85 4.3-1.85L12 3.2z" />
-              </svg>
-            </button>
+              <button
+                type="button"
+                onClick={() => submitPrompt(suggestedPrompt)}
+                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[#FF6B00] text-white shadow-sm active:scale-95"
+                aria-label="추천 문구 사용"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 3.2l1.85 4.3 4.3 1.85-4.3 1.85L12 15.5l-1.85-4.3-4.3-1.85 4.3-1.85L12 3.2z" />
+                </svg>
+              </button>
 
-            <input
-              type="text"
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              placeholder={input ? placeholder : suggestedPrompt}
-              data-agent-dock-input
-              className="min-w-0 flex-1 bg-transparent text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] focus:outline-none"
-              aria-label="에이전트 질문 입력"
-            />
+              <input
+                type="text"
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                placeholder={input ? placeholder : suggestedPrompt}
+                data-agent-dock-input
+                className="min-w-0 flex-1 bg-transparent text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] focus:outline-none"
+                aria-label="에이전트 질문 입력"
+              />
 
-            <button
-              type="submit"
-              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[#F2F4F6] text-[#6B7684] transition-colors active:bg-[#E8EBED] disabled:opacity-30"
-              aria-label="질문 전송"
-              disabled={isRouting}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M5 12h14" />
-                <path d="m12 5 7 7-7 7" />
-              </svg>
-            </button>
-          </form>
+              <button
+                type="submit"
+                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[#F2F4F6] text-[#6B7684] transition-colors active:bg-[#E8EBED] disabled:opacity-30"
+                aria-label="질문 전송"
+                disabled={isRouting}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5 12h14" />
+                  <path d="m12 5 7 7-7 7" />
+                </svg>
+              </button>
+            </form>
+            <div className="pointer-events-none absolute -left-2 bottom-3 flex h-5 w-5 items-center justify-center rounded-full bg-[#FF6B00] shadow-[0_2px_10px_rgba(255,107,0,0.52)]">
+              <span className="text-[10px] leading-none text-white">✦</span>
+            </div>
           </div>
         </AgentControlPulse>
       </div>

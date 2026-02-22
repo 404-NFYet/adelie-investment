@@ -3,7 +3,7 @@ export default function AgentControlPulse({ active = false, children }) {
     <div
       className={`transition-all duration-300 ${
         active
-          ? 'rounded-[16px] shadow-[0_0_0_1px_rgba(255,107,0,0.2),0_0_30px_rgba(255,107,0,0.3)] animate-agent-control-pulse'
+          ? 'rounded-[20px] shadow-[0_-14px_28px_rgba(255,107,0,0.28),0_18px_36px_rgba(255,107,0,0.34)] animate-agent-control-pulse'
           : ''
       }`}
     >

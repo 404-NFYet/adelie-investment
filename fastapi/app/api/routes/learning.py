@@ -103,26 +103,31 @@ async def upsert_learning_progress(
     stmt = stmt.on_conflict_do_update(
         constraint="uq_learning_progress_user_content",
         set_=update_values,
-    ).returning(LearningProgress)
+    ).returning(LearningProgress.id)
 
     result = await db.execute(stmt)
+    record_id = result.scalar_one_or_none()
     await db.commit()
 
-    record = result.fetchone()
-    if record is None:
+    if record_id is None:
         raise HTTPException(status_code=500, detail="학습 진도 저장에 실패했습니다")
 
-    # returning() 결과를 dict로 변환
-    row = record._mapping
+    saved_result = await db.execute(
+        select(LearningProgress).where(LearningProgress.id == record_id)
+    )
+    saved_record = saved_result.scalar_one_or_none()
+    if saved_record is None:
+        raise HTTPException(status_code=500, detail="학습 진도 조회에 실패했습니다")
+
     data = {
-        "id": row["id"],
-        "user_id": row["user_id"],
-        "content_type": row["content_type"],
-        "content_id": row["content_id"],
-        "status": row["status"],
-        "progress_percent": row["progress_percent"],
-        "started_at": row["started_at"].isoformat() if row["started_at"] else None,
-        "completed_at": row["completed_at"].isoformat() if row["completed_at"] else None,
+        "id": saved_record.id,
+        "user_id": saved_record.user_id,
+        "content_type": saved_record.content_type,
+        "content_id": saved_record.content_id,
+        "status": saved_record.status,
+        "progress_percent": saved_record.progress_percent,
+        "started_at": saved_record.started_at.isoformat() if saved_record.started_at else None,
+        "completed_at": saved_record.completed_at.isoformat() if saved_record.completed_at else None,
     }
 
     return {"status": "success", "data": data}

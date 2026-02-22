@@ -604,12 +604,12 @@ export default function AgentCanvasPage() {
             </h1>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-1.5 whitespace-nowrap">
             {isStreamingActive ? (
               <button
                 type="button"
                 onClick={handleStopGeneration}
-                className="h-7 rounded-full bg-[#FFF2E8] px-2.5 text-[11px] font-semibold text-[#FF6B00] transition-colors active:bg-[#FFE5D3]"
+                className="inline-flex h-7 flex-shrink-0 items-center justify-center whitespace-nowrap rounded-full bg-[#FFF2E8] px-2.5 text-[11px] font-semibold text-[#FF6B00] transition-colors active:bg-[#FFE5D3]"
               >
                 중단
               </button>
@@ -618,7 +618,7 @@ export default function AgentCanvasPage() {
                 type="button"
                 onClick={handleRegenerate}
                 disabled={!canRegenerate && !selectedUserPrompt}
-                className="h-7 rounded-full bg-[#F2F4F6] px-2.5 text-[11px] font-semibold text-[#4E5968] transition-colors active:bg-[#E8EBED] disabled:opacity-50"
+                className="inline-flex h-7 flex-shrink-0 items-center justify-center whitespace-nowrap rounded-full bg-[#F2F4F6] px-2.5 text-[11px] font-semibold text-[#4E5968] transition-colors active:bg-[#E8EBED] disabled:opacity-50"
               >
                 다시 생성
               </button>
@@ -627,7 +627,7 @@ export default function AgentCanvasPage() {
               type="button"
               onClick={handlePinSession}
               disabled={!activeSessionId || isSavingSession || isPinnedSession}
-              className="h-7 rounded-full bg-[#FFF2E8] px-2.5 text-[11px] font-semibold text-[#FF6B00] transition-colors active:bg-[#FFE5D3] disabled:opacity-45"
+              className="inline-flex h-7 flex-shrink-0 items-center justify-center whitespace-nowrap rounded-full bg-[#FFF2E8] px-2.5 text-[11px] font-semibold text-[#FF6B00] transition-colors active:bg-[#FFE5D3] disabled:opacity-45"
             >
               {isPinnedSession ? '저장됨' : (isSavingSession ? '저장 중' : '저장')}
             </button>

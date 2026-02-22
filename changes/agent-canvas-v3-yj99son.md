@@ -538,3 +538,314 @@
 - [ ] Alembic 실제 업그레이드 실행 검증
 - [ ] 거래 시나리오(상한가/저유동성/short/2x) API smoke
 - [ ] 홈 카드 pin/복원 실기기 확인
+
+## 15. 기획 외 확장사항 상세 문서화 (v7 기준)
+
+이 섹션은 `앱기획방향v3.md` 원문에 직접 명시되지 않았지만, 실험 브랜치에서 요구사항/버그/현실화 이슈로 인해 추가된 확장사항을 정리한 기록입니다.
+
+### 15-1. 왜 "기획 외 확장"이 필요했는가
+- 원문 기획은 "에이전트 전환 방향" 중심이라, 실제 운영에서 반드시 필요한 체결 현실화/세션 저장 메타/링크 검증/입력 레이아웃 안정화까지는 범위를 구체화하지 않았음.
+- 사용자 피드백에서 "보기 좋은 UI"보다 "실제로 믿고 쓸 수 있는 결과"(체결 현실성, 출처 신뢰성, 복습 자산화) 요구가 강하게 확인됨.
+- 따라서 v7은 기획 의도를 깨지 않으면서, 운영 가능한 제품으로 가기 위한 보강층을 추가함.
+
+### 15-2. 제품 기획 관점(PO/PM)
+- 추가 목표
+  - 답변 품질 신뢰도 강화: 출처 종류/링크 유효성/수치 근거 제공.
+  - 시뮬레이션 신뢰도 강화: 단순 체결 모델 탈피.
+  - 학습 지속성 강화: 대화 결과를 카드 자산으로 축적.
+- 기대 효과
+  - "정보성 대화"에서 "행동 가능한 인사이트"로 전환.
+  - "그때그때 대화"에서 "누적 학습 자산"으로 전환.
+  - 홈 재방문 시 재진입 동선(저장 카드) 강화.
+
+### 15-3. 사용자 경험 관점(UX)
+- 문제
+  - 입력 시 하단 요소 충돌, 상태 문구 혼재, 캔버스 근거 부족.
+- 개선
+  - 모바일만 BottomNav 숨김 + Dock 고정 가시성 유지.
+  - 캔버스 홈 모드 긴 진행바, 기타 모드 상태점 분리.
+  - 캔버스에 근거 출처 카드/핵심 수치 카드 표시.
+  - `저장` 버튼으로 세션 고정, 홈 카드에서 즉시 재진입.
+- 체감 변화
+  - 입력 중 화면이 덜 가려짐.
+  - "왜 이 답변인지"를 출처/수치로 확인 가능.
+  - 좋은 대화를 잃지 않고 다시 불러올 수 있음.
+
+### 15-4. 투자 도메인 관점(시뮬레이션 정확도)
+- 문제
+  - 기존 정가 체결은 상한가/저유동성에서 비현실적.
+- 확장
+  - 슬리피지, 수수료, 유동성 cap, 부분체결 반영.
+  - 지정가 미체결/부분체결 상태(pending/partial) 반영.
+  - KR 공매도(short) + 최대 2x 레버리지 MVP 반영.
+  - short 포지션 차입수수료 누적 정산.
+- 한계
+  - 백테스트 엔진 수준의 미세 미시구조(호가 스냅샷 기반)까지는 아님.
+  - 미국/ETF/옵션 파생상품은 이번 범위 제외.
+
+### 15-5. 데이터/LLM 관점
+- 컨텍스트 소스 계층
+  - 1순위: 내부 브리핑/리포트/DB
+  - 2순위: OpenDART 공시·재무수치
+  - 3순위: web_search 보강(토글 ON)
+- 응답 계약 보강
+  - `sources[].source_kind`로 근거 타입 명시.
+  - `sources[].is_reachable`로 링크 접근성 명시.
+  - 캔버스는 markdown 원문 + 보조 구조화 + 수치 블록 병행.
+
+### 15-6. 백엔드 아키텍처 관점
+- 신규/핵심 모듈
+  - `investment_intel.py`: stock 모드 근거 수집 계층.
+  - `portfolio_service.execute_trade`: 현실형 체결 엔진.
+  - `tutor_sessions pin API`: 세션 고정/해제.
+- 확장 원칙
+  - 외부 공개 경로는 유지(`POST /api/v1/tutor/chat`, `/route`).
+  - 내부 메타만 점진 확장(하위호환 유지).
+
+### 15-7. DB/마이그레이션 관점
+- 추가 컬럼
+  - `portfolio_holdings`: `position_side`, `leverage`, `borrow_rate_bps`, `last_funding_at`
+  - `simulation_trades`: `filled_quantity`, `requested_price`, `executed_price`, `slippage_bps`, `fee_amount`, `order_kind`, `order_status`, `position_side`, `leverage`
+  - `tutor_sessions`: `cover_icon_key`, `summary_keywords`, `summary_snippet`, `is_pinned`, `pinned_at`
+- 원칙
+  - 기존 long 1x 흐름을 기본값으로 유지하여 하위호환 보장.
+
+### 15-8. 운영/모니터링 관점(SRE)
+- 추천 모니터링 지표
+  - 튜터 응답 완료율, 평균 첫 델타 도달 시간, web_search 사용률.
+  - source reachable 실패율.
+  - trade `partial/pending` 비율, short 포지션 비율, 강제 청산 근접 경고 수.
+- 운영 체크
+  - OpenDART 키 미설정 시 graceful fallback 여부.
+  - web_search OFF 기본 정책(투자 모드만 ON 기본) 준수 여부.
+
+### 15-9. 컴플라이언스/리스크 관점
+- 유지된 안전 원칙
+  - 직접 매수/매도 권유 금지.
+  - `MALICIOUS` hard block.
+- 완화된 정책
+  - `ADVICE`, `OFF_TOPIC`은 대화를 끊지 않고 soft notice 후 교육형 전환.
+- 잠재 리스크
+  - 공시/웹 근거 최신성 차이로 인한 시점 불일치.
+  - short/leverage UX 오해 가능성(고위험 상품 인식 부족).
+
+### 15-10. QA 관점 (기획 외 항목 전용)
+- 기능
+  - 모바일 키보드 open 시 BottomNav 숨김, 데스크톱 유지.
+  - 캔버스 저장 버튼 -> 세션 pin -> 홈 카드 상단 "저장됨" 반영.
+  - stock 질문에서 DART 수치 블록/근거 링크 표시.
+- 거래
+  - 저유동성 주문에서 partial 발생 확인.
+  - 지정가 미체결에서 pending 상태 확인.
+  - short open/cover 시 손익/수수료/차입비용 반영 확인.
+- 회귀
+  - 기존 long 1x 시장가 주문 정상 동작.
+  - history 복원/삭제/pin 동작.
+
+### 15-11. 롤백 전략
+- 즉시 롤백 가능 계층
+  - 프론트 표시 레이어(수치/출처 카드) 비활성.
+  - 세션 pin 버튼 숨김.
+- 부분 롤백 계층
+  - trade 엔진에서 short/leverage 경로 플래그 off.
+  - 슬리피지/유동성 모델 계수 축소.
+- DB 롤백
+  - Alembic downgrade 가능하나, 운영 데이터 손실 위험 고려해 비파괴 롤백 우선 권장.
+
+### 15-12. 아직 남은 항목
+- Alembic 실 DB 적용 검증/롤백 검증.
+- 실거래와의 괴리율 관측 후 슬리피지/유동성 파라미터 튜닝.
+- 복습 카드의 서버-클라이언트 메타 정합성 주기 점검.
+- 투자 캔버스 차트 생성 실패 fallback UX 개선.
+
+## 16. 계산 로직/하드코딩/목업 감사 기록 (v7 추가)
+
+### 16-1. 감사 범위
+- 목적: "어떤 값이 계산식인지", "어떤 값이 하드코딩인지", "임시 목업/폴백이 남아있는지"를 분리해 명시
+- 범위:
+  - 백엔드: `portfolio_service`, `tutor`, `investment_intel`, `guardrail`, `config`
+  - 프론트: `Home`, `AgentCanvasPage`, `AgentDock`, `useKeyboardInset`, `composeCanvasState`, `buildActionCatalog`
+- 비범위:
+  - 파이프라인 생성 로직(`final_briefings`) 원본 알고리즘 자체 변경/재검증
+  - 실거래 백테스트 수준의 체결 정합성 검증
+
+### 16-2. 계산 로직 상세 (공식/룰)
+
+| 영역 | 계산식/룰 | 코드 위치 | 상수 의존 | 메모 |
+|---|---|---|---|---|
+| 체결 가능 수량 | `max_fill = int(volume * 0.12)`, 상/하한 근접 방향 압력 시 `max_fill *= 0.35`, `executed_qty = min(requested, max_fill)` | `fastapi/app/services/portfolio_service.py:60` | `MAX_MARKET_PARTICIPATION=0.12`, `PRICE_LIMIT_NEAR_PCT=28.5` | 유동성/상한가 체결 비현실성 완화용 휴리스틱 |
+| 슬리피지 | `bps = 6 + participation 페널티 + 저유동성(8bps) + 상/하한 근접(16bps)` | `fastapi/app/services/portfolio_service.py:93` | `BASE_SLIPPAGE_BPS=6.0`, `LOW_LIQUIDITY_VOLUME=10000` | 실거래 체결모델이 아닌 시뮬레이션 근사 |
+| 체결가 | `executed = current_price * (1 ± bps/10000)`, 지정가면 buy는 상한 clip, sell은 하한 clip | `fastapi/app/services/portfolio_service.py:118` | 슬리피지 상수 사용 | 지정가 즉시체결 조건과 함께 동작 |
+| 롱 포지션 현금흐름 | 신규매수: `cash_needed = (notional/leverage) + fee`<br>청산: `cash_delta = margin_release + pnl - fee` | `fastapi/app/services/portfolio_service.py:358` | `MAX_LEVERAGE=2.0`, `BASE_FEE_RATE=0.00015` | 레버리지 1~2x 범위 |
+| 숏 포지션 차입비용 | `cost = (avg_price*qty) * (borrow_bps/10000) * elapsed_days` | `fastapi/app/services/portfolio_service.py:204` | `SHORT_DEFAULT_BORROW_BPS=8` | 일할 누적 차입수수료 |
+| 숏 청산 손익 | `pnl = (base_price - executed_price) * qty` | `fastapi/app/services/portfolio_service.py:442` | 레버리지/수수료 상수 사용 | 손실 과다 시 경고 로그만 남김 |
+| 보상 배수 | 만기 시 `profit > 0`이면 `bonus = base_reward*(1.5-1.0)` 추가 지급 | `fastapi/app/services/portfolio_service.py:555` | `PROFIT_MULTIPLIER=1.5`, `REWARD_MATURITY_DAYS=7` | 브리핑 보상 정책 상수 |
+| 홈 학습 진행률 | `weekProgress = round((activeDays/7)*100)` | `frontend/src/pages/Home.jsx:80` | 분모 7 고정 | 주간 뷰 기준 단순 진행률 |
+| 이슈 캐러셀 자동롤 | 4.5초 간격 자동 전환, 사용자 터치 시 세션 내 정지 | `frontend/src/pages/Home.jsx:23` | `ISSUE_AUTO_ADVANCE_MS=4500` | UX 정책 상수 |
+| 캔버스 턴 스와이프 | `abs(deltaX) >= 86px`일 때만 턴 이동 | `frontend/src/pages/AgentCanvasPage.jsx:15` | `HORIZONTAL_SWIPE_THRESHOLD_PX=86` | 오탐 방지용 임계값 |
+| 키보드 감지 | `innerHeight - visualViewport.height - offsetTop > 56` 이면 open | `frontend/src/hooks/useKeyboardInset.js:3` | `DEFAULT_THRESHOLD_PX=56` | 모바일 hide-nav 정책과 연결 |
+
+### 16-3. 하드코딩 상수/정책 값 분류
+
+| 항목 | 값 | 위치 | 분류 | 솔직한 상태 |
+|---|---|---|---|---|
+| 기본 포트폴리오 현금 | `1,000,000` | `portfolio_service.py:172` | 정책 하드코딩 | 기획 기본값, 환경변수화 안됨 |
+| 체결 수수료율 | `0.015%` | `portfolio_service.py:26` | 도메인 상수 | 시장/브로커별 분기 없음 |
+| 슬리피지 기준치 | `6 bps` | `portfolio_service.py:27` | 휴리스틱 하드코딩 | 백테스트 기반 튜닝 미완 |
+| 참여율 cap | `12%` | `portfolio_service.py:28` | 휴리스틱 하드코딩 | 종목별 차등 없음 |
+| 상/하한 근접 임계 | `±28.5%` | `portfolio_service.py:30` | 휴리스틱 하드코딩 | 한국시장 30% 근접 가정 |
+| 공매도 차입비용 | `8 bps/day` | `portfolio_service.py:31` | 휴리스틱 하드코딩 | 실제 대차 비용 연동 아님 |
+| 레버리지 상한 | `2.0x` | `portfolio_service.py:32` | 정책 하드코딩 | MVP 제한값 |
+| 라우팅 confidence | `0.7` | `config.py:49` | 정책 하드코딩 | 운영 중 재튜닝 필요 가능 |
+| 라우팅 fallback 문구 | 고정 문자열 | `tutor.py:173`, `tutor.py:450` | 운영 fallback | 안전 동작 우선, 문구 정교화 여지 있음 |
+| 홈 총자산 fallback | `12,450,000` | `Home.jsx:65` | 임시 UI fallback | **목업 성격 강함 (실데이터 없을 때만)** |
+| 대화카드 fallback 2개 | 고정 제목 2개 | `Home.jsx:497` | 임시 UI fallback | **목업 성격 강함** |
+| 캔버스 fallback 액션 | 모드별 2개 고정 문구 | `composeCanvasState.js:69` | 임시 UX fallback | LLM/서버 액션 없을 때 대체 |
+| Dock dev glow 기본값 | `alpha 0.34 / blur 28 / spread 0.22` | `AgentDock.jsx:29` | 개발 튜닝 상수 | DEV 전용, 운영 영향 없음 |
+| 링크체크 제한 | `max_checks=6`, `timeout=2.4s` | `investment_intel.py:370` | 성능 보호 하드코딩 | 느린 링크에서 false 가능 |
+| DART 사업보고서 코드 | `11011` | `investment_intel.py:261` | 도메인 상수 | 분기보고서/반기보고서 선택 미지원 |
+
+### 16-4. 목업/임시 구현 여부 (솔직 공개)
+
+| 대상 | 현재 상태 | 근거 |
+|---|---|---|
+| 홈 총자산 `12450000` fallback | **임시/목업 성격 있음** | 실포트폴리오/요약 값이 모두 비어있을 때만 사용 (`Home.jsx:65`) |
+| 홈 대화 정리 fallback 카드 2개 | **임시/목업 성격 있음** | 세션이 없을 때 고정 문구로 카드 UI 유지 (`Home.jsx:497`) |
+| 캔버스 fallback 액션 버튼 | **임시/목업 성격 있음** | `uiActions/structured` 부재 시 고정 액션 노출 (`composeCanvasState.js:176`) |
+| 라우트 실패 시 inline 안내 문구 | **운영 fallback(의도적)** | 라우팅 실패시 자동 캔버스 강제 대신 안내 (`tutor.py:450`) |
+| guardrail parse/API 실패 fail-open | **의도적 안전 설계** | 서비스 중단 대신 소프트 가드레일 유지 (`guardrail.py:104`, `guardrail.py:217`) |
+| DART 수치 수집 연도 = 전년도 고정 | **도메인 가정(임시 아님)** | `bsns_year = now.year - 1` (`investment_intel.py:260`) |
+| 캐러셀/스와이프 임계값 | **UX 튜닝 상수** | 데이터 기반 실험값이 아니라 경험값 (`Home.jsx:23`, `AgentCanvasPage.jsx:15`) |
+
+### 16-5. 리스크와 대체 계획
+- 우선순위 P0:
+  - `Home` 총자산 fallback(`12450000`) 제거 또는 명시 배지 처리
+  - 대화카드 fallback를 "샘플" 라벨링하거나 실제 최근 대화 없으면 빈상태 UX로 교체
+- 우선순위 P1:
+  - 체결 상수(슬리피지/참여율/근접패널티)를 설정 테이블/환경설정으로 외부화
+  - DART `report_code`를 질의 유형에 따라 선택 가능하도록 확장
+- 우선순위 P2:
+  - 링크 reachability 검사 재시도/백오프 추가
+  - 캐러셀/스와이프 threshold를 AB 실험값으로 치환
+
+### 16-6. 검증 상태(정직 기록)
+- 완료:
+  - 코드 레벨 정적 감사(상수/분기/공식 위치 식별)
+  - 문서화(계산식/하드코딩/목업 분리)
+- 미완:
+  - 상수 민감도 시뮬레이션(체결 모델 파라미터 튜닝 실험)
+  - 실서비스 로그 기반 threshold 재튜닝
+  - fallback 제거 후 UX 회귀 검증
+
+## 17. v7.1 안정화 배치 (에러 우선 + UI 정리)
+
+### 17-1. 문제 재현
+- `POST /api/v1/learning/progress` 호출 시 간헐적이 아닌 상시 500 발생.
+- 증상: `KeyError: 'id'`로 업서트 후 응답 생성 단계에서 예외.
+- 사용자 체감: 캔버스/교육 플로우 중 저장 또는 진도 업데이트 순간 `internal server error`.
+- 동시 관찰: 스트리밍 응답은 백엔드에서 오지만 프론트에서 델타 반영 타이밍이 흔들리며 “생성됐는데 화면에 늦게 보임/유실처럼 보임” 체감 발생.
+
+### 17-2. 원인 분석
+- 직접 원인(백엔드):
+  - 파일: `fastapi/app/api/routes/learning.py`
+  - 로직: `INSERT ... ON CONFLICT ... RETURNING(LearningProgress)` 결과를 `row["id"]` 방식으로 가정.
+  - 실제: SQLAlchemy 반환 shape가 실행 경로에 따라 ORM 객체/row mapping으로 달라져 `id` key가 보장되지 않음.
+- 체감 이슈(프론트):
+  - 파일: `frontend/src/contexts/TutorChatContext.jsx`
+  - SSE 파싱에서 `event:`/`data.type` 혼재 시 텍스트 델타 판정이 느슨했고, 종료 이벤트 수신 여부와 무관하게 마지막 동기화가 중복 수행될 수 있어 렌더 체감 불안정.
+
+### 17-3. 수정 내용
+- 백엔드 500 복구
+  - 파일: `fastapi/app/api/routes/learning.py`
+  - 변경:
+    - `returning(LearningProgress.id)`로 고정.
+    - 반환 ID 기준으로 `select(LearningProgress)` 재조회 후 응답 생성.
+  - 효과:
+    - 반환 shape 차이에 영향받지 않는 안정 경로 확보.
+
+- 스트리밍/렌더 안정화
+  - 파일: `frontend/src/contexts/TutorChatContext.jsx`
+  - 변경:
+    - `data:` 파싱을 공백 유무와 무관하게 처리(`data:`/`data: ` 모두 허용).
+    - 이벤트 타입 정규화 우선순위 명시(`data.type` 우선, 없으면 `event:` fallback).
+    - 텍스트 누적은 `text_delta` 계열 이벤트에만 반영하도록 제한.
+    - `done` 수신 시 플래그 처리 후 종료 동기화 중복 실행 방지.
+    - flush 주기 소폭 단축(240ms -> 180ms)으로 체감 반응성 개선.
+
+- 홈 대화 정리 카드 단순화(제목 중심)
+  - 파일: `frontend/src/pages/Home.jsx`
+  - 변경:
+    - snippet/키워드칩/상세 상태 텍스트 제거.
+    - 제목 + 저장상태만 유지.
+
+- 오늘의 이슈 좌우 화살표 스타일 정리
+  - 파일: `frontend/src/pages/Home.jsx`
+  - 변경:
+    - 반투명 블러 버튼 제거.
+    - 불투명 화살표 버튼(아이콘 중심)으로 교체.
+
+- Dock 시각 개선
+  - 파일: `frontend/src/components/agent/AgentDock.jsx`
+  - 파일: `frontend/src/components/agent/AgentControlPulse.jsx`
+  - 파일: `frontend/src/styles/globals.css`
+  - 변경:
+    - Dock stroke/ring 제거.
+    - 상하 방향 글로우 강도 상향.
+    - 본체 하단 좌측에 주황 원 + 흰 스파클(정적) 배치.
+    - 상태줄 점은 pulse 애니메이션(`agent-status-dot-pulse`) 적용.
+    - DEV glow tuner 패널/버튼을 기본 UI에서 제거.
+
+- 상단바 통일
+  - 파일: `frontend/src/pages/Portfolio.jsx`
+  - 변경:
+    - `AppHeader` -> `DashboardHeader`로 통일.
+
+- 캔버스 헤더 버튼 줄바꿈 방지
+  - 파일: `frontend/src/pages/AgentCanvasPage.jsx`
+  - 변경:
+    - `저장/다시 생성/중단` 버튼 그룹 `nowrap + flex-shrink-0` 적용.
+
+### 17-4. 사용자 체감 변화
+- 저장/복습 관련 500 오류가 사라지고 진도 저장이 정상 응답으로 복귀.
+- 스트리밍 본문이 중간부터 더 빠르게 보이고, 완료 직전 텍스트 유실 체감 감소.
+- 홈 대화 정리는 “제목만” 보이는 심플 카드로 변경.
+- 오늘의 이슈 화살표가 카드 위에 과하게 떠보이지 않고 단순 컨트롤로 정리.
+- Dock는 더 선명한 주황 존재감을 가지되, 스파클은 과도한 애니메이션 없이 정적 포인트로 유지.
+- Portfolio/Education/Home 헤더 시각 일관성 확보.
+
+### 17-5. API 영향
+- 공개 API Breaking change 없음.
+- 경로/스키마는 유지.
+- 내부적으로 `learning/progress` 응답 생성 경로만 안정화(필드 shape 동일).
+
+### 17-6. DB/운영 체크리스트 (팀 내부)
+- 배포 전
+  - `alembic current`가 배포 대상 revision head인지 확인.
+  - `learning/progress` smoke 요청 준비(인증 포함).
+  - 롤백 포인트(revision id) 명시.
+- 배포 직후
+  - `POST /api/v1/learning/progress` 3회 이상 반복 호출 200 확인.
+  - `tutor_sessions`, `portfolio_*` 조회 경로 500 여부 확인.
+  - 최근 에러로그 50건 샘플링 후 `UndefinedColumnError`, `KeyError('id')` 재발 여부 확인.
+- 운영 중
+  - 진도 저장 성공률/실패율 모니터링.
+  - 캔버스 응답 누락 제보율(고객 피드백) 추적.
+  - SSE done 미수신 비율/평균 first-delta latency 관찰.
+
+### 17-7. 확인만 수행한 항목 (기능 확장 없음)
+- 공매도/레버리지/ETF 노출 판정
+  - 백엔드:
+    - `position_side`, `leverage` 계산 경로 존재(지원됨).
+  - 프론트 매수 UI(`TradeModal`):
+    - 현재 `long 1x` 중심 입력만 노출.
+    - `position_side/leverage` 직접 선택 UI는 미노출.
+  - 판정:
+    - "엔진은 지원, 사용자 매수 모달 노출은 미지원" 상태.
+    - 후속 배치에서 UX 노출 설계 필요.
+
+### 17-8. 솔직한 상태
+- 운영 가능한 수준:
+  - learning/progress 500 복구, 스트리밍 렌더 안정화, 핵심 UI 불일치 정리.
+- 아직 남은 리스크:
+  - 네트워크 지연/대형 응답에서 SSE 체감 편차 가능.
+  - 공매도/레버리지는 백엔드 대비 프론트 노출 불균형.

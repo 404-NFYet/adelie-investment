@@ -9,7 +9,6 @@ import useSelectionAskPrompt from '../hooks/useSelectionAskPrompt';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import useActivityFeed from '../hooks/useActivityFeed';
 import buildActionCatalog from '../utils/agent/buildActionCatalog';
-import { formatRelativeDate } from '../utils/dateFormat';
 import buildUiSnapshot from '../utils/agent/buildUiSnapshot';
 import { readSessionCardMeta } from '../utils/agent/sessionCardMetaStore';
 import { formatKRW } from '../utils/formatNumber';
@@ -91,15 +90,11 @@ export default function Home() {
       const serverMeta = {
         title: session.title || '',
         icon_key: session.cover_icon_key || null,
-        keywords: Array.isArray(session.summary_keywords) ? session.summary_keywords : [],
-        snippet: session.summary_snippet || '',
         is_pinned: Boolean(session.is_pinned),
       };
       const meta = {
         title: serverMeta.title || localMeta.title || session.title,
         icon_key: serverMeta.icon_key || localMeta.icon_key || DEFAULT_HOME_ICON_KEY,
-        keywords: serverMeta.keywords.length > 0 ? serverMeta.keywords : (localMeta.keywords || []),
-        snippet: serverMeta.snippet || localMeta.snippet || '',
         is_pinned: serverMeta.is_pinned,
       };
       return {
@@ -382,7 +377,7 @@ export default function Home() {
                     <button
                       type="button"
                       onClick={() => moveIssue(-1)}
-                      className="absolute left-1 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-[#E8EBED] bg-white/55 text-[#4E5968] backdrop-blur-sm"
+                      className="absolute left-1 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-[#E5E7EB] bg-white text-[#4E5968] shadow-sm"
                       aria-label="이전 이슈 보기"
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -395,7 +390,7 @@ export default function Home() {
                     <button
                       type="button"
                       onClick={() => moveIssue(1)}
-                      className="absolute right-1 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-[#E8EBED] bg-white/55 text-[#4E5968] backdrop-blur-sm"
+                      className="absolute right-1 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-[#E5E7EB] bg-white text-[#4E5968] shadow-sm"
                       aria-label="다음 이슈 보기"
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -525,24 +520,6 @@ export default function Home() {
                 {item.meta?.is_pinned && (
                   <p className="mt-1 text-[10px] font-semibold text-[#FF6B00]">저장됨</p>
                 )}
-                {Array.isArray(item.meta?.keywords) && item.meta.keywords.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {item.meta.keywords.slice(0, 3).map((keyword) => (
-                      <span
-                        key={`${item.id}-${keyword}`}
-                        className="rounded-full bg-[#F2F4F6] px-2 py-0.5 text-[10px] font-semibold text-[#6B7684]"
-                      >
-                        {keyword}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <p className="mt-3 line-limit-2 rounded-lg bg-[rgba(255,118,72,0.1)] px-2.5 py-1 text-[11px] font-bold text-[#ff7648]">
-                  {item.meta?.snippet
-                    || (item.last_message_at
-                    ? `${formatRelativeDate(item.last_message_at)} · ${item.message_count || 0}개`
-                    : '새 대화')}
-                </p>
               </button>
             ))}
           </div>

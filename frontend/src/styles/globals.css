@@ -53,9 +53,9 @@
   --agent-text-title: 16px;
   --agent-text-body: 14px;
   --agent-text-caption: 12px;
-  --agent-glow-alpha: 0.28;
-  --agent-glow-blur: 24px;
-  --agent-glow-spread: 0.2;
+  --agent-glow-alpha: 0.4;
+  --agent-glow-blur: 34px;
+  --agent-glow-spread: 0.32;
 
   /* Glassmorphism */
   --glass-bg: rgba(255, 255, 255, 0.7);
@@ -331,13 +331,13 @@
 @keyframes agentControlPulse {
   0%, 100% {
     box-shadow:
-      0 0 0 1px rgba(255, 118, 72, calc(var(--agent-glow-alpha) * 0.55)),
-      0 0 var(--agent-glow-blur) rgba(255, 118, 72, calc(var(--agent-glow-alpha) * 0.8));
+      0 -12px calc(var(--agent-glow-blur) * 0.92) rgba(255, 118, 72, calc(var(--agent-glow-alpha) * 0.8)),
+      0 16px calc(var(--agent-glow-blur) * 1.05) rgba(255, 118, 72, calc(var(--agent-glow-alpha) * 0.95));
   }
   50% {
     box-shadow:
-      0 0 0 1px rgba(255, 118, 72, calc(var(--agent-glow-alpha) * 0.7)),
-      0 0 calc(var(--agent-glow-blur) * 1.3) rgba(255, 118, 72, calc(var(--agent-glow-alpha) + var(--agent-glow-spread)));
+      0 -14px calc(var(--agent-glow-blur) * 1.08) rgba(255, 118, 72, calc(var(--agent-glow-alpha) * 0.95)),
+      0 20px calc(var(--agent-glow-blur) * 1.2) rgba(255, 118, 72, calc(var(--agent-glow-alpha) + var(--agent-glow-spread)));
   }
 }
 
@@ -353,32 +353,20 @@
   animation: agentControlPulse 1.6s ease-in-out infinite;
 }
 
-@keyframes agentSparkleTwinkle {
+@keyframes agentStatusDotPulse {
   0%, 100% {
-    transform: scale(0.8);
-    opacity: 0.45;
-    filter: drop-shadow(0 0 3px rgba(255, 107, 0, 0.35));
+    transform: scale(0.86);
+    opacity: 0.55;
   }
   50% {
-    transform: scale(1.1);
+    transform: scale(1.14);
     opacity: 1;
-    filter: drop-shadow(0 0 8px rgba(255, 107, 0, 0.7));
   }
 }
 
-.agent-sparkle-primary {
-  color: #ff6b00;
-  font-size: 11px;
-  line-height: 1;
-  animation: agentSparkleTwinkle 1.1s ease-in-out infinite;
-}
-
-.agent-sparkle-secondary {
-  color: #ffffff;
-  font-size: 9px;
-  line-height: 1;
-  animation: agentSparkleTwinkle 1.6s ease-in-out infinite;
-  animation-delay: 0.25s;
+.agent-status-dot-pulse {
+  animation: agentStatusDotPulse 1s ease-in-out infinite;
+  transform-origin: center;
 }
 
 /* ── 부드러운 스크롤바 ── */

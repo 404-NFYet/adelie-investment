@@ -11,7 +11,7 @@ import TradeModal from '../components/domain/TradeModal';
 import StockDetail from '../components/trading/StockDetail';
 import StockSearch from '../components/trading/StockSearch';
 import Leaderboard from '../components/trading/Leaderboard';
-import AppHeader from '../components/layout/AppHeader';
+import DashboardHeader from '../components/layout/DashboardHeader';
 import { PenguinMascot } from '../components';
 import { API_BASE_URL } from '../config';
 import useCountUp from '../hooks/useCountUp';
@@ -282,7 +282,7 @@ export default function Portfolio() {
   if (error) {
     return (
       <div className="min-h-screen bg-background pb-[calc(var(--bottom-nav-h,68px)+var(--agent-dock-h,104px)+16px)]">
-        <AppHeader />
+        <DashboardHeader />
         <main className="container py-6">
           <div className="card text-center py-12">
             <p className="text-text-primary font-medium mb-1">포트폴리오를 불러올 수 없습니다</p>
@@ -302,7 +302,7 @@ export default function Portfolio() {
 
   return (
     <div className="min-h-screen bg-background pb-[calc(var(--bottom-nav-h,68px)+var(--agent-dock-h,104px)+16px)]">
-      <AppHeader />
+      <DashboardHeader />
       <main className="container py-2 space-y-2">
         {/* 총 자산 카드 */}
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="card text-center rounded-2xl relative">
