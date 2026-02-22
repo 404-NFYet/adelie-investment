@@ -1,9 +1,9 @@
 /**
- * Bugfix Re-test: Verify Story, Comparison, Companies pages no longer crash
- * after ThemeProvider + ProtectedRoute fixes.
+ * 회귀 테스트: Story, Comparison, Companies 페이지 정상 렌더링 검증
+ * ThemeProvider + ProtectedRoute 수정 이후 회귀 방지.
  *
- * Pre-condition: Complete onboarding to set hasCompletedOnboarding in localStorage.
- * Then test Story (/story), Comparison (/comparison), Companies (/companies).
+ * 선행조건: 온보딩 완료 → hasCompletedOnboarding 설정
+ * 대상 라우트: /story, /comparison, /companies
  */
 import { test, expect } from '@playwright/test';
 
@@ -15,7 +15,7 @@ test.use({
     'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1',
 });
 
-test.describe.serial('Bugfix Re-test: Story, Comparison, Companies', () => {
+test.describe.serial('회귀: Story, Comparison, Companies 렌더링', () => {
   let page;
 
   test.beforeAll(async ({ browser }) => {
