@@ -365,113 +365,116 @@ export default function AgentCanvasPage() {
     : canvasState.aiStatus;
 
   return (
-    <div className="min-h-screen bg-[#f9fafb] pb-[calc(var(--bottom-nav-h,68px)+var(--agent-dock-h,96px)+18px)]">
-      <header className="sticky top-0 z-10 border-b border-[#eceff3] bg-white/95 backdrop-blur">
-        <div className="container h-14 flex items-center justify-between gap-2">
-          <div className="min-w-0 flex items-center gap-2">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleBack}
-                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[#f3f4f6] text-[#6a7282] transition-colors hover:bg-[#eceef1]"
-                aria-label="뒤로가기"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="m15 18-6-6 6-6" />
-                </svg>
-              </button>
-            </div>
-
-            <h1 className="truncate text-[16px] font-semibold text-[#111827]">
+    <div className="min-h-screen bg-[var(--agent-bg-page,#F7F8FA)] pb-[calc(var(--bottom-nav-h,68px)+var(--agent-dock-h,52px)+16px)]">
+      {/* ── 1줄 컴팩트 헤더 ── */}
+      <header className="sticky top-0 z-10 border-b border-[var(--agent-border)] bg-white/97 backdrop-blur-sm">
+        <div className="container flex h-11 items-center justify-between">
+          <div className="flex min-w-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={handleBack}
+              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[#8B95A1] active:bg-[#F2F4F6]"
+              aria-label="뒤로가기"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="m15 18-6-6 6-6" />
+              </svg>
+            </button>
+            <h1 className="truncate text-[15px] font-semibold text-[#191F28]">
               {canvasState.title}
             </h1>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-2">
             <AgentStatusDots phase={agentStatus?.phase} compact />
             <button
               type="button"
               onClick={() => setShowContextInfo((prev) => !prev)}
-              className="rounded-lg border border-[#eceff3] bg-white px-2 py-1 text-[11px] font-medium text-[#4a5565] transition-colors hover:bg-[#f7f9fb]"
+              className="flex h-7 w-7 items-center justify-center rounded-full text-[#8B95A1] active:bg-[#F2F4F6]"
               aria-label="컨텍스트 정보 토글"
             >
-              정보
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 16v-4" />
+                <path d="M12 8h.01" />
+              </svg>
             </button>
             <button
               type="button"
               onClick={openHistory}
-              className="rounded-lg border border-[#eceff3] bg-white px-2 py-1 text-[11px] font-medium text-[#4a5565] transition-colors hover:bg-[#f7f9fb]"
+              className="flex h-7 w-7 items-center justify-center rounded-full text-[#8B95A1] active:bg-[#F2F4F6]"
               aria-label="대화 기록 보기"
             >
-              기록
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 8v4l3 3" />
+                <circle cx="12" cy="12" r="10" />
+              </svg>
             </button>
           </div>
         </div>
 
+        {/* 접힘 정보영역 */}
         {showContextInfo && (
-          <div className="container border-t border-[#eceff3] py-2">
-            <p className="truncate text-[12px] text-[#6b7280]">AI가 보고 있는 것 · {contextSummary}</p>
-            <p className="truncate text-[11px] text-[#9ca3af]">{statusSubline}</p>
+          <div className="container border-t border-[var(--agent-border)] py-1.5">
+            <p className="truncate text-[12px] text-[#8B95A1]">{contextSummary}</p>
+            <p className="truncate text-[11px] text-[#B0B8C1]">{statusSubline}</p>
           </div>
         )}
       </header>
 
       <main className="container space-y-3 py-3">
+        {/* 진행바: 홈 모드만 */}
         {mode === 'home' && (
-          <section className="flex items-center gap-1.5">
+          <section className="flex items-center gap-1">
             {[1, 2, 3].map((step) => (
               <span
                 key={step}
-                className={`h-1.5 flex-1 rounded-full ${step <= conversationDepth ? 'bg-[#ff7648]' : 'bg-[#e5e7eb]'}`}
+                className={`h-1 flex-1 rounded-full transition-colors ${step <= conversationDepth ? 'bg-[#FF6B00]' : 'bg-[#E8EBED]'}`}
               />
             ))}
           </section>
         )}
 
+        {/* ── 스와이프 미니 핸들 ── */}
         <section
           onTouchStart={handleSwipeTouchStart}
           onTouchMove={handleSwipeTouchMove}
           onTouchEnd={handleSwipeTouchEnd}
-          className="rounded-[14px] border border-[#eceff3] bg-white px-3 py-2.5 shadow-[0_2px_10px_rgba(15,23,42,0.06)]"
+          className="flex items-center justify-between rounded-[10px] bg-[#F2F4F6] px-3 py-2"
           aria-label="세션 응답 스와이프 탐색"
         >
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 text-[12px] text-[#4b5563]">
-              <span className="inline-flex h-5 w-8 items-center justify-center rounded-full bg-[#f3f4f6]">
-                <span className="h-1.5 w-4 rounded-full bg-[#d1d5db]" />
-              </span>
-              <span className="font-medium">세션 탐색</span>
-            </div>
-            <span className="rounded-md bg-[#fff0eb] px-2 py-1 text-[11px] font-bold text-[#ff7648]">
-              {turns.length > 0 ? `${activeTurnIndex + 1}/${turns.length}` : '0/0'}
-            </span>
-          </div>
-
-          <div className="mt-1.5">
-            <div className="h-1.5 rounded-full bg-[#f3f4f6]">
-              <div
-                className="h-1.5 rounded-full bg-[#ff7648] transition-all"
-                style={{ width: `${dragProgress}%` }}
-              />
-            </div>
-            {swipeToast && (
-              <p className="mt-1 text-[10px] font-medium text-[#ff7648]">{swipeToast}</p>
+          <div className="flex items-center gap-2">
+            <span className="inline-block h-1 w-5 rounded-full bg-[#D1D6DB]" />
+            {dragDistance !== 0 && (
+              <div className="h-0.5 w-10 overflow-hidden rounded-full bg-[#E8EBED]">
+                <div
+                  className="h-full rounded-full bg-[#FF6B00] transition-all"
+                  style={{ width: `${dragProgress}%` }}
+                />
+              </div>
             )}
           </div>
+          <span className="text-[12px] font-medium tabular-nums text-[#8B95A1]">
+            {turns.length > 0 ? `${activeTurnIndex + 1}/${turns.length}` : '–'}
+          </span>
         </section>
 
+        {swipeToast && (
+          <p className="text-center text-[11px] text-[#8B95A1]">{swipeToast}</p>
+        )}
+
         {isBrowsingPrevious && (
-          <p className="text-[11px] font-medium text-[#ff7648]">이전 답변 탐색 중</p>
+          <p className="text-[11px] font-medium text-[#FF6B00]">이전 답변 보는 중</p>
         )}
         {selectedUserPrompt && (
-          <p className="truncate text-[11px] text-[#9ca3af]">요청: {selectedUserPrompt}</p>
+          <p className="truncate text-[12px] text-[#B0B8C1]">{selectedUserPrompt}</p>
         )}
 
         <AgentCanvasSections canvasState={canvasState} onActionClick={handleActionClick} />
 
         {isLoading && (
-          <div className="rounded-2xl border border-[#f3f4f6] bg-white px-4 py-3 text-[11px] text-[#99a1af]">
-            AI가 응답을 생성하고 있습니다...
+          <div className="rounded-[var(--agent-radius-sm)] border border-[var(--agent-border)] bg-white px-4 py-3 text-[13px] text-[#B0B8C1]">
+            응답을 준비하고 있어요…
           </div>
         )}
       </main>

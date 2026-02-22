@@ -6,8 +6,8 @@ function getTone(phase) {
 }
 
 const TONE_CLASS = {
-  idle: 'bg-[#cfd4dc]',
-  thinking: 'bg-[#f59e0b] agent-dot-wave',
+  idle: 'bg-[#D1D6DB]',
+  thinking: 'bg-[#FF6B00] agent-dot-wave',
   answering: 'bg-[#22c55e] agent-dot-wave',
   error: 'bg-[#ef4444] agent-dot-blink',
 };
@@ -17,12 +17,12 @@ export default function AgentStatusDots({ phase = 'idle', label = '', compact = 
   const toneClass = TONE_CLASS[tone];
 
   return (
-    <div className="flex items-center gap-1.5 text-xs text-[#6a7282]" aria-live="polite">
-      <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1 text-[11px] text-[#8B95A1]" aria-live="polite">
+      <div className="flex items-center gap-0.5">
         {[0, 1, 2].map((index) => (
           <span
             key={`dot-${index}`}
-            className={`h-2 w-2 rounded-full ${toneClass}`}
+            className={`h-1.5 w-1.5 rounded-full ${toneClass}`}
             style={tone === 'thinking' || tone === 'answering' ? { animationDelay: `${index * 0.18}s` } : undefined}
           />
         ))}

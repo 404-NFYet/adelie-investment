@@ -7,9 +7,9 @@ export default function AgentCanvasSections({
 
   if (canvasState.viewType === 'empty') {
     return (
-      <section className="rounded-2xl border border-[#f3f4f6] bg-white px-4 py-5">
-        <p className="text-[14px] leading-7 text-[#4a5565]">
-          질문을 입력하면 현재 화면 맥락을 반영해 요약과 근거를 정리해드립니다.
+      <section className="rounded-[var(--agent-radius-sm)] border border-[var(--agent-border)] bg-white px-4 py-4">
+        <p className="text-[14px] leading-relaxed text-[#8B95A1]">
+          질문을 입력하면 맥락에 맞는 요약을 정리해드려요.
         </p>
       </section>
     );
@@ -18,10 +18,10 @@ export default function AgentCanvasSections({
   if (canvasState.viewType === 'plain') {
     return (
       <>
-        <section className="rounded-2xl border border-[#f3f4f6] bg-white px-4 py-5">
-          <div className="space-y-3">
+        <section className="rounded-[var(--agent-radius-sm)] border border-[var(--agent-border)] bg-white px-4 py-4">
+          <div className="space-y-2.5">
             {canvasState.textBlocks.map((item, index) => (
-              <p key={`${item.slice(0, 24)}-${index}`} className="text-[15px] leading-7 text-[#111827]">
+              <p key={`${item.slice(0, 24)}-${index}`} className="text-[14px] leading-[1.7] text-[#333D4B]">
                 {item}
               </p>
             ))}
@@ -29,13 +29,13 @@ export default function AgentCanvasSections({
         </section>
 
         {showActions && (
-          <section className="grid grid-cols-2 gap-2.5">
+          <section className="grid grid-cols-2 gap-2">
             {actions.map((action) => (
               <button
                 key={action.id || action.label}
                 type="button"
                 onClick={() => onActionClick(action)}
-                className="rounded-xl border border-[#e5e7eb] bg-[#f9fafb] px-3 py-2.5 text-[13px] font-semibold text-[#4a5565] transition-colors hover:bg-[#f3f4f6]"
+                className="rounded-[12px] border border-[var(--agent-border)] bg-white px-3 py-2.5 text-[13px] font-medium text-[#4E5968] active:bg-[#F2F4F6]"
               >
                 {action.label || action}
               </button>
@@ -48,28 +48,28 @@ export default function AgentCanvasSections({
 
   return (
     <>
-      <section className="rounded-2xl border border-[rgba(243,244,246,0.5)] bg-[#f2f4f6] px-4 py-4">
-        <p className="mb-2 text-xs font-extrabold uppercase tracking-[0.08em] text-[#6a7282]">KEY POINT</p>
-        <p className="text-[15px] font-bold leading-7 text-[#1e2939]">{canvasState.keyPoint}</p>
+      {/* KEY POINT 카드 */}
+      <section className="rounded-[var(--agent-radius-sm)] bg-[#F2F4F6] px-4 py-3.5">
+        <p className="mb-1.5 text-[11px] font-bold uppercase tracking-widest text-[#8B95A1]">KEY POINT</p>
+        <p className="text-[15px] font-bold leading-[1.5] text-[#191F28]">{canvasState.keyPoint}</p>
       </section>
 
-      <section className="space-y-4">
-        <div className="flex items-start gap-3">
-          <span className="mt-1 inline-block h-6 w-1.5 rounded-full bg-[#ff7648]" />
-          <h2 className="text-[20px] font-extrabold leading-[1.35] tracking-[-0.02em] text-[#111827]">
-            핵심 해석
-          </h2>
+      {/* 핵심 해석 */}
+      <section className="space-y-3 px-1">
+        <div className="flex items-center gap-2">
+          <span className="inline-block h-4 w-1 rounded-full bg-[#FF6B00]" />
+          <h2 className="text-[16px] font-bold text-[#191F28]">핵심 해석</h2>
         </div>
 
-        <p className="text-[15px] leading-7 tracking-[-0.01em] text-[#4a5565]">
+        <p className="text-[14px] leading-[1.7] text-[#4E5968]">
           {canvasState.explanation}
         </p>
 
         {canvasState.bullets.length > 0 && (
-          <ul className="space-y-2 text-[14px] leading-7 tracking-[-0.01em] text-[#364153]">
+          <ul className="space-y-1.5 text-[13px] leading-[1.6] text-[#333D4B]">
             {canvasState.bullets.map((item, index) => (
               <li key={`${item}-${index}`} className="flex gap-2">
-                <span className="mt-[11px] h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#d1d5dc]" />
+                <span className="mt-[9px] h-1 w-1 flex-shrink-0 rounded-full bg-[#D1D6DB]" />
                 <span>{item}</span>
               </li>
             ))}
@@ -77,20 +77,20 @@ export default function AgentCanvasSections({
         )}
 
         {canvasState.quote && (
-          <blockquote className="border-l-4 border-[rgba(255,118,72,0.25)] pl-4 text-[14px] italic leading-7 text-[#6a7282]">
+          <blockquote className="border-l-2 border-[#E8EBED] pl-3 text-[13px] italic leading-[1.6] text-[#8B95A1]">
             {canvasState.quote}
           </blockquote>
         )}
       </section>
 
       {showActions && (
-        <section className="grid grid-cols-2 gap-2.5">
+        <section className="grid grid-cols-2 gap-2">
           {actions.map((action) => (
             <button
               key={action.id || action.label}
               type="button"
               onClick={() => onActionClick(action)}
-              className="rounded-xl border border-[#e5e7eb] bg-[#f9fafb] px-3 py-2.5 text-[13px] font-semibold text-[#4a5565] transition-colors hover:bg-[#f3f4f6]"
+              className="rounded-[12px] border border-[var(--agent-border)] bg-white px-3 py-2.5 text-[13px] font-medium text-[#4E5968] active:bg-[#F2F4F6]"
             >
               {action.label || action}
             </button>

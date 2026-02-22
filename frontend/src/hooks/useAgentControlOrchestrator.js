@@ -27,8 +27,12 @@ export default function useAgentControlOrchestrator({
     [location.pathname, mode, stockContext],
   );
 
+  const NAV_ACTION_IDS = ['nav_home', 'nav_portfolio', 'nav_education'];
+
   const suggestedActions = useMemo(
-    () => actionCatalog.filter((item) => item.risk === 'low').slice(0, 2),
+    () => actionCatalog
+      .filter((item) => item.risk === 'low' && !NAV_ACTION_IDS.includes(item.id))
+      .slice(0, 2),
     [actionCatalog],
   );
 

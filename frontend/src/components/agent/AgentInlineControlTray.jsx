@@ -1,13 +1,13 @@
 function statusColor(phase) {
   switch (phase) {
     case 'running':
-      return 'text-[#ff7648]';
+      return 'text-[#FF6B00]';
     case 'success':
       return 'text-[#16a34a]';
     case 'error':
       return 'text-[#ef4444]';
     default:
-      return 'text-[#6a7282]';
+      return 'text-[#B0B8C1]';
   }
 }
 
@@ -20,51 +20,49 @@ export default function AgentInlineControlTray({
   onActionClick,
 }) {
   const hasInlineMessage = Boolean(inlineMessage?.text);
+  const visibleActions = actions.slice(0, 2);
 
   return (
-    <div className="pointer-events-auto mb-1.5 rounded-[18px] border border-[#eceff3] bg-white px-3 py-2 shadow-[0_2px_10px_rgba(15,23,42,0.06)]">
+    <div className="pointer-events-auto mb-1 rounded-[14px] border border-[var(--agent-border,#E8EBED)] bg-white px-3 py-1.5 shadow-[var(--agent-shadow)]">
+      {/* 요약 + 상태 1줄 */}
       <div className="flex items-center justify-between gap-2">
-        <p className="truncate text-[12px] font-semibold text-[#1f2937]">{summary}</p>
-        {controlState?.phase === 'running' && (
-          <span className="rounded-full bg-[#fff2eb] px-2 py-0.5 text-[10px] font-semibold text-[#ff7648]">
-            Active
-          </span>
-        )}
+        <p className="min-w-0 truncate text-[12px] font-medium text-[#333D4B]">{summary}</p>
+        <span className={`flex-shrink-0 text-[10px] font-medium ${statusColor(controlState?.phase)}`}>
+          {controlState?.phase === 'running' ? '실행 중' : ''}
+        </span>
       </div>
 
+      {/* 인라인 메시지 */}
       {hasInlineMessage && (
-        <div className="mt-1.5 flex items-center justify-between gap-2">
-          <p className="truncate text-[11px] text-[#4b5563]">{inlineMessage.text}</p>
+        <div className="mt-1 flex items-center justify-between gap-2">
+          <p className="min-w-0 truncate text-[11px] text-[#6B7684]">{inlineMessage.text}</p>
           {inlineMessage.canvasPrompt && (
             <button
               type="button"
               onClick={() => onOpenCanvas?.(inlineMessage.canvasPrompt)}
-              className="flex-shrink-0 rounded-full border border-[#eceff3] px-2 py-0.5 text-[10px] font-semibold text-[#364153] hover:bg-[#f7f9fb]"
+              className="flex-shrink-0 text-[11px] font-medium text-[#FF6B00] active:opacity-70"
             >
-              캔버스 열기
+              자세히
             </button>
           )}
         </div>
       )}
 
-      {actions.length > 0 && (
-        <div className="mt-1.5 flex flex-wrap gap-1.5">
-          {actions.map((action) => (
+      {/* 액션칩 최대 2개 */}
+      {visibleActions.length > 0 && (
+        <div className="mt-1.5 flex gap-1.5">
+          {visibleActions.map((action) => (
             <button
               key={action.id}
               type="button"
               onClick={() => onActionClick(action)}
-              className="rounded-full border border-[#eceff3] bg-[#f7f9fb] px-2 py-0.5 text-[10px] font-semibold text-[#4a5565] transition-colors hover:bg-[#eef2f6]"
+              className="rounded-full border border-[var(--agent-border,#E8EBED)] bg-[#F7F8FA] px-2.5 py-1 text-[11px] font-medium text-[#4E5968] active:bg-[#E8EBED]"
             >
               {action.label}
             </button>
           ))}
         </div>
       )}
-
-      <p className={`mt-1.5 truncate text-[10px] font-medium ${statusColor(controlState?.phase)}`}>
-        상태: {controlState?.text || '대기 중'}
-      </p>
     </div>
   );
 }

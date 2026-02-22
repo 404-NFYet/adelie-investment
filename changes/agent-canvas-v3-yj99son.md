@@ -170,3 +170,60 @@
 - [ ] `/tutor/route` 장애 시 인라인 fallback + 캔버스 보조 버튼 동작
 - [ ] 캔버스 상단 1줄 유지 및 본문 가림 없음
 - [ ] `npm run build` 성공
+
+## 10. Toss 톤 UI 리디자인 (스타일 전용)
+
+### 왜 바꿨는지
+- 상단 헤더가 2줄 이상 차지하여 모바일 본문 가독성 저하
+- 트레이/독 높이가 과도하여 입력 영역이 화면을 많이 차지
+- 글로우/그림자가 강해서 전체적으로 과장된 느낌
+- 안내 문구가 과다하여 Toss 톤(단순·밀도 낮음·명확한 계층)과 괴리
+
+### 사용자가 체감하는 변화
+- 헤더가 h-14 → h-11로 축소, 정보/기록 버튼은 아이콘 전환 → 본문 노출 면적 증가
+- "AI가 보고 있는 것..." 문구 기본 숨김, info 아이콘 탭 시에만 노출
+- 스와이프 영역이 카드 → 미니 핸들(h-8) + `n/m` 텍스트로 축소
+- 하단 독 높이 96px → 52px, 입력폼 h-11 원형 경량화
+- 트레이 액션칩 최대 2개, 상태 텍스트 1줄 말줄임
+- 글로우/그림자 대폭 약화, 카드 보더 #E8EBED 통일
+- 색상 팔레트 Toss 그레이(#191F28, #333D4B, #4E5968, #8B95A1, #B0B8C1, #D1D6DB, #E8EBED, #F2F4F6, #F7F8FA)로 정리
+- 주황(#FF6B00)은 CTA/active 상태에서만 사용
+
+### 코드 위치
+- `frontend/src/styles/globals.css` — agent 전용 CSS 토큰 추가/정리 (`--agent-dock-h`, `--agent-shadow`, `--agent-bg-page` 등)
+- `frontend/src/pages/AgentCanvasPage.jsx` — 1줄 컴팩트 헤더, info/history 아이콘화, 스와이프 미니 핸들
+- `frontend/src/components/agent/AgentDock.jsx` — 독 높이 축소, 입력폼 경량화
+- `frontend/src/components/agent/AgentInlineControlTray.jsx` — 트레이 py 축소, 액션칩 2개 제한, 상태 1줄
+- `frontend/src/components/agent/AgentCanvasSections.jsx` — 카드 반경/보더/그림자 통일, 과도한 장식 제거
+- `frontend/src/components/agent/AgentControlPulse.jsx` — radial-gradient 제거, 약한 shadow만 유지
+- `frontend/src/components/agent/AgentStatusDots.jsx` — dot 크기/간격 미세 조정
+
+### 검증 결과
+- [x] `npm run build` 성공
+- [ ] 모바일에서 상단/하단이 본문 가리지 않는지 확인
+- [ ] 홈/투자/교육/agent/history 레이아웃 일관성 확인
+
+## 11. 독-네비 분리 및 세션 복귀 UX
+
+### 왜 바꿨는지
+- 하단 독(AgentDock)과 BottomNav가 시각적으로 겹치고 기능도 중복(탭 이동 액션칩 등)
+- InlineControlTray가 독 위에 쌓여 하단 영역이 과도하게 커짐
+- 캔버스 진입 후 중간에 나갔을 때 대화 복귀 흐름이 없었음
+
+### 사용자가 체감하는 변화
+- 독이 볼드한 카드 형태(`rounded-[20px]`, `shadow 0_2px_12px`)로 네비와 시각적으로 확실히 분리
+- InlineControlTray 스택 제거 — 인라인 메시지는 독 안에 조건부 1줄로만 표시
+- 진행 중인 대화가 있으면 독 상단에 "진행 중인 대화가 있어요" 복귀 바 노출, 탭하면 /agent로 이동
+- 네비 기능 중복 제거: `nav_home/nav_portfolio/nav_education` 액션칩이 트레이에 더 이상 노출되지 않음
+- 입력폼 높이 h-12, 버튼 h-8로 키워서 터치 영역 확대
+
+### 코드 위치
+- `frontend/src/components/agent/AgentDock.jsx` — 전면 재설계: 트레이 인라인화, 세션 복귀 바, 볼드 카드 스타일
+- `frontend/src/hooks/useAgentControlOrchestrator.js` — `suggestedActions`에서 nav 타입 액션 필터링
+- `frontend/src/components/agent/AgentInlineControlTray.jsx` — 독에서 더 이상 import하지 않지만 파일은 유지 (다른 곳에서 사용 가능)
+
+### 검증 결과
+- [x] `npm run build` 성공
+- [ ] 독-네비 간 시각적 분리 확인
+- [ ] 세션 복귀 흐름 확인 (홈에서 독 탭 → /agent 복귀)
+- [ ] 캔버스에서 네비 중복 CTA 미노출 확인

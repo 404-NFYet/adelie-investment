@@ -1,12 +1,11 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { API_BASE_URL, authFetch } from '../../api/client';
+import { useTutor } from '../../contexts';
 import useAgentPromptHints from '../../hooks/useAgentPromptHints';
 import useAgentControlOrchestrator from '../../hooks/useAgentControlOrchestrator';
 import buildUiSnapshot from '../../utils/agent/buildUiSnapshot';
 import buildActionCatalog from '../../utils/agent/buildActionCatalog';
-import AgentInlineControlTray from './AgentInlineControlTray';
-import AgentControlPulse from './AgentControlPulse';
 
 function readSessionJson(key) {
   try {
@@ -31,6 +30,10 @@ export default function AgentDock() {
   const location = useLocation();
   const navigate = useNavigate();
   const { shouldHide, mode, placeholder, suggestedPrompt } = useAgentPromptHints();
+  const { messages } = useTutor();
+
+  const hasActiveSession = Array.isArray(messages) && messages.length > 0;
+  const isOnCanvas = location.pathname.startsWith('/agent');
 
   const baseContextPayload = useMemo(() => {
     if (mode === 'stock' && location.state?.stockContext) {
@@ -49,8 +52,6 @@ export default function AgentDock() {
   }, [location.state, mode]);
 
   const {
-    suggestedActions,
-    traySummary,
     controlState,
     isAgentControlling,
     actionCatalog: orchestratorActionCatalog,
@@ -161,13 +162,13 @@ export default function AgentDock() {
         submitPromptToCanvas(decision?.canvas_prompt || normalized);
       } else {
         setInlineMessage({
-          text: decision?.inline_text || '간단히 안내드렸어요. 더 자세히 보려면 캔버스를 열어주세요.',
+          text: decision?.inline_text || '자세히 보려면 캔버스를 열어주세요.',
           canvasPrompt: decision?.canvas_prompt || normalized,
         });
       }
     } catch {
       setInlineMessage({
-        text: '지금은 인라인으로 안내할게요. 자세한 분석은 캔버스로 이어갈 수 있어요.',
+        text: '자세한 분석은 캔버스에서 확인할 수 있어요.',
         canvasPrompt: normalized,
       });
     } finally {
@@ -182,46 +183,63 @@ export default function AgentDock() {
     await submitPrompt(input || suggestedPrompt);
   };
 
-  const handleActionClick = async (action) => {
-    setInlineMessage(null);
-    await executeAction(action, {
-      contextPayload: buildControlContextPayload(''),
-      prompt: suggestedPrompt,
+  const handleResumeChat = () => {
+    navigate('/agent', {
+      state: { mode, contextPayload: buildControlContextPayload('') },
     });
   };
 
-  const openCanvasFromInline = (prompt) => {
-    const normalized = String(prompt || '').trim();
-    if (!normalized) return;
-    submitPromptToCanvas(normalized);
-  };
-
   return (
-    <div className="pointer-events-none fixed bottom-[var(--bottom-nav-h,68px)] left-0 right-0 z-30 flex justify-center px-4">
-      <div className="w-full max-w-mobile">
-        <AgentControlPulse active={isAgentControlling}>
-          <AgentInlineControlTray
-            summary={traySummary}
-            actions={suggestedActions}
-            controlState={controlState}
-            inlineMessage={inlineMessage}
-            onOpenCanvas={openCanvasFromInline}
-            onActionClick={handleActionClick}
-          />
+    <div className="pointer-events-none fixed bottom-[var(--bottom-nav-h,68px)] left-0 right-0 z-30 flex justify-center px-4 pb-2">
+      <div className="w-full max-w-mobile space-y-1.5">
+        {/* 인라인 메시지 (트레이 대체 — 필요할 때만 노출) */}
+        {inlineMessage?.text && (
+          <div className="pointer-events-auto flex items-center justify-between gap-2 rounded-[14px] border border-[var(--agent-border,#E8EBED)] bg-white px-3 py-2 shadow-[var(--agent-shadow)]">
+            <p className="min-w-0 truncate text-[12px] text-[#6B7684]">{inlineMessage.text}</p>
+            {inlineMessage.canvasPrompt && (
+              <button
+                type="button"
+                onClick={() => {
+                  submitPromptToCanvas(inlineMessage.canvasPrompt);
+                  setInlineMessage(null);
+                }}
+                className="flex-shrink-0 text-[12px] font-semibold text-[#FF6B00] active:opacity-70"
+              >
+                자세히
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* 볼드 입력바 */}
+        <div className={`pointer-events-auto rounded-[20px] bg-white shadow-[0_2px_12px_rgba(0,0,0,0.1)] ${isAgentControlling ? 'ring-1 ring-[#FF6B00]/20' : ''}`}>
+          {/* 세션 복귀 표시 */}
+          {hasActiveSession && !isOnCanvas && (
+            <button
+              type="button"
+              onClick={handleResumeChat}
+              className="flex w-full items-center gap-2 border-b border-[#F2F4F6] px-4 py-2 text-left active:bg-[#F7F8FA]"
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-[#FF6B00]" />
+              <span className="text-[12px] font-medium text-[#4E5968]">진행 중인 대화가 있어요</span>
+              <svg className="ml-auto text-[#B0B8C1]" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="m9 18 6-6-6-6" />
+              </svg>
+            </button>
+          )}
 
           <form
             onSubmit={handleSubmit}
-            className="pointer-events-auto flex items-center gap-2 rounded-full border border-[#eceff3] bg-white px-2 py-1.5 shadow-[0_2px_10px_rgba(15,23,42,0.06)]"
+            className="flex h-12 items-center gap-2.5 px-3"
           >
             <button
               type="button"
               onClick={() => submitPrompt(suggestedPrompt)}
-              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[#ff7648] text-white shadow-sm"
+              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[#FF6B00] text-white shadow-sm active:scale-95"
               aria-label="추천 문구 사용"
             >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 3.2l1.85 4.3 4.3 1.85-4.3 1.85L12 15.5l-1.85-4.3-4.3-1.85 4.3-1.85L12 3.2z" />
-                <path d="M18.6 14.1l.95 2.2 2.2.95-2.2.95-.95 2.2-.95-2.2-2.2-.95 2.2-.95.95-2.2z" />
               </svg>
             </button>
 
@@ -230,23 +248,23 @@ export default function AgentDock() {
               value={input}
               onChange={(event) => setInput(event.target.value)}
               placeholder={input ? placeholder : suggestedPrompt}
-              className="min-w-0 flex-1 bg-transparent text-[14px] font-medium text-[#111827] placeholder:text-[#9ca3af]/70 focus:outline-none"
+              className="min-w-0 flex-1 bg-transparent text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] focus:outline-none"
               aria-label="에이전트 질문 입력"
             />
 
             <button
               type="submit"
-              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[#f3f4f6] text-[#6b7280] transition-colors hover:bg-[#eceef1] disabled:opacity-40"
+              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[#F2F4F6] text-[#6B7684] transition-colors active:bg-[#E8EBED] disabled:opacity-30"
               aria-label="질문 전송"
               disabled={isRouting}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M5 12h14" />
                 <path d="m12 5 7 7-7 7" />
               </svg>
             </button>
           </form>
-        </AgentControlPulse>
+        </div>
       </div>
     </div>
   );
