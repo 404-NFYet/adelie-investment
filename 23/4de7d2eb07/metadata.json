@@ -41,6 +41,17 @@
     "infra/monitoring/docker-compose.yml",
     "infra/monitoring/prometheus.yml",
     "infra/monitoring/rules/adelie-alerts.yml",
+    "infra/terraform/modules/database/main.tf",
+    "infra/terraform/modules/database/outputs.tf",
+    "infra/terraform/modules/database/variables.tf",
+    "infra/terraform/modules/network/main.tf",
+    "infra/terraform/modules/network/outputs.tf",
+    "infra/terraform/modules/network/variables.tf",
+    "infra/terraform/modules/storage/main.tf",
+    "infra/terraform/modules/storage/outputs.tf",
+    "infra/terraform/modules/storage/variables.tf",
+    "infra/terraform/outputs.tf",
+    "infra/terraform/variables.tf",
     "lxd/Makefile"
   ],
   "sessions": [
@@ -99,13 +110,20 @@
       "context": "/23/4de7d2eb07/7/context.md",
       "content_hash": "/23/4de7d2eb07/7/content_hash.txt",
       "prompt": "/23/4de7d2eb07/7/prompt.txt"
+    },
+    {
+      "metadata": "/23/4de7d2eb07/8/metadata.json",
+      "transcript": "/23/4de7d2eb07/8/full.jsonl",
+      "context": "/23/4de7d2eb07/8/context.md",
+      "content_hash": "/23/4de7d2eb07/8/content_hash.txt",
+      "prompt": "/23/4de7d2eb07/8/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 6340,
-    "cache_creation_tokens": 989507,
-    "cache_read_tokens": 28602522,
-    "output_tokens": 139096,
-    "api_call_count": 375
+    "input_tokens": 6394,
+    "cache_creation_tokens": 1094378,
+    "cache_read_tokens": 30600190,
+    "output_tokens": 150675,
+    "api_call_count": 419
   }
 }
