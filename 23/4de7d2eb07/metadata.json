@@ -3,7 +3,7 @@
   "checkpoint_id": "234de7d2eb07",
   "strategy": "manual-commit",
   "branch": "develop",
-  "checkpoints_count": 8,
+  "checkpoints_count": 9,
   "files_touched": [
     ".dockerignore",
     ".env.example",
@@ -11,6 +11,8 @@
     ".github/workflows/deploy.yml",
     "CLAUDE.md",
     "Makefile",
+    "README.md",
+    "changes/dorae222.md",
     "database/scripts/sync_dev_data.sh",
     "datapipeline/config.py",
     "datapipeline/db/writer.py",
@@ -20,6 +22,7 @@
     "docker-compose.staging.yml",
     "docs/README.md",
     "docs/getting-started/database-guide.md",
+    "docs/team-guides/E_인프라_도형준.md",
     "fastapi/Dockerfile",
     "fastapi/app/api/routes/briefing.py",
     "fastapi/app/api/routes/cases.py",
@@ -180,13 +183,20 @@
       "context": "/23/4de7d2eb07/11/context.md",
       "content_hash": "/23/4de7d2eb07/11/content_hash.txt",
       "prompt": "/23/4de7d2eb07/11/prompt.txt"
+    },
+    {
+      "metadata": "/23/4de7d2eb07/12/metadata.json",
+      "transcript": "/23/4de7d2eb07/12/full.jsonl",
+      "context": "/23/4de7d2eb07/12/context.md",
+      "content_hash": "/23/4de7d2eb07/12/content_hash.txt",
+      "prompt": "/23/4de7d2eb07/12/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 8844,
-    "cache_creation_tokens": 1404848,
-    "cache_read_tokens": 48886626,
-    "output_tokens": 228447,
-    "api_call_count": 646
+    "input_tokens": 8932,
+    "cache_creation_tokens": 1527696,
+    "cache_read_tokens": 55767184,
+    "output_tokens": 260854,
+    "api_call_count": 730
   }
 }
