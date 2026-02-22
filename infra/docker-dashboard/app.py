@@ -102,8 +102,9 @@ ops_pages = [
 
 nav = st.navigation(
     {
-        "팀원 서버": team_pages,
-        "운영": ops_pages,
+        "💬 챗봇": [st.Page("pages/chatbot.py", title="🤖 서버 어시스턴트")],
+        "🖥️ 팀원 서버": team_pages,
+        "🎯 운영": ops_pages,
     }
 )
 

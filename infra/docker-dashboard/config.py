@@ -77,3 +77,16 @@ PROMETHEUS_URL = os.getenv("PROMETHEUS_URL", "http://10.10.10.10:9090")
 
 # Grafana 설정
 GRAFANA_URL = os.getenv("GRAFANA_URL", "https://monitoring.adelie-invest.com")
+
+# Claude API 설정 (팀원 챗봇)
+CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY", "")
+CLAUDE_MODEL   = "claude-sonnet-4-6"
+
+# 서버별 역할 메타 (챗봇 컨텍스트 주입용)
+SERVER_ROLES = {
+    "dev-yj99son":  {"name": "손영진", "role": "frontend",  "host": "10.10.10.14", "branch": "dev/frontend",  "icon": "🖥️"},
+    "dev-j2hoon10": {"name": "정지훈", "role": "chatbot",   "host": "10.10.10.11", "branch": "dev/chatbot",   "icon": "🤖"},
+    "dev-jjjh02":   {"name": "허진서", "role": "backend",   "host": "10.10.10.12", "branch": "dev/backend",   "icon": "⚙️"},
+    "dev-ryejinn":  {"name": "안례진", "role": "pipeline",  "host": "10.10.10.13", "branch": "dev/pipeline",  "icon": "🔄"},
+    "dev-hj":       {"name": "도형준", "role": "infra",     "host": "10.10.10.15", "branch": "dev/infra",     "icon": "🏗️"},
+}
