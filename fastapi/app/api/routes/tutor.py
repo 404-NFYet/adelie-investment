@@ -6,7 +6,7 @@ import logging
 import time
 import uuid
 from datetime import datetime
-from typing import AsyncGenerator, Optional
+from typing import Any, AsyncGenerator, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
@@ -267,6 +267,110 @@ async def _route_with_llm(route_request: TutorRouteRequest) -> TutorRouteRespons
     )
 
 
+def _normalize_reasoning_effort(value: str) -> str:
+    effort = (value or "").strip().lower()
+    if effort in {"minimal", "low", "medium", "high"}:
+        return effort
+    return ""
+
+
+def _event_to_dict(event: Any) -> dict[str, Any]:
+    if isinstance(event, dict):
+        return event
+    if hasattr(event, "model_dump"):
+        try:
+            dumped = event.model_dump()
+            if isinstance(dumped, dict):
+                return dumped
+        except Exception:
+            pass
+    if hasattr(event, "to_dict"):
+        try:
+            dumped = event.to_dict()
+            if isinstance(dumped, dict):
+                return dumped
+        except Exception:
+            pass
+    return {"type": getattr(event, "type", None)}
+
+
+def _extract_usage_total(response_payload: dict[str, Any]) -> int:
+    usage = response_payload.get("usage") or {}
+    if isinstance(usage, dict):
+        total = usage.get("total_tokens")
+        if isinstance(total, int):
+            return total
+        input_tokens = usage.get("input_tokens", 0) or 0
+        output_tokens = usage.get("output_tokens", 0) or 0
+        if isinstance(input_tokens, int) and isinstance(output_tokens, int):
+            return input_tokens + output_tokens
+    return 0
+
+
+def _extract_response_text(response_payload: dict[str, Any]) -> str:
+    output = response_payload.get("output")
+    if not isinstance(output, list):
+        return ""
+
+    chunks: list[str] = []
+    for item in output:
+        if not isinstance(item, dict):
+            continue
+        for content in item.get("content", []) or []:
+            if not isinstance(content, dict):
+                continue
+            text = content.get("text")
+            if isinstance(text, str) and text:
+                chunks.append(text)
+    return "".join(chunks).strip()
+
+
+def _extract_structured_from_markdown(markdown_text: str) -> Optional[dict[str, Any]]:
+    text = (markdown_text or "").strip()
+    if not text:
+        return None
+
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        return None
+
+    summary = ""
+    for line in lines:
+        cleaned = line.lstrip("#").strip()
+        if cleaned:
+            summary = cleaned
+            break
+    if not summary:
+        summary = text[:200]
+
+    key_points: list[str] = []
+    suggested_actions: list[str] = []
+    for line in lines:
+        if line.startswith(("- ", "* ")):
+            bullet = line[2:].strip()
+        elif line[:2].isdigit() and line[1] == ".":
+            bullet = line[2:].strip()
+        else:
+            bullet = ""
+
+        if not bullet:
+            continue
+
+        if any(keyword in bullet for keyword in ["실행", "확인", "비교", "체크", "다음"]):
+            suggested_actions.append(bullet)
+        else:
+            key_points.append(bullet)
+
+    key_points = key_points[:5]
+    suggested_actions = suggested_actions[:3]
+
+    return {
+        "summary": summary,
+        "key_points": key_points,
+        "suggested_actions": suggested_actions,
+    }
+
+
 @router.post("/route", response_model=TutorRouteResponse)
 @limiter.limit("30/minute")
 async def tutor_route(
@@ -383,6 +487,15 @@ async def _build_llm_messages(
         system_prompt += extra_context
     # 용어 설명은 LLM이 응답 내에서 자연스럽게 처리하도록 프롬프트에 지시
     system_prompt += "\n\n투자 용어가 나오면 괄호 안에 쉬운 설명을 덧붙여주세요. 예: PER(주가수익비율, 주가를 이익으로 나눈 값)."
+    if request.response_mode == "canvas_markdown":
+        system_prompt += (
+            "\n\n응답 형식 규칙:\n"
+            "- 반드시 Markdown으로 응답하세요.\n"
+            "- 첫 문단에 핵심 요약 1~2문장을 먼저 제시하세요.\n"
+            "- 핵심 포인트는 불릿 목록(3~5개)으로 정리하세요.\n"
+            "- 필요한 경우 마지막에 '다음 액션' 섹션을 번호 목록으로 제시하세요.\n"
+            "- 파이프(|) 같은 중간 메타 토큰이나 디버그 문자열은 출력하지 마세요.\n"
+        )
 
     # 이전 대화 내역 로드 (멀티턴)
     prev_msgs = []
@@ -478,7 +591,7 @@ async def generate_tutor_response(
         if not guardrail_result.is_allowed:
             # 차단 메시지를 스트리밍으로 전송 후 즉시 종료 (DB 저장 없음)
             yield f"event: text_delta\ndata: {json.dumps({'content': guardrail_result.block_message})}\n\n"
-            yield f"event: done\ndata: {json.dumps({'session_id': session_id, 'total_tokens': 0, 'guardrail': guardrail_result.decision})}\n\n"
+            yield f"event: done\ndata: {json.dumps({'type': 'done', 'session_id': session_id, 'total_tokens': 0, 'guardrail': guardrail_result.decision, 'response_mode': request.response_mode or 'plain', 'search_used': False})}\n\n"
             return
     except Exception as e:
         logger.warning("Guardrail check failed, falling open: %s", type(e).__name__)
@@ -500,57 +613,148 @@ async def generate_tutor_response(
     try:
         client = AsyncOpenAI(api_key=api_key)
         chat_model = settings.TUTOR_CHAT_MODEL or "gpt-5-mini"
-        reasoning_effort = (settings.TUTOR_REASONING_EFFORT or "").strip().lower()
-        completion_kwargs = {
-            "model": chat_model,
-            "messages": messages,
-            "max_tokens": 1000,
-            "stream": True,
-        }
-
-        if reasoning_effort:
-            try:
-                response = await client.chat.completions.create(
-                    **completion_kwargs,
-                    reasoning_effort=reasoning_effort,
-                )
-            except Exception as e:
-                logger.warning(
-                    "reasoning_effort fallback model=%s effort=%s reason=%s",
-                    chat_model,
-                    reasoning_effort,
-                    type(e).__name__,
-                )
-                response = await client.chat.completions.create(**completion_kwargs)
-                reasoning_effort = ""
-        else:
-            response = await client.chat.completions.create(**completion_kwargs)
+        reasoning_effort = _normalize_reasoning_effort(settings.TUTOR_REASONING_EFFORT)
+        response_mode = request.response_mode or "plain"
+        use_web_search = bool(request.use_web_search)
 
         total_tokens = 0
         full_response = ""
+        search_used = False
+        used_responses_api = False
         stream_start = time.monotonic()
         chunk_count = 0
 
-        async for chunk in response:
-            chunk_count += 1
+        if settings.TUTOR_USE_RESPONSES_API:
+            response_input = [{"role": item["role"], "content": item["content"]} for item in messages]
+            responses_kwargs: dict[str, Any] = {
+                "model": chat_model,
+                "input": response_input,
+                "stream": True,
+                "max_output_tokens": 1000,
+            }
 
-            # 매 10번째 청크마다 연결 상태 및 타임아웃 확인
-            if chunk_count % 10 == 0:
-                if time.monotonic() - stream_start > 300:
-                    logger.warning("SSE 스트리밍 타임아웃 (300초 초과)")
-                    yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'Stream timeout'})}\n\n"
-                    break
-                if await http_request.is_disconnected():
-                    logger.info("클라이언트 연결 해제 감지, 스트리밍 중단")
-                    break
+            if reasoning_effort:
+                responses_kwargs["reasoning"] = {"effort": reasoning_effort}
 
-            if chunk.choices and chunk.choices[0].delta.content:
-                content = chunk.choices[0].delta.content
-                full_response += content
-                yield f"event: text_delta\ndata: {json.dumps({'content': content})}\n\n"
+            if use_web_search:
+                responses_kwargs["tools"] = [{"type": "web_search_preview"}]
 
-            if chunk.usage:
-                total_tokens = chunk.usage.total_tokens
+            try:
+                responses_stream = await client.responses.create(**responses_kwargs)
+                used_responses_api = True
+
+                async for event in responses_stream:
+                    chunk_count += 1
+
+                    if chunk_count % 10 == 0:
+                        if time.monotonic() - stream_start > 300:
+                            logger.warning("Responses SSE 스트리밍 타임아웃 (300초 초과)")
+                            yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'Stream timeout'})}\n\n"
+                            break
+                        if await http_request.is_disconnected():
+                            logger.info("클라이언트 연결 해제 감지, 스트리밍 중단")
+                            break
+
+                    event_data = _event_to_dict(event)
+                    event_type = (event_data.get("type") or getattr(event, "type", "") or "").strip()
+
+                    if event_type == "response.output_text.delta":
+                        delta = event_data.get("delta") or getattr(event, "delta", "")
+                        if isinstance(delta, str) and delta:
+                            full_response += delta
+                            yield f"event: text_delta\ndata: {json.dumps({'content': delta})}\n\n"
+                        continue
+
+                    if "web_search" in event_type:
+                        search_used = True
+                        yield f"event: step\ndata: {json.dumps({'type': 'tool_call', 'tool': 'web_search', 'content': '웹 검색 컨텍스트를 수집 중입니다.'})}\n\n"
+                        continue
+
+                    if "tool" in event_type and event_type not in {"response.output_text.annotation.added"}:
+                        tool_name = "tool"
+                        if "web_search" in event_type:
+                            tool_name = "web_search"
+                            search_used = True
+                        yield f"event: step\ndata: {json.dumps({'type': 'tool_call', 'tool': tool_name, 'content': '도구 실행 중입니다.'})}\n\n"
+                        continue
+
+                    if event_type in {"response.error", "error"}:
+                        error_obj = event_data.get("error") or {}
+                        if isinstance(error_obj, dict):
+                            err_message = error_obj.get("message") or str(error_obj)
+                        else:
+                            err_message = str(error_obj)
+                        raise RuntimeError(err_message or "Responses API stream error")
+
+                    if event_type == "response.completed":
+                        response_payload = event_data.get("response") or {}
+                        if isinstance(response_payload, dict):
+                            total_tokens = _extract_usage_total(response_payload)
+                            if not full_response:
+                                extracted_text = _extract_response_text(response_payload)
+                                if extracted_text:
+                                    full_response = extracted_text
+                                    yield f"event: text_delta\ndata: {json.dumps({'content': extracted_text})}\n\n"
+                        continue
+            except Exception as responses_err:
+                logger.warning(
+                    "responses_api_fallback model=%s reason=%s",
+                    chat_model,
+                    type(responses_err).__name__,
+                )
+                used_responses_api = False
+                total_tokens = 0
+                full_response = ""
+                search_used = False
+
+        if not used_responses_api:
+            completion_kwargs = {
+                "model": chat_model,
+                "messages": messages,
+                "max_tokens": 1000,
+                "stream": True,
+            }
+
+            if reasoning_effort:
+                try:
+                    response = await client.chat.completions.create(
+                        **completion_kwargs,
+                        reasoning_effort=reasoning_effort,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "reasoning_effort fallback model=%s effort=%s reason=%s",
+                        chat_model,
+                        reasoning_effort,
+                        type(e).__name__,
+                    )
+                    response = await client.chat.completions.create(**completion_kwargs)
+                    reasoning_effort = ""
+            else:
+                response = await client.chat.completions.create(**completion_kwargs)
+
+            if use_web_search:
+                yield f"event: step\ndata: {json.dumps({'type': 'tool_call', 'tool': 'web_search', 'content': '현재 모델 경로에서는 웹 검색 도구를 지원하지 않아 기본 분석으로 진행합니다.'})}\n\n"
+
+            async for chunk in response:
+                chunk_count += 1
+
+                if chunk_count % 10 == 0:
+                    if time.monotonic() - stream_start > 300:
+                        logger.warning("SSE 스트리밍 타임아웃 (300초 초과)")
+                        yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'Stream timeout'})}\n\n"
+                        break
+                    if await http_request.is_disconnected():
+                        logger.info("클라이언트 연결 해제 감지, 스트리밍 중단")
+                        break
+
+                if chunk.choices and chunk.choices[0].delta.content:
+                    content = chunk.choices[0].delta.content
+                    full_response += content
+                    yield f"event: text_delta\ndata: {json.dumps({'content': content})}\n\n"
+
+                if chunk.usage:
+                    total_tokens = chunk.usage.total_tokens
 
         # DB 저장
         await _save_tutor_session(db, session_id, user_id, request, full_response)
@@ -624,13 +828,21 @@ async def generate_tutor_response(
             except Exception as viz_err:
                 logger.warning("시각화 생성 실패: %s", viz_err)
 
+        structured = None
+        if request.structured_extract and request.response_mode == "canvas_markdown":
+            structured = _extract_structured_from_markdown(full_response)
+
         done_data = {'session_id': session_id, 'total_tokens': total_tokens}
         done_data['type'] = 'done'
         done_data['model'] = chat_model
+        done_data['search_used'] = bool(search_used and use_web_search)
+        done_data['response_mode'] = response_mode
         if reasoning_effort:
             done_data['reasoning_effort'] = reasoning_effort
         if sources:
             done_data['sources'] = sources
+        if structured:
+            done_data['structured'] = structured
         yield f"event: done\ndata: {json.dumps(done_data)}\n\n"
 
     except asyncio.TimeoutError:

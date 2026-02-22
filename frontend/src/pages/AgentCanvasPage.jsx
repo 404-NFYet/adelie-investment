@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { learningApi } from '../api';
 import AgentCanvasSections from '../components/agent/AgentCanvasSections';
 import AgentStatusDots from '../components/agent/AgentStatusDots';
+import { DEFAULT_HOME_ICON_KEY } from '../constants/homeIconCatalog';
 import { useTutor, useUser } from '../contexts';
 import buildActionCatalog from '../utils/agent/buildActionCatalog';
 import buildUiSnapshot from '../utils/agent/buildUiSnapshot';
@@ -9,6 +11,39 @@ import composeCanvasState from '../utils/agent/composeCanvasState';
 
 const SWIPE_THRESHOLD_PX = 160;
 const SWIPE_TOAST_DURATION_MS = 1500;
+const SEARCH_TOGGLE_KEY = 'adelie_agent_web_search';
+const REVIEW_META_PREFIX = 'review_meta:';
+
+function readSearchToggleFromStorage() {
+  try {
+    return localStorage.getItem(SEARCH_TOGGLE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function buildReviewTarget(mode, contextPayload) {
+  if (mode === 'home') {
+    const dateRaw = String(contextPayload?.date || '').replace(/\D/g, '');
+    const dateValue = Number(dateRaw);
+    if (dateRaw.length === 8 && Number.isFinite(dateValue)) {
+      return {
+        contentType: 'briefing',
+        contentId: dateValue,
+      };
+    }
+    return null;
+  }
+
+  const caseId = Number(contextPayload?.case_id || 0);
+  if (Number.isInteger(caseId) && caseId > 0) {
+    return {
+      contentType: 'case',
+      contentId: caseId,
+    };
+  }
+  return null;
+}
 
 function getContextByMode(mode) {
   try {
@@ -35,7 +70,7 @@ function getVisibleSectionsByMode(mode) {
   if (mode === 'stock') return ['portfolio_summary', 'holdings', 'stock_detail'];
   if (mode === 'education') return ['calendar', 'daily_briefing', 'quiz_mission'];
   if (mode === 'my') return ['profile', 'settings'];
-  return ['asset_summary', 'learning_schedule', 'issue_card', 'mission_cards'];
+  return ['asset_summary', 'learning_schedule', 'issue_card', 'conversation_cards'];
 }
 
 function buildContextSummary(mode, contextPayload) {
@@ -57,7 +92,7 @@ function buildContextSummary(mode, contextPayload) {
   return contextPayload?.market_summary || '홈 화면 컨텍스트';
 }
 
-function buildAgentContextEnvelope({ mode, pathname, contextPayload, userPrompt }) {
+function buildAgentContextEnvelope({ mode, pathname, contextPayload, userPrompt, searchEnabled = false }) {
   const uiSnapshot = contextPayload?.ui_snapshot || buildUiSnapshot({
     pathname,
     mode,
@@ -88,6 +123,7 @@ function buildAgentContextEnvelope({ mode, pathname, contextPayload, userPrompt 
       mode,
       route: pathname,
       focused_prompt: userPrompt || null,
+      search_enabled: Boolean(searchEnabled),
     },
   };
 }
@@ -115,6 +151,7 @@ export default function AgentCanvasPage() {
   const processedPromptRef = useRef(new Set());
   const resetRef = useRef(new Set());
   const restoredSessionRef = useRef(new Set());
+  const savedReviewTurnRef = useRef(new Set());
   const touchStartYRef = useRef(null);
   const toastTimerRef = useRef(null);
   const prevTurnCountRef = useRef(0);
@@ -122,6 +159,16 @@ export default function AgentCanvasPage() {
   const mode = location.state?.mode || (location.state?.stockContext ? 'stock' : 'home');
   const initialPrompt = location.state?.initialPrompt || '';
   const requestedSessionId = location.state?.sessionId || null;
+  const useWebSearch = location.state?.useWebSearch ?? readSearchToggleFromStorage();
+
+  const chatOptions = useMemo(
+    () => ({
+      useWebSearch: Boolean(useWebSearch),
+      responseMode: 'canvas_markdown',
+      structuredExtract: true,
+    }),
+    [useWebSearch],
+  );
 
   const contextPayload = useMemo(() => {
     if (location.state?.contextPayload) return location.state.contextPayload;
@@ -140,6 +187,7 @@ export default function AgentCanvasPage() {
           uiActions: Array.isArray(turn.uiActions) ? turn.uiActions : [],
           status: turn.status || 'done',
           model: turn.model || null,
+          structured: turn.structured || null,
         })),
     [assistantTurns],
   );
@@ -205,6 +253,7 @@ export default function AgentCanvasPage() {
       pathname: location.pathname,
       contextPayload,
       userPrompt: selectedUserPrompt,
+      searchEnabled: useWebSearch,
     });
 
     setContextInfo({
@@ -216,15 +265,15 @@ export default function AgentCanvasPage() {
     return () => {
       setContextInfo(null);
     };
-  }, [contextPayload, location.pathname, mode, selectedUserPrompt, setContextInfo]);
+  }, [contextPayload, location.pathname, mode, selectedUserPrompt, setContextInfo, useWebSearch]);
 
   useEffect(() => {
     const promptKey = `${location.key}:${initialPrompt}`;
     if (!initialPrompt || requestedSessionId || processedPromptRef.current.has(promptKey)) return;
 
     processedPromptRef.current.add(promptKey);
-    sendMessage(initialPrompt, settings?.difficulty || 'beginner');
-  }, [initialPrompt, location.key, requestedSessionId, sendMessage, settings?.difficulty]);
+    sendMessage(initialPrompt, settings?.difficulty || 'beginner', chatOptions);
+  }, [chatOptions, initialPrompt, location.key, requestedSessionId, sendMessage, settings?.difficulty]);
 
   const canvasState = useMemo(
     () =>
@@ -246,6 +295,54 @@ export default function AgentCanvasPage() {
       selectedUserPrompt,
     ],
   );
+
+  const reviewTarget = useMemo(
+    () => buildReviewTarget(mode, contextPayload),
+    [contextPayload, mode],
+  );
+
+  useEffect(() => {
+    if (!reviewTarget || !selectedTurn || selectedTurn.status !== 'done') return;
+
+    const turnKey = `${reviewTarget.contentType}:${reviewTarget.contentId}:${selectedTurn.id}`;
+    if (savedReviewTurnRef.current.has(turnKey)) return;
+    savedReviewTurnRef.current.add(turnKey);
+
+    const status = turns.length > 1 ? 'in_progress' : 'viewed';
+    const progressPercent = status === 'in_progress' ? 60 : 20;
+
+    learningApi.upsertProgress({
+      content_type: reviewTarget.contentType,
+      content_id: reviewTarget.contentId,
+      status,
+      progress_percent: progressPercent,
+    }).catch(() => {});
+
+    const titleCandidate = (
+      contextPayload?.keywords?.[0]?.title
+      || contextPayload?.case_title
+      || contextPayload?.stock_name
+      || selectedUserPrompt
+      || canvasState.title
+      || '복습 카드'
+    );
+    const snippet = (selectedTurn.assistantText || '').replace(/\s+/g, ' ').trim().slice(0, 180);
+    const iconKey = contextPayload?.keywords?.[0]?.icon_key || contextPayload?.icon_key || DEFAULT_HOME_ICON_KEY;
+
+    try {
+      localStorage.setItem(
+        `${REVIEW_META_PREFIX}${reviewTarget.contentType}:${reviewTarget.contentId}`,
+        JSON.stringify({
+          title: titleCandidate,
+          icon_key: iconKey,
+          last_summary_snippet: snippet,
+          updated_at: new Date().toISOString(),
+        }),
+      );
+    } catch {
+      // ignore storage errors
+    }
+  }, [canvasState.title, contextPayload, reviewTarget, selectedTurn, selectedUserPrompt, turns.length]);
 
   const showSwipeToast = useCallback((text) => {
     setSwipeToast(text);
@@ -340,9 +437,9 @@ export default function AgentCanvasPage() {
     (action) => {
       const nextPrompt = typeof action === 'string' ? action : action?.prompt || action?.label || '';
       if (!nextPrompt) return;
-      sendMessage(nextPrompt, settings?.difficulty || 'beginner');
+      sendMessage(nextPrompt, settings?.difficulty || 'beginner', chatOptions);
     },
-    [sendMessage, settings?.difficulty],
+    [chatOptions, sendMessage, settings?.difficulty],
   );
 
   const handleBack = useCallback(() => {
@@ -365,7 +462,7 @@ export default function AgentCanvasPage() {
     : canvasState.aiStatus;
 
   return (
-    <div className="min-h-screen bg-[var(--agent-bg-page,#F7F8FA)] pb-[calc(var(--bottom-nav-h,68px)+var(--agent-dock-h,52px)+16px)]">
+    <div className="min-h-screen bg-[var(--agent-bg-page,#F7F8FA)] pb-[calc(var(--bottom-nav-h,68px)+var(--agent-dock-h,104px)+16px)]">
       {/* ── 1줄 컴팩트 헤더 ── */}
       <header className="sticky top-0 z-10 border-b border-[var(--agent-border)] bg-white/97 backdrop-blur-sm">
         <div className="container flex h-11 items-center justify-between">

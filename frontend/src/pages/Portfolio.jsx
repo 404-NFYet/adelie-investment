@@ -281,7 +281,7 @@ export default function Portfolio() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-background pb-24">
+      <div className="min-h-screen bg-background pb-[calc(var(--bottom-nav-h,68px)+var(--agent-dock-h,104px)+16px)]">
         <AppHeader />
         <main className="container py-6">
           <div className="card text-center py-12">
@@ -301,7 +301,7 @@ export default function Portfolio() {
   const isNegative = displayPortfolio.total_profit_loss < 0;
 
   return (
-    <div className="min-h-screen bg-background pb-24">
+    <div className="min-h-screen bg-background pb-[calc(var(--bottom-nav-h,68px)+var(--agent-dock-h,104px)+16px)]">
       <AppHeader />
       <main className="container py-2 space-y-2">
         {/* 총 자산 카드 */}

@@ -3,9 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { keywordsApi } from '../api';
 import DashboardHeader from '../components/layout/DashboardHeader';
 import { DEFAULT_HOME_ICON_KEY, getHomeIconSrc } from '../constants/homeIconCatalog';
+import { useTutorSession } from '../contexts';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import useActivityFeed from '../hooks/useActivityFeed';
 import buildActionCatalog from '../utils/agent/buildActionCatalog';
+import { formatRelativeDate } from '../utils/dateFormat';
 import buildUiSnapshot from '../utils/agent/buildUiSnapshot';
 import { formatKRW } from '../utils/formatNumber';
 import { getKstTodayDateKey, getKstWeekDays } from '../utils/kstDate';
@@ -17,6 +19,7 @@ function formatKoreanDate(dateKey) {
 
 export default function Home() {
   const navigate = useNavigate();
+  const { sessions, refreshSessions } = useTutorSession();
   const { portfolio, summary } = usePortfolio();
   const { activitiesByDate, isLoading: isActivityLoading } = useActivityFeed();
 
@@ -46,6 +49,10 @@ export default function Home() {
     fetchKeywords();
   }, []);
 
+  useEffect(() => {
+    refreshSessions().catch(() => {});
+  }, [refreshSessions]);
+
   const totalAsset = useMemo(() => {
     const fromPortfolio = Number(portfolio?.total_value || 0);
     const fromSummary = Number(summary?.total_value || 0);
@@ -67,7 +74,10 @@ export default function Home() {
   const weekProgress = Math.min(100, Math.round((weekActiveDays / 7) * 100));
   const visibleCards = useMemo(() => keywords.slice(0, 3), [keywords]);
   const issueCard = visibleCards[0] || null;
-  const missionCards = visibleCards.slice(0, 2);
+  const conversationCards = useMemo(
+    () => (Array.isArray(sessions) ? sessions.slice(0, 2) : []),
+    [sessions],
+  );
 
   const homeContextPayload = useMemo(
     () => ({
@@ -78,6 +88,7 @@ export default function Home() {
         description: item.description,
         case_id: item.case_id,
         category: item.category,
+        icon_key: item.icon_key,
       })),
     }),
     [marketSummary, todayDateKey, visibleCards],
@@ -92,7 +103,7 @@ export default function Home() {
     () => buildUiSnapshot({
       pathname: '/home',
       mode: 'home',
-      visibleSections: ['asset_summary', 'learning_schedule', 'issue_card', 'mission_cards'],
+      visibleSections: ['asset_summary', 'learning_schedule', 'issue_card', 'conversation_cards'],
       filters: { tab: 'home' },
       portfolioSummary: {
         total_value: totalAsset,
@@ -151,8 +162,20 @@ export default function Home() {
     });
   };
 
+  const openSessionSummaryCard = (session) => {
+    if (!session?.id) return;
+    navigate('/agent', {
+      state: {
+        mode: 'home',
+        sessionId: session.id,
+        contextPayload: enrichedHomeContextPayload,
+        resetConversation: false,
+      },
+    });
+  };
+
   return (
-    <div className="min-h-screen bg-[#f9fafb] pb-44">
+    <div className="min-h-screen bg-[#f9fafb] pb-[calc(var(--bottom-nav-h,68px)+var(--agent-dock-h,104px)+16px)]">
       <DashboardHeader />
 
       <main className="container space-y-5 py-4">
@@ -252,7 +275,14 @@ export default function Home() {
                 <div className="mb-5 flex items-start justify-between">
                   <div className="flex items-center gap-3">
                     <div className="flex h-14 w-14 items-center justify-center rounded-[22px] bg-[rgba(255,118,72,0.1)]">
-                      <img src="/images/penguin-3d.png" alt="아델리" className="h-9 w-9 object-contain" />
+                      <img
+                        src={getHomeIconSrc(issueCard.icon_key || DEFAULT_HOME_ICON_KEY)}
+                        alt="이슈 아이콘"
+                        className="h-9 w-9 object-contain"
+                        onError={(event) => {
+                          event.currentTarget.src = getHomeIconSrc(DEFAULT_HOME_ICON_KEY);
+                        }}
+                      />
                     </div>
                   </div>
                   <span className="rounded-full border border-[#f3f4f6] bg-[#f9fafb] px-3 py-1 text-[11px] font-bold text-[#6a7282]">
@@ -302,29 +332,36 @@ export default function Home() {
 
         <section>
           <div className="mb-3 flex items-center justify-between px-1">
-            <h2 className="text-[22px] font-extrabold tracking-[-0.02em] text-[#101828]">오늘의 미션</h2>
-            <span className="rounded-lg bg-[#f3f4f6] px-2 py-1 text-xs font-bold text-[#99a1af]">+500P</span>
+            <h2 className="text-[22px] font-extrabold tracking-[-0.02em] text-[#101828]">대화 정리</h2>
+            <button
+              type="button"
+              onClick={() => navigate('/agent/history')}
+              className="rounded-lg bg-[#f3f4f6] px-2 py-1 text-xs font-bold text-[#99a1af]"
+            >
+              전체 기록
+            </button>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            {(missionCards.length ? missionCards : [{ title: 'PER이란 무엇인가?', description: '개념 학습' }, { title: '금리와 주식 관계', description: '복습 카드' }]).map((item, index) => (
+            {(conversationCards.length ? conversationCards : [
+              { id: 'fallback-1', title: '오늘 이슈를 요약해볼까요?', last_message_at: null, message_count: 0 },
+              { id: 'fallback-2', title: '내 포트폴리오 영향 분석', last_message_at: null, message_count: 0 },
+            ]).map((item, index) => (
               <button
-                key={`${item.title}-${index}`}
+                key={`${item.id || item.title}-${index}`}
                 type="button"
                 onClick={() => {
-                  if (item.case_id) {
-                    navigate(`/narrative/${item.case_id}`, { state: { keyword: item } });
+                  if (item?.id?.startsWith?.('fallback')) {
+                    openAgentFromHome(item.title);
                     return;
                   }
-                  openAgentFromHome(`${item.title}를 초급자 기준으로 설명해줘`);
+                  openSessionSummaryCard(item);
                 }}
-                className={`rounded-[24px] border px-5 py-5 text-left ${
-                  index === 1 ? 'border-[#f3f4f6] bg-[#f9fafb] opacity-70' : 'border-[#f3f4f6] bg-white shadow-[0_4px_20px_rgba(0,0,0,0.03)]'
-                }`}
+                className="rounded-[24px] border border-[#f3f4f6] bg-white px-5 py-5 text-left shadow-[0_4px_20px_rgba(0,0,0,0.03)]"
               >
                 <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-[18px] bg-[#f9fafb]">
                   <img
-                    src={getHomeIconSrc(item.icon_key || DEFAULT_HOME_ICON_KEY)}
+                    src={getHomeIconSrc(DEFAULT_HOME_ICON_KEY)}
                     alt="미션 아이콘"
                     className="h-8 w-8 object-contain"
                     onError={(event) => {
@@ -332,9 +369,13 @@ export default function Home() {
                     }}
                   />
                 </div>
-                <p className="line-limit-2 text-[18px] font-extrabold leading-7 tracking-[-0.01em] text-[#101828]">{item.title}</p>
-                <span className={`mt-3 inline-block rounded-lg px-2.5 py-1 text-[11px] font-bold ${index === 1 ? 'bg-[#e5e7eb] text-[#99a1af]' : 'bg-[rgba(255,118,72,0.1)] text-[#ff7648]'}`}>
-                  {index === 1 ? '완료' : '초급'}
+                <p className="line-limit-2 text-[18px] font-extrabold leading-7 tracking-[-0.01em] text-[#101828]">
+                  {item.title}
+                </p>
+                <span className="mt-3 inline-block rounded-lg bg-[rgba(255,118,72,0.1)] px-2.5 py-1 text-[11px] font-bold text-[#ff7648]">
+                  {item.last_message_at
+                    ? `${formatRelativeDate(item.last_message_at)} · ${item.message_count || 0}개`
+                    : '새 대화'}
                 </span>
               </button>
             ))}

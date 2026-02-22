@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { API_BASE_URL, authFetch } from '../../api/client';
 import { useTutor } from '../../contexts';
@@ -20,13 +20,24 @@ function getVisibleSectionsByMode(mode) {
   if (mode === 'stock') return ['portfolio_summary', 'holdings', 'stock_detail'];
   if (mode === 'education') return ['calendar', 'daily_briefing', 'quiz_mission'];
   if (mode === 'my') return ['profile', 'settings'];
-  return ['asset_summary', 'learning_schedule', 'issue_card', 'mission_cards'];
+  return ['asset_summary', 'learning_schedule', 'issue_card', 'conversation_cards'];
+}
+
+const SEARCH_TOGGLE_KEY = 'adelie_agent_web_search';
+
+function readSearchToggle() {
+  try {
+    return localStorage.getItem(SEARCH_TOGGLE_KEY) === '1';
+  } catch {
+    return false;
+  }
 }
 
 export default function AgentDock() {
   const [input, setInput] = useState('');
   const [inlineMessage, setInlineMessage] = useState(null);
   const [isRouting, setIsRouting] = useState(false);
+  const [searchEnabled, setSearchEnabled] = useState(readSearchToggle);
   const location = useLocation();
   const navigate = useNavigate();
   const { shouldHide, mode, placeholder, suggestedPrompt } = useAgentPromptHints();
@@ -34,6 +45,14 @@ export default function AgentDock() {
 
   const hasActiveSession = Array.isArray(messages) && messages.length > 0;
   const isOnCanvas = location.pathname.startsWith('/agent');
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SEARCH_TOGGLE_KEY, searchEnabled ? '1' : '0');
+    } catch {
+      // ignore storage errors
+    }
+  }, [searchEnabled]);
 
   const baseContextPayload = useMemo(() => {
     if (mode === 'stock' && location.state?.stockContext) {
@@ -93,11 +112,12 @@ export default function AgentDock() {
         mode,
         route: location.pathname,
         last_prompt: prompt || null,
+        search_enabled: searchEnabled,
         control_phase: controlState.phase,
         control_active: isAgentControlling,
       },
     };
-  }, [actionCatalog, baseContextPayload, controlState.phase, isAgentControlling, location.pathname, location.state, mode]);
+  }, [actionCatalog, baseContextPayload, controlState.phase, isAgentControlling, location.pathname, location.state, mode, searchEnabled]);
 
   const submitPromptToCanvas = useCallback((prompt) => {
     const payload = buildControlContextPayload(prompt);
@@ -107,10 +127,11 @@ export default function AgentDock() {
         mode,
         initialPrompt: prompt.trim(),
         contextPayload: payload,
+        useWebSearch: searchEnabled,
         resetConversation: location.pathname !== '/agent',
       },
     });
-  }, [buildControlContextPayload, location.pathname, mode, navigate]);
+  }, [buildControlContextPayload, location.pathname, mode, navigate, searchEnabled]);
 
   const routePrompt = useCallback(async (prompt, payload) => {
     const response = await authFetch(`${API_BASE_URL}/api/v1/tutor/route`, {
@@ -185,7 +206,11 @@ export default function AgentDock() {
 
   const handleResumeChat = () => {
     navigate('/agent', {
-      state: { mode, contextPayload: buildControlContextPayload('') },
+      state: {
+        mode,
+        contextPayload: buildControlContextPayload(''),
+        useWebSearch: searchEnabled,
+      },
     });
   };
 
@@ -218,7 +243,7 @@ export default function AgentDock() {
             <button
               type="button"
               onClick={handleResumeChat}
-              className="flex w-full items-center gap-2 border-b border-[#F2F4F6] px-4 py-2 text-left active:bg-[#F7F8FA]"
+              className="flex w-full items-center gap-2 border-b border-[#F2F4F6] px-3 py-1.5 text-left active:bg-[#F7F8FA]"
             >
               <span className="h-1.5 w-1.5 rounded-full bg-[#FF6B00]" />
               <span className="text-[12px] font-medium text-[#4E5968]">진행 중인 대화가 있어요</span>
@@ -251,6 +276,38 @@ export default function AgentDock() {
               className="min-w-0 flex-1 bg-transparent text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] focus:outline-none"
               aria-label="에이전트 질문 입력"
             />
+
+            <button
+              type="button"
+              onClick={() => setSearchEnabled((prev) => !prev)}
+              className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition-colors ${
+                searchEnabled
+                  ? 'bg-[#FFF2E8] text-[#FF6B00]'
+                  : 'bg-[#F2F4F6] text-[#8B95A1]'
+              }`}
+              aria-label={searchEnabled ? '인터넷 검색 켜짐' : '인터넷 검색 꺼짐'}
+              title={searchEnabled ? '인터넷 검색: 켜짐' : '인터넷 검색: 꺼짐'}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M3 12h18" />
+                <path d="M12 3a15 15 0 0 1 0 18" />
+                <path d="M12 3a15 15 0 0 0 0 18" />
+              </svg>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => navigate('/agent/history', { state: { mode, contextPayload: buildControlContextPayload('') } })}
+              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[#F2F4F6] text-[#6B7684] transition-colors active:bg-[#E8EBED]"
+              aria-label="대화 기록 보기"
+              title="대화 기록 보기"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 8v5l3 2" />
+                <circle cx="12" cy="12" r="9" />
+              </svg>
+            </button>
 
             <button
               type="submit"

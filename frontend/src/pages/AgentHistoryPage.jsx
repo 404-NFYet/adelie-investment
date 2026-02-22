@@ -75,7 +75,7 @@ export default function AgentHistoryPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f9fafb] pb-32">
+    <div className="min-h-screen bg-[#f9fafb] pb-[calc(var(--bottom-nav-h,68px)+var(--agent-dock-h,104px)+16px)]">
       <header className="sticky top-0 z-10 border-b border-[#f3f4f6] bg-white/95 backdrop-blur">
         <div className="container py-3.5">
           <div className="flex items-center justify-between gap-3">

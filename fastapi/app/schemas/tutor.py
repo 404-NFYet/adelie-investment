@@ -1,6 +1,6 @@
 """AI Tutor related schemas."""
 
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -14,6 +14,9 @@ class TutorChatRequest(BaseModel):
     context_id: Optional[int] = None
     context_text: Optional[str] = None
     difficulty: str = "beginner"
+    use_web_search: bool = False
+    response_mode: Literal["plain", "canvas_markdown"] = "plain"
+    structured_extract: bool = False
 
 
 class TutorRouteRequest(BaseModel):
@@ -51,4 +54,7 @@ class TutorChatEvent(BaseModel):
     actions: Optional[list[dict]] = None
     model: Optional[str] = None
     reasoning_effort: Optional[str] = None
+    search_used: Optional[bool] = None
+    response_mode: Optional[str] = None
+    structured: Optional[dict[str, Any]] = None
     error: Optional[str] = None

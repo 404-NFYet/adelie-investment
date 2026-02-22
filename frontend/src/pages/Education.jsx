@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { keywordsApi } from '../api';
+import { keywordsApi, learningApi } from '../api';
 import { DEFAULT_HOME_ICON_KEY, getHomeIconSrc } from '../constants/homeIconCatalog';
 import ActivityDayDashboard from '../components/calendar/ActivityDayDashboard';
 import DashboardHeader from '../components/layout/DashboardHeader';
@@ -10,6 +10,8 @@ import useActivityFeed from '../hooks/useActivityFeed';
 import buildActionCatalog from '../utils/agent/buildActionCatalog';
 import buildUiSnapshot from '../utils/agent/buildUiSnapshot';
 import { getKstDateParts, getKstTodayDateKey, shiftYearMonth } from '../utils/kstDate';
+
+const REVIEW_META_PREFIX = 'review_meta:';
 
 function parseDateKey(dateKey) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || ''))) return null;
@@ -23,6 +25,27 @@ function parseDateKey(dateKey) {
     return null;
   }
   return { year, month, day, dateKey: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}` };
+}
+
+function toDateKeyFromNumber(value) {
+  const raw = String(value || '').replace(/\D/g, '');
+  if (raw.length !== 8) return null;
+  return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
+}
+
+function buildBriefingTitle(contentId) {
+  const raw = String(contentId || '').replace(/\D/g, '');
+  if (raw.length !== 8) return '브리핑 복습';
+  return `${raw.slice(4, 6)}월 ${raw.slice(6, 8)}일 브리핑 복습`;
+}
+
+function readReviewMeta(contentType, contentId) {
+  try {
+    const raw = localStorage.getItem(`${REVIEW_META_PREFIX}${contentType}:${contentId}`);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
 }
 
 export default function Education() {
@@ -44,6 +67,9 @@ export default function Education() {
   const [keywords, setKeywords] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [reviewCards, setReviewCards] = useState([]);
+  const [isLoadingReviews, setIsLoadingReviews] = useState(false);
+  const [completingReviewId, setCompletingReviewId] = useState(null);
 
   useEffect(() => {
     const fetchKeywords = async () => {
@@ -61,6 +87,46 @@ export default function Education() {
     };
 
     fetchKeywords();
+  }, []);
+
+  useEffect(() => {
+    const fetchReviewCards = async () => {
+      try {
+        setIsLoadingReviews(true);
+        const response = await learningApi.getProgress();
+        const progressItems = Array.isArray(response?.data) ? response.data : [];
+
+        const mapped = progressItems
+          .filter((item) => item && ['briefing', 'case'].includes(item.content_type))
+          .map((item) => {
+            const meta = readReviewMeta(item.content_type, item.content_id);
+            const fallbackTitle = item.content_type === 'briefing'
+              ? buildBriefingTitle(item.content_id)
+              : `사례 #${item.content_id} 복습`;
+            return {
+              id: `${item.content_type}:${item.content_id}`,
+              contentType: item.content_type,
+              contentId: item.content_id,
+              status: item.status,
+              progressPercent: Number(item.progress_percent || 0),
+              title: meta?.title || fallbackTitle,
+              iconKey: meta?.icon_key || DEFAULT_HOME_ICON_KEY,
+              snippet: meta?.last_summary_snippet || '',
+              updatedAt: item.completed_at || item.started_at,
+            };
+          })
+          .sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime())
+          .slice(0, 6);
+
+        setReviewCards(mapped);
+      } catch {
+        setReviewCards([]);
+      } finally {
+        setIsLoadingReviews(false);
+      }
+    };
+
+    fetchReviewCards();
   }, []);
 
   useEffect(() => {
@@ -111,7 +177,7 @@ export default function Education() {
     () => buildUiSnapshot({
       pathname: '/education',
       mode: 'education',
-      visibleSections: ['calendar', 'activity_dashboard', 'daily_briefing'],
+      visibleSections: ['calendar', 'activity_dashboard', 'review_cards', 'daily_briefing'],
       selectedEntities: {
         date_key: selectedDateKey,
       },
@@ -163,8 +229,52 @@ export default function Education() {
     }
   };
 
+  const openReviewCard = (card) => {
+    if (card.contentType === 'case') {
+      navigate(`/narrative/${card.contentId}`);
+      return;
+    }
+
+    const briefingDate = toDateKeyFromNumber(card.contentId);
+    navigate('/agent', {
+      state: {
+        mode: 'home',
+        initialPrompt: `${card.title} 핵심만 복습해줘`,
+        contextPayload: {
+          date: briefingDate ? briefingDate.replace(/-/g, '') : null,
+          ui_snapshot: educationUiSnapshot,
+          action_catalog: educationActionCatalog,
+        },
+        resetConversation: true,
+      },
+    });
+  };
+
+  const completeReviewCard = async (card) => {
+    setCompletingReviewId(card.id);
+    try {
+      await learningApi.upsertProgress({
+        content_type: card.contentType,
+        content_id: card.contentId,
+        status: 'completed',
+        progress_percent: 100,
+      });
+      setReviewCards((prev) =>
+        prev.map((item) => (
+          item.id === card.id
+            ? { ...item, status: 'completed', progressPercent: 100, updatedAt: new Date().toISOString() }
+            : item
+        )),
+      );
+    } catch {
+      // ignore
+    } finally {
+      setCompletingReviewId(null);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-[#f9fafb] pb-24">
+    <div className="min-h-screen bg-[#f9fafb] pb-[calc(var(--bottom-nav-h,68px)+var(--agent-dock-h,104px)+16px)]">
       <DashboardHeader />
 
       <main className="container space-y-7 py-5">
@@ -202,6 +312,74 @@ export default function Education() {
               navigate(`/education/archive?${params.toString()}`);
             }}
           />
+        </section>
+
+        <section>
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-[20px] font-bold leading-[1.4] tracking-[-0.02em] text-[#101828]">복습 카드</h2>
+            <span className="text-sm font-medium text-[#99a1af]">최근 대화 기반</span>
+          </div>
+
+          {isLoadingReviews && (
+            <div className="rounded-[20px] border border-border bg-white px-6 py-8 shadow-card">
+              <p className="text-sm text-text-secondary">복습 카드를 불러오는 중입니다...</p>
+            </div>
+          )}
+
+          {!isLoadingReviews && reviewCards.length === 0 && (
+            <div className="rounded-[20px] border border-border bg-white px-6 py-8 shadow-card">
+              <p className="text-sm text-text-secondary">아직 저장된 복습 카드가 없습니다.</p>
+            </div>
+          )}
+
+          {!isLoadingReviews && reviewCards.length > 0 && (
+            <div className="space-y-3">
+              {reviewCards.map((card) => (
+                <article
+                  key={card.id}
+                  className="flex items-center justify-between gap-3 rounded-[20px] border border-border bg-white px-5 py-4 shadow-card"
+                >
+                  <button
+                    type="button"
+                    onClick={() => openReviewCard(card)}
+                    className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                  >
+                    <img
+                      src={getHomeIconSrc(card.iconKey)}
+                      alt="복습 아이콘"
+                      className="h-12 w-12 flex-shrink-0 object-contain"
+                      onError={(event) => {
+                        event.currentTarget.src = getHomeIconSrc(DEFAULT_HOME_ICON_KEY);
+                      }}
+                    />
+                    <div className="min-w-0">
+                      <p className="line-limit-1 text-[15px] font-bold text-[#101828]">{card.title}</p>
+                      <p className="mt-1 text-[12px] text-[#6a7282]">
+                        {card.snippet || `${card.progressPercent}% 진행 중`}
+                      </p>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => completeReviewCard(card)}
+                    disabled={card.status === 'completed' || completingReviewId === card.id}
+                    className={`h-[34px] rounded-[10px] px-3 text-[12px] font-semibold ${
+                      card.status === 'completed'
+                        ? 'bg-[#E8EBED] text-[#8B95A1]'
+                        : 'bg-primary text-white disabled:opacity-60'
+                    }`}
+                  >
+                    {card.status === 'completed'
+                      ? '완료됨'
+                      : completingReviewId === card.id
+                        ? '저장 중...'
+                        : '복습 완료'}
+                  </button>
+                </article>
+              ))}
+            </div>
+          )}
         </section>
 
         <section>

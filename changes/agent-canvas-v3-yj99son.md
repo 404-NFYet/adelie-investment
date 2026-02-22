@@ -227,3 +227,89 @@
 - [ ] 독-네비 간 시각적 분리 확인
 - [ ] 세션 복귀 흐름 확인 (홈에서 독 탭 → /agent 복귀)
 - [ ] 캔버스에서 네비 중복 CTA 미노출 확인
+
+## 12. Agent UX 4차 실행 (스트리밍/검색/복습/레이아웃)
+
+### 문제 재현
+- 하단 입력바에 기록 버튼이 없어 `/agent/history` 접근 경로가 약함
+- 페이지 하단 padding이 각기 달라 본문과 독/네비가 겹칠 수 있음
+- 홈 `오늘의 이슈` 아이콘이 고정 펭귄으로 렌더되어 키워드 아이콘 체계 미반영
+- 캔버스가 plain text 렌더 중심이라 markdown 응답 표현력이 낮음
+- `gpt-5-mini` 경로에서 stream 체감이 불안정(완료 후 몰아쓰기 케이스)
+- 복습 카드가 학습 진도와 연결되지 않아 교육 탭에서 복습 루프가 약함
+
+### 의사결정
+- `Responses API` 기반 스트리밍 우선, 실패 시 chat.completions 폴백
+- 인터넷 검색은 Dock 토글 + `use_web_search`로 제어
+- 캔버스만 markdown 렌더, inline/dock은 plain 유지
+- 구조화는 완료 후 보조 추출(`summary`, `key_points`, `suggested_actions`)
+- 복습 저장은 `learning_progress` 참조형 재사용(스키마 변경 없음)
+
+### API 계약 변경
+- `POST /api/v1/tutor/chat` request 필드 확장
+  - `use_web_search?: boolean`
+  - `response_mode?: "plain" | "canvas_markdown"`
+  - `structured_extract?: boolean`
+- `done` 이벤트 확장
+  - `search_used`, `response_mode`, `structured` (옵션)
+- `TutorChatEvent` 스키마에 위 필드 반영
+- `canvas_markdown` 모드일 때 백엔드 시스템 프롬프트에 Markdown 형식 지시(요약/불릿/다음 액션) 강제
+
+### UI 스크린 단위 변경
+- Dock
+  - 검색 토글(지구본) + 기록 버튼(시계) 항상 노출
+  - 기록 버튼 탭 시 `/agent/history` 이동
+  - 검색 토글 상태 `localStorage(adelie_agent_web_search)` 저장
+- 레이아웃
+  - 홈/투자/교육/agent/history/agent 본문 하단 padding을 `calc(var(--bottom-nav-h)+var(--agent-dock-h)+16px)`로 통일
+  - `--agent-dock-h`를 104px로 조정
+- Home
+  - 오늘의 이슈 아이콘을 `issueCard.icon_key` 기반으로 복구
+  - 기존 미션 카드 레이아웃을 “대화 정리 카드(최근 세션)” 데이터 소스로 재활용
+- Canvas
+  - `ReactMarkdown + remarkMath + rehypeKatex` 렌더 적용
+  - 완료 이벤트의 `structured`가 있으면 요약/포인트 보조 카드 노출
+- Education
+  - `learning_progress` 기반 복습 카드 섹션 추가
+  - `review_meta:{content_type}:{content_id}` 로컬 메타(sidecar) 반영
+  - `복습 완료` 버튼으로 `completed/100` 업데이트
+
+### 왜 바꿨는지
+- “하단 진입성”, “gpt-5 스트리밍 안정성”, “복습 루프”를 한 번에 연결해 사용자 흐름(질문 → 요약 → 복습)을 닫기 위해
+
+### 사용자가 체감하는 변화
+- 입력바에서 바로 기록 확인 가능
+- 하단 UI와 본문 겹침 감소
+- 오늘의 이슈 카드의 아이콘 일관성 복구
+- 캔버스 답변이 markdown(헤딩/리스트/강조/수식)으로 읽기 쉬워짐
+- 최근 대화가 홈 카드로 요약되어 재진입 쉬움
+- 교육 탭에서 복습 카드 확인/완료 처리 가능
+
+### 코드 위치
+- 백엔드
+  - `fastapi/app/schemas/tutor.py`
+  - `fastapi/app/core/config.py`
+  - `fastapi/app/api/routes/tutor.py`
+- 프론트
+  - `frontend/src/components/agent/AgentDock.jsx`
+  - `frontend/src/contexts/TutorChatContext.jsx`
+  - `frontend/src/contexts/TutorContext.jsx`
+  - `frontend/src/pages/AgentCanvasPage.jsx`
+  - `frontend/src/components/agent/AgentCanvasSections.jsx`
+  - `frontend/src/utils/agent/composeCanvasState.js`
+  - `frontend/src/pages/Home.jsx`
+  - `frontend/src/pages/Education.jsx`
+  - `frontend/src/pages/Portfolio.jsx`
+  - `frontend/src/pages/AgentHistoryPage.jsx`
+  - `frontend/src/styles/globals.css`
+- 문서
+  - `docs/agent/agent-ui-design-handoff-v1.md`
+
+### 검증 결과
+- [ ] 하단바 기록 버튼 상시 노출 및 `/agent/history` 이동 확인
+- [ ] 검색 토글 ON/OFF가 `/api/v1/tutor/chat` 요청에 반영되는지 확인
+- [ ] `gpt-5-mini`에서 stream delta 실시간 렌더 확인
+- [ ] 캔버스 markdown 렌더(리스트/강조/수식) 확인
+- [ ] 홈 대화 정리 카드 클릭 시 세션 복원 확인
+- [ ] 교육 복습 카드 표시/완료 처리 확인
+- [ ] `npm run build` 성공

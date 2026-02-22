@@ -121,9 +121,12 @@ export default function composeCanvasState({
   assistantTurn = null,
 }) {
   const assistantText = (assistantTextOverride || pickAssistantText(messages) || '').trim();
+  const structured = assistantTurn?.structured && typeof assistantTurn.structured === 'object'
+    ? assistantTurn.structured
+    : null;
   const paragraphs = splitParagraphs(assistantText);
   const sentences = splitSentences(assistantText);
-  const structured = hasStructuredSignal(assistantText);
+  const hasStructuredMarkdown = hasStructuredSignal(assistantText);
   const normalizedUiActions = normalizeUiActions(assistantTurn?.uiActions);
   const fallbackActions = buildActions(mode).map((action, index) => ({
     id: `fallback-${index}`,
@@ -131,23 +134,36 @@ export default function composeCanvasState({
     prompt: action,
   }));
 
-  const keyPoint = sentences[0] || paragraphs[0] || '';
+  const structuredActions = Array.isArray(structured?.suggested_actions)
+    ? structured.suggested_actions
+      .map((item, index) => ({
+        id: `structured-action-${index}`,
+        label: String(item || '').trim(),
+        prompt: String(item || '').trim(),
+      }))
+      .filter((item) => item.label)
+    : [];
+
+  const keyPoint = structured?.summary || sentences[0] || paragraphs[0] || '';
   const explanation = sentences.slice(1, 3).join(' ') || paragraphs[1] || '';
-  const bullets = structured ? extractBullets(assistantText, sentences) : [];
-  const quote = structured ? (sentences[sentences.length - 1] || '') : '';
+  const bullets = hasStructuredMarkdown ? extractBullets(assistantText, sentences) : [];
+  const quote = hasStructuredMarkdown ? (sentences[sentences.length - 1] || '') : '';
 
   return {
     title: buildTitle(mode, contextPayload, userPrompt),
     modeLabel: buildModeLabel(mode),
-    viewType: assistantText ? (structured ? 'structured' : 'plain') : 'empty',
+    viewType: assistantText ? (structured || hasStructuredMarkdown ? 'structured' : 'plain') : 'empty',
     keyPoint,
     explanation,
     bullets,
     quote,
     textBlocks: paragraphs.length > 0 ? paragraphs : (assistantText ? [assistantText] : []),
-    actions: normalizedUiActions.length > 0 ? normalizedUiActions : fallbackActions,
+    actions: normalizedUiActions.length > 0
+      ? normalizedUiActions
+      : (structuredActions.length > 0 ? structuredActions : fallbackActions),
     aiStatus: aiStatus || '대기 중',
     userPrompt,
+    structured,
     rawAssistantText: assistantText,
   };
 }

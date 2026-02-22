@@ -82,6 +82,7 @@ const mapHistoryMessage = (message, index) => {
     sources: message.sources || null,
     uiActions: message.ui_actions || null,
     model: message.model || null,
+    structured: message.structured || null,
   };
 };
 
@@ -107,6 +108,7 @@ function buildAssistantTurns(messages = []) {
       sources: Array.isArray(message.sources) ? message.sources : [],
       uiActions: Array.isArray(message.uiActions) ? message.uiActions : [],
       model: message.model || null,
+      structured: message.structured || null,
     });
   });
 
@@ -133,7 +135,14 @@ export function TutorChatProvider({ children }) {
   });
 
   const sendMessage = useCallback(
-    async (message, difficulty = 'beginner', contextInfo = null, setAgentStatus = null, onSessionCreated = null) => {
+    async (
+      message,
+      difficulty = 'beginner',
+      contextInfo = null,
+      setAgentStatus = null,
+      onSessionCreated = null,
+      options = {},
+    ) => {
       if (!message.trim()) return;
 
       const DEFAULT_STATUS = { phase: 'idle', text: '응답 대기 중' };
@@ -141,9 +150,15 @@ export function TutorChatProvider({ children }) {
       let pendingSources = [];
       let pendingUiActions = [];
       let pendingModel = null;
+      let pendingStructured = null;
       let pendingBuffer = '';
       let renderedContent = '';
       let lastFlushAt = Date.now();
+      const normalizedOptions = {
+        useWebSearch: Boolean(options?.useWebSearch),
+        responseMode: options?.responseMode || 'plain',
+        structuredExtract: Boolean(options?.structuredExtract),
+      };
 
       const turnId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -165,6 +180,7 @@ export function TutorChatProvider({ children }) {
         content: '',
         timestamp: new Date().toISOString(),
         isStreaming: true,
+        structured: null,
       };
       setMessages((prev) => [...prev, assistantMessage]);
       setAssistantTurns((prev) => [
@@ -179,6 +195,7 @@ export function TutorChatProvider({ children }) {
           sources: [],
           uiActions: [],
           model: null,
+          structured: null,
         },
       ]);
 
@@ -189,6 +206,7 @@ export function TutorChatProvider({ children }) {
           sources = pendingSources,
           uiActions = pendingUiActions,
           model = pendingModel,
+          structured = pendingStructured,
           status = 'streaming',
         } = options;
 
@@ -204,6 +222,7 @@ export function TutorChatProvider({ children }) {
                 sources,
                 uiActions,
                 model,
+                structured,
               };
             })
           );
@@ -217,6 +236,7 @@ export function TutorChatProvider({ children }) {
             sources,
             uiActions,
             model,
+            structured,
           }))
         );
       };
@@ -239,12 +259,17 @@ export function TutorChatProvider({ children }) {
         });
       };
 
-      const processSseLine = (line) => {
+      const processSseLine = (line, eventName = '') => {
         const trimmed = line.trim();
         if (!trimmed || !trimmed.startsWith('data: ')) return;
 
         try {
           const data = JSON.parse(trimmed.slice(6));
+          const normalizedEventType = data.type || eventName || '';
+
+          if (!data.type && normalizedEventType) {
+            data.type = normalizedEventType;
+          }
 
           if (data.session_id) {
             setSessionId(data.session_id);
@@ -318,6 +343,9 @@ export function TutorChatProvider({ children }) {
             if (typeof data.model === 'string' && data.model.trim()) {
               pendingModel = data.model.trim();
             }
+            if (data.structured && typeof data.structured === 'object') {
+              pendingStructured = data.structured;
+            }
 
             flushBuffer(true);
             syncAssistantState(renderedContent, {
@@ -363,6 +391,9 @@ export function TutorChatProvider({ children }) {
             context_type: contextInfo?.type,
             context_id: contextInfo?.id,
             context_text: contextInfo?.stepContent,
+            use_web_search: normalizedOptions.useWebSearch,
+            response_mode: normalizedOptions.responseMode,
+            structured_extract: normalizedOptions.structuredExtract,
           }),
         });
 
@@ -372,6 +403,7 @@ export function TutorChatProvider({ children }) {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let streamBuffer = '';
+        let currentEventName = '';
 
         while (true) {
           const { done, value } = await reader.read();
@@ -382,14 +414,31 @@ export function TutorChatProvider({ children }) {
           streamBuffer = lines.pop() || '';
 
           for (const line of lines) {
-            processSseLine(line);
+            const trimmed = line.trim();
+            if (trimmed.startsWith('event:')) {
+              currentEventName = trimmed.slice(6).trim();
+              continue;
+            }
+
+            processSseLine(line, currentEventName);
+            if (!trimmed) {
+              currentEventName = '';
+            }
           }
         }
 
         const remaining = `${streamBuffer}${decoder.decode()}`;
         if (remaining.trim()) {
           remaining.split('\n').forEach((line) => {
-            processSseLine(line);
+            const trimmed = line.trim();
+            if (trimmed.startsWith('event:')) {
+              currentEventName = trimmed.slice(6).trim();
+              return;
+            }
+            processSseLine(line, currentEventName);
+            if (!trimmed) {
+              currentEventName = '';
+            }
           });
         }
 

@@ -82,7 +82,7 @@ export function useTutor() {
     return loadChatHistoryRaw(id, setActiveSessionId);
   }, [loadChatHistoryRaw, setActiveSessionId]);
 
-  const sendMessage = useCallback(async (message, difficulty = 'beginner') => {
+  const sendMessage = useCallback(async (message, difficulty = 'beginner', options = {}) => {
     await sendChatMessage(
       message,
       difficulty,
@@ -91,6 +91,7 @@ export function useTutor() {
       (newSessionId) => {
         setActiveSessionId(newSessionId);
       },
+      options,
     );
     await refreshSessions();
   }, [sendChatMessage, contextInfo, setAgentStatus, setActiveSessionId, refreshSessions]);
