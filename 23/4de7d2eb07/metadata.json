@@ -3,7 +3,7 @@
   "checkpoint_id": "234de7d2eb07",
   "strategy": "manual-commit",
   "branch": "feature/dashboard-chatbot",
-  "checkpoints_count": 11,
+  "checkpoints_count": 13,
   "files_touched": [
     ".dockerignore",
     ".env.example",
@@ -14,6 +14,7 @@
     "README.md",
     "changes/dorae222.md",
     "database/alembic/versions/20260223_devassistant_tables.py",
+    "database/alembic/versions/20260223_feedback_surveys.py",
     "database/scripts/sync_dev_data.sh",
     "datapipeline/config.py",
     "datapipeline/db/writer.py",
@@ -73,6 +74,8 @@
     "frontend/e2e/case-redirect.spec.js",
     "frontend/e2e/daily-quiz-modal-mobile.spec.js",
     "frontend/e2e/education-flow.spec.js",
+    "frontend/e2e/feedback-survey.spec.js",
+    "frontend/e2e/feedback.spec.js",
     "frontend/e2e/landing-mobile.spec.js",
     "frontend/e2e/narrative-flow.spec.js",
     "frontend/e2e/notifications.spec.js",
@@ -85,6 +88,7 @@
     "frontend/src/components/agent/AgentCanvasSections.jsx",
     "frontend/src/components/agent/AgentDock.jsx",
     "frontend/src/components/agent/AgentStatusDots.jsx",
+    "frontend/src/components/common/UpdateNotice.jsx",
     "frontend/src/components/layout/ChatFAB.jsx",
     "frontend/src/components/quiz/DailyQuizModal.jsx",
     "frontend/src/contexts/PortfolioContext.jsx",
@@ -95,7 +99,10 @@
     "frontend/src/contexts/index.js",
     "frontend/src/pages/AgentCanvasPage.jsx",
     "frontend/src/pages/AgentHistoryPage.jsx",
+    "frontend/src/pages/FeedbackSurvey.jsx",
     "frontend/src/pages/Landing.jsx",
+    "frontend/src/pages/Matching.jsx",
+    "frontend/src/pages/Onboarding.jsx",
     "frontend/src/pages/Profile.jsx",
     "frontend/vite.config.js",
     "infra/docker-compose.yml",
@@ -103,6 +110,7 @@
     "infra/docker-dashboard/config.py",
     "infra/docker-dashboard/pages/chatbot.py",
     "infra/docker-dashboard/pages/feedback.py",
+    "infra/docker-dashboard/pages/feedback_tracker.py",
     "infra/docker-dashboard/pages/team_member.py",
     "infra/docker-dashboard/requirements.txt",
     "infra/docker-dashboard/utils/claude_client.py",
@@ -137,8 +145,12 @@
     "infra/terraform/variables.tf",
     "lxd/Makefile",
     "pytest.ini",
+    "tests/api/__init__.py",
+    "tests/api/test_api_feedback.py",
     "tests/backend/test_api_smoke.py",
-    "tests/conftest.py"
+    "tests/conftest.py",
+    "tests/schemas/__init__.py",
+    "tests/schemas/test_feedback_schemas.py"
   ],
   "sessions": [
     {
@@ -252,13 +264,20 @@
       "context": "/23/4de7d2eb07/15/context.md",
       "content_hash": "/23/4de7d2eb07/15/content_hash.txt",
       "prompt": "/23/4de7d2eb07/15/prompt.txt"
+    },
+    {
+      "metadata": "/23/4de7d2eb07/16/metadata.json",
+      "transcript": "/23/4de7d2eb07/16/full.jsonl",
+      "context": "/23/4de7d2eb07/16/context.md",
+      "content_hash": "/23/4de7d2eb07/16/content_hash.txt",
+      "prompt": "/23/4de7d2eb07/16/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 11986,
-    "cache_creation_tokens": 2128417,
-    "cache_read_tokens": 72966500,
-    "output_tokens": 370260,
-    "api_call_count": 953
+    "input_tokens": 12054,
+    "cache_creation_tokens": 2442273,
+    "cache_read_tokens": 79733091,
+    "output_tokens": 382639,
+    "api_call_count": 1014
   }
 }
