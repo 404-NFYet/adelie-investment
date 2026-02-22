@@ -484,3 +484,57 @@
 - [x] 세션 메타 저장/홈 카드 재활용 경로 반영
 - [ ] `npm run build` 검증
 - [ ] 수동 플로우(홈 -> agent -> 중단/재생성 -> history -> 홈 카드 복귀) 검증
+
+## 13. Agent UX 7차 + 투자엔진 확장 통합 반영 (v7)
+
+### 문제 재현
+- 모바일 입력 중 BottomNav가 아닌 환경에서도 함께 숨겨지는 경우가 있어 데스크톱 가시성이 저하됨
+- 캔버스에서 상태/근거는 보이지만 투자 질문에서 공시/수치 근거가 일관되게 연결되지 않음
+- 시뮬레이션 체결이 단순 정가 체결이라 상한가/저유동성 시나리오의 현실성이 부족함
+- 대화 요약 카드는 로컬 메타 중심이라 서버 세션 메타와 정렬이 약함
+
+### 의사결정
+- BottomNav 숨김은 `모바일 + 키보드/포커스` 조건으로 제한
+- Dock 글로우/스파클은 스트리밍/제어 중 상태 강조용으로 강화하고 dev에서 튜닝 가능하게 유지
+- stock 모드는 내부 데이터 + OpenDART + web_search를 혼합 근거로 사용
+- 체결 모델은 슬리피지/유동성 cap/지정가 pending/부분체결/short·leverage를 허용하는 현실형 시뮬레이션으로 전환
+- 세션 저장 메타는 서버 `tutor_sessions` 확장값 우선, 로컬 sidecar fallback
+
+### 구현 상세
+- 프론트
+  - `useKeyboardInset`에서 `shouldHideBottomNav`를 모바일 조건(`max-width + pointer coarse`)으로 제한
+  - `AgentDock` 주황 글로우/스파클 강화 및 dev glow tuner 제공
+  - `AgentCanvasPage` 홈 모드 상단을 1줄 긴 progress bar로 전환, 헤더 `저장` 버튼(세션 pin) 추가
+  - `Home` 대화 정리 카드에서 서버 메타(`cover_icon_key`, `summary_keywords`, `summary_snippet`, `is_pinned`) 우선 렌더
+  - `composeCanvasState`/`AgentCanvasSections`에 근거 출처 블록 + OpenDART 핵심 수치 블록 추가
+- 백엔드
+  - `investment_intel` 기반으로 stock 모드에서 내부 브리핑/리포트 + OpenDART 수치 수집
+  - `/tutor/chat` done에 `sources`를 `source_kind`/`is_reachable` 포함 형태로 정규화하고 web_search 사용 시 웹 근거 메타 보강
+  - `portfolio_service.execute_trade` 현실형 체결 로직으로 교체
+    - 시장가/지정가
+    - 슬리피지/수수료
+    - 유동성 cap 기반 부분체결
+    - `pending|partial|filled`
+    - `long|short`, 최대 2x leverage, short 차입수수료 누적
+  - `tutor_sessions` 메타 확장 및 pin API 추가
+    - `POST /api/v1/tutor/sessions/{session_id}/pin`
+
+### API/DB 변경
+- API 확장
+  - `/api/v1/tutor/sessions` 응답에 `cover_icon_key`, `summary_keywords`, `summary_snippet`, `is_pinned`, `pinned_at` 추가
+  - `/api/v1/tutor/sessions/{id}/messages` 응답에 세션 메타 필드 추가
+  - `/api/v1/tutor/sessions/{id}/pin` 신규
+  - `/api/v1/tutor/chat` done의 `sources[]`에 `source_kind`, `is_reachable` 보강
+  - 포트폴리오/트레이딩 응답에 실행 메타(`requested_price`, `executed_price`, `slippage_bps`, `fee_amount`, `order_kind`, `order_status`, `position_side`, `leverage`, `filled_quantity`, `remaining_quantity`) 반영
+- DB 마이그레이션
+  - 신규: `database/alembic/versions/20260222_agent_v7_execution_and_session_meta.py`
+  - `portfolio_holdings`: `position_side`, `leverage`, `borrow_rate_bps`, `last_funding_at`
+  - `simulation_trades`: `filled_quantity`, `requested_price`, `executed_price`, `slippage_bps`, `fee_amount`, `order_kind`, `order_status`, `position_side`, `leverage`
+  - `tutor_sessions`: `cover_icon_key`, `summary_keywords`, `summary_snippet`, `is_pinned`, `pinned_at`
+
+### 검증 결과
+- [x] `npm run build` 성공
+- [x] 변경 백엔드/마이그레이션 파일 문법 파싱 성공(`ast.parse`)
+- [ ] Alembic 실제 업그레이드 실행 검증
+- [ ] 거래 시나리오(상한가/저유동성/short/2x) API smoke
+- [ ] 홈 카드 pin/복원 실기기 확인

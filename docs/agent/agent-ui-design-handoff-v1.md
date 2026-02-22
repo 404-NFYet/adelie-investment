@@ -25,6 +25,11 @@
   - `pb-[calc(var(--bottom-nav-h)+var(--agent-dock-h)+16px)]`
 - Dock 높이 기준:
   - `--agent-dock-h: 104px` (세션 복귀 바 포함 최대치 기준)
+- BottomNav 표시 규칙(v7):
+  - 모바일(`max-width + coarse pointer`) + 키보드 open/focus 상태에서만 숨김
+  - 데스크톱/태블릿은 입력 중에도 BottomNav 유지
+- Dock 표시 규칙(v7):
+  - 키보드가 열려도 Dock는 `--keyboard-offset`으로 위로 올라와 항상 보이도록 유지
 
 ## 4) AgentDock 명세
 - 상단 상태 라인은 항상 노출:
@@ -43,13 +48,21 @@
 - 세션 복귀 바:
   - 높이 최소화(`py-1.5`)
   - 문구 1줄 + 우측 chevron
+- 존재감 강화(v7):
+  - 스트리밍/제어 중 주황 글로우 pulse
+  - 좌측 스파클 2개(주황/화이트) 노출
+  - dev 모드에서 glow alpha/blur/spread 튜닝 슬라이더 허용
 
 ## 5) Canvas 명세
 - 상단 헤더는 1줄 고정:
   - `뒤로가기`, `타이틀`, `상태점`, `정보`, `기록`
+- 홈 모드 진행표시(v7):
+  - 상단 3칸 단계형 대신 긴 1줄 progress bar 사용
+  - 투자/교육/기타 모드는 progress bar 없이 상태점만 사용
 - 본문:
   - markdown 렌더 우선
   - 구조화 요약은 보조 카드로 표시
+  - 출처 카드(`source_kind`, `is_reachable`) + 핵심 수치 카드(OpenDART 등) 병행 표시
 - 이전 대화 탐색:
   - 좌우 스와이프 + 좌우 반투명 버튼 동시 제공
   - 버튼 스타일: `bg-white/55`, `backdrop-blur`, `border #E8EBED`

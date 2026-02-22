@@ -84,6 +84,39 @@
 - `structured` (optional)
 - `guardrail_decision` (optional: `SAFE|ADVICE|OFF_TOPIC|MALICIOUS|PARSE_ERROR`)
 - `guardrail_mode` (optional: `strict|soft`)
+- `sources[].source_kind` (optional: `news|dart|internal|web`)
+- `sources[].is_reachable` (optional: `true|false|null`)
+
+## 투자 실행 메타 계약 (v7)
+포트폴리오/트레이딩 응답은 아래 실행 메타를 포함할 수 있다.
+
+- `requested_price`
+- `executed_price`
+- `slippage_bps`
+- `fee_amount`
+- `order_kind` (`market|limit`)
+- `order_status` (`pending|partial|filled|cancelled`)
+- `position_side` (`long|short`)
+- `leverage` (`1.0~2.0`)
+- `filled_quantity`
+- `remaining_quantity`
+
+목적:
+- 상한가/저유동성 상황에서 단순 체결이 아닌 현실형 체결 결과를 프론트가 그대로 시각화할 수 있도록 함.
+
+## 세션 메타/저장 계약 (v7)
+`/api/v1/tutor/sessions` 목록에 다음 필드를 포함한다.
+
+- `cover_icon_key`
+- `summary_keywords`
+- `summary_snippet`
+- `is_pinned`
+- `pinned_at`
+
+신규 endpoint:
+- `POST /api/v1/tutor/sessions/{session_id}/pin`
+  - request: `{ \"pinned\": true|false }`
+  - response: `{ id, is_pinned, pinned_at }`
 
 ## LLM 호출 경로 비교 (기존 vs Responses API)
 현재 `/api/v1/tutor/chat`는 `Responses API`를 우선 사용하고, 실패 시 기존 `chat.completions` 스트리밍으로 폴백한다.
