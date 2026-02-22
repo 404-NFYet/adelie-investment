@@ -3,7 +3,7 @@
   "checkpoint_id": "234de7d2eb07",
   "strategy": "manual-commit",
   "branch": "develop",
-  "checkpoints_count": 7,
+  "checkpoints_count": 8,
   "files_touched": [
     ".dockerignore",
     ".env.example",
@@ -72,6 +72,7 @@
     "infra/monitoring/rules/adelie-alerts.yml",
     "infra/terraform/.gitignore",
     "infra/terraform/README.md",
+    "infra/terraform/docs/iam-permissions.md",
     "infra/terraform/environments/prod/main.tf",
     "infra/terraform/environments/staging/main.tf",
     "infra/terraform/modules/cdn/main.tf",
@@ -172,13 +173,20 @@
       "context": "/23/4de7d2eb07/10/context.md",
       "content_hash": "/23/4de7d2eb07/10/content_hash.txt",
       "prompt": "/23/4de7d2eb07/10/prompt.txt"
+    },
+    {
+      "metadata": "/23/4de7d2eb07/11/metadata.json",
+      "transcript": "/23/4de7d2eb07/11/full.jsonl",
+      "context": "/23/4de7d2eb07/11/context.md",
+      "content_hash": "/23/4de7d2eb07/11/content_hash.txt",
+      "prompt": "/23/4de7d2eb07/11/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 6573,
-    "cache_creation_tokens": 1283266,
-    "cache_read_tokens": 44791465,
-    "output_tokens": 198189,
-    "api_call_count": 594
+    "input_tokens": 8844,
+    "cache_creation_tokens": 1404848,
+    "cache_read_tokens": 48886626,
+    "output_tokens": 228447,
+    "api_call_count": 646
   }
 }
