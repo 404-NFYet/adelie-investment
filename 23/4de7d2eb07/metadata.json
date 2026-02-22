@@ -3,7 +3,7 @@
   "checkpoint_id": "234de7d2eb07",
   "strategy": "manual-commit",
   "branch": "develop",
-  "checkpoints_count": 7,
+  "checkpoints_count": 5,
   "files_touched": [
     ".dockerignore",
     ".env.example",
@@ -102,10 +102,10 @@
     }
   ],
   "token_usage": {
-    "input_tokens": 6361,
-    "cache_creation_tokens": 949614,
-    "cache_read_tokens": 29627884,
-    "output_tokens": 130213,
-    "api_call_count": 404
+    "input_tokens": 6340,
+    "cache_creation_tokens": 989507,
+    "cache_read_tokens": 28602522,
+    "output_tokens": 139096,
+    "api_call_count": 375
   }
 }

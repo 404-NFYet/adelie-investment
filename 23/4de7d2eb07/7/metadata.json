@@ -3,9 +3,9 @@
   "checkpoint_id": "234de7d2eb07",
   "session_id": "2ef0cb12-12b5-4ba8-9e77-0f0f1550875c",
   "strategy": "manual-commit",
-  "created_at": "2026-02-21T13:48:57.742802496Z",
+  "created_at": "2026-02-22T07:41:30.368281055Z",
   "branch": "develop",
-  "checkpoints_count": 2,
+  "checkpoints_count": 0,
   "files_touched": [
     "fastapi/app/api/routes/feedback.py",
     "fastapi/app/services/stock_price_service.py",
@@ -14,20 +14,22 @@
     "infra/docker-dashboard/pages/feedback.py"
   ],
   "agent": "Claude Code",
+  "checkpoint_transcript_start": 339,
+  "transcript_lines_at_start": 339,
   "token_usage": {
-    "input_tokens": 59,
-    "cache_creation_tokens": 48420,
-    "cache_read_tokens": 2758804,
-    "output_tokens": 3534,
-    "api_call_count": 51
+    "input_tokens": 38,
+    "cache_creation_tokens": 88313,
+    "cache_read_tokens": 1733442,
+    "output_tokens": 12417,
+    "api_call_count": 22
   },
   "initial_attribution": {
-    "calculated_at": "2026-02-21T13:48:57.714995284Z",
-    "agent_lines": 1,
-    "human_added": 84,
-    "human_modified": 25,
+    "calculated_at": "2026-02-22T07:41:30.313222279Z",
+    "agent_lines": 0,
+    "human_added": 7,
+    "human_modified": 0,
     "human_removed": 0,
-    "total_committed": 110,
-    "agent_percentage": 0.9090909090909091
+    "total_committed": 7,
+    "agent_percentage": 0
   }
 }

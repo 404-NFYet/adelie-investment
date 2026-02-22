@@ -237,3 +237,39 @@ frontend도 진행했나?
 ---
 
 아직 문의사항이 올바르게 작동하지 않는 것 같다.
+
+---
+
+례진님의 키도 받았는데 REDACTED를 추가해라
+
+---
+
+현재 전원 설정이 완료되었는가?
+
+---
+
+전원 git 설정 상태 확인해줘
+
+---
+
+현재 각자 LXD 서버와 각 git들의 싱크는 올바르게 맞춰져 있는가?
+
+---
+
+uncommitted 내용 중 현재 추가로 반영해서 업데이트할만한 내용들이 있는가?
+
+---
+
+[1]
+completion_list.html?username=test0208@gmail.com&colorScheme=&screenX=0&screenY=0&effectiveWindowWi…:14  GET chrome-extension://pejdijmoenmkgeppbflobdenhhabjlaj/heuristicsRedefinitions.js net::ERR_FILE_NOT_FOUND
+위와 같은 chrome-extension eroor가 발생하지 않으면 좋을 것 같다.
+[2]
+PWA와 관련하여 크롬의 탭창에 보이는 로고 이미지가 현재 홈의 로고의 펭귄과 같은 이미지를 사용했으면 한다.
+[3]
+랜딩 페이지가 실제로 모바일에서 볼 때 아래로 좀 치우쳐져 있는데, 이와 관련해서 최적화를 진행해주면 좋을 것 같다. 위로 조금 옮기고 버튼이나 화면 시간도 좀 조절하면 좋을 것 같다.
+[4]
+퀴즈와 관련해서 내용이 한 눈에 안 보이는데 이를 적절히 처리하면 좋을 것 같다.
+
+---
+
+[Request interrupted by user for tool use]
