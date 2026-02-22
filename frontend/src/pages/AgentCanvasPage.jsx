@@ -462,7 +462,7 @@ export default function AgentCanvasPage() {
     : canvasState.aiStatus;
 
   return (
-    <div className="min-h-screen bg-[var(--agent-bg-page,#F7F8FA)] pb-[calc(var(--bottom-nav-h,68px)+var(--agent-dock-h,104px)+16px)]">
+    <div className="min-h-screen bg-[var(--agent-bg-page,#F7F8FA)] pb-[calc(var(--bottom-nav-h,68px)+var(--agent-dock-h,88px)+16px)]">
       {/* ── 1줄 컴팩트 헤더 ── */}
       <header className="sticky top-0 z-10 border-b border-[var(--agent-border)] bg-white/97 backdrop-blur-sm">
         <div className="container flex h-11 items-center justify-between">

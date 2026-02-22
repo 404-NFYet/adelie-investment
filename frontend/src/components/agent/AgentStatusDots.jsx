@@ -27,7 +27,7 @@ export default function AgentStatusDots({ phase = 'idle', label = '', compact = 
           />
         ))}
       </div>
-      {!compact && <span className="truncate">{label || '대기 중'}</span>}
+      {!compact && <span className="truncate max-w-[10rem]">{label || '대기 중'}</span>}
     </div>
   );
 }

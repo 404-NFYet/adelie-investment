@@ -246,7 +246,7 @@ export default function AgentDock() {
               className="flex w-full items-center gap-2 border-b border-[#F2F4F6] px-3 py-1.5 text-left active:bg-[#F7F8FA]"
             >
               <span className="h-1.5 w-1.5 rounded-full bg-[#FF6B00]" />
-              <span className="text-[12px] font-medium text-[#4E5968]">진행 중인 대화가 있어요</span>
+              <span className="truncate max-w-[8rem] text-[12px] font-medium text-[#4E5968]">진행 중인 대화가 있어요</span>
               <svg className="ml-auto text-[#B0B8C1]" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="m9 18 6-6-6-6" />
               </svg>
@@ -260,7 +260,7 @@ export default function AgentDock() {
             <button
               type="button"
               onClick={() => submitPrompt(suggestedPrompt)}
-              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[#FF6B00] text-white shadow-sm active:scale-95"
+              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[#FF6B00] text-white shadow-sm active:scale-95"
               aria-label="추천 문구 사용"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -280,7 +280,7 @@ export default function AgentDock() {
             <button
               type="button"
               onClick={() => setSearchEnabled((prev) => !prev)}
-              className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition-colors ${
+              className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full transition-colors ${
                 searchEnabled
                   ? 'bg-[#FFF2E8] text-[#FF6B00]'
                   : 'bg-[#F2F4F6] text-[#8B95A1]'
@@ -299,7 +299,7 @@ export default function AgentDock() {
             <button
               type="button"
               onClick={() => navigate('/agent/history', { state: { mode, contextPayload: buildControlContextPayload('') } })}
-              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[#F2F4F6] text-[#6B7684] transition-colors active:bg-[#E8EBED]"
+              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[#F2F4F6] text-[#6B7684] transition-colors active:bg-[#E8EBED]"
               aria-label="대화 기록 보기"
               title="대화 기록 보기"
             >
@@ -311,7 +311,7 @@ export default function AgentDock() {
 
             <button
               type="submit"
-              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[#F2F4F6] text-[#6B7684] transition-colors active:bg-[#E8EBED] disabled:opacity-30"
+              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[#F2F4F6] text-[#6B7684] transition-colors active:bg-[#E8EBED] disabled:opacity-30"
               aria-label="질문 전송"
               disabled={isRouting}
             >
