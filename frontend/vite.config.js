@@ -12,7 +12,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'images/apple-touch-icon.png'],
+      includeAssets: ['favicon.ico', 'images/logo-icon.png'],
       manifest: {
         name: '아델리에',
         short_name: '아델리에',
@@ -31,22 +31,22 @@ export default defineConfig({
             name: '오늘의 키워드',
             short_name: '키워드',
             url: '/',
-            icons: [{ src: '/images/icon-192.png', sizes: '192x192' }],
+            icons: [{ src: '/images/logo-icon.png', sizes: '192x192', type: 'image/png' }],
           },
         ],
         icons: [
           {
-            src: '/images/icon-192.png',
+            src: '/images/logo-icon.png',
             sizes: '192x192',
             type: 'image/png',
           },
           {
-            src: '/images/icon-512.png',
+            src: '/images/logo-icon.png',
             sizes: '512x512',
             type: 'image/png',
           },
           {
-            src: '/images/icon-512.png',
+            src: '/images/logo-icon.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',
