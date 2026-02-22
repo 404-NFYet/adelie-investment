@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "234de7d2eb07",
+  "session_id": "2ae4e188-ea97-4f8e-94e5-664dc9d00729",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-22T11:46:46.218724967Z",
+  "branch": "feature/dashboard-chatbot",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "docs/team-guides/A_프론트엔드_손영진.md",
+    "frontend/e2e/README.md",
+    "frontend/e2e/case-redirect.spec.js",
+    "frontend/e2e/education-flow.spec.js",
+    "frontend/e2e/narrative-flow.spec.js",
+    "frontend/e2e/notifications.spec.js",
+    "frontend/e2e/portfolio-trading.spec.js",
+    "frontend/e2e/profile-settings.spec.js",
+    "frontend/e2e/regression.spec.js",
+    "frontend/e2e/smoke.spec.js",
+    "frontend/e2e/tutor-visualization.spec.js",
+    "tests/backend/test_api_smoke.py"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 68,
+    "cache_creation_tokens": 116605,
+    "cache_read_tokens": 4422671,
+    "output_tokens": 35852,
+    "api_call_count": 60
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-22T11:46:46.139962791Z",
+    "agent_lines": 0,
+    "human_added": 4,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 4,
+    "agent_percentage": 0
+  }
+}

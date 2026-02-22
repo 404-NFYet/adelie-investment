@@ -2,8 +2,8 @@
   "cli_version": "0.4.2",
   "checkpoint_id": "234de7d2eb07",
   "strategy": "manual-commit",
-  "branch": "develop",
-  "checkpoints_count": 9,
+  "branch": "feature/dashboard-chatbot",
+  "checkpoints_count": 10,
   "files_touched": [
     ".dockerignore",
     ".env.example",
@@ -22,6 +22,7 @@
     "docker-compose.staging.yml",
     "docs/README.md",
     "docs/getting-started/database-guide.md",
+    "docs/team-guides/A_프론트엔드_손영진.md",
     "docs/team-guides/E_인프라_도형준.md",
     "fastapi/Dockerfile",
     "fastapi/app/api/routes/briefing.py",
@@ -47,9 +48,19 @@
     "fastapi/requirements-dev.txt",
     "fastapi/requirements.txt",
     "frontend/docs/mobile-devices.md",
+    "frontend/e2e/README.md",
     "frontend/e2e/agent-canvas-mobile.spec.js",
+    "frontend/e2e/case-redirect.spec.js",
     "frontend/e2e/daily-quiz-modal-mobile.spec.js",
+    "frontend/e2e/education-flow.spec.js",
     "frontend/e2e/landing-mobile.spec.js",
+    "frontend/e2e/narrative-flow.spec.js",
+    "frontend/e2e/notifications.spec.js",
+    "frontend/e2e/portfolio-trading.spec.js",
+    "frontend/e2e/profile-settings.spec.js",
+    "frontend/e2e/regression.spec.js",
+    "frontend/e2e/smoke.spec.js",
+    "frontend/e2e/tutor-visualization.spec.js",
     "frontend/playwright.config.js",
     "frontend/src/components/agent/AgentCanvasSections.jsx",
     "frontend/src/components/agent/AgentDock.jsx",
@@ -97,6 +108,7 @@
     "infra/terraform/variables.tf",
     "lxd/Makefile",
     "pytest.ini",
+    "tests/backend/test_api_smoke.py",
     "tests/conftest.py"
   ],
   "sessions": [
@@ -190,13 +202,20 @@
       "context": "/23/4de7d2eb07/12/context.md",
       "content_hash": "/23/4de7d2eb07/12/content_hash.txt",
       "prompt": "/23/4de7d2eb07/12/prompt.txt"
+    },
+    {
+      "metadata": "/23/4de7d2eb07/13/metadata.json",
+      "transcript": "/23/4de7d2eb07/13/full.jsonl",
+      "context": "/23/4de7d2eb07/13/context.md",
+      "content_hash": "/23/4de7d2eb07/13/content_hash.txt",
+      "prompt": "/23/4de7d2eb07/13/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 8932,
-    "cache_creation_tokens": 1527696,
-    "cache_read_tokens": 55767184,
-    "output_tokens": 260854,
-    "api_call_count": 730
+    "input_tokens": 9000,
+    "cache_creation_tokens": 1644301,
+    "cache_read_tokens": 60189855,
+    "output_tokens": 296706,
+    "api_call_count": 790
   }
 }
