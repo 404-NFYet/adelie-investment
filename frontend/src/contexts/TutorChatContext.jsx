@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useCallback, startTransition } fro
 import { API_BASE_URL, authFetch } from '../api/client';
 
 const TutorChatContext = createContext(null);
+const STREAM_FLUSH_INTERVAL_MS = 240;
 
 const parseVisualizationPayload = (content) => {
   if (!content) return null;
@@ -12,6 +13,50 @@ const parseVisualizationPayload = (content) => {
     return null;
   }
 };
+
+function sanitizeStreamDelta(delta) {
+  if (typeof delta !== 'string') return '';
+
+  const cleaned = delta
+    .replace(/<\|[^>]+\|>/g, '')
+    .replace(/\r/g, '')
+    .replace(/\u0000/g, '');
+
+  const trimmed = cleaned.trim();
+  if (!trimmed) return cleaned;
+
+  if (/^```(?:\w+)?$/i.test(trimmed)) return '';
+  if (/^\|{1,5}$/.test(trimmed)) return '';
+  if (/^\|\s*$/.test(trimmed)) return '';
+  if (/^(assistant|user|system)\s*[:|]$/i.test(trimmed)) return '';
+
+  return cleaned;
+}
+
+function extractFlushableText(buffer, force = false) {
+  if (!buffer) return { flush: '', remain: '' };
+  if (force) return { flush: buffer, remain: '' };
+
+  let boundary = -1;
+  for (let idx = 0; idx < buffer.length; idx += 1) {
+    const char = buffer[idx];
+    if (char === '\n' || char === '.' || char === '!' || char === '?' || char === '。' || char === '！' || char === '？') {
+      boundary = idx + 1;
+    }
+  }
+
+  if (boundary === -1) {
+    if (buffer.length < 64) return { flush: '', remain: buffer };
+
+    const whitespace = buffer.lastIndexOf(' ', 56);
+    boundary = whitespace > 16 ? whitespace + 1 : 56;
+  }
+
+  return {
+    flush: buffer.slice(0, boundary),
+    remain: buffer.slice(boundary),
+  };
+}
 
 const mapHistoryMessage = (message, index) => {
   if (message.message_type === 'visualization') {
@@ -34,11 +79,50 @@ const mapHistoryMessage = (message, index) => {
     content: message.content,
     timestamp: message.created_at,
     isStreaming: false,
+    sources: message.sources || null,
+    uiActions: message.ui_actions || null,
+    model: message.model || null,
   };
 };
 
+function buildAssistantTurns(messages = []) {
+  let latestUserPrompt = '';
+  const turns = [];
+
+  messages.forEach((message, index) => {
+    if (message?.role === 'user') {
+      latestUserPrompt = typeof message.content === 'string' ? message.content : '';
+      return;
+    }
+
+    if (message?.role !== 'assistant') return;
+
+    turns.push({
+      id: message.turnId || `turn-${message.id || index}`,
+      assistantMessageId: message.id,
+      userPrompt: latestUserPrompt,
+      assistantText: typeof message.content === 'string' ? message.content : '',
+      status: 'done',
+      createdAt: message.timestamp || new Date().toISOString(),
+      sources: Array.isArray(message.sources) ? message.sources : [],
+      uiActions: Array.isArray(message.uiActions) ? message.uiActions : [],
+      model: message.model || null,
+    });
+  });
+
+  return turns;
+}
+
+function updateTurnById(previousTurns, turnId, updater) {
+  return previousTurns.map((turn) => {
+    if (turn.id !== turnId) return turn;
+    return updater(turn);
+  });
+}
+
 export function TutorChatProvider({ children }) {
   const [messages, setMessages] = useState([]);
+  const [assistantTurns, setAssistantTurns] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState(() => {
     try {
@@ -54,9 +138,18 @@ export function TutorChatProvider({ children }) {
 
       const DEFAULT_STATUS = { phase: 'idle', text: '응답 대기 중' };
       let hasError = false;
+      let pendingSources = [];
+      let pendingUiActions = [];
+      let pendingModel = null;
+      let pendingBuffer = '';
+      let renderedContent = '';
+      let lastFlushAt = Date.now();
+
+      const turnId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
       const userMessage = {
-        id: Date.now(),
+        id: `${Date.now()}-user`,
+        turnId,
         role: 'user',
         content: message,
         timestamp: new Date().toISOString(),
@@ -66,13 +159,198 @@ export function TutorChatProvider({ children }) {
       if (setAgentStatus) setAgentStatus({ phase: 'thinking', text: '질문을 분석 중입니다.' });
 
       const assistantMessage = {
-        id: Date.now() + 1,
+        id: `${Date.now()}-assistant`,
+        turnId,
         role: 'assistant',
         content: '',
         timestamp: new Date().toISOString(),
         isStreaming: true,
       };
       setMessages((prev) => [...prev, assistantMessage]);
+      setAssistantTurns((prev) => [
+        ...prev,
+        {
+          id: turnId,
+          assistantMessageId: assistantMessage.id,
+          userPrompt: message,
+          assistantText: '',
+          status: 'streaming',
+          createdAt: assistantMessage.timestamp,
+          sources: [],
+          uiActions: [],
+          model: null,
+        },
+      ]);
+
+      const syncAssistantState = (nextContent, options = {}) => {
+        const {
+          isStreaming = true,
+          isError = false,
+          sources = pendingSources,
+          uiActions = pendingUiActions,
+          model = pendingModel,
+          status = 'streaming',
+        } = options;
+
+        startTransition(() => {
+          setMessages((prev) =>
+            prev.map((item) => {
+              if (item.id !== assistantMessage.id) return item;
+              return {
+                ...item,
+                content: nextContent,
+                isStreaming,
+                isError,
+                sources,
+                uiActions,
+                model,
+              };
+            })
+          );
+        });
+
+        setAssistantTurns((prev) =>
+          updateTurnById(prev, turnId, (turn) => ({
+            ...turn,
+            assistantText: nextContent,
+            status,
+            sources,
+            uiActions,
+            model,
+          }))
+        );
+      };
+
+      const flushBuffer = (force = false) => {
+        const { flush, remain } = extractFlushableText(pendingBuffer, force);
+        if (!flush && !force) return;
+
+        renderedContent += flush;
+        pendingBuffer = remain;
+
+        if (force && pendingBuffer) {
+          renderedContent += pendingBuffer;
+          pendingBuffer = '';
+        }
+
+        syncAssistantState(renderedContent, {
+          isStreaming: true,
+          status: 'streaming',
+        });
+      };
+
+      const processSseLine = (line) => {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith('data: ')) return;
+
+        try {
+          const data = JSON.parse(trimmed.slice(6));
+
+          if (data.session_id) {
+            setSessionId(data.session_id);
+            try { localStorage.setItem('adelie_tutor_session', data.session_id); } catch {}
+            if (onSessionCreated) onSessionCreated(data.session_id);
+          }
+
+          if (data.type === 'thinking') {
+            if (setAgentStatus) {
+              setAgentStatus({ phase: 'thinking', text: data.content || '질문을 분석 중입니다.' });
+            }
+            return;
+          }
+
+          if (data.type === 'tool_call') {
+            if (setAgentStatus) {
+              setAgentStatus({ phase: 'tool_call', text: `도구 실행 중: ${data.tool || '분석 도구'}`, tool: data.tool || undefined });
+            }
+            return;
+          }
+
+          if (data.type === 'sources' && Array.isArray(data.sources)) {
+            pendingSources = data.sources;
+            return;
+          }
+
+          if (data.type === 'ui_action' && Array.isArray(data.actions)) {
+            pendingUiActions = data.actions;
+            syncAssistantState(renderedContent, {
+              isStreaming: true,
+              status: 'streaming',
+              uiActions: pendingUiActions,
+            });
+            return;
+          }
+
+          if (data.type === 'visualization' && (data.chartData || data.content)) {
+            const vizMessage = {
+              id: Date.now() + Math.random(),
+              role: 'visualization',
+              content: data.content || null,
+              format: data.format || 'html',
+              chartData: data.chartData || null,
+              executionTime: data.execution_time_ms,
+              timestamp: new Date().toISOString(),
+            };
+            setMessages((prev) => [...prev, vizMessage]);
+            return;
+          }
+
+          if (data.type === 'error' && data.error) {
+            hasError = true;
+            flushBuffer(true);
+            const errorText = renderedContent || `오류: ${data.error}`;
+            if (setAgentStatus) setAgentStatus({ phase: 'error', text: '오류가 발생했습니다.' });
+            syncAssistantState(errorText, {
+              isStreaming: false,
+              isError: true,
+              status: 'error',
+            });
+            return;
+          }
+
+          if (data.type === 'done') {
+            if (Array.isArray(data.sources)) {
+              pendingSources = data.sources;
+            }
+            if (Array.isArray(data.actions)) {
+              pendingUiActions = data.actions;
+            }
+            if (typeof data.model === 'string' && data.model.trim()) {
+              pendingModel = data.model.trim();
+            }
+
+            flushBuffer(true);
+            syncAssistantState(renderedContent, {
+              isStreaming: false,
+              status: hasError ? 'error' : 'done',
+            });
+            if (setAgentStatus && !hasError) setAgentStatus(DEFAULT_STATUS);
+            return;
+          }
+
+          if (typeof data.content === 'string') {
+            const sanitized = sanitizeStreamDelta(data.content);
+            if (!sanitized) return;
+
+            if (!renderedContent && setAgentStatus) {
+              setAgentStatus({ phase: 'answering', text: '답변을 생성 중입니다.' });
+            }
+
+            pendingBuffer += sanitized;
+
+            const now = Date.now();
+            const shouldFlush = /[.!?。！？\n]/.test(sanitized)
+              || (pendingBuffer.length >= 14 && now - lastFlushAt >= STREAM_FLUSH_INTERVAL_MS);
+
+            if (shouldFlush) {
+              flushBuffer(false);
+              lastFlushAt = now;
+            }
+          }
+        } catch {
+          // malformed SSE chunk 무시
+        }
+      };
 
       try {
         const response = await authFetch(`${API_BASE_URL}/api/v1/tutor/chat`, {
@@ -93,107 +371,46 @@ export function TutorChatProvider({ children }) {
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
-        let fullContent = '';
-        let buffer = '';
+        let streamBuffer = '';
 
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
 
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
+          streamBuffer += decoder.decode(value, { stream: true });
+          const lines = streamBuffer.split('\n');
+          streamBuffer = lines.pop() || '';
 
           for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed || !trimmed.startsWith('data: ')) continue;
-
-            try {
-              const data = JSON.parse(trimmed.slice(6));
-
-              if (data.type === 'thinking') {
-                if (setAgentStatus) setAgentStatus({ phase: 'thinking', text: data.content || '질문을 분석 중입니다.' });
-                continue;
-              }
-
-              if (data.type === 'tool_call') {
-                if (setAgentStatus) setAgentStatus({ phase: 'tool_call', text: `도구 실행 중: ${data.tool || '분석 도구'}`, tool: data.tool || undefined });
-                continue;
-              }
-
-              if (data.content) {
-                if (!fullContent && setAgentStatus) {
-                  setAgentStatus({ phase: 'answering', text: '답변을 생성 중입니다.' });
-                }
-                fullContent += data.content;
-                // SSE 청크 업데이트를 낮은 우선순위 트랜지션으로 처리
-                startTransition(() => {
-                  setMessages((prev) =>
-                    prev.map((m) => (m.id === assistantMessage.id ? { ...m, content: fullContent } : m))
-                  );
-                });
-              }
-
-              if (data.session_id) {
-                setSessionId(data.session_id);
-                try { localStorage.setItem('adelie_tutor_session', data.session_id); } catch {}
-                if (onSessionCreated) onSessionCreated(data.session_id);
-              }
-
-              if (data.type === 'visualization' && (data.chartData || data.content)) {
-                const vizMessage = {
-                  id: Date.now() + Math.random(),
-                  role: 'visualization',
-                  content: data.content || null,
-                  format: data.format || 'html',
-                  chartData: data.chartData || null,
-                  executionTime: data.execution_time_ms,
-                  timestamp: new Date().toISOString(),
-                };
-                setMessages((prev) => [...prev, vizMessage]);
-                continue;
-              }
-
-              if ((data.type === 'done' || data.type === 'sources') && data.sources) {
-                setMessages((prev) =>
-                  prev.map((m) => (m.id === assistantMessage.id ? { ...m, sources: data.sources } : m))
-                );
-              }
-
-              if (data.type === 'error' && data.error) {
-                if (setAgentStatus) setAgentStatus(DEFAULT_STATUS);
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantMessage.id
-                      ? { ...m, content: `오류: ${data.error}`, isStreaming: false, isError: true }
-                      : m
-                  )
-                );
-              }
-
-              if (data.type === 'done') {
-                if (setAgentStatus) setAgentStatus(DEFAULT_STATUS);
-              }
-            } catch {
-              // malformed SSE 청크 무시
-            }
+            processSseLine(line);
           }
         }
 
-        setMessages((prev) =>
-          prev.map((m) => (m.id === assistantMessage.id ? { ...m, isStreaming: false } : m))
-        );
+        const remaining = `${streamBuffer}${decoder.decode()}`;
+        if (remaining.trim()) {
+          remaining.split('\n').forEach((line) => {
+            processSseLine(line);
+          });
+        }
+
+        flushBuffer(true);
+
+        syncAssistantState(renderedContent, {
+          isStreaming: false,
+          isError: hasError,
+          status: hasError ? 'error' : 'done',
+        });
       } catch (error) {
         console.error('Tutor error:', error);
         hasError = true;
         if (setAgentStatus) setAgentStatus({ phase: 'error', text: '오류가 발생했습니다.' });
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantMessage.id
-              ? { ...m, content: '죄송합니다. 오류가 발생했습니다.', isStreaming: false, isError: true }
-              : m
-          )
-        );
+
+        const fallbackText = renderedContent || '죄송합니다. 오류가 발생했습니다.';
+        syncAssistantState(fallbackText, {
+          isStreaming: false,
+          isError: true,
+          status: 'error',
+        });
       } finally {
         setIsLoading(false);
         if (setAgentStatus && !hasError) setAgentStatus(DEFAULT_STATUS);
@@ -210,12 +427,14 @@ export function TutorChatProvider({ children }) {
     const loaded = (data.messages || []).map((message, index) => mapHistoryMessage(message, index));
 
     setMessages(loaded);
+    setAssistantTurns(buildAssistantTurns(loaded));
     setSessionId(id);
     try { localStorage.setItem('adelie_tutor_session', id); } catch {}
   }, []);
 
   const clearMessages = useCallback(() => {
     setMessages((prev) => (prev.length > 0 ? [] : prev));
+    setAssistantTurns((prev) => (prev.length > 0 ? [] : prev));
     setSessionId((prev) => (prev === null ? prev : null));
     try {
       if (localStorage.getItem('adelie_tutor_session') !== null) {
@@ -227,6 +446,7 @@ export function TutorChatProvider({ children }) {
   return (
     <TutorChatContext.Provider value={{
       messages,
+      assistantTurns,
       isLoading,
       sessionId,
       setSessionId,

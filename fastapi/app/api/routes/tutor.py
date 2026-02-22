@@ -345,9 +345,10 @@ async def generate_tutor_response(
 
     try:
         client = AsyncOpenAI(api_key=api_key)
+        chat_model = "gpt-4o-mini"
 
         response = await client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=chat_model,
             messages=messages,
             max_tokens=1000,
             stream=True,
@@ -452,8 +453,9 @@ async def generate_tutor_response(
                 logger.warning("시각화 생성 실패: %s", viz_err)
 
         done_data = {'session_id': session_id, 'total_tokens': total_tokens}
+        done_data['type'] = 'done'
+        done_data['model'] = chat_model
         if sources:
-            done_data['type'] = 'done'
             done_data['sources'] = sources
         yield f"event: done\ndata: {json.dumps(done_data)}\n\n"
 

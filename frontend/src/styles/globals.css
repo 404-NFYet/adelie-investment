@@ -310,12 +310,25 @@
   50% { opacity: 1; }
 }
 
+@keyframes agentControlPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 1px rgba(255, 118, 72, 0.15), 0 0 14px rgba(255, 118, 72, 0.16);
+  }
+  50% {
+    box-shadow: 0 0 0 1px rgba(255, 118, 72, 0.28), 0 0 26px rgba(255, 118, 72, 0.28);
+  }
+}
+
 .agent-dot-wave {
   animation: agentDotWave 1.2s ease-in-out infinite;
 }
 
 .agent-dot-blink {
   animation: agentDotBlink 0.8s ease-in-out infinite;
+}
+
+.animate-agent-control-pulse {
+  animation: agentControlPulse 1.6s ease-in-out infinite;
 }
 
 /* ── 부드러운 스크롤바 ── */

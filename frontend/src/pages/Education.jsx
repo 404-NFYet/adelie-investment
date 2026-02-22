@@ -7,6 +7,8 @@ import DashboardHeader from '../components/layout/DashboardHeader';
 import MonthlyActivityCalendar from '../components/calendar/MonthlyActivityCalendar';
 import DailyQuizMissionCard from '../components/quiz/DailyQuizMissionCard';
 import useActivityFeed from '../hooks/useActivityFeed';
+import buildActionCatalog from '../utils/agent/buildActionCatalog';
+import buildUiSnapshot from '../utils/agent/buildUiSnapshot';
 import { getKstDateParts, getKstTodayDateKey, shiftYearMonth } from '../utils/kstDate';
 
 function parseDateKey(dateKey) {
@@ -99,6 +101,51 @@ export default function Education() {
   const selectedActivities = useMemo(() => {
     return activitiesByDate[selectedDateKey] || [];
   }, [activitiesByDate, selectedDateKey]);
+
+  const educationActionCatalog = useMemo(
+    () => buildActionCatalog({ pathname: '/education', mode: 'education' }),
+    [],
+  );
+
+  const educationUiSnapshot = useMemo(
+    () => buildUiSnapshot({
+      pathname: '/education',
+      mode: 'education',
+      visibleSections: ['calendar', 'activity_dashboard', 'daily_briefing'],
+      selectedEntities: {
+        date_key: selectedDateKey,
+      },
+      filters: {
+        tab: 'education',
+      },
+    }),
+    [selectedDateKey],
+  );
+
+  const educationContextPayload = useMemo(
+    () => ({
+      selected_date: selectedDateKey,
+      current_month: `${currentMonth.year}-${String(currentMonth.month).padStart(2, '0')}`,
+      activity_count_for_selected_date: selectedActivities.length,
+      keyword_titles: visibleCards.map((item) => item.title).slice(0, 5),
+      ui_snapshot: educationUiSnapshot,
+      action_catalog: educationActionCatalog,
+      interaction_state: {
+        source: 'education_page',
+        mode: 'education',
+        route: '/education',
+      },
+    }),
+    [currentMonth.month, currentMonth.year, educationActionCatalog, educationUiSnapshot, selectedActivities.length, selectedDateKey, visibleCards],
+  );
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('adelie_education_context', JSON.stringify(educationContextPayload));
+    } catch {
+      // ignore
+    }
+  }, [educationContextPayload]);
 
   const handlePrevMonth = () => {
     setCurrentMonth((prev) => shiftYearMonth(prev.year, prev.month, -1));

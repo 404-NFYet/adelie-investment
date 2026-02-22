@@ -15,6 +15,8 @@ import AppHeader from '../components/layout/AppHeader';
 import { PenguinMascot } from '../components';
 import { API_BASE_URL } from '../config';
 import useCountUp from '../hooks/useCountUp';
+import buildActionCatalog from '../utils/agent/buildActionCatalog';
+import buildUiSnapshot from '../utils/agent/buildUiSnapshot';
 import { formatKRW } from '../utils/formatNumber';
 
 /* ── 보유 종목 카드 ── */
@@ -188,6 +190,30 @@ export default function Portfolio() {
     if (!stock) return;
 
     const holding = displayPortfolio?.holdings?.find((item) => item.stock_code === stock.stock_code);
+    const actionCatalog = buildActionCatalog({
+      pathname: '/portfolio',
+      mode: 'stock',
+      stockContext: stock,
+    });
+    const uiSnapshot = buildUiSnapshot({
+      pathname: '/portfolio',
+      mode: 'stock',
+      visibleSections: ['portfolio_summary', 'holdings', 'stock_detail'],
+      selectedEntities: {
+        stock_code: stock.stock_code,
+        stock_name: stock.stock_name,
+      },
+      filters: {
+        tab: activeTab,
+      },
+      portfolioSummary: {
+        total_value: displayPortfolio?.total_value,
+        current_cash: displayPortfolio?.current_cash,
+        total_profit_loss_pct: displayPortfolio?.total_profit_loss_pct,
+        holdings_count: Array.isArray(displayPortfolio?.holdings) ? displayPortfolio.holdings.length : 0,
+      },
+    });
+
     const stockContext = {
       mode: 'stock',
       stock_code: stock.stock_code,
@@ -196,6 +222,14 @@ export default function Portfolio() {
       quantity: holding?.quantity || 0,
       avg_buy_price: holding?.avg_buy_price || null,
       profit_loss_pct: holding?.profit_loss_pct || null,
+      ui_snapshot: uiSnapshot,
+      action_catalog: actionCatalog,
+      interaction_state: {
+        source: 'portfolio_stock_detail',
+        mode: 'stock',
+        route: '/portfolio',
+        trigger: 'ask_stock_agent',
+      },
     };
 
     navigate('/agent', {

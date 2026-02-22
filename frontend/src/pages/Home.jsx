@@ -5,6 +5,8 @@ import DashboardHeader from '../components/layout/DashboardHeader';
 import { DEFAULT_HOME_ICON_KEY, getHomeIconSrc } from '../constants/homeIconCatalog';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import useActivityFeed from '../hooks/useActivityFeed';
+import buildActionCatalog from '../utils/agent/buildActionCatalog';
+import buildUiSnapshot from '../utils/agent/buildUiSnapshot';
 import { formatKRW } from '../utils/formatNumber';
 import { getKstTodayDateKey, getKstWeekDays } from '../utils/kstDate';
 
@@ -81,6 +83,40 @@ export default function Home() {
     [marketSummary, todayDateKey, visibleCards],
   );
 
+  const homeActionCatalog = useMemo(
+    () => buildActionCatalog({ pathname: '/home', mode: 'home' }),
+    [],
+  );
+
+  const homeUiSnapshot = useMemo(
+    () => buildUiSnapshot({
+      pathname: '/home',
+      mode: 'home',
+      visibleSections: ['asset_summary', 'learning_schedule', 'issue_card', 'mission_cards'],
+      filters: { tab: 'home' },
+      portfolioSummary: {
+        total_value: totalAsset,
+        holdings_count: Array.isArray(portfolio?.holdings) ? portfolio.holdings.length : 0,
+      },
+    }),
+    [portfolio?.holdings, totalAsset],
+  );
+
+  const enrichedHomeContextPayload = useMemo(
+    () => ({
+      ...homeContextPayload,
+      ui_snapshot: homeUiSnapshot,
+      action_catalog: homeActionCatalog,
+      interaction_state: {
+        source: 'home_page',
+        mode: 'home',
+        route: '/home',
+        control_phase: 'idle',
+      },
+    }),
+    [homeActionCatalog, homeContextPayload, homeUiSnapshot],
+  );
+
   useEffect(() => {
     try {
       sessionStorage.setItem('adelie_home_context', JSON.stringify(homeContextPayload));
@@ -89,12 +125,27 @@ export default function Home() {
     }
   }, [homeContextPayload]);
 
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('adelie_home_context_enriched', JSON.stringify(enrichedHomeContextPayload));
+    } catch {
+      // ignore
+    }
+  }, [enrichedHomeContextPayload]);
+
   const openAgentFromHome = (initialPrompt) => {
     navigate('/agent', {
       state: {
         mode: 'home',
         initialPrompt,
-        contextPayload: homeContextPayload,
+        contextPayload: {
+          ...enrichedHomeContextPayload,
+          interaction_state: {
+            ...enrichedHomeContextPayload.interaction_state,
+            trigger: 'home_cta',
+            last_prompt: initialPrompt,
+          },
+        },
         resetConversation: true,
       },
     });

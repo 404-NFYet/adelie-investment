@@ -47,6 +47,7 @@ export function useTutor() {
   } = session;
   const {
     messages,
+    assistantTurns,
     isLoading,
     sendMessage: sendChatMessage,
     clearMessages: clearChatMessages,
@@ -124,6 +125,7 @@ export function useTutor() {
     deleteChat,
     // Chat
     messages,
+    assistantTurns,
     isLoading,
     sendMessage,
     clearMessages,

@@ -3,18 +3,39 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import AgentCanvasSections from '../components/agent/AgentCanvasSections';
 import AgentStatusDots from '../components/agent/AgentStatusDots';
 import { useTutor, useUser } from '../contexts';
+import buildActionCatalog from '../utils/agent/buildActionCatalog';
+import buildUiSnapshot from '../utils/agent/buildUiSnapshot';
 import composeCanvasState from '../utils/agent/composeCanvasState';
 
 const SWIPE_THRESHOLD_PX = 160;
-const SWIPE_HINT_DURATION_MS = 1700;
+const SWIPE_TOAST_DURATION_MS = 1500;
 
-function getHomeContextFromStorage() {
+function getContextByMode(mode) {
   try {
-    const raw = sessionStorage.getItem('adelie_home_context');
-    return raw ? JSON.parse(raw) : null;
+    if (mode === 'home') {
+      const enriched = sessionStorage.getItem('adelie_home_context_enriched');
+      if (enriched) return JSON.parse(enriched);
+
+      const base = sessionStorage.getItem('adelie_home_context');
+      return base ? JSON.parse(base) : null;
+    }
+
+    if (mode === 'education') {
+      const education = sessionStorage.getItem('adelie_education_context');
+      return education ? JSON.parse(education) : null;
+    }
   } catch {
-    return null;
+    // ignore storage parsing error
   }
+
+  return null;
+}
+
+function getVisibleSectionsByMode(mode) {
+  if (mode === 'stock') return ['portfolio_summary', 'holdings', 'stock_detail'];
+  if (mode === 'education') return ['calendar', 'daily_briefing', 'quiz_mission'];
+  if (mode === 'my') return ['profile', 'settings'];
+  return ['asset_summary', 'learning_schedule', 'issue_card', 'mission_cards'];
 }
 
 function buildContextSummary(mode, contextPayload) {
@@ -28,36 +49,47 @@ function buildContextSummary(mode, contextPayload) {
   }
 
   if (mode === 'education') {
-    return contextPayload?.topic || '학습 토픽 기반';
+    return contextPayload?.selected_date
+      ? `${contextPayload.selected_date} 학습 기준`
+      : '교육 화면 컨텍스트';
   }
 
-  return contextPayload?.market_summary || '홈 이슈 기반';
+  return contextPayload?.market_summary || '홈 화면 컨텍스트';
 }
 
-function buildAssistantSnapshots(messages) {
-  if (!Array.isArray(messages)) return [];
-
-  let latestUserPrompt = '';
-  const snapshots = [];
-
-  messages.forEach((message, index) => {
-    const content = typeof message?.content === 'string' ? message.content.trim() : '';
-
-    if (message?.role === 'user') {
-      latestUserPrompt = content;
-      return;
-    }
-
-    if (message?.role === 'assistant' && content) {
-      snapshots.push({
-        id: message.id || `assistant-${index}`,
-        assistantText: content,
-        userPrompt: latestUserPrompt,
-      });
-    }
+function buildAgentContextEnvelope({ mode, pathname, contextPayload, userPrompt }) {
+  const uiSnapshot = contextPayload?.ui_snapshot || buildUiSnapshot({
+    pathname,
+    mode,
+    visibleSections: getVisibleSectionsByMode(mode),
+    selectedEntities: {
+      stock_code: contextPayload?.stock_code || null,
+      stock_name: contextPayload?.stock_name || null,
+      date_key: contextPayload?.selected_date || contextPayload?.date || null,
+      case_id: contextPayload?.case_id || null,
+    },
+    filters: {
+      tab: mode,
+    },
+    portfolioSummary: contextPayload?.portfolio_summary || null,
   });
 
-  return snapshots;
+  const actionCatalog = Array.isArray(contextPayload?.action_catalog)
+    ? contextPayload.action_catalog
+    : buildActionCatalog({ pathname, mode, stockContext: contextPayload });
+
+  return {
+    mode,
+    context: contextPayload,
+    ui_snapshot: uiSnapshot,
+    action_catalog: actionCatalog,
+    interaction_state: {
+      source: 'agent_canvas',
+      mode,
+      route: pathname,
+      focused_prompt: userPrompt || null,
+    },
+  };
 }
 
 export default function AgentCanvasPage() {
@@ -66,6 +98,7 @@ export default function AgentCanvasPage() {
   const { settings } = useUser();
   const {
     messages,
+    assistantTurns,
     isLoading,
     sendMessage,
     setContextInfo,
@@ -74,15 +107,16 @@ export default function AgentCanvasPage() {
     loadChatHistory,
   } = useTutor();
 
-  const [activeSnapshotIndex, setActiveSnapshotIndex] = useState(0);
-  const [swipeGuideText, setSwipeGuideText] = useState('');
+  const [activeTurnIndex, setActiveTurnIndex] = useState(0);
+  const [swipeToast, setSwipeToast] = useState('');
+  const [dragDistance, setDragDistance] = useState(0);
 
   const processedPromptRef = useRef(new Set());
   const resetRef = useRef(new Set());
   const restoredSessionRef = useRef(new Set());
   const touchStartYRef = useRef(null);
-  const hintTimerRef = useRef(null);
-  const prevSnapshotCountRef = useRef(0);
+  const toastTimerRef = useRef(null);
+  const prevTurnCountRef = useRef(0);
 
   const mode = location.state?.mode || (location.state?.stockContext ? 'stock' : 'home');
   const initialPrompt = location.state?.initialPrompt || '';
@@ -91,41 +125,60 @@ export default function AgentCanvasPage() {
   const contextPayload = useMemo(() => {
     if (location.state?.contextPayload) return location.state.contextPayload;
     if (mode === 'stock' && location.state?.stockContext) return location.state.stockContext;
-    if (mode === 'home') return getHomeContextFromStorage();
-    return null;
+    return getContextByMode(mode);
   }, [location.state, mode]);
 
-  const assistantSnapshots = useMemo(() => buildAssistantSnapshots(messages), [messages]);
+  const turns = useMemo(
+    () =>
+      (Array.isArray(assistantTurns) ? assistantTurns : [])
+        .filter((turn) => typeof turn?.assistantText === 'string')
+        .map((turn, index) => ({
+          id: turn.id || `turn-${index}`,
+          assistantText: turn.assistantText || '',
+          userPrompt: turn.userPrompt || '',
+          uiActions: Array.isArray(turn.uiActions) ? turn.uiActions : [],
+          status: turn.status || 'done',
+          model: turn.model || null,
+        })),
+    [assistantTurns],
+  );
 
   useEffect(() => {
-    const snapshotCount = assistantSnapshots.length;
-
-    if (snapshotCount === 0) {
-      prevSnapshotCountRef.current = 0;
-      setActiveSnapshotIndex(0);
+    const turnCount = turns.length;
+    if (turnCount === 0) {
+      prevTurnCountRef.current = 0;
+      setActiveTurnIndex(0);
       return;
     }
 
-    if (snapshotCount > prevSnapshotCountRef.current) {
-      setActiveSnapshotIndex(snapshotCount - 1);
+    if (turnCount > prevTurnCountRef.current) {
+      setActiveTurnIndex(turnCount - 1);
     } else {
-      setActiveSnapshotIndex((prev) => Math.min(prev, snapshotCount - 1));
+      setActiveTurnIndex((prev) => Math.min(prev, turnCount - 1));
     }
 
-    prevSnapshotCountRef.current = snapshotCount;
-  }, [assistantSnapshots.length]);
+    prevTurnCountRef.current = turnCount;
+  }, [turns.length]);
 
-  useEffect(() => {
-    return () => {
-      if (hintTimerRef.current) {
-        clearTimeout(hintTimerRef.current);
+  useEffect(
+    () => () => {
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
       }
-    };
-  }, []);
+    },
+    [],
+  );
 
-  const selectedSnapshot = assistantSnapshots[activeSnapshotIndex] || null;
-  const selectedUserPrompt = selectedSnapshot?.userPrompt || initialPrompt;
-  const isBrowsingPrevious = assistantSnapshots.length > 0 && activeSnapshotIndex < assistantSnapshots.length - 1;
+  const selectedTurn = turns[activeTurnIndex] || null;
+  const selectedUserPrompt = selectedTurn?.userPrompt || initialPrompt;
+  const isBrowsingPrevious = turns.length > 0 && activeTurnIndex < turns.length - 1;
+  const contextSummary = useMemo(() => buildContextSummary(mode, contextPayload), [contextPayload, mode]);
+
+  const conversationDepth = useMemo(() => {
+    if (mode !== 'home') return 0;
+    const userTurns = (messages || []).filter((message) => message.role === 'user').length;
+    return Math.min(3, Math.max(1, userTurns || 1));
+  }, [messages, mode]);
 
   useEffect(() => {
     if (!location.state?.resetConversation) return;
@@ -146,25 +199,23 @@ export default function AgentCanvasPage() {
   }, [loadChatHistory, location.key, requestedSessionId]);
 
   useEffect(() => {
-    const contextText = JSON.stringify(
-      {
-        mode,
-        context: contextPayload,
-      },
-      null,
-      2,
-    );
+    const envelope = buildAgentContextEnvelope({
+      mode,
+      pathname: location.pathname,
+      contextPayload,
+      userPrompt: selectedUserPrompt,
+    });
 
     setContextInfo({
       type: mode === 'stock' ? 'case' : 'briefing',
       id: null,
-      stepContent: contextText,
+      stepContent: JSON.stringify(envelope, null, 2),
     });
 
     return () => {
       setContextInfo(null);
     };
-  }, [contextPayload, mode, setContextInfo]);
+  }, [contextPayload, location.pathname, mode, selectedUserPrompt, setContextInfo]);
 
   useEffect(() => {
     const promptKey = `${location.key}:${initialPrompt}`;
@@ -174,13 +225,6 @@ export default function AgentCanvasPage() {
     sendMessage(initialPrompt, settings?.difficulty || 'beginner');
   }, [initialPrompt, location.key, requestedSessionId, sendMessage, settings?.difficulty]);
 
-  const conversationDepth = useMemo(() => {
-    const userTurns = (messages || []).filter((message) => message.role === 'user').length;
-    return Math.min(3, Math.max(1, userTurns || 1));
-  }, [messages]);
-
-  const contextSummary = useMemo(() => buildContextSummary(mode, contextPayload), [contextPayload, mode]);
-
   const canvasState = useMemo(
     () =>
       composeCanvasState({
@@ -189,99 +233,123 @@ export default function AgentCanvasPage() {
         contextPayload,
         aiStatus: agentStatus?.text,
         userPrompt: selectedUserPrompt,
-        assistantText: selectedSnapshot?.assistantText || '',
+        assistantText: selectedTurn?.assistantText || '',
+        assistantTurn: selectedTurn,
       }),
-    [agentStatus?.text, contextPayload, messages, mode, selectedSnapshot?.assistantText, selectedUserPrompt],
+    [
+      agentStatus?.text,
+      contextPayload,
+      messages,
+      mode,
+      selectedTurn,
+      selectedUserPrompt,
+    ],
   );
 
-  const showSwipeHint = useCallback((message) => {
-    setSwipeGuideText(message);
-    if (hintTimerRef.current) {
-      clearTimeout(hintTimerRef.current);
-    }
-
-    hintTimerRef.current = setTimeout(() => {
-      setSwipeGuideText('');
-    }, SWIPE_HINT_DURATION_MS);
+  const showSwipeToast = useCallback((text) => {
+    setSwipeToast(text);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => {
+      setSwipeToast('');
+    }, SWIPE_TOAST_DURATION_MS);
   }, []);
 
-  const handleSwipeDelta = useCallback((deltaY) => {
-    if (assistantSnapshots.length < 2) {
-      showSwipeHint('이 세션에 이전 응답이 아직 없습니다.');
-      return;
-    }
+  const handleSwipeDelta = useCallback(
+    (deltaY) => {
+      if (turns.length < 2) {
+        showSwipeToast('이 세션에는 아직 탐색할 이전 답변이 없습니다.');
+        return;
+      }
 
-    const movedDistance = Math.abs(deltaY);
-    if (movedDistance < SWIPE_THRESHOLD_PX) {
-      showSwipeHint(`더 길게 당겨주세요 (${SWIPE_THRESHOLD_PX}px 이상)`);
-      return;
-    }
+      const movedDistance = Math.abs(deltaY);
+      if (movedDistance < SWIPE_THRESHOLD_PX) {
+        showSwipeToast(`조금 더 길게 당겨주세요 (${SWIPE_THRESHOLD_PX}px 이상)`);
+        return;
+      }
 
-    if (deltaY <= -SWIPE_THRESHOLD_PX) {
-      setActiveSnapshotIndex((prev) => {
-        if (prev === 0) {
-          showSwipeHint('가장 이전 응답입니다.');
-          return prev;
-        }
+      if (deltaY <= -SWIPE_THRESHOLD_PX) {
+        setActiveTurnIndex((prev) => {
+          if (prev === 0) {
+            showSwipeToast('가장 이전 답변입니다.');
+            return prev;
+          }
+          showSwipeToast('이전 답변으로 이동했습니다.');
+          return prev - 1;
+        });
+        return;
+      }
 
-        showSwipeHint('이전 응답으로 이동했습니다.');
-        return prev - 1;
-      });
-      return;
-    }
-
-    if (deltaY >= SWIPE_THRESHOLD_PX) {
-      setActiveSnapshotIndex((prev) => {
-        if (prev >= assistantSnapshots.length - 1) {
-          showSwipeHint('가장 최신 응답입니다.');
-          return prev;
-        }
-
-        showSwipeHint('다음 응답으로 이동했습니다.');
-        return prev + 1;
-      });
-    }
-  }, [assistantSnapshots.length, showSwipeHint]);
+      if (deltaY >= SWIPE_THRESHOLD_PX) {
+        setActiveTurnIndex((prev) => {
+          if (prev >= turns.length - 1) {
+            showSwipeToast('가장 최신 답변입니다.');
+            return prev;
+          }
+          showSwipeToast('다음 답변으로 이동했습니다.');
+          return prev + 1;
+        });
+      }
+    },
+    [showSwipeToast, turns.length],
+  );
 
   const handleSwipeTouchStart = useCallback((event) => {
     touchStartYRef.current = event.changedTouches?.[0]?.clientY ?? null;
+    setDragDistance(0);
   }, []);
 
-  const handleSwipeTouchEnd = useCallback((event) => {
+  const handleSwipeTouchMove = useCallback((event) => {
     if (touchStartYRef.current === null) return;
+    const currentY = event.changedTouches?.[0]?.clientY;
+    if (typeof currentY !== 'number') return;
+    setDragDistance(currentY - touchStartYRef.current);
+  }, []);
 
-    const endY = event.changedTouches?.[0]?.clientY;
-    if (typeof endY !== 'number') {
+  const handleSwipeTouchEnd = useCallback(
+    (event) => {
+      if (touchStartYRef.current === null) return;
+      const endY = event.changedTouches?.[0]?.clientY;
+      if (typeof endY !== 'number') {
+        touchStartYRef.current = null;
+        setDragDistance(0);
+        return;
+      }
+
+      const deltaY = endY - touchStartYRef.current;
       touchStartYRef.current = null;
-      return;
-    }
+      setDragDistance(0);
+      handleSwipeDelta(deltaY);
+    },
+    [handleSwipeDelta],
+  );
 
-    const deltaY = endY - touchStartYRef.current;
-    touchStartYRef.current = null;
-    handleSwipeDelta(deltaY);
-  }, [handleSwipeDelta]);
-
-  const handleActionClick = (action) => {
-    sendMessage(action, settings?.difficulty || 'beginner');
-  };
+  const handleActionClick = useCallback(
+    (action) => {
+      const nextPrompt = typeof action === 'string' ? action : action?.prompt || action?.label || '';
+      if (!nextPrompt) return;
+      sendMessage(nextPrompt, settings?.difficulty || 'beginner');
+    },
+    [sendMessage, settings?.difficulty],
+  );
 
   const handleBack = useCallback(() => {
     if (window.history.length > 1) {
       navigate(-1);
       return;
     }
-
     navigate('/home', { replace: true });
   }, [navigate]);
 
   const openHistory = useCallback(() => {
     navigate('/agent/history', {
-      state: {
-        mode,
-        contextPayload,
-      },
+      state: { mode, contextPayload },
     });
   }, [contextPayload, mode, navigate]);
+
+  const dragProgress = Math.min(100, Math.round((Math.abs(dragDistance) / SWIPE_THRESHOLD_PX) * 100));
+  const statusSubline = selectedTurn?.model
+    ? `${canvasState.aiStatus} · model ${selectedTurn.model}`
+    : canvasState.aiStatus;
 
   return (
     <div className="min-h-screen bg-[#f9fafb] pb-44">
@@ -301,31 +369,28 @@ export default function AgentCanvasPage() {
               </button>
 
               <div className="min-w-0">
-                <h1 className="truncate text-[19px] font-extrabold tracking-[-0.02em] text-[#101828]">
+                <h1 className="truncate text-[18px] font-extrabold tracking-[-0.02em] text-[#101828]">
                   {canvasState.title}
                 </h1>
-                <p className="mt-1 truncate text-[11px] text-[#99a1af]">
-                  AI가 보고 있는 것 · {contextSummary}
-                </p>
+                <p className="mt-1 truncate text-[11px] text-[#99a1af]">AI가 보고 있는 것 · {contextSummary}</p>
 
                 <div className="mt-2 flex flex-wrap items-center gap-2.5">
                   <span className="rounded-lg bg-[#fff0eb] px-2 py-1 text-[10px] font-black text-[#ff7648]">
                     {canvasState.modeLabel}
                   </span>
 
-                  <AgentStatusDots
-                    phase={agentStatus?.phase}
-                    label={canvasState.aiStatus}
-                  />
+                  <AgentStatusDots phase={agentStatus?.phase} label={statusSubline} />
 
-                  <div className="flex items-center gap-1 text-[11px] text-[#6a7282]">
-                    {[1, 2, 3].map((step) => (
-                      <span
-                        key={step}
-                        className={`h-1.5 w-3.5 rounded-full ${step <= conversationDepth ? 'bg-[#ff7648]' : 'bg-[#e5e7eb]'}`}
-                      />
-                    ))}
-                  </div>
+                  {mode === 'home' && (
+                    <div className="flex items-center gap-1 text-[11px] text-[#6a7282]">
+                      {[1, 2, 3].map((step) => (
+                        <span
+                          key={step}
+                          className={`h-1.5 w-3.5 rounded-full ${step <= conversationDepth ? 'bg-[#ff7648]' : 'bg-[#e5e7eb]'}`}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -344,7 +409,7 @@ export default function AgentCanvasPage() {
             <p className="mt-2 truncate text-[11px] text-[#99a1af]">요청: {selectedUserPrompt}</p>
           )}
           {isBrowsingPrevious && (
-            <p className="mt-1 text-[11px] font-semibold text-[#ff7648]">이전 응답 탐색 중</p>
+            <p className="mt-1 text-[11px] font-semibold text-[#ff7648]">이전 답변 탐색 중</p>
           )}
         </div>
       </header>
@@ -352,38 +417,44 @@ export default function AgentCanvasPage() {
       <main className="container space-y-4 py-4">
         <section
           onTouchStart={handleSwipeTouchStart}
+          onTouchMove={handleSwipeTouchMove}
           onTouchEnd={handleSwipeTouchEnd}
           className="rounded-xl border border-[#fde1d4] bg-white px-3.5 py-3"
           aria-label="세션 응답 스와이프 탐색"
         >
           <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-[12px] font-semibold text-[#364153]">
-              <div className="flex flex-col items-center leading-none text-[#ff7648]">
-                <span className="text-[11px]">▲</span>
-                <span className="text-[11px]">▼</span>
+            <div className="flex items-center gap-2">
+              <div className="flex h-5 w-8 items-center justify-center rounded-full bg-[#f3f4f6]">
+                <span className="h-1.5 w-4 rounded-full bg-[#cfd4dc]" />
               </div>
-              <span>같은 세션 응답 탐색</span>
+              <div className="flex items-center gap-1.5 text-[12px] font-semibold text-[#364153]">
+                <span className="text-[#ff7648]">↕</span>
+                <span>길게 당겨 같은 세션 답변 이동</span>
+              </div>
             </div>
+
             <span className="rounded-md bg-[#fff0eb] px-2 py-1 text-[11px] font-bold text-[#ff7648]">
-              {assistantSnapshots.length > 0 ? `${activeSnapshotIndex + 1}/${assistantSnapshots.length}` : '0/0'}
+              {turns.length > 0 ? `${activeTurnIndex + 1}/${turns.length}` : '0/0'}
             </span>
           </div>
 
-          <p className="mt-1.5 text-[10px] text-[#6a7282]">
-            위로 길게 스와이프: 이전 응답 · 아래로 길게 스와이프: 다음 응답 ({SWIPE_THRESHOLD_PX}px 이상)
-          </p>
-
-          {swipeGuideText && (
-            <p className="mt-1 text-[10px] font-semibold text-[#ff7648]">
-              {swipeGuideText}
+          <div className="mt-2">
+            <div className="h-1.5 rounded-full bg-[#f3f4f6]">
+              <div
+                className="h-1.5 rounded-full bg-[#ff7648] transition-all"
+                style={{ width: `${dragProgress}%` }}
+              />
+            </div>
+            <p className="mt-1 text-[10px] text-[#6a7282]">
+              {SWIPE_THRESHOLD_PX}px 이상 위/아래로 길게 당기면 이전/다음 답변으로 이동합니다.
             </p>
-          )}
+            {swipeToast && (
+              <p className="mt-1 text-[10px] font-semibold text-[#ff7648]">{swipeToast}</p>
+            )}
+          </div>
         </section>
 
-        <AgentCanvasSections
-          canvasState={canvasState}
-          onActionClick={handleActionClick}
-        />
+        <AgentCanvasSections canvasState={canvasState} onActionClick={handleActionClick} />
 
         {isLoading && (
           <div className="rounded-2xl border border-[#f3f4f6] bg-white px-4 py-3 text-[11px] text-[#99a1af]">

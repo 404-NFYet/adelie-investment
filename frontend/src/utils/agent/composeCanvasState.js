@@ -78,6 +78,32 @@ function buildActions(mode) {
   return ['모의투자에 반영하기', '과거 비슷한 사례 보기'];
 }
 
+function normalizeUiActions(uiActions) {
+  if (!Array.isArray(uiActions)) return [];
+
+  return uiActions
+    .map((action, index) => {
+      if (!action) return null;
+      if (typeof action === 'string') {
+        return {
+          id: `action-${index}`,
+          label: action,
+          prompt: action,
+        };
+      }
+
+      const label = action.label || action.title || action.text || action.prompt;
+      if (!label) return null;
+
+      return {
+        id: action.id || `action-${index}`,
+        label,
+        prompt: action.prompt || label,
+      };
+    })
+    .filter(Boolean);
+}
+
 function buildModeLabel(mode) {
   if (mode === 'stock') return '종목 컨텍스트';
   if (mode === 'education') return '학습 컨텍스트';
@@ -92,11 +118,18 @@ export default function composeCanvasState({
   aiStatus = null,
   userPrompt = '',
   assistantText: assistantTextOverride = '',
+  assistantTurn = null,
 }) {
   const assistantText = (assistantTextOverride || pickAssistantText(messages) || '').trim();
   const paragraphs = splitParagraphs(assistantText);
   const sentences = splitSentences(assistantText);
   const structured = hasStructuredSignal(assistantText);
+  const normalizedUiActions = normalizeUiActions(assistantTurn?.uiActions);
+  const fallbackActions = buildActions(mode).map((action, index) => ({
+    id: `fallback-${index}`,
+    label: action,
+    prompt: action,
+  }));
 
   const keyPoint = sentences[0] || paragraphs[0] || '';
   const explanation = sentences.slice(1, 3).join(' ') || paragraphs[1] || '';
@@ -112,7 +145,7 @@ export default function composeCanvasState({
     bullets,
     quote,
     textBlocks: paragraphs.length > 0 ? paragraphs : (assistantText ? [assistantText] : []),
-    actions: buildActions(mode),
+    actions: normalizedUiActions.length > 0 ? normalizedUiActions : fallbackActions,
     aiStatus: aiStatus || '대기 중',
     userPrompt,
     rawAssistantText: assistantText,

@@ -2,7 +2,8 @@ export default function AgentCanvasSections({
   canvasState,
   onActionClick,
 }) {
-  const showActions = Array.isArray(canvasState.actions) && canvasState.actions.length > 0;
+  const actions = Array.isArray(canvasState.actions) ? canvasState.actions : [];
+  const showActions = actions.length > 0;
 
   if (canvasState.viewType === 'empty') {
     return (
@@ -29,14 +30,14 @@ export default function AgentCanvasSections({
 
         {showActions && (
           <section className="grid grid-cols-2 gap-2.5">
-            {canvasState.actions.map((action) => (
+            {actions.map((action) => (
               <button
-                key={action}
+                key={action.id || action.label}
                 type="button"
                 onClick={() => onActionClick(action)}
                 className="rounded-xl border border-[#e5e7eb] bg-[#f9fafb] px-3 py-2.5 text-[13px] font-semibold text-[#4a5565] transition-colors hover:bg-[#f3f4f6]"
               >
-                {action}
+                {action.label || action}
               </button>
             ))}
           </section>
@@ -56,7 +57,7 @@ export default function AgentCanvasSections({
         <div className="flex items-start gap-3">
           <span className="mt-1 inline-block h-6 w-1.5 rounded-full bg-[#ff7648]" />
           <h2 className="text-[20px] font-extrabold leading-[1.35] tracking-[-0.02em] text-[#111827]">
-            왜 지금 이 포인트를 봐야 할까요?
+            핵심 해석
           </h2>
         </div>
 
@@ -84,14 +85,14 @@ export default function AgentCanvasSections({
 
       {showActions && (
         <section className="grid grid-cols-2 gap-2.5">
-          {canvasState.actions.map((action) => (
+          {actions.map((action) => (
             <button
-              key={action}
+              key={action.id || action.label}
               type="button"
               onClick={() => onActionClick(action)}
               className="rounded-xl border border-[#e5e7eb] bg-[#f9fafb] px-3 py-2.5 text-[13px] font-semibold text-[#4a5565] transition-colors hover:bg-[#f3f4f6]"
             >
-              {action}
+              {action.label || action}
             </button>
           ))}
         </section>
