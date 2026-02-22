@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { keywordsApi } from '../api';
+import SelectionAskChip from '../components/agent/SelectionAskChip';
 import DashboardHeader from '../components/layout/DashboardHeader';
 import { DEFAULT_HOME_ICON_KEY, getHomeIconSrc } from '../constants/homeIconCatalog';
 import { useTutorSession } from '../contexts';
+import useSelectionAskPrompt from '../hooks/useSelectionAskPrompt';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import useActivityFeed from '../hooks/useActivityFeed';
 import buildActionCatalog from '../utils/agent/buildActionCatalog';
@@ -16,6 +18,9 @@ function formatKoreanDate(dateKey) {
   if (!dateKey || dateKey.length !== 8) return '';
   return `${dateKey.slice(4, 6)}월 ${dateKey.slice(6, 8)}일`;
 }
+
+const ISSUE_AUTO_ADVANCE_MS = 4500;
+const ISSUE_SWIPE_THRESHOLD_PX = 56;
 
 export default function Home() {
   const navigate = useNavigate();
@@ -73,11 +78,32 @@ export default function Home() {
 
   const weekProgress = Math.min(100, Math.round((weekActiveDays / 7) * 100));
   const visibleCards = useMemo(() => keywords.slice(0, 3), [keywords]);
-  const issueCard = visibleCards[0] || null;
+  const [activeIssueIndex, setActiveIssueIndex] = useState(0);
+  const [autoPlayStopped, setAutoPlayStopped] = useState(false);
+  const issueTouchStartXRef = useRef(null);
+  const issueSelectableRef = useRef(null);
+  const issueCards = visibleCards;
+  const activeIssueCard = issueCards[activeIssueIndex] || null;
   const conversationCards = useMemo(
     () => (Array.isArray(sessions) ? sessions.slice(0, 2) : []),
     [sessions],
   );
+
+  useEffect(() => {
+    if (issueCards.length === 0) {
+      setActiveIssueIndex(0);
+      return;
+    }
+    setActiveIssueIndex((prev) => Math.min(prev, issueCards.length - 1));
+  }, [issueCards.length]);
+
+  useEffect(() => {
+    if (issueCards.length < 2 || autoPlayStopped) return undefined;
+    const intervalId = setInterval(() => {
+      setActiveIssueIndex((prev) => (prev + 1) % issueCards.length);
+    }, ISSUE_AUTO_ADVANCE_MS);
+    return () => clearInterval(intervalId);
+  }, [autoPlayStopped, issueCards.length]);
 
   const homeContextPayload = useMemo(
     () => ({
@@ -144,7 +170,7 @@ export default function Home() {
     }
   }, [enrichedHomeContextPayload]);
 
-  const openAgentFromHome = (initialPrompt) => {
+  const openAgentFromHome = useCallback((initialPrompt) => {
     navigate('/agent', {
       state: {
         mode: 'home',
@@ -160,7 +186,7 @@ export default function Home() {
         resetConversation: true,
       },
     });
-  };
+  }, [enrichedHomeContextPayload, navigate]);
 
   const openSessionSummaryCard = (session) => {
     if (!session?.id) return;
@@ -173,6 +199,58 @@ export default function Home() {
       },
     });
   };
+
+  const stopIssueAutoPlay = useCallback(() => {
+    setAutoPlayStopped(true);
+  }, []);
+
+  const moveIssue = useCallback(
+    (direction) => {
+      if (issueCards.length < 2) return;
+      stopIssueAutoPlay();
+      setActiveIssueIndex((prev) => {
+        const length = issueCards.length;
+        return (prev + direction + length) % length;
+      });
+    },
+    [issueCards.length, stopIssueAutoPlay],
+  );
+
+  const handleIssueTouchStart = useCallback((event) => {
+    stopIssueAutoPlay();
+    issueTouchStartXRef.current = event.changedTouches?.[0]?.clientX ?? null;
+  }, [stopIssueAutoPlay]);
+
+  const handleIssueTouchEnd = useCallback((event) => {
+    if (issueTouchStartXRef.current === null) return;
+    const endX = event.changedTouches?.[0]?.clientX;
+    const startX = issueTouchStartXRef.current;
+    issueTouchStartXRef.current = null;
+    if (typeof endX !== 'number') return;
+
+    const deltaX = endX - startX;
+    if (Math.abs(deltaX) < ISSUE_SWIPE_THRESHOLD_PX) return;
+    if (deltaX > 0) moveIssue(-1);
+    else moveIssue(1);
+  }, [moveIssue]);
+
+  const handleAskIssueSelection = useCallback((selectedText) => {
+    const normalized = String(selectedText || '').trim();
+    if (!normalized) return;
+    const issueTitle = activeIssueCard?.title || '오늘의 이슈';
+    openAgentFromHome(`${issueTitle} 관련 문장을 설명해줘:\n"""${normalized}"""`);
+  }, [activeIssueCard?.title, openAgentFromHome]);
+
+  const {
+    chip: issueSelectionChip,
+    handleAsk: handleAskIssueSelectionChip,
+  } = useSelectionAskPrompt({
+    containerRef: issueSelectableRef,
+    enabled: true,
+    onAsk: handleAskIssueSelection,
+    minLength: 10,
+    maxLength: 280,
+  });
 
   return (
     <div className="min-h-screen bg-[#f9fafb] pb-[calc(var(--bottom-nav-h,68px)+var(--agent-dock-h,104px)+16px)]">
@@ -270,40 +348,91 @@ export default function Home() {
               <p className="text-sm text-red-500">{keywordError}</p>
             )}
 
-            {!isLoadingKeywords && !keywordError && issueCard && (
+            {!isLoadingKeywords && !keywordError && activeIssueCard && (
               <>
-                <div className="mb-5 flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-14 w-14 items-center justify-center rounded-[22px] bg-[rgba(255,118,72,0.1)]">
-                      <img
-                        src={getHomeIconSrc(issueCard.icon_key || DEFAULT_HOME_ICON_KEY)}
-                        alt="이슈 아이콘"
-                        className="h-9 w-9 object-contain"
-                        onError={(event) => {
-                          event.currentTarget.src = getHomeIconSrc(DEFAULT_HOME_ICON_KEY);
-                        }}
-                      />
-                    </div>
-                  </div>
-                  <span className="rounded-full border border-[#f3f4f6] bg-[#f9fafb] px-3 py-1 text-[11px] font-bold text-[#6a7282]">
-                    {issueCard.category || '오늘의 이슈'}
-                  </span>
-                </div>
+                <div
+                  ref={issueSelectableRef}
+                  className="relative"
+                  onTouchStart={handleIssueTouchStart}
+                  onTouchEnd={handleIssueTouchEnd}
+                  onMouseDown={stopIssueAutoPlay}
+                >
+                  {issueCards.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => moveIssue(-1)}
+                      className="absolute left-1 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-[#E8EBED] bg-white/55 text-[#4E5968] backdrop-blur-sm"
+                      aria-label="이전 이슈 보기"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="m15 18-6-6 6-6" />
+                      </svg>
+                    </button>
+                  )}
 
-                <h3 className="text-[25px] font-extrabold leading-[1.28] tracking-[-0.02em] text-[#101828]">
-                  {issueCard.title}
-                </h3>
-                <p className="mt-3 text-[15px] leading-7 tracking-[-0.01em] text-[#6a7282]">
-                  {issueCard.description || marketSummary || '오늘 시장의 핵심 이슈를 함께 분석해봐요.'}
-                </p>
+                  {issueCards.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => moveIssue(1)}
+                      className="absolute right-1 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-[#E8EBED] bg-white/55 text-[#4E5968] backdrop-blur-sm"
+                      aria-label="다음 이슈 보기"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="m9 18 6-6-6-6" />
+                      </svg>
+                    </button>
+                  )}
+
+                  <div className="mb-5 flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-14 w-14 items-center justify-center rounded-[22px] bg-[rgba(255,118,72,0.1)]">
+                        <img
+                          src={getHomeIconSrc(activeIssueCard.icon_key || DEFAULT_HOME_ICON_KEY)}
+                          alt="이슈 아이콘"
+                          className="h-9 w-9 object-contain"
+                          onError={(event) => {
+                            event.currentTarget.src = getHomeIconSrc(DEFAULT_HOME_ICON_KEY);
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <span className="rounded-full border border-[#f3f4f6] bg-[#f9fafb] px-3 py-1 text-[11px] font-bold text-[#6a7282]">
+                      {activeIssueCard.category || '오늘의 이슈'}
+                    </span>
+                  </div>
+
+                  <h3 className="text-[25px] font-extrabold leading-[1.28] tracking-[-0.02em] text-[#101828]">
+                    {activeIssueCard.title}
+                  </h3>
+                  <p className="mt-3 text-[15px] leading-7 tracking-[-0.01em] text-[#6a7282]">
+                    {activeIssueCard.description || marketSummary || '오늘 시장의 핵심 이슈를 함께 분석해봐요.'}
+                  </p>
+
+                  {issueCards.length > 1 && (
+                    <div className="mt-4 flex items-center justify-center gap-1.5">
+                      {issueCards.map((item, index) => (
+                        <button
+                          key={`issue-dot-${item.id || item.title}-${index}`}
+                          type="button"
+                          onClick={() => {
+                            stopIssueAutoPlay();
+                            setActiveIssueIndex(index);
+                          }}
+                          className={`h-1.5 rounded-full transition-all ${index === activeIssueIndex ? 'w-5 bg-[#FF6B00]' : 'w-1.5 bg-[#D1D6DB]'}`}
+                          aria-label={`${index + 1}번 이슈로 이동`}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
 
                 <div className="mt-5 flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => openAgentFromHome(`${issueCard.title} 왜 중요한지 설명해줘`)}
+                    onClick={() => openAgentFromHome(`${activeIssueCard.title} 왜 중요한지 설명해줘`)}
                     className="rounded-2xl bg-[#f2f4f6] px-4 py-2.5 text-[13px] font-bold text-[#4a5565]"
                   >
-                    📉 {issueCard.title.slice(0, 16)}
+                    📉 {activeIssueCard.title.slice(0, 16)}
                   </button>
                   <button
                     type="button"
@@ -316,7 +445,7 @@ export default function Home() {
 
                 <button
                   type="button"
-                  onClick={() => openAgentFromHome('아델리와 알아보기')}
+                  onClick={() => openAgentFromHome(`${activeIssueCard.title} 아델리와 알아보기`)}
                   className="mt-5 w-full rounded-2xl bg-primary py-3 text-sm font-semibold text-white"
                 >
                   아델리와 알아보기
@@ -324,7 +453,7 @@ export default function Home() {
               </>
             )}
 
-            {!isLoadingKeywords && !keywordError && !issueCard && (
+            {!isLoadingKeywords && !keywordError && !activeIssueCard && (
               <p className="text-sm text-[#6a7282]">표시할 이슈가 없습니다.</p>
             )}
           </div>
@@ -382,6 +511,13 @@ export default function Home() {
           </div>
         </section>
       </main>
+
+      <SelectionAskChip
+        visible={issueSelectionChip.visible}
+        left={issueSelectionChip.left}
+        top={issueSelectionChip.top}
+        onAsk={handleAskIssueSelectionChip}
+      />
     </div>
   );
 }

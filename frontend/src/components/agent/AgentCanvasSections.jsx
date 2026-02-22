@@ -25,6 +25,7 @@ function ActionButtons({ actions, onActionClick }) {
 export default function AgentCanvasSections({
   canvasState,
   onActionClick,
+  contentRef = null,
 }) {
   const actions = Array.isArray(canvasState.actions) ? canvasState.actions : [];
   const markdownText = canvasState.rawAssistantText || '';
@@ -43,7 +44,10 @@ export default function AgentCanvasSections({
   return (
     <>
       <section className="rounded-[var(--agent-radius-sm)] border border-[var(--agent-border)] bg-white px-4 py-4">
-        <div className="prose prose-sm max-w-none text-[14px] leading-[1.75] text-[#333D4B] prose-headings:text-[#191F28] prose-strong:text-[#191F28] prose-code:rounded prose-code:bg-[#F2F4F6] prose-code:px-1 prose-code:py-0.5 prose-code:text-[#374151]">
+        <div
+          ref={contentRef}
+          className="prose prose-sm max-w-none touch-pan-y text-[14px] leading-[1.75] text-[#333D4B] prose-headings:text-[#191F28] prose-strong:text-[#191F28] prose-code:rounded prose-code:bg-[#F2F4F6] prose-code:px-1 prose-code:py-0.5 prose-code:text-[#374151]"
+        >
           <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeRaw, rehypeKatex]}>
             {markdownText}
           </ReactMarkdown>

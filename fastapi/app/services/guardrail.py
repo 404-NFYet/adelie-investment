@@ -148,13 +148,25 @@ guardrail_app = workflow.compile()
 
 
 class GuardrailResult:
-    def __init__(self, is_allowed: bool, block_message: str, decision: str):
+    def __init__(
+        self,
+        is_allowed: bool,
+        block_message: str,
+        decision: str,
+        *,
+        hard_block: bool = False,
+        soft_notice: str = "",
+        mode: str = "strict",
+    ):
         self.is_allowed = is_allowed
         self.block_message = block_message
         self.decision = decision
+        self.hard_block = hard_block
+        self.soft_notice = soft_notice
+        self.mode = mode
 
 
-async def run_guardrail(message: str) -> GuardrailResult:
+async def run_guardrail(message: str, policy: str = "strict") -> GuardrailResult:
     """사용자 메시지를 검사하여 GuardrailResult를 반환합니다."""
     initial_state = GuardrailState(
         message=message,
@@ -168,6 +180,59 @@ async def run_guardrail(message: str) -> GuardrailResult:
     decision = final_state.get("decision", "OFF_TOPIC")
     is_allowed = final_state.get("is_allowed", False)
     
+    normalized_policy = (policy or "strict").strip().lower()
+    if normalized_policy not in {"strict", "soft"}:
+        normalized_policy = "strict"
+
+    if normalized_policy == "soft":
+        if decision == "MALICIOUS":
+            return GuardrailResult(
+                is_allowed=False,
+                hard_block=True,
+                block_message="부적절하거나 안전하지 않은 요청이 감지되었습니다. 건전한 투자 학습을 위한 질문을 부탁드립니다.",
+                decision=decision,
+                mode=normalized_policy,
+            )
+
+        if decision == "ADVICE":
+            return GuardrailResult(
+                is_allowed=True,
+                hard_block=False,
+                block_message="",
+                soft_notice="투자 자문 요청은 직접 권유 대신 판단 기준 중심으로 도와드릴게요.",
+                decision=decision,
+                mode=normalized_policy,
+            )
+
+        if decision == "OFF_TOPIC":
+            return GuardrailResult(
+                is_allowed=True,
+                hard_block=False,
+                block_message="",
+                soft_notice="금융 학습 맥락으로 연결해서 답변할게요.",
+                decision=decision,
+                mode=normalized_policy,
+            )
+
+        if decision in {"PARSE_ERROR", "RETRY"}:
+            return GuardrailResult(
+                is_allowed=True,
+                hard_block=False,
+                block_message="",
+                soft_notice="안전 판별이 불안정해 일반 학습 모드로 진행할게요.",
+                decision=decision,
+                mode=normalized_policy,
+            )
+
+        return GuardrailResult(
+            is_allowed=True,
+            hard_block=False,
+            block_message="",
+            decision=decision,
+            mode=normalized_policy,
+        )
+
+    # strict (기존 동작)
     if is_allowed:
         block_message = ""
     else:
@@ -181,9 +246,11 @@ async def run_guardrail(message: str) -> GuardrailResult:
             block_message = PARSE_ERROR_MESSAGE
         else:
             block_message = "서비스 범위 밖의 질문입니다."
-            
+
     return GuardrailResult(
         is_allowed=is_allowed,
+        hard_block=not is_allowed,
         block_message=block_message,
-        decision=decision
+        decision=decision,
+        mode=normalized_policy,
     )

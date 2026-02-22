@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     TUTOR_ROUTE_MODEL: str = "gpt-4o-mini"
     TUTOR_ROUTE_CONFIDENCE_THRESHOLD: float = 0.7
     TUTOR_USE_RESPONSES_API: bool = True
+    TUTOR_GUARDRAIL_POLICY: str = "soft"
 
     # Pipeline 설정
     TARGET_SCENARIO_COUNT: int = 3

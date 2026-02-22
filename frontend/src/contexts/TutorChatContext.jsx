@@ -83,6 +83,9 @@ const mapHistoryMessage = (message, index) => {
     uiActions: message.ui_actions || null,
     model: message.model || null,
     structured: message.structured || null,
+    guardrailNotice: message.guardrail_notice || null,
+    guardrailDecision: message.guardrail_decision || null,
+    guardrailMode: message.guardrail_mode || null,
   };
 };
 
@@ -109,6 +112,9 @@ function buildAssistantTurns(messages = []) {
       uiActions: Array.isArray(message.uiActions) ? message.uiActions : [],
       model: message.model || null,
       structured: message.structured || null,
+      guardrailNotice: message.guardrailNotice || null,
+      guardrailDecision: message.guardrailDecision || null,
+      guardrailMode: message.guardrailMode || null,
     });
   });
 
@@ -151,6 +157,9 @@ export function TutorChatProvider({ children }) {
       let pendingUiActions = [];
       let pendingModel = null;
       let pendingStructured = null;
+      let pendingGuardrailNotice = null;
+      let pendingGuardrailDecision = null;
+      let pendingGuardrailMode = null;
       let pendingBuffer = '';
       let renderedContent = '';
       let lastFlushAt = Date.now();
@@ -181,6 +190,9 @@ export function TutorChatProvider({ children }) {
         timestamp: new Date().toISOString(),
         isStreaming: true,
         structured: null,
+        guardrailNotice: null,
+        guardrailDecision: null,
+        guardrailMode: null,
       };
       setMessages((prev) => [...prev, assistantMessage]);
       setAssistantTurns((prev) => [
@@ -196,6 +208,9 @@ export function TutorChatProvider({ children }) {
           uiActions: [],
           model: null,
           structured: null,
+          guardrailNotice: null,
+          guardrailDecision: null,
+          guardrailMode: null,
         },
       ]);
 
@@ -207,6 +222,9 @@ export function TutorChatProvider({ children }) {
           uiActions = pendingUiActions,
           model = pendingModel,
           structured = pendingStructured,
+          guardrailNotice = pendingGuardrailNotice,
+          guardrailDecision = pendingGuardrailDecision,
+          guardrailMode = pendingGuardrailMode,
           status = 'streaming',
         } = options;
 
@@ -223,6 +241,9 @@ export function TutorChatProvider({ children }) {
                 uiActions,
                 model,
                 structured,
+                guardrailNotice,
+                guardrailDecision,
+                guardrailMode,
               };
             })
           );
@@ -237,6 +258,9 @@ export function TutorChatProvider({ children }) {
             uiActions,
             model,
             structured,
+            guardrailNotice,
+            guardrailDecision,
+            guardrailMode,
           }))
         );
       };
@@ -288,6 +312,23 @@ export function TutorChatProvider({ children }) {
             if (setAgentStatus) {
               setAgentStatus({ phase: 'tool_call', text: `도구 실행 중: ${data.tool || '분석 도구'}`, tool: data.tool || undefined });
             }
+            return;
+          }
+
+          if (data.type === 'guardrail_notice') {
+            pendingGuardrailNotice = typeof data.content === 'string' ? data.content : null;
+            pendingGuardrailDecision = typeof data.guardrail_decision === 'string' ? data.guardrail_decision : pendingGuardrailDecision;
+            pendingGuardrailMode = typeof data.guardrail_mode === 'string' ? data.guardrail_mode : pendingGuardrailMode;
+            if (setAgentStatus && pendingGuardrailNotice) {
+              setAgentStatus({ phase: 'notice', text: pendingGuardrailNotice });
+            }
+            syncAssistantState(renderedContent, {
+              isStreaming: true,
+              status: 'streaming',
+              guardrailNotice: pendingGuardrailNotice,
+              guardrailDecision: pendingGuardrailDecision,
+              guardrailMode: pendingGuardrailMode,
+            });
             return;
           }
 
@@ -345,6 +386,12 @@ export function TutorChatProvider({ children }) {
             }
             if (data.structured && typeof data.structured === 'object') {
               pendingStructured = data.structured;
+            }
+            if (typeof data.guardrail_decision === 'string') {
+              pendingGuardrailDecision = data.guardrail_decision;
+            }
+            if (typeof data.guardrail_mode === 'string') {
+              pendingGuardrailMode = data.guardrail_mode;
             }
 
             flushBuffer(true);

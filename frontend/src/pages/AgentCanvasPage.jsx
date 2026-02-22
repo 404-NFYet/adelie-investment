@@ -2,14 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { learningApi } from '../api';
 import AgentCanvasSections from '../components/agent/AgentCanvasSections';
+import SelectionAskChip from '../components/agent/SelectionAskChip';
 import AgentStatusDots from '../components/agent/AgentStatusDots';
 import { DEFAULT_HOME_ICON_KEY } from '../constants/homeIconCatalog';
 import { useTutor, useUser } from '../contexts';
+import useSelectionAskPrompt from '../hooks/useSelectionAskPrompt';
 import buildActionCatalog from '../utils/agent/buildActionCatalog';
 import buildUiSnapshot from '../utils/agent/buildUiSnapshot';
 import composeCanvasState from '../utils/agent/composeCanvasState';
 
-const SWIPE_THRESHOLD_PX = 160;
+const HORIZONTAL_SWIPE_THRESHOLD_PX = 86;
 const SWIPE_TOAST_DURATION_MS = 1500;
 const SEARCH_TOGGLE_KEY = 'adelie_agent_web_search';
 const REVIEW_META_PREFIX = 'review_meta:';
@@ -146,15 +148,16 @@ export default function AgentCanvasPage() {
   const [activeTurnIndex, setActiveTurnIndex] = useState(0);
   const [swipeToast, setSwipeToast] = useState('');
   const [showContextInfo, setShowContextInfo] = useState(false);
-  const [dragDistance, setDragDistance] = useState(0);
+  const [horizontalDelta, setHorizontalDelta] = useState(0);
 
   const processedPromptRef = useRef(new Set());
   const resetRef = useRef(new Set());
   const restoredSessionRef = useRef(new Set());
   const savedReviewTurnRef = useRef(new Set());
-  const touchStartYRef = useRef(null);
+  const touchStartXRef = useRef(null);
   const toastTimerRef = useRef(null);
   const prevTurnCountRef = useRef(0);
+  const selectableContentRef = useRef(null);
 
   const mode = location.state?.mode || (location.state?.stockContext ? 'stock' : 'home');
   const initialPrompt = location.state?.initialPrompt || '';
@@ -188,6 +191,9 @@ export default function AgentCanvasPage() {
           status: turn.status || 'done',
           model: turn.model || null,
           structured: turn.structured || null,
+          guardrailNotice: turn.guardrailNotice || null,
+          guardrailDecision: turn.guardrailDecision || null,
+          guardrailMode: turn.guardrailMode || null,
         })),
     [assistantTurns],
   );
@@ -357,80 +363,77 @@ export default function AgentCanvasPage() {
     try {
       const seen = localStorage.getItem('adelie_swipe_hint_seen');
       if (seen === '1') return;
-      showSwipeToast('위/아래로 길게 당기면 같은 세션의 이전 답변을 볼 수 있어요.');
+      showSwipeToast('좌우 스와이프 또는 좌우 버튼으로 이전 답변을 탐색할 수 있어요.');
       localStorage.setItem('adelie_swipe_hint_seen', '1');
     } catch {
       // ignore storage errors
     }
   }, [turns.length, showSwipeToast]);
 
-  const handleSwipeDelta = useCallback(
-    (deltaY) => {
+  const moveTurn = useCallback(
+    (direction) => {
       if (turns.length < 2) {
         showSwipeToast('이 세션에는 아직 탐색할 이전 답변이 없습니다.');
         return;
       }
-
-      const movedDistance = Math.abs(deltaY);
-      if (movedDistance < SWIPE_THRESHOLD_PX) {
-        showSwipeToast(`조금 더 길게 당겨주세요 (${SWIPE_THRESHOLD_PX}px 이상)`);
-        return;
-      }
-
-      if (deltaY <= -SWIPE_THRESHOLD_PX) {
-        setActiveTurnIndex((prev) => {
-          if (prev === 0) {
-            showSwipeToast('가장 이전 답변입니다.');
-            return prev;
-          }
-          showSwipeToast('이전 답변으로 이동했습니다.');
-          return prev - 1;
-        });
-        return;
-      }
-
-      if (deltaY >= SWIPE_THRESHOLD_PX) {
-        setActiveTurnIndex((prev) => {
-          if (prev >= turns.length - 1) {
-            showSwipeToast('가장 최신 답변입니다.');
-            return prev;
-          }
-          showSwipeToast('다음 답변으로 이동했습니다.');
-          return prev + 1;
-        });
-      }
+      setActiveTurnIndex((prev) => {
+        const next = prev + direction;
+        if (next < 0) {
+          showSwipeToast('가장 이전 답변입니다.');
+          return prev;
+        }
+        if (next > turns.length - 1) {
+          showSwipeToast('가장 최신 답변입니다.');
+          return prev;
+        }
+        if (direction < 0) showSwipeToast('이전 답변으로 이동했습니다.');
+        if (direction > 0) showSwipeToast('다음 답변으로 이동했습니다.');
+        return next;
+      });
     },
     [showSwipeToast, turns.length],
   );
 
   const handleSwipeTouchStart = useCallback((event) => {
-    touchStartYRef.current = event.changedTouches?.[0]?.clientY ?? null;
-    setDragDistance(0);
+    touchStartXRef.current = event.changedTouches?.[0]?.clientX ?? null;
+    setHorizontalDelta(0);
   }, []);
 
   const handleSwipeTouchMove = useCallback((event) => {
-    if (touchStartYRef.current === null) return;
-    const currentY = event.changedTouches?.[0]?.clientY;
-    if (typeof currentY !== 'number') return;
-    setDragDistance(currentY - touchStartYRef.current);
+    if (touchStartXRef.current === null) return;
+    const currentX = event.changedTouches?.[0]?.clientX;
+    if (typeof currentX !== 'number') return;
+    setHorizontalDelta(currentX - touchStartXRef.current);
   }, []);
 
   const handleSwipeTouchEnd = useCallback(
     (event) => {
-      if (touchStartYRef.current === null) return;
-      const endY = event.changedTouches?.[0]?.clientY;
-      if (typeof endY !== 'number') {
-        touchStartYRef.current = null;
-        setDragDistance(0);
+      if (touchStartXRef.current === null) return;
+      const endX = event.changedTouches?.[0]?.clientX;
+      if (typeof endX !== 'number') {
+        touchStartXRef.current = null;
+        setHorizontalDelta(0);
         return;
       }
 
-      const deltaY = endY - touchStartYRef.current;
-      touchStartYRef.current = null;
-      setDragDistance(0);
-      handleSwipeDelta(deltaY);
+      const deltaX = endX - touchStartXRef.current;
+      touchStartXRef.current = null;
+      setHorizontalDelta(0);
+
+      if (Math.abs(deltaX) < HORIZONTAL_SWIPE_THRESHOLD_PX) {
+        showSwipeToast(`조금 더 길게 스와이프 해주세요 (${HORIZONTAL_SWIPE_THRESHOLD_PX}px 이상)`);
+        return;
+      }
+
+      if (deltaX > 0) {
+        // 오른쪽 스와이프 -> 과거(이전 답변)
+        moveTurn(-1);
+      } else {
+        // 왼쪽 스와이프 -> 최신(다음 답변)
+        moveTurn(1);
+      }
     },
-    [handleSwipeDelta],
+    [moveTurn, showSwipeToast],
   );
 
   const handleActionClick = useCallback(
@@ -441,6 +444,27 @@ export default function AgentCanvasPage() {
     },
     [chatOptions, sendMessage, settings?.difficulty],
   );
+
+  const handleAskSelectedText = useCallback(
+    (selectedText) => {
+      const normalized = String(selectedText || '').trim();
+      if (!normalized) return;
+      const quotedPrompt = `다음 내용을 현재 맥락에서 설명해줘:\n"""${normalized}"""`;
+      sendMessage(quotedPrompt, settings?.difficulty || 'beginner', chatOptions);
+    },
+    [chatOptions, sendMessage, settings?.difficulty],
+  );
+
+  const {
+    chip: selectionChip,
+    handleAsk: handleAskSelection,
+  } = useSelectionAskPrompt({
+    containerRef: selectableContentRef,
+    enabled: true,
+    onAsk: handleAskSelectedText,
+    minLength: 10,
+    maxLength: 280,
+  });
 
   const handleBack = useCallback(() => {
     if (window.history.length > 1) {
@@ -456,10 +480,11 @@ export default function AgentCanvasPage() {
     });
   }, [contextPayload, mode, navigate]);
 
-  const dragProgress = Math.min(100, Math.round((Math.abs(dragDistance) / SWIPE_THRESHOLD_PX) * 100));
+  const swipeProgress = Math.min(100, Math.round((Math.abs(horizontalDelta) / HORIZONTAL_SWIPE_THRESHOLD_PX) * 100));
   const statusSubline = selectedTurn?.model
     ? `${canvasState.aiStatus} · ${selectedTurn.model}`
     : canvasState.aiStatus;
+  const guardrailNotice = selectedTurn?.guardrailNotice || '';
 
   return (
     <div className="min-h-screen bg-[var(--agent-bg-page,#F7F8FA)] pb-[calc(var(--bottom-nav-h,68px)+var(--agent-dock-h,104px)+16px)]">
@@ -534,19 +559,16 @@ export default function AgentCanvasPage() {
 
         {/* ── 스와이프 미니 핸들 ── */}
         <section
-          onTouchStart={handleSwipeTouchStart}
-          onTouchMove={handleSwipeTouchMove}
-          onTouchEnd={handleSwipeTouchEnd}
           className="flex items-center justify-between rounded-[10px] bg-[#F2F4F6] px-3 py-2"
           aria-label="세션 응답 스와이프 탐색"
         >
           <div className="flex items-center gap-2">
             <span className="inline-block h-1 w-5 rounded-full bg-[#D1D6DB]" />
-            {dragDistance !== 0 && (
+            {horizontalDelta !== 0 && (
               <div className="h-0.5 w-10 overflow-hidden rounded-full bg-[#E8EBED]">
                 <div
                   className="h-full rounded-full bg-[#FF6B00] transition-all"
-                  style={{ width: `${dragProgress}%` }}
+                  style={{ width: `${swipeProgress}%` }}
                 />
               </div>
             )}
@@ -563,11 +585,51 @@ export default function AgentCanvasPage() {
         {isBrowsingPrevious && (
           <p className="text-[11px] font-medium text-[#FF6B00]">이전 답변 보는 중</p>
         )}
+        {!!guardrailNotice && (
+          <p className="rounded-[10px] border border-[#FDE68A] bg-[#FFFBEB] px-3 py-2 text-[12px] text-[#92400E]">
+            {guardrailNotice}
+          </p>
+        )}
         {selectedUserPrompt && (
           <p className="truncate text-[12px] text-[#B0B8C1]">{selectedUserPrompt}</p>
         )}
 
-        <AgentCanvasSections canvasState={canvasState} onActionClick={handleActionClick} />
+        <section
+          className="relative touch-pan-y"
+          onTouchStart={handleSwipeTouchStart}
+          onTouchMove={handleSwipeTouchMove}
+          onTouchEnd={handleSwipeTouchEnd}
+        >
+          <button
+            type="button"
+            onClick={() => moveTurn(-1)}
+            disabled={activeTurnIndex <= 0}
+            className="absolute left-2 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-[#E8EBED] bg-white/55 text-[#4E5968] backdrop-blur-sm transition disabled:opacity-35"
+            aria-label="이전 답변 보기"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m15 18-6-6 6-6" />
+            </svg>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => moveTurn(1)}
+            disabled={activeTurnIndex >= turns.length - 1}
+            className="absolute right-2 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-[#E8EBED] bg-white/55 text-[#4E5968] backdrop-blur-sm transition disabled:opacity-35"
+            aria-label="다음 답변 보기"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m9 18 6-6-6-6" />
+            </svg>
+          </button>
+
+          <AgentCanvasSections
+            canvasState={canvasState}
+            onActionClick={handleActionClick}
+            contentRef={selectableContentRef}
+          />
+        </section>
 
         {isLoading && (
           <div className="rounded-[var(--agent-radius-sm)] border border-[var(--agent-border)] bg-white px-4 py-3 text-[13px] text-[#B0B8C1]">
@@ -575,6 +637,13 @@ export default function AgentCanvasPage() {
           </div>
         )}
       </main>
+
+      <SelectionAskChip
+        visible={selectionChip.visible}
+        left={selectionChip.left}
+        top={selectionChip.top}
+        onAsk={handleAskSelection}
+      />
     </div>
   );
 }

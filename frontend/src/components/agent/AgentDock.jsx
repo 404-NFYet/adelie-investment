@@ -44,7 +44,6 @@ export default function AgentDock() {
   const { messages } = useTutor();
 
   const hasActiveSession = Array.isArray(messages) && messages.length > 0;
-  const isOnCanvas = location.pathname.startsWith('/agent');
 
   useEffect(() => {
     try {
@@ -238,20 +237,65 @@ export default function AgentDock() {
 
         {/* 볼드 입력바 */}
         <div className={`pointer-events-auto rounded-[20px] bg-white shadow-[0_2px_12px_rgba(0,0,0,0.1)] ${isAgentControlling ? 'ring-1 ring-[#FF6B00]/20' : ''}`}>
-          {/* 세션 복귀 표시 */}
-          {hasActiveSession && !isOnCanvas && (
+          {/* 상단 상태 라인 (항상 노출) */}
+          <div className="flex items-center gap-2 border-b border-[#F2F4F6] px-3 py-1.5">
             <button
               type="button"
-              onClick={handleResumeChat}
-              className="flex w-full items-center gap-2 border-b border-[#F2F4F6] px-3 py-1.5 text-left active:bg-[#F7F8FA]"
+              onClick={hasActiveSession ? handleResumeChat : undefined}
+              className={`flex min-w-0 flex-1 items-center gap-2 text-left ${hasActiveSession ? 'active:bg-[#F7F8FA]' : ''}`}
             >
-              <span className="h-1.5 w-1.5 rounded-full bg-[#FF6B00]" />
-              <span className="text-[12px] font-medium text-[#4E5968]">진행 중인 대화가 있어요</span>
-              <svg className="ml-auto text-[#B0B8C1]" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="m9 18 6-6-6-6" />
-              </svg>
+              <span className={`h-1.5 w-1.5 rounded-full ${hasActiveSession ? 'bg-[#FF6B00]' : 'bg-[#16A34A]'}`} />
+              <div className="min-w-0">
+                <p className={`truncate text-[12px] font-medium ${hasActiveSession ? 'text-[#4E5968]' : 'text-[#166534]'}`}>
+                  {hasActiveSession ? '진행 중인 대화가 있어요' : '질문해주세요'}
+                </p>
+                {!hasActiveSession && (
+                  <p className="truncate text-[11px] text-[#16A34A]/80">
+                    궁금한 내용을 입력하면 바로 이어서 답변해드려요
+                  </p>
+                )}
+              </div>
+              {hasActiveSession && (
+                <svg className="ml-auto text-[#B0B8C1]" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="m9 18 6-6-6-6" />
+                </svg>
+              )}
             </button>
-          )}
+
+            <div className="ml-auto flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setSearchEnabled((prev) => !prev)}
+                className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition-colors ${
+                  searchEnabled
+                    ? 'bg-[#FFF2E8] text-[#FF6B00]'
+                    : 'bg-[#F2F4F6] text-[#8B95A1]'
+                }`}
+                aria-label={searchEnabled ? '인터넷 검색 켜짐' : '인터넷 검색 꺼짐'}
+                title={searchEnabled ? '인터넷 검색: 켜짐' : '인터넷 검색: 꺼짐'}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M3 12h18" />
+                  <path d="M12 3a15 15 0 0 1 0 18" />
+                  <path d="M12 3a15 15 0 0 0 0 18" />
+                </svg>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => navigate('/agent/history', { state: { mode, contextPayload: buildControlContextPayload('') } })}
+                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[#F2F4F6] text-[#6B7684] transition-colors active:bg-[#E8EBED]"
+                aria-label="대화 기록 보기"
+                title="대화 기록 보기"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 8v5l3 2" />
+                  <circle cx="12" cy="12" r="9" />
+                </svg>
+              </button>
+            </div>
+          </div>
 
           <form
             onSubmit={handleSubmit}
@@ -276,38 +320,6 @@ export default function AgentDock() {
               className="min-w-0 flex-1 bg-transparent text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] focus:outline-none"
               aria-label="에이전트 질문 입력"
             />
-
-            <button
-              type="button"
-              onClick={() => setSearchEnabled((prev) => !prev)}
-              className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition-colors ${
-                searchEnabled
-                  ? 'bg-[#FFF2E8] text-[#FF6B00]'
-                  : 'bg-[#F2F4F6] text-[#8B95A1]'
-              }`}
-              aria-label={searchEnabled ? '인터넷 검색 켜짐' : '인터넷 검색 꺼짐'}
-              title={searchEnabled ? '인터넷 검색: 켜짐' : '인터넷 검색: 꺼짐'}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="9" />
-                <path d="M3 12h18" />
-                <path d="M12 3a15 15 0 0 1 0 18" />
-                <path d="M12 3a15 15 0 0 0 0 18" />
-              </svg>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => navigate('/agent/history', { state: { mode, contextPayload: buildControlContextPayload('') } })}
-              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[#F2F4F6] text-[#6B7684] transition-colors active:bg-[#E8EBED]"
-              aria-label="대화 기록 보기"
-              title="대화 기록 보기"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 8v5l3 2" />
-                <circle cx="12" cy="12" r="9" />
-              </svg>
-            </button>
 
             <button
               type="submit"

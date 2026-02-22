@@ -66,6 +66,7 @@
 
 - `thinking`
 - `tool_call`
+- `guardrail_notice`
 - `text_delta`
 - `visualization` (optional)
 - `ui_action` (optional)
@@ -81,6 +82,8 @@
 - `search_used` (optional)
 - `response_mode` (optional, `plain | canvas_markdown`)
 - `structured` (optional)
+- `guardrail_decision` (optional: `SAFE|ADVICE|OFF_TOPIC|MALICIOUS|PARSE_ERROR`)
+- `guardrail_mode` (optional: `strict|soft`)
 
 ## LLM 호출 경로 비교 (기존 vs Responses API)
 현재 `/api/v1/tutor/chat`는 `Responses API`를 우선 사용하고, 실패 시 기존 `chat.completions` 스트리밍으로 폴백한다.
@@ -101,6 +104,7 @@
 - `*web_search*`/`*tool*` 이벤트 -> `tool_call` (step)
 - `response.completed` -> `done`
 - `response.error`/`error` -> `error`
+- 소프트 가드레일 통지 -> `guardrail_notice` (step)
 
 프론트는 `event:` 라인과 `data.type` 둘 다 읽어야 하며, 누락 시 이벤트명을 타입으로 보정한다.
 
@@ -113,6 +117,9 @@
 - 텍스트가 안 흐르면:
   - Responses 이벤트에서 `response.output_text.delta` 수신 여부 확인
   - 폴백 여부 로그(`responses_api_fallback`) 확인
+- 가드레일 안내가 안 뜨면:
+  - `step.type=guardrail_notice` 수신 여부 확인
+  - `done.guardrail_decision / done.guardrail_mode` 값 확인
 - 검색이 안 붙으면:
   - 요청의 `use_web_search` 값 확인
   - 완료 이벤트 `done.search_used` 확인

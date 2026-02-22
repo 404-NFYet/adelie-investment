@@ -478,6 +478,8 @@ async def _build_llm_messages(
     db: AsyncSession,
     page_context: str,
     extra_context: str,
+    guardrail_decision: Optional[str] = None,
+    guardrail_mode: str = "strict",
 ) -> list:
     """LLM 메시지 배열 구성 — 시스템 프롬프트 + 이전 대화 + 현재 질문."""
     system_prompt = get_difficulty_prompt(request.difficulty)
@@ -496,6 +498,19 @@ async def _build_llm_messages(
             "- 필요한 경우 마지막에 '다음 액션' 섹션을 번호 목록으로 제시하세요.\n"
             "- 파이프(|) 같은 중간 메타 토큰이나 디버그 문자열은 출력하지 마세요.\n"
         )
+    if (guardrail_mode or "").strip().lower() == "soft":
+        if guardrail_decision == "ADVICE":
+            system_prompt += (
+                "\n\n안전 지침(소프트 가드레일):\n"
+                "- 사용자의 질문이 매수/매도 권유 성격이어도 직접 권유(사라/팔아라)는 하지 마세요.\n"
+                "- 판단 기준(밸류에이션, 실적, 리스크, 시나리오)을 설명하는 교육형 답변으로 전환하세요.\n"
+            )
+        elif guardrail_decision == "OFF_TOPIC":
+            system_prompt += (
+                "\n\n안전 지침(소프트 가드레일):\n"
+                "- 금융과 거리가 있는 질문은 정중하게 금융 학습 맥락으로 재유도하세요.\n"
+                "- 사용자 의도를 금융/투자 학습 질문으로 바꿀 수 있는 예시 질문 1~2개를 제안하세요.\n"
+            )
 
     # 이전 대화 내역 로드 (멀티턴)
     prev_msgs = []
@@ -582,21 +597,29 @@ async def generate_tutor_response(
 
     session_id = request.session_id or str(uuid.uuid4())
     user_id = current_user["id"] if current_user else None
+    settings = get_settings()
+    guardrail_policy = (settings.TUTOR_GUARDRAIL_POLICY or "soft").strip().lower()
+    if guardrail_policy not in {"strict", "soft"}:
+        guardrail_policy = "soft"
+    guardrail_decision = "SAFE"
 
     yield f"event: step\ndata: {json.dumps({'type': 'thinking', 'content': '질문을 분석하고 있습니다...'})}\n\n"
 
     # 가드레일 검사
     try:
-        guardrail_result = await run_guardrail(request.message)
-        if not guardrail_result.is_allowed:
+        guardrail_result = await run_guardrail(request.message, policy=guardrail_policy)
+        guardrail_decision = guardrail_result.decision
+
+        if guardrail_result.hard_block:
             # 차단 메시지를 스트리밍으로 전송 후 즉시 종료 (DB 저장 없음)
             yield f"event: text_delta\ndata: {json.dumps({'content': guardrail_result.block_message})}\n\n"
-            yield f"event: done\ndata: {json.dumps({'type': 'done', 'session_id': session_id, 'total_tokens': 0, 'guardrail': guardrail_result.decision, 'response_mode': request.response_mode or 'plain', 'search_used': False})}\n\n"
+            yield f"event: done\ndata: {json.dumps({'type': 'done', 'session_id': session_id, 'total_tokens': 0, 'guardrail_decision': guardrail_result.decision, 'guardrail_mode': guardrail_result.mode, 'response_mode': request.response_mode or 'plain', 'search_used': False})}\n\n"
             return
+        if guardrail_result.soft_notice:
+            yield f"event: step\ndata: {json.dumps({'type': 'guardrail_notice', 'content': guardrail_result.soft_notice, 'guardrail_decision': guardrail_result.decision, 'guardrail_mode': guardrail_result.mode})}\n\n"
     except Exception as e:
         logger.warning("Guardrail check failed, falling open: %s", type(e).__name__)
 
-    settings = get_settings()
     api_key = settings.OPENAI_API_KEY
     if not api_key:
         yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'OpenAI API key not configured'})}\n\n"
@@ -608,7 +631,14 @@ async def generate_tutor_response(
     )
 
     # LLM 메시지 배열 구성
-    messages = await _build_llm_messages(request, db, page_context, extra_context)
+    messages = await _build_llm_messages(
+        request,
+        db,
+        page_context,
+        extra_context,
+        guardrail_decision=guardrail_decision,
+        guardrail_mode=guardrail_policy,
+    )
 
     try:
         client = AsyncOpenAI(api_key=api_key)
@@ -837,6 +867,8 @@ async def generate_tutor_response(
         done_data['model'] = chat_model
         done_data['search_used'] = bool(search_used and use_web_search)
         done_data['response_mode'] = response_mode
+        done_data['guardrail_decision'] = guardrail_decision
+        done_data['guardrail_mode'] = guardrail_policy
         if reasoning_effort:
             done_data['reasoning_effort'] = reasoning_effort
         if sources:

@@ -1,5 +1,6 @@
 function getTone(phase) {
   if (phase === 'answering') return 'answering';
+  if (phase === 'notice') return 'thinking';
   if (phase === 'thinking' || phase === 'tool_call') return 'thinking';
   if (phase === 'error') return 'error';
   return 'idle';

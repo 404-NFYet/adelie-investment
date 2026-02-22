@@ -314,3 +314,108 @@
 - [ ] 홈 대화 정리 카드 클릭 시 세션 복원 확인
 - [ ] 교육 복습 카드 표시/완료 처리 확인
 - [ ] `npm run build` 성공
+
+## 13. Agent UX 5차 실행 (좌우 탐색 + 선택 질문 + 소프트 가드레일 + 이슈 캐러셀)
+
+### 문제 재현
+- 캔버스 이전 대화 탐색이 세로 당김 기반이라 오동작/발견성이 낮음
+- 본문 일부 문장을 바로 후속 질문으로 보내는 인터랙션 부재
+- 가드레일이 ADVICE/OFF_TOPIC까지 강차단되어 대화 연속성이 떨어짐
+- Dock 상단 라인이 세션 있을 때만 보여서 빈 상태 가이드가 약함
+- 홈 오늘의 이슈가 단일 카드라 `final briefings` 3개 흐름을 충분히 활용하지 못함
+
+### 의사결정
+- 캔버스 탐색은 `좌우 반투명 버튼 + 좌우 스와이프` 병행
+- 선택 질문은 `텍스트 선택형`으로 캔버스/홈 이슈에 적용
+- 가드레일 정책 기본값을 `soft`로 전환 (`MALICIOUS`만 hard block)
+- Dock 상단 라인은 항상 노출, 우측에 검색/기록 토글 배치
+- 오늘의 이슈는 3카드 캐러셀 + 자동 롤(4.5초) + 사용자 터치 시 세션 내 정지
+
+### API 계약 변경
+- `/api/v1/tutor/chat` SSE `step` 타입 확장:
+  - `guardrail_notice`
+- `/api/v1/tutor/chat` `done` 필드 확장:
+  - `guardrail_decision`
+  - `guardrail_mode`
+- 백엔드 설정 추가:
+  - `TUTOR_GUARDRAIL_POLICY=soft|strict` (기본 `soft`)
+
+### UI 스크린 단위 변경
+- Canvas
+  - 세로 탐색 제거, 좌우 탐색으로 전환
+  - 좌우 overlay 버튼(반투명) 추가
+  - 선택 텍스트 `이 부분 질문` 칩 추가
+- Home
+  - 오늘의 이슈 3카드 캐러셀화
+  - 좌우 버튼/스와이프/도트 인디케이터 추가
+  - 자동 전환 + 터치 후 자동 정지
+  - 이슈 텍스트 선택 질문 칩 추가
+- Dock
+  - 상단 라인 항상 노출
+  - 세션 유무에 따라 오렌지/그린 상태 라인 분기
+  - 검색/기록 아이콘을 상단 라인 우측으로 이동
+
+### 코드 위치
+- 백엔드
+  - `fastapi/app/core/config.py`
+  - `fastapi/app/services/guardrail.py`
+  - `fastapi/app/schemas/tutor.py`
+  - `fastapi/app/api/routes/tutor.py`
+- 프론트
+  - `frontend/src/pages/AgentCanvasPage.jsx`
+  - `frontend/src/components/agent/AgentCanvasSections.jsx`
+  - `frontend/src/components/agent/AgentDock.jsx`
+  - `frontend/src/contexts/TutorChatContext.jsx`
+  - `frontend/src/pages/Home.jsx`
+  - `frontend/src/components/agent/SelectionAskChip.jsx` (신규)
+  - `frontend/src/hooks/useSelectionAskPrompt.js` (신규)
+- 문서
+  - `docs/agent/agent-experience-spec-v1.md`
+  - `docs/agent/agent-control-contract-v1.md`
+  - `docs/agent/agent-ui-design-handoff-v1.md`
+
+### 검증 결과
+- [ ] 캔버스 좌우 버튼/좌우 스와이프로 턴 이동 확인
+- [ ] 캔버스/홈 이슈 텍스트 선택 질문 칩 동작 확인
+- [ ] Dock 상단 라인 상시 노출 + 검색/기록 아이콘 위치 확인
+- [ ] 오늘의 이슈 캐러셀 자동 롤 + 터치 후 정지 확인
+- [ ] ADVICE/OFF_TOPIC 입력 시 soft notice 후 응답 진행 확인
+- [ ] MALICIOUS 입력 시 hard block 유지 확인
+- [ ] `done.guardrail_decision/guardrail_mode` 값 수신 확인
+
+### 이번 배치 실제 반영 포인트 (요약)
+- 캔버스
+  - 세로 스와이프 제거, 좌우 스와이프/버튼으로 탐색 전환
+  - 선택 텍스트를 즉시 후속 질문으로 전송하는 플로팅 칩 추가
+- 홈
+  - 오늘의 이슈를 최대 3개 캐러셀로 구성
+  - 4.5초 자동 전환 + 사용자 인터랙션 시 세션 내 자동정지
+  - 이슈 텍스트 선택 질문 칩 추가
+- Dock
+  - 상단 상태 라인 상시 노출
+  - 세션 없음: 초록 안내 문구, 세션 있음: 진행 중 대화 복귀 라인
+  - 검색/기록 토글을 상단 라인 우측으로 이동
+- 가드레일
+  - 정책 기본값 `soft`
+  - `MALICIOUS`만 hard block, `ADVICE/OFF_TOPIC`은 `guardrail_notice` 후 응답 지속
+  - `done.guardrail_decision`, `done.guardrail_mode` 메타 반환
+
+### 5차 반영 파일 목록
+- 백엔드
+  - `fastapi/app/core/config.py`
+  - `fastapi/app/services/guardrail.py`
+  - `fastapi/app/schemas/tutor.py`
+  - `fastapi/app/api/routes/tutor.py`
+- 프론트
+  - `frontend/src/pages/AgentCanvasPage.jsx`
+  - `frontend/src/components/agent/AgentCanvasSections.jsx`
+  - `frontend/src/components/agent/AgentDock.jsx`
+  - `frontend/src/components/agent/AgentStatusDots.jsx`
+  - `frontend/src/contexts/TutorChatContext.jsx`
+  - `frontend/src/pages/Home.jsx`
+  - `frontend/src/hooks/useSelectionAskPrompt.js` (신규)
+  - `frontend/src/components/agent/SelectionAskChip.jsx` (신규)
+- 문서
+  - `docs/agent/agent-experience-spec-v1.md`
+  - `docs/agent/agent-control-contract-v1.md`
+  - `docs/agent/agent-ui-design-handoff-v1.md`
