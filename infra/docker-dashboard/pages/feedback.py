@@ -610,6 +610,115 @@ with tab_usage:
         else:
             st.info("이벤트 로그 없음")
 
+        st.divider()
+
+        # 페이지별 체류시간
+        render_section_header("페이지별 체류시간", "⏱️")
+        dwell_stats = _query("""
+            SELECT
+                event_data->>'page' as page,
+                round(avg((event_data->>'duration_sec')::float)::numeric, 1) as avg_dwell_sec,
+                count(*) as visit_count,
+                count(DISTINCT user_id) as unique_visitors
+            FROM usage_events
+            WHERE event_type = 'page_duration'
+              AND created_at >= now() - interval '30 days'
+              AND event_data->>'page' IS NOT NULL
+            GROUP BY page
+            ORDER BY visit_count DESC
+        """)
+
+        if not dwell_stats.empty:
+            if HAS_PLOTLY:
+                fig = px.bar(
+                    dwell_stats,
+                    y="page",
+                    x="avg_dwell_sec",
+                    orientation="h",
+                    title="페이지별 평균 체류시간 (초)",
+                    color="unique_visitors",
+                    labels={"page": "페이지", "avg_dwell_sec": "평균 체류(초)", "unique_visitors": "고유 방문자"},
+                    color_continuous_scale=["#E9ECEF", "#FF6B00"],
+                )
+                fig.update_layout(
+                    plot_bgcolor="white", paper_bgcolor="white",
+                    font=dict(color="#1A1A2E"),
+                    yaxis=dict(autorange="reversed"),
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            st.dataframe(dwell_stats, use_container_width=True, hide_index=True)
+        else:
+            st.info("체류시간 데이터 없음")
+
+        st.divider()
+
+        # 유저별 활동 분석
+        render_section_header("유저별 활동 분석", "👤")
+        user_stats = _query("""
+            SELECT
+                COALESCE(u.username, ue.user_id::text, '비회원') as user_name,
+                count(*) as total_events,
+                count(DISTINCT ue.event_type) as event_types,
+                count(DISTINCT date_trunc('day', ue.created_at)) as active_days,
+                to_char(min(ue.created_at) AT TIME ZONE 'Asia/Seoul', 'MM-DD HH24:MI') as first_seen,
+                to_char(max(ue.created_at) AT TIME ZONE 'Asia/Seoul', 'MM-DD HH24:MI') as last_seen
+            FROM usage_events ue
+            LEFT JOIN users u ON ue.user_id = u.id
+            WHERE ue.created_at >= now() - interval '30 days'
+            GROUP BY u.username, ue.user_id
+            ORDER BY total_events DESC
+            LIMIT 50
+        """)
+
+        if not user_stats.empty:
+            st.dataframe(
+                user_stats.rename(columns={
+                    "user_name": "사용자",
+                    "total_events": "총 이벤트",
+                    "event_types": "이벤트 종류",
+                    "active_days": "활동 일수",
+                    "first_seen": "최초 접속",
+                    "last_seen": "최근 접속",
+                }),
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.info("사용자 활동 데이터 없음")
+
+        st.divider()
+
+        # 클릭 이벤트 히트맵
+        render_section_header("클릭 이벤트 분석", "🔥")
+        click_stats = _query("""
+            SELECT
+                event_type,
+                COALESCE(event_data->>'page', 'unknown') as page,
+                count(*) as clicks
+            FROM usage_events
+            WHERE event_type LIKE '%%_click%%'
+              AND created_at >= now() - interval '7 days'
+            GROUP BY event_type, page
+            ORDER BY clicks DESC
+            LIMIT 30
+        """)
+
+        if not click_stats.empty:
+            if HAS_PLOTLY:
+                fig = px.treemap(
+                    click_stats,
+                    path=["event_type", "page"],
+                    values="clicks",
+                    title="클릭 이벤트 분포 (7일)",
+                    color="clicks",
+                    color_continuous_scale=["#FFF0E1", "#FF6B00"],
+                )
+                fig.update_layout(font=dict(color="#1A1A2E"))
+                st.plotly_chart(fig, use_container_width=True)
+            st.dataframe(click_stats, use_container_width=True, hide_index=True)
+        else:
+            st.info("클릭 이벤트 데이터 없음")
+
     except Exception as e:
         st.error(f"사용자 행동 데이터 조회 실패: {e}")
         st.info("usage_events 테이블이 존재하지 않을 수 있습니다.")

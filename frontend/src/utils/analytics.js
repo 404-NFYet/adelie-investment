@@ -79,7 +79,7 @@ async function flushEvents() {
   eventQueue = [];
 
   try {
-    await fetch('/api/v1/analytics/events', {
+    await fetch('/api/v1/feedback/analytics/events', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ events: batch }),

@@ -9,9 +9,11 @@ import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
 import remarkMath from 'remark-math';
 import PenguinLoading from '../common/PenguinLoading';
+import ReactionButtons from '../common/ReactionButtons';
 import ResponsivePlotly from '../charts/ResponsivePlotly';
 import { normalizeLayout } from '../../utils/plotly/normalizeLayout';
 import { normalizeTraces } from '../../utils/plotly/normalizeTraces';
+import { trackEvent } from '../../utils/analytics';
 
 // 출처 분류 체계
 const SOURCE_LABELS = {
@@ -69,6 +71,7 @@ function SourceBadge({ sources }) {
                         target={isExternal ? '_blank' : '_self'}
                         rel={isExternal ? 'noopener noreferrer' : undefined}
                         className="text-primary hover:underline font-medium"
+                        onClick={() => trackEvent('tutor_source_click', { source_type: s.type, url: s.url })}
                       >
                         {s.title}
                         {isExternal && <span className="ml-0.5 text-[9px] opacity-50">\u2197</span>}
@@ -219,6 +222,11 @@ export default React.memo(function Message({ message }) {
           {message.isStreaming && <span className="inline-block w-1.5 h-4 bg-primary animate-pulse ml-0.5 rounded-sm" />}
         </div>
         {message.sources && message.sources.length > 0 && <SourceBadge sources={message.sources} />}
+        {!message.isStreaming && message.id && (
+          <div className="mt-1">
+            <ReactionButtons contentType="tutor_message" contentId={message.id} />
+          </div>
+        )}
       </div>
     </motion.div>
   );
