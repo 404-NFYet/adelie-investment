@@ -111,7 +111,7 @@ export default function Landing() {
       hasAutoAdvancedRef.current = true;
       setDirection(1);
       setCurrentIndex(1);
-    }, 1000);
+    }, 3000);
 
     return () => clearTimeout(timer);
   }, [currentIndex, isAuthenticated, isLoading]);
@@ -161,8 +161,8 @@ export default function Landing() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <main className="relative mx-auto flex min-h-screen w-full max-w-[430px] flex-col overflow-hidden">
+    <div className="min-h-[100dvh] bg-background">
+      <main className="relative mx-auto flex min-h-[100dvh] w-full max-w-[430px] flex-col overflow-hidden">
         <AnimatePresence mode="wait" custom={direction}>
           <motion.section
             key={currentSlide.id}
@@ -191,7 +191,7 @@ export default function Landing() {
 
             {currentSlide.type === 'hero' ? (
               <>
-                <div className="pt-24 text-center">
+                <div className="pt-16 text-center">
                   <p className="text-[88px] leading-none font-black tracking-[-0.03em] text-black">
                     {currentSlide.brand}
                   </p>
@@ -209,14 +209,14 @@ export default function Landing() {
               </>
             ) : (
               <>
-                <section className="px-[37px] pt-[112px]">
+                <section className="px-[37px] pt-[80px]">
                   <h1 className="line-limit-2 text-[clamp(2rem,8.2vw,2.35rem)] leading-[1.2] font-extrabold tracking-[-0.03em] whitespace-pre-wrap text-black">
                     {currentSlide.title[0]}
                     {'\n'}
                     {currentSlide.title[1]}
                   </h1>
 
-                  <div className="mt-6 text-[20px] leading-[1.35] text-black">
+                  <div className="mt-4 text-[18px] leading-[1.35] text-black">
                     {currentSlide.body.map((line, lineIdx) => (
                       <p key={`${currentSlide.id}-line-${lineIdx}`}>
                         {line.map((part, partIdx) => (
