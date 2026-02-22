@@ -419,3 +419,68 @@
   - `docs/agent/agent-experience-spec-v1.md`
   - `docs/agent/agent-control-contract-v1.md`
   - `docs/agent/agent-ui-design-handoff-v1.md`
+
+## 14. Agent UX 6차 실행 (sync-first + 중단/재생성 + Dock/네비 안정화)
+
+### 문제 재현
+- develop와 feature 브랜치가 서로 갈라져 있어 최신 테스트/인프라 변경을 반영하지 못한 상태
+- 캔버스에서 `chatOptions`가 `useTutor.sendMessage` 경유 중 누락되어 `response_mode/use_web_search/structured_extract` 체감 미반영
+- 생성 중단/재생성이 없어 멀티턴 중 제어권이 약함
+- Dock 문구가 `/agent`에서도 고정형이라 현재 상태를 설명하지 못함
+- 입력 중 모바일에서 하단 네비가 같이 보여 가림/겹침 발생
+- 홈 대화 정리 카드가 세션 메타(icon/keyword/snippet)를 충분히 재활용하지 못함
+
+### 의사결정
+- sync-first: `origin/develop`를 현재 브랜치에 먼저 merge 후 기능 수정 진행
+- 충돌 파일 2개(`AgentDock`, `AgentCanvasSections`)는 프론트 현재 브랜치 UX 우선으로 수동 정리
+- 생성 제어는 프론트 `AbortController` 기반으로 구현(외부 API 변경 없음)
+- Dock는 상태 중심 문구 + 주황 글로우 강화
+- 입력 포커스/키보드 상태에서 BottomNav 숨김, Dock는 키보드 상단으로 보정
+- 세션 메타는 DB 변경 없이 localStorage 참조형(`session_meta:{session_id}`)으로 저장/재사용
+
+### 구현 상세
+- Sync
+  - `Merge remote-tracking branch 'origin/develop' into feat/agent-canvas-v3-yj99son` 완료
+  - 충돌 수동 해결: `frontend/src/components/agent/AgentDock.jsx`, `frontend/src/components/agent/AgentCanvasSections.jsx`
+- 중단/재생성
+  - `TutorChatContext`에 `activeStreamControllerRef`, `lastRequestRef`, `isStreamingActive`, `canRegenerate` 추가
+  - `stopGeneration()`/`regenerateLastResponse()` 추가
+  - 중단 시 부분 텍스트 유지 + 턴 상태 `stopped`
+- 렌더링 누락 원인 수정
+  - `TutorContext.sendMessage` 시그니처 확장: `options.chatOptions`, `options.contextInfoOverride` 지원
+  - `AgentCanvasPage`에서 `sendCanvasMessage()`로 `chatOptions + contextInfoOverride` 강제 전달
+- Dock 개선
+  - `/agent`에서 상단 라인을 상태 문구(`분석 중`, `답변 생성 중`, `중단됨`, `대기 중`)로 전환
+  - 세션 없음 문구 단축(`질문하세요`, `한 줄로 물어보세요`)
+  - `AgentControlPulse`/`globals.css`로 주황 글로우 가시성 강화
+- 네비 숨김/키보드 보정
+  - 신규 훅 `frontend/src/hooks/useKeyboardInset.js`
+  - `AgentDock`에서 `--keyboard-offset` 적용
+  - `BottomNav`는 `inputFocused || keyboardOpen`이면 숨김
+- 대화 정리 카드 메타
+  - 신규 유틸 `frontend/src/utils/agent/sessionCardMetaStore.js`
+  - `TutorChatContext` 완료/중단 시 세션 메타 저장
+  - `Home`에서 세션 메타(`icon_key`, `keywords[]`, `snippet`) 읽어 카드 렌더
+
+### API/내부 인터페이스 변경
+- 외부 API
+  - 없음 (`/api/v1/tutor/chat`, `/api/v1/tutor/route` 유지)
+- 내부 인터페이스
+  - `useTutor.sendMessage(message, difficulty, options?)`
+    - `options.chatOptions`
+    - `options.contextInfoOverride`
+  - `useTutor`/`useTutorChat` 추가 노출
+    - `stopGeneration()`
+    - `regenerateLastResponse()`
+    - `isStreamingActive`
+    - `canRegenerate`
+
+### 검증 결과
+- [x] sync-first merge 완료(충돌 2개 수동 해결)
+- [x] 캔버스 헤더 중단/재생성 버튼 반영
+- [x] `chatOptions/contextInfoOverride` 전달 경로 반영
+- [x] `/agent` Dock 상태 문구 전환 및 짧은 안내 문구 반영
+- [x] 입력 포커스/키보드 상태에서 BottomNav 숨김 로직 반영
+- [x] 세션 메타 저장/홈 카드 재활용 경로 반영
+- [ ] `npm run build` 검증
+- [ ] 수동 플로우(홈 -> agent -> 중단/재생성 -> history -> 홈 카드 복귀) 검증

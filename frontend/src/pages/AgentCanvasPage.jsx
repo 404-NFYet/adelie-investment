@@ -138,7 +138,11 @@ export default function AgentCanvasPage() {
     messages,
     assistantTurns,
     isLoading,
+    isStreamingActive,
+    canRegenerate,
     sendMessage,
+    stopGeneration,
+    regenerateLastResponse,
     setContextInfo,
     agentStatus,
     clearMessages,
@@ -178,6 +182,25 @@ export default function AgentCanvasPage() {
     if (mode === 'stock' && location.state?.stockContext) return location.state.stockContext;
     return getContextByMode(mode);
   }, [location.state, mode]);
+
+  const buildContextInfoForPrompt = useCallback(
+    (focusedPrompt = '') => ({
+      type: mode === 'stock' ? 'case' : 'briefing',
+      id: null,
+      stepContent: JSON.stringify(
+        buildAgentContextEnvelope({
+          mode,
+          pathname: location.pathname,
+          contextPayload,
+          userPrompt: focusedPrompt,
+          searchEnabled: useWebSearch,
+        }),
+        null,
+        2,
+      ),
+    }),
+    [contextPayload, location.pathname, mode, useWebSearch],
+  );
 
   const turns = useMemo(
     () =>
@@ -254,32 +277,33 @@ export default function AgentCanvasPage() {
   }, [loadChatHistory, location.key, requestedSessionId]);
 
   useEffect(() => {
-    const envelope = buildAgentContextEnvelope({
-      mode,
-      pathname: location.pathname,
-      contextPayload,
-      userPrompt: selectedUserPrompt,
-      searchEnabled: useWebSearch,
-    });
-
-    setContextInfo({
-      type: mode === 'stock' ? 'case' : 'briefing',
-      id: null,
-      stepContent: JSON.stringify(envelope, null, 2),
-    });
+    setContextInfo(buildContextInfoForPrompt(selectedUserPrompt));
 
     return () => {
       setContextInfo(null);
     };
-  }, [contextPayload, location.pathname, mode, selectedUserPrompt, setContextInfo, useWebSearch]);
+  }, [buildContextInfoForPrompt, selectedUserPrompt, setContextInfo]);
+
+  const sendCanvasMessage = useCallback(
+    (prompt) => {
+      const normalized = String(prompt || '').trim();
+      if (!normalized) return;
+
+      sendMessage(normalized, settings?.difficulty || 'beginner', {
+        chatOptions,
+        contextInfoOverride: buildContextInfoForPrompt(normalized),
+      });
+    },
+    [buildContextInfoForPrompt, chatOptions, sendMessage, settings?.difficulty],
+  );
 
   useEffect(() => {
     const promptKey = `${location.key}:${initialPrompt}`;
     if (!initialPrompt || requestedSessionId || processedPromptRef.current.has(promptKey)) return;
 
     processedPromptRef.current.add(promptKey);
-    sendMessage(initialPrompt, settings?.difficulty || 'beginner', chatOptions);
-  }, [chatOptions, initialPrompt, location.key, requestedSessionId, sendMessage, settings?.difficulty]);
+    sendCanvasMessage(initialPrompt);
+  }, [initialPrompt, location.key, requestedSessionId, sendCanvasMessage]);
 
   const canvasState = useMemo(
     () =>
@@ -440,9 +464,9 @@ export default function AgentCanvasPage() {
     (action) => {
       const nextPrompt = typeof action === 'string' ? action : action?.prompt || action?.label || '';
       if (!nextPrompt) return;
-      sendMessage(nextPrompt, settings?.difficulty || 'beginner', chatOptions);
+      sendCanvasMessage(nextPrompt);
     },
-    [chatOptions, sendMessage, settings?.difficulty],
+    [sendCanvasMessage],
   );
 
   const handleAskSelectedText = useCallback(
@@ -450,9 +474,9 @@ export default function AgentCanvasPage() {
       const normalized = String(selectedText || '').trim();
       if (!normalized) return;
       const quotedPrompt = `다음 내용을 현재 맥락에서 설명해줘:\n"""${normalized}"""`;
-      sendMessage(quotedPrompt, settings?.difficulty || 'beginner', chatOptions);
+      sendCanvasMessage(quotedPrompt);
     },
-    [chatOptions, sendMessage, settings?.difficulty],
+    [sendCanvasMessage],
   );
 
   const {
@@ -479,6 +503,34 @@ export default function AgentCanvasPage() {
       state: { mode, contextPayload },
     });
   }, [contextPayload, mode, navigate]);
+
+  const handleStopGeneration = useCallback(() => {
+    stopGeneration();
+  }, [stopGeneration]);
+
+  const handleRegenerate = useCallback(() => {
+    if (canRegenerate) {
+      regenerateLastResponse({
+        difficulty: settings?.difficulty || 'beginner',
+        chatOptions,
+        contextInfoOverride: buildContextInfoForPrompt(selectedUserPrompt || initialPrompt),
+      }).catch(() => {});
+      return;
+    }
+
+    if (selectedUserPrompt) {
+      sendCanvasMessage(selectedUserPrompt);
+    }
+  }, [
+    canRegenerate,
+    buildContextInfoForPrompt,
+    chatOptions,
+    initialPrompt,
+    regenerateLastResponse,
+    sendCanvasMessage,
+    selectedUserPrompt,
+    settings?.difficulty,
+  ]);
 
   const swipeProgress = Math.min(100, Math.round((Math.abs(horizontalDelta) / HORIZONTAL_SWIPE_THRESHOLD_PX) * 100));
   const statusSubline = selectedTurn?.model
@@ -508,6 +560,24 @@ export default function AgentCanvasPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            {isStreamingActive ? (
+              <button
+                type="button"
+                onClick={handleStopGeneration}
+                className="h-7 rounded-full bg-[#FFF2E8] px-2.5 text-[11px] font-semibold text-[#FF6B00] transition-colors active:bg-[#FFE5D3]"
+              >
+                중단
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleRegenerate}
+                disabled={!canRegenerate && !selectedUserPrompt}
+                className="h-7 rounded-full bg-[#F2F4F6] px-2.5 text-[11px] font-semibold text-[#4E5968] transition-colors active:bg-[#E8EBED] disabled:opacity-50"
+              >
+                다시 생성
+              </button>
+            )}
             <AgentStatusDots phase={agentStatus?.phase} compact />
             <button
               type="button"

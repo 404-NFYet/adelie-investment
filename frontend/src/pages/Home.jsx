@@ -11,6 +11,7 @@ import useActivityFeed from '../hooks/useActivityFeed';
 import buildActionCatalog from '../utils/agent/buildActionCatalog';
 import { formatRelativeDate } from '../utils/dateFormat';
 import buildUiSnapshot from '../utils/agent/buildUiSnapshot';
+import { readSessionCardMeta } from '../utils/agent/sessionCardMetaStore';
 import { formatKRW } from '../utils/formatNumber';
 import { getKstTodayDateKey, getKstWeekDays } from '../utils/kstDate';
 
@@ -85,7 +86,13 @@ export default function Home() {
   const issueCards = visibleCards;
   const activeIssueCard = issueCards[activeIssueIndex] || null;
   const conversationCards = useMemo(
-    () => (Array.isArray(sessions) ? sessions.slice(0, 2) : []),
+    () => (Array.isArray(sessions) ? sessions.slice(0, 2) : []).map((session) => {
+      const meta = readSessionCardMeta(session.id);
+      return {
+        ...session,
+        meta,
+      };
+    }),
     [sessions],
   );
 
@@ -490,7 +497,7 @@ export default function Home() {
               >
                 <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-[18px] bg-[#f9fafb]">
                   <img
-                    src={getHomeIconSrc(DEFAULT_HOME_ICON_KEY)}
+                    src={getHomeIconSrc(item.meta?.icon_key || DEFAULT_HOME_ICON_KEY)}
                     alt="미션 아이콘"
                     className="h-8 w-8 object-contain"
                     onError={(event) => {
@@ -499,13 +506,26 @@ export default function Home() {
                   />
                 </div>
                 <p className="line-limit-2 text-[18px] font-extrabold leading-7 tracking-[-0.01em] text-[#101828]">
-                  {item.title}
+                  {item.meta?.title || item.title}
                 </p>
-                <span className="mt-3 inline-block rounded-lg bg-[rgba(255,118,72,0.1)] px-2.5 py-1 text-[11px] font-bold text-[#ff7648]">
-                  {item.last_message_at
+                {Array.isArray(item.meta?.keywords) && item.meta.keywords.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {item.meta.keywords.slice(0, 3).map((keyword) => (
+                      <span
+                        key={`${item.id}-${keyword}`}
+                        className="rounded-full bg-[#F2F4F6] px-2 py-0.5 text-[10px] font-semibold text-[#6B7684]"
+                      >
+                        {keyword}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <p className="mt-3 line-limit-2 rounded-lg bg-[rgba(255,118,72,0.1)] px-2.5 py-1 text-[11px] font-bold text-[#ff7648]">
+                  {item.meta?.snippet
+                    || (item.last_message_at
                     ? `${formatRelativeDate(item.last_message_at)} · ${item.message_count || 0}개`
-                    : '새 대화'}
-                </span>
+                    : '새 대화')}
+                </p>
               </button>
             ))}
           </div>

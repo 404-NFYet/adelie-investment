@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { API_BASE_URL, authFetch } from '../../api/client';
 import { useTutor } from '../../contexts';
+import AgentControlPulse from './AgentControlPulse';
 import useAgentPromptHints from '../../hooks/useAgentPromptHints';
 import useAgentControlOrchestrator from '../../hooks/useAgentControlOrchestrator';
+import useKeyboardInset from '../../hooks/useKeyboardInset';
 import buildUiSnapshot from '../../utils/agent/buildUiSnapshot';
 import buildActionCatalog from '../../utils/agent/buildActionCatalog';
 
@@ -41,9 +43,12 @@ export default function AgentDock() {
   const location = useLocation();
   const navigate = useNavigate();
   const { shouldHide, mode, placeholder, suggestedPrompt } = useAgentPromptHints();
-  const { messages } = useTutor();
+  const { messages, agentStatus, isStreamingActive } = useTutor();
+  const { keyboardOffset, keyboardOpen, inputFocused } = useKeyboardInset();
 
   const hasActiveSession = Array.isArray(messages) && messages.length > 0;
+  const isAgentRoute = location.pathname.startsWith('/agent');
+  const hideBottomNav = keyboardOpen || inputFocused;
 
   useEffect(() => {
     try {
@@ -52,6 +57,13 @@ export default function AgentDock() {
       // ignore storage errors
     }
   }, [searchEnabled]);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty('--keyboard-offset', `${keyboardOffset}px`);
+    return () => {
+      document.documentElement.style.setProperty('--keyboard-offset', '0px');
+    };
+  }, [keyboardOffset]);
 
   const baseContextPayload = useMemo(() => {
     if (mode === 'stock' && location.state?.stockContext) {
@@ -153,6 +165,21 @@ export default function AgentDock() {
 
   if (shouldHide) return null;
 
+  const phaseTextByPhase = {
+    thinking: '분석 중',
+    tool_call: '도구 실행 중',
+    answering: '답변 생성 중',
+    stopped: '중단됨',
+    notice: '주의 안내',
+    error: '오류 발생',
+    idle: '대기 중',
+  };
+  const dockStatusText = isAgentRoute
+    ? (phaseTextByPhase[agentStatus?.phase] || phaseTextByPhase.idle)
+    : (hasActiveSession ? '진행 중인 대화가 있어요' : '질문하세요');
+  const shouldShowChevron = hasActiveSession && !isAgentRoute;
+  const pulseActive = isRouting || isAgentControlling || isStreamingActive;
+
   const submitPrompt = async (prompt) => {
     const normalized = String(prompt || '').trim();
     if (!normalized) return;
@@ -214,7 +241,10 @@ export default function AgentDock() {
   };
 
   return (
-    <div className="pointer-events-none fixed bottom-[var(--bottom-nav-h,68px)] left-0 right-0 z-30 flex justify-center px-4 pb-2">
+    <div
+      className="pointer-events-none fixed left-0 right-0 z-30 flex justify-center px-4 pb-2"
+      style={{ bottom: `calc(${hideBottomNav ? '0px' : 'var(--bottom-nav-h,68px)'} + var(--keyboard-offset,0px))` }}
+    >
       <div className="w-full max-w-mobile space-y-1.5">
         {/* 인라인 메시지 (트레이 대체 — 필요할 때만 노출) */}
         {inlineMessage?.text && (
@@ -236,7 +266,8 @@ export default function AgentDock() {
         )}
 
         {/* 볼드 입력바 */}
-        <div className={`pointer-events-auto rounded-[20px] bg-white shadow-[0_2px_12px_rgba(0,0,0,0.1)] ${isAgentControlling ? 'ring-1 ring-[#FF6B00]/20' : ''}`}>
+        <AgentControlPulse active={pulseActive}>
+          <div className="pointer-events-auto rounded-[20px] bg-white shadow-[0_8px_22px_rgba(255,107,0,0.2)] ring-1 ring-[#FF6B00]/10">
           {/* 상단 상태 라인 (항상 노출) */}
           <div className="flex items-center gap-2 border-b border-[#F2F4F6] px-3 py-1.5">
             <button
@@ -247,15 +278,15 @@ export default function AgentDock() {
               <span className={`h-1.5 w-1.5 rounded-full ${hasActiveSession ? 'bg-[#FF6B00]' : 'bg-[#16A34A]'}`} />
               <div className="min-w-0">
                 <p className={`truncate text-[12px] font-medium ${hasActiveSession ? 'text-[#4E5968]' : 'text-[#166534]'}`}>
-                  {hasActiveSession ? '진행 중인 대화가 있어요' : '질문해주세요'}
+                  {dockStatusText}
                 </p>
-                {!hasActiveSession && (
+                {!hasActiveSession && !isAgentRoute && (
                   <p className="truncate text-[11px] text-[#16A34A]/80">
-                    궁금한 내용을 입력하면 바로 이어서 답변해드려요
+                    한 줄로 물어보세요
                   </p>
                 )}
               </div>
-              {hasActiveSession && (
+              {shouldShowChevron && (
                 <svg className="ml-auto text-[#B0B8C1]" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="m9 18 6-6-6-6" />
                 </svg>
@@ -317,6 +348,7 @@ export default function AgentDock() {
               value={input}
               onChange={(event) => setInput(event.target.value)}
               placeholder={input ? placeholder : suggestedPrompt}
+              data-agent-dock-input
               className="min-w-0 flex-1 bg-transparent text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] focus:outline-none"
               aria-label="에이전트 질문 입력"
             />
@@ -333,7 +365,8 @@ export default function AgentDock() {
               </svg>
             </button>
           </form>
-        </div>
+          </div>
+        </AgentControlPulse>
       </div>
     </div>
   );

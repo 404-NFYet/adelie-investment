@@ -1,5 +1,6 @@
-import { createContext, useContext, useState, useCallback, startTransition } from 'react';
+import { createContext, useContext, useState, useCallback, startTransition, useRef } from 'react';
 import { API_BASE_URL, authFetch } from '../api/client';
+import { buildSessionCardMeta, writeSessionCardMeta } from '../utils/agent/sessionCardMetaStore';
 
 const TutorChatContext = createContext(null);
 const STREAM_FLUSH_INTERVAL_MS = 240;
@@ -132,6 +133,8 @@ export function TutorChatProvider({ children }) {
   const [messages, setMessages] = useState([]);
   const [assistantTurns, setAssistantTurns] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isStreamingActive, setIsStreamingActive] = useState(false);
+  const [canRegenerate, setCanRegenerate] = useState(false);
   const [sessionId, setSessionId] = useState(() => {
     try {
       return localStorage.getItem('adelie_tutor_session') || null;
@@ -139,6 +142,26 @@ export function TutorChatProvider({ children }) {
       return null;
     }
   });
+  const activeStreamControllerRef = useRef(null);
+  const lastRequestRef = useRef(null);
+
+  const persistSessionMeta = useCallback((targetSessionId, contextInfo, userPrompt, assistantText) => {
+    const normalizedSessionId = String(targetSessionId || '').trim();
+    if (!normalizedSessionId) return;
+
+    const normalizedSnippet = String(assistantText || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 180);
+    const fallbackTitle = String(userPrompt || '').trim().slice(0, 40) || '대화 정리 카드';
+    const nextMeta = buildSessionCardMeta({
+      contextInfo,
+      fallbackTitle,
+      fallbackSnippet: normalizedSnippet,
+    });
+
+    writeSessionCardMeta(normalizedSessionId, nextMeta);
+  }, []);
 
   const sendMessage = useCallback(
     async (
@@ -149,10 +172,17 @@ export function TutorChatProvider({ children }) {
       onSessionCreated = null,
       options = {},
     ) => {
-      if (!message.trim()) return;
+      const normalizedMessage = String(message || '').trim();
+      if (!normalizedMessage) return;
+
+      if (activeStreamControllerRef.current) {
+        activeStreamControllerRef.current.abort();
+        activeStreamControllerRef.current = null;
+      }
 
       const DEFAULT_STATUS = { phase: 'idle', text: '응답 대기 중' };
       let hasError = false;
+      let wasStopped = false;
       let pendingSources = [];
       let pendingUiActions = [];
       let pendingModel = null;
@@ -168,6 +198,17 @@ export function TutorChatProvider({ children }) {
         responseMode: options?.responseMode || 'plain',
         structuredExtract: Boolean(options?.structuredExtract),
       };
+      let resolvedSessionId = sessionId;
+      const streamController = new AbortController();
+      activeStreamControllerRef.current = streamController;
+      setIsStreamingActive(true);
+      setCanRegenerate(true);
+      lastRequestRef.current = {
+        message: normalizedMessage,
+        difficulty,
+        contextInfo,
+        options: normalizedOptions,
+      };
 
       const turnId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -175,7 +216,7 @@ export function TutorChatProvider({ children }) {
         id: `${Date.now()}-user`,
         turnId,
         role: 'user',
-        content: message,
+        content: normalizedMessage,
         timestamp: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, userMessage]);
@@ -200,7 +241,7 @@ export function TutorChatProvider({ children }) {
         {
           id: turnId,
           assistantMessageId: assistantMessage.id,
-          userPrompt: message,
+          userPrompt: normalizedMessage,
           assistantText: '',
           status: 'streaming',
           createdAt: assistantMessage.timestamp,
@@ -296,6 +337,7 @@ export function TutorChatProvider({ children }) {
           }
 
           if (data.session_id) {
+            resolvedSessionId = data.session_id;
             setSessionId(data.session_id);
             try { localStorage.setItem('adelie_tutor_session', data.session_id); } catch {}
             if (onSessionCreated) onSessionCreated(data.session_id);
@@ -430,10 +472,11 @@ export function TutorChatProvider({ children }) {
       try {
         const response = await authFetch(`${API_BASE_URL}/api/v1/tutor/chat`, {
           method: 'POST',
+          signal: streamController.signal,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             session_id: sessionId,
-            message,
+            message: normalizedMessage,
             difficulty,
             context_type: contextInfo?.type,
             context_id: contextInfo?.id,
@@ -496,7 +539,32 @@ export function TutorChatProvider({ children }) {
           isError: hasError,
           status: hasError ? 'error' : 'done',
         });
+
+        persistSessionMeta(
+          resolvedSessionId,
+          contextInfo,
+          normalizedMessage,
+          renderedContent,
+        );
       } catch (error) {
+        if (error?.name === 'AbortError') {
+          wasStopped = true;
+          flushBuffer(true);
+          if (setAgentStatus) setAgentStatus({ phase: 'stopped', text: '생성이 중단되었습니다.' });
+          syncAssistantState(renderedContent, {
+            isStreaming: false,
+            isError: false,
+            status: 'stopped',
+          });
+          persistSessionMeta(
+            resolvedSessionId,
+            contextInfo,
+            normalizedMessage,
+            renderedContent,
+          );
+          return;
+        }
+
         console.error('Tutor error:', error);
         hasError = true;
         if (setAgentStatus) setAgentStatus({ phase: 'error', text: '오류가 발생했습니다.' });
@@ -508,11 +576,15 @@ export function TutorChatProvider({ children }) {
           status: 'error',
         });
       } finally {
+        if (activeStreamControllerRef.current === streamController) {
+          activeStreamControllerRef.current = null;
+        }
+        setIsStreamingActive(false);
         setIsLoading(false);
-        if (setAgentStatus && !hasError) setAgentStatus(DEFAULT_STATUS);
+        if (setAgentStatus && !hasError && !wasStopped) setAgentStatus(DEFAULT_STATUS);
       }
     },
-    [sessionId]
+    [persistSessionMeta, sessionId]
   );
 
   const loadChatHistory = useCallback(async (id, setActiveSessionId) => {
@@ -528,10 +600,46 @@ export function TutorChatProvider({ children }) {
     try { localStorage.setItem('adelie_tutor_session', id); } catch {}
   }, []);
 
+  const stopGeneration = useCallback(() => {
+    const controller = activeStreamControllerRef.current;
+    if (!controller) return false;
+
+    controller.abort();
+    activeStreamControllerRef.current = null;
+    setIsStreamingActive(false);
+    return true;
+  }, []);
+
+  const regenerateLastResponse = useCallback(
+    async (setAgentStatus = null, onSessionCreated = null, overrides = {}) => {
+      const previous = lastRequestRef.current;
+      if (!previous?.message) return false;
+
+      await sendMessage(
+        previous.message,
+        overrides?.difficulty || previous.difficulty || 'beginner',
+        overrides?.contextInfo || previous.contextInfo || null,
+        setAgentStatus,
+        onSessionCreated,
+        overrides?.options || previous.options || {},
+      );
+
+      return true;
+    },
+    [sendMessage],
+  );
+
   const clearMessages = useCallback(() => {
+    if (activeStreamControllerRef.current) {
+      activeStreamControllerRef.current.abort();
+      activeStreamControllerRef.current = null;
+    }
     setMessages((prev) => (prev.length > 0 ? [] : prev));
     setAssistantTurns((prev) => (prev.length > 0 ? [] : prev));
     setSessionId((prev) => (prev === null ? prev : null));
+    setIsStreamingActive(false);
+    setCanRegenerate(false);
+    lastRequestRef.current = null;
     try {
       if (localStorage.getItem('adelie_tutor_session') !== null) {
         localStorage.removeItem('adelie_tutor_session');
@@ -544,9 +652,13 @@ export function TutorChatProvider({ children }) {
       messages,
       assistantTurns,
       isLoading,
+      isStreamingActive,
+      canRegenerate,
       sessionId,
       setSessionId,
       sendMessage,
+      stopGeneration,
+      regenerateLastResponse,
       loadChatHistory,
       clearMessages,
     }}>

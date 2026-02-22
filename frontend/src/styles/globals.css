@@ -42,6 +42,7 @@
   /* Agent UI tokens – Toss-tone */
   --bottom-nav-h: 68px;
   --agent-dock-h: 104px;
+  --keyboard-offset: 0px;
   --agent-radius-sm: 14px;
   --agent-radius-md: 18px;
   --agent-border: #E8EBED;
@@ -326,10 +327,10 @@
 
 @keyframes agentControlPulse {
   0%, 100% {
-    box-shadow: 0 0 0 1px rgba(255, 118, 72, 0.08), 0 0 6px rgba(255, 118, 72, 0.08);
+    box-shadow: 0 0 0 1px rgba(255, 118, 72, 0.14), 0 0 14px rgba(255, 118, 72, 0.18);
   }
   50% {
-    box-shadow: 0 0 0 1px rgba(255, 118, 72, 0.12), 0 0 10px rgba(255, 118, 72, 0.12);
+    box-shadow: 0 0 0 1px rgba(255, 118, 72, 0.2), 0 0 22px rgba(255, 118, 72, 0.28);
   }
 }
 
