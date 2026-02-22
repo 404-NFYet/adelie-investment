@@ -56,11 +56,6 @@ docker compose -f docker-compose.dev.yml run db-migrate
 ssh deploy-test 'docker exec adelie-backend-api sh -c "cd /app/database && alembic upgrade head"'
 ```
 
-**staging 원격 적용**
-```bash
-ssh staging 'docker exec staging-backend-api sh -c "cd /app/database && alembic upgrade head"'
-```
-
 ### 현재 HEAD 확인
 ```bash
 cd database && ../.venv/bin/alembic current

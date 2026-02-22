@@ -297,8 +297,6 @@ make -f lxd/Makefile fix-lxd-jwt
 make -f lxd/Makefile sync-lxd
 
 # staging(10.10.10.21) 배포
-make -f lxd/Makefile deploy-staging
-
 # deploy-test 전체 배포
 make -f lxd/Makefile deploy-test
 ```
@@ -310,22 +308,6 @@ make -f lxd/Makefile deploy-test
 | backend-api UNHEALTHY | JWT_SECRET 기본값 | `make -f lxd/Makefile fix-lxd-jwt` |
 | frontend pull 실패 | Docker Hub 미존재 | `make -f lxd/Makefile sync-lxd` (로컬 빌드) |
 | git pull 충돌 | 로컬 커밋 존재 | `lxc exec dev-X -- bash -c "cd ~/adelie-investment && git stash && git pull"` |
-
-### staging 서버 (10.10.10.21) 관리
-
-```bash
-# 연결 확인
-ssh staging 'hostname && docker ps'
-
-# develop 최신 배포
-make -f lxd/Makefile deploy-staging
-
-# 초기 설치 (신규 서버)
-ssh staging 'git clone https://github.com/404-NFYet/adelie-investment.git ~/adelie-investment && cd ~/adelie-investment && git checkout develop'
-scp deploy-test:~/adelie-investment/.env staging:~/adelie-investment/.env
-ssh staging 'cd ~/adelie-investment && docker compose -f docker-compose.staging.yml up -d'
-ssh staging 'docker exec staging-backend-api sh -c "cd /app/database && alembic upgrade head"'
-```
 
 ## AWS Terraform IaC (2026-02-22 이후)
 

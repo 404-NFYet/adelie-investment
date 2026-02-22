@@ -45,7 +45,7 @@ KST 날짜: from datapipeline.config import KST, kst_today
 """,
     "infra": """
 [담당 영역] Docker, LXD 5대, CI/CD, Terraform AWS, Prometheus/Grafana/AlertManager
-핵심 Makefile: make -f lxd/Makefile sync-lxd|health-lxd|deploy-staging|deploy-test
+핵심 Makefile: make -f lxd/Makefile sync-lxd|health-lxd|deploy-test
 LXD 프로파일: dev-standard(4CPU/8GB), dev-ai(4CPU/12GB)
 Terraform: infra/terraform/ (network/compute/database/storage/cdn 모듈)
 모니터링: infra/monitoring/ (prometheus.yml, alertmanager, grafana)
@@ -123,7 +123,6 @@ feature/* → develop PR 머지
 [인프라 구성]
 - infra-server 10.10.10.10: 공유 dev DB(5432), Redis(6379), Prometheus(9090)
 - deploy-test  10.10.10.20: 프로덕션 풀스택
-- staging      10.10.10.21: develop 최신
 - LXD 5대      10.10.10.11~15: 팀원별 개발 환경
 
 [DB 접속]

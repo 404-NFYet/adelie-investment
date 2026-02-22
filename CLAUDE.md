@@ -281,31 +281,12 @@ psql -h 10.10.10.20 -p 5432 -U narative -d narrative_invest
 | 서버 | IP | 역할 | 접속 |
 |------|----|------|------|
 | deploy-test | 10.10.10.20 | 프로덕션 풀스택 | `ssh deploy-test` |
-| staging | 10.10.10.21 | 팀 공유 스테이징 (develop 최신) | `ssh staging` |
 | infra-server | 10.10.10.10 | 공유 dev DB + 모니터링 에이전트 | `ssh infra-server` |
 | dev-yj99son | 10.10.10.14 | 프론트엔드 개발 | `lxc exec dev-yj99son -- bash` |
 | dev-jjjh02 | 10.10.10.12 | 백엔드 개발 | `lxc exec dev-jjjh02 -- bash` |
 | dev-hj | 10.10.10.15 | 인프라 개발 | `lxc exec dev-hj -- bash` |
 | dev-j2hoon10 | 10.10.10.11 | AI/챗봇 개발 | `lxc exec dev-j2hoon10 -- bash` |
 | dev-ryejinn | 10.10.10.13 | QA | `lxc exec dev-ryejinn -- bash` |
-
-### staging 서버 배포
-
-```bash
-make -f lxd/Makefile deploy-staging   # develop 최신 → staging 자동 배포
-```
-
-**초기 설치 (신규 서버):**
-```bash
-# staging 서버에서 (10.10.10.21)
-git clone https://github.com/404-NFYet/adelie-investment.git ~/adelie-investment
-cd ~/adelie-investment && git checkout develop
-scp deploy-test:~/adelie-investment/.env .env  # API 키 포함 .env 복사
-docker compose -f docker-compose.staging.yml pull
-docker compose -f docker-compose.staging.yml up -d
-sleep 15
-docker exec staging-backend-api sh -c 'cd /app/database && alembic upgrade head'
-```
 
 ### 데이터 파이프라인 수동 실행
 

@@ -8,7 +8,7 @@ REGISTRY ?= dorae222
 TAG ?= latest
 
 .PHONY: help push push-local deploy-test deploy-test-service \
-        deploy-staging sync-dev-branches sync-lxd sync-all \
+        sync-dev-branches sync-lxd sync-all \
         check-lxd-git sync-dev-data health-lxd fix-lxd-jwt
 
 help:
@@ -100,13 +100,6 @@ sync-lxd:
 		docker compose -f docker-compose.dev.yml build frontend 2>&1 | tail -3 && \
 		docker compose -f docker-compose.dev.yml up -d frontend" && echo "  ✅ dev-hj" || echo "  ❌ dev-hj"
 	@echo "완료: 모든 LXD 서버 코드 싱크"
-
-# --- Staging (10.10.10.21) ---
-deploy-staging:
-	ssh staging 'cd ~/adelie-investment && git pull origin develop && \
-		docker compose -f docker-compose.staging.yml pull && \
-		docker compose -f docker-compose.staging.yml up -d --remove-orphans'
-	@echo "✅ staging(10.10.10.21) 배포 완료"
 
 sync-all: sync-dev-branches sync-lxd
 	@echo "전체 싱크 완료 (브랜치 + LXD 서버)"
