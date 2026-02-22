@@ -304,6 +304,7 @@
   - `frontend/src/styles/globals.css`
 - 문서
   - `docs/agent/agent-ui-design-handoff-v1.md`
+  - `docs/agent/agent-control-contract-v1.md` (Responses API vs 기존 경로 비교, SSE 매핑/디버깅 기준 추가)
 
 ### 검증 결과
 - [ ] 하단바 기록 버튼 상시 노출 및 `/agent/history` 이동 확인
