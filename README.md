@@ -71,8 +71,14 @@
 ### 과거-현재 매칭 내러티브
 현재 시장 이슈와 유사한 과거 사례를 찾아, 비교 분석 내러티브를 스토리텔링 형식으로 생성합니다.
 
-### AI 튜터
-금융 용어와 시장 상황을 설명해주는 AI 튜터가 대화형으로 학습을 도와줍니다.
+### AI 튜터 (챗봇)
+금융 용어와 시장 상황을 설명해주는 AI 튜터가 대화형으로 학습을 도와줍니다. 가드레일 시스템으로 안전한 금융 학습 맥락을 유지합니다.
+
+### Agent Canvas
+금융 학습 AI 에이전트와 실시간 대화하며, 내러티브 탐색·차트 조회·종목 검색 등을 인터랙티브하게 경험할 수 있는 캔버스 모드입니다.
+
+### 데일리 퀴즈
+오늘의 시장 이슈를 기반으로 생성된 퀴즈를 풀고 리워드를 획득합니다.
 
 ### 모의투자
 가상 포트폴리오를 통해 학습한 내용을 실전처럼 연습할 수 있습니다.
@@ -83,12 +89,12 @@
 
 | 영역 | 기술 |
 |------|------|
-| **Frontend** | React 19, Vite, Tailwind CSS |
+| **Frontend** | React 19, Vite, Tailwind CSS, Playwright |
 | **Backend** | FastAPI, SQLAlchemy (async), JWT |
-| **AI/LLM** | OpenAI (GPT-4o), Perplexity (Sonar), LangGraph |
-| **Database** | PostgreSQL 16 + pgvector, Redis 7 |
-| **Infra** | Docker Compose, LXD, Nginx |
-| **Observability** | LangSmith |
+| **AI/LLM** | OpenAI (GPT-4o/4o-mini), Perplexity (Sonar), Claude, LangGraph |
+| **Database** | PostgreSQL 16, Redis 7, MinIO |
+| **Infra** | Docker Compose, LXD, Nginx, Terraform (AWS), GitHub Actions |
+| **Observability** | LangSmith, Prometheus, Grafana, Alertmanager |
 
 ---
 
@@ -139,9 +145,18 @@ graph TB
 
 ---
 
+## 서비스 URL
+
+| 서비스 | URL |
+|--------|-----|
+| 프로덕션 | https://demo.adelie-invest.com |
+| 모니터링 | https://monitoring.adelie-invest.com |
+| 대시보드 | https://dashboard.adelie-invest.com |
+
 ## 문서
 
-- [기여 가이드](docs/06_CONTRIBUTING.md)
-- [Docker 가이드](docs/02_DOCKER.md)
-- [AI 파이프라인](docs/05_AI_PIPELINE.md)
-- [PRD (제품 요구사항)](docs/PRD.md)
+- [기여 가이드](docs/contributing.md)
+- [아키텍처 개요](docs/architecture/)
+- [AI 파이프라인](docs/architecture/)
+- [팀원 가이드](docs/team-guides/)
+- [시작하기](docs/getting-started/)
