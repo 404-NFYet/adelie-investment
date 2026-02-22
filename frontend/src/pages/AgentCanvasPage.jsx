@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { learningApi } from '../api';
+import { API_BASE_URL, authFetch } from '../api/client';
 import AgentCanvasSections from '../components/agent/AgentCanvasSections';
 import SelectionAskChip from '../components/agent/SelectionAskChip';
 import AgentStatusDots from '../components/agent/AgentStatusDots';
@@ -16,11 +17,14 @@ const SWIPE_TOAST_DURATION_MS = 1500;
 const SEARCH_TOGGLE_KEY = 'adelie_agent_web_search';
 const REVIEW_META_PREFIX = 'review_meta:';
 
-function readSearchToggleFromStorage() {
+function readSearchToggleFromStorage(mode = 'home') {
   try {
-    return localStorage.getItem(SEARCH_TOGGLE_KEY) === '1';
+    const value = localStorage.getItem(SEARCH_TOGGLE_KEY);
+    if (value === '1') return true;
+    if (value === '0') return false;
+    return mode === 'stock';
   } catch {
-    return false;
+    return mode === 'stock';
   }
 }
 
@@ -140,6 +144,9 @@ export default function AgentCanvasPage() {
     isLoading,
     isStreamingActive,
     canRegenerate,
+    sessionId,
+    sessions,
+    refreshSessions,
     sendMessage,
     stopGeneration,
     regenerateLastResponse,
@@ -153,6 +160,7 @@ export default function AgentCanvasPage() {
   const [swipeToast, setSwipeToast] = useState('');
   const [showContextInfo, setShowContextInfo] = useState(false);
   const [horizontalDelta, setHorizontalDelta] = useState(0);
+  const [isSavingSession, setIsSavingSession] = useState(false);
 
   const processedPromptRef = useRef(new Set());
   const resetRef = useRef(new Set());
@@ -166,7 +174,7 @@ export default function AgentCanvasPage() {
   const mode = location.state?.mode || (location.state?.stockContext ? 'stock' : 'home');
   const initialPrompt = location.state?.initialPrompt || '';
   const requestedSessionId = location.state?.sessionId || null;
-  const useWebSearch = location.state?.useWebSearch ?? readSearchToggleFromStorage();
+  const useWebSearch = location.state?.useWebSearch ?? readSearchToggleFromStorage(mode);
 
   const chatOptions = useMemo(
     () => ({
@@ -248,6 +256,12 @@ export default function AgentCanvasPage() {
   );
 
   const selectedTurn = turns[activeTurnIndex] || null;
+  const activeSessionId = requestedSessionId || sessionId || null;
+  const activeSessionMeta = useMemo(
+    () => (Array.isArray(sessions) ? sessions.find((item) => item.id === activeSessionId) : null),
+    [activeSessionId, sessions],
+  );
+  const isPinnedSession = Boolean(activeSessionMeta?.is_pinned);
   const selectedUserPrompt = selectedTurn?.userPrompt || initialPrompt;
   const isBrowsingPrevious = turns.length > 0 && activeTurnIndex < turns.length - 1;
   const contextSummary = useMemo(() => buildContextSummary(mode, contextPayload), [contextPayload, mode]);
@@ -504,6 +518,25 @@ export default function AgentCanvasPage() {
     });
   }, [contextPayload, mode, navigate]);
 
+  const handlePinSession = useCallback(async () => {
+    if (!activeSessionId || isSavingSession) return;
+    setIsSavingSession(true);
+    try {
+      const response = await authFetch(`${API_BASE_URL}/api/v1/tutor/sessions/${activeSessionId}/pin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pinned: true }),
+      });
+      if (!response.ok) throw new Error('pin_failed');
+      await refreshSessions();
+      showSwipeToast('이 대화를 홈 카드로 저장했어요.');
+    } catch {
+      showSwipeToast('대화 저장에 실패했어요. 잠시 후 다시 시도해 주세요.');
+    } finally {
+      setIsSavingSession(false);
+    }
+  }, [activeSessionId, isSavingSession, refreshSessions, showSwipeToast]);
+
   const handleStopGeneration = useCallback(() => {
     stopGeneration();
   }, [stopGeneration]);
@@ -537,6 +570,18 @@ export default function AgentCanvasPage() {
     ? `${canvasState.aiStatus} · ${selectedTurn.model}`
     : canvasState.aiStatus;
   const guardrailNotice = selectedTurn?.guardrailNotice || '';
+  const phaseProgressByPhase = {
+    thinking: 26,
+    tool_call: 52,
+    answering: 78,
+    notice: 42,
+    stopped: 100,
+    error: 100,
+    idle: 100,
+  };
+  const homeProgress = isStreamingActive
+    ? (phaseProgressByPhase[agentStatus?.phase] || 64)
+    : Math.max(34, Math.min(100, Math.round((conversationDepth / 3) * 100)));
 
   return (
     <div className="min-h-screen bg-[var(--agent-bg-page,#F7F8FA)] pb-[calc(var(--bottom-nav-h,68px)+var(--agent-dock-h,88px)+16px)]">
@@ -578,6 +623,14 @@ export default function AgentCanvasPage() {
                 다시 생성
               </button>
             )}
+            <button
+              type="button"
+              onClick={handlePinSession}
+              disabled={!activeSessionId || isSavingSession || isPinnedSession}
+              className="h-7 rounded-full bg-[#FFF2E8] px-2.5 text-[11px] font-semibold text-[#FF6B00] transition-colors active:bg-[#FFE5D3] disabled:opacity-45"
+            >
+              {isPinnedSession ? '저장됨' : (isSavingSession ? '저장 중' : '저장')}
+            </button>
             <AgentStatusDots phase={agentStatus?.phase} compact />
             <button
               type="button"
@@ -617,13 +670,19 @@ export default function AgentCanvasPage() {
       <main className="container space-y-3 py-3">
         {/* 진행바: 홈 모드만 */}
         {mode === 'home' && (
-          <section className="flex items-center gap-1">
-            {[1, 2, 3].map((step) => (
-              <span
-                key={step}
-                className={`h-1 flex-1 rounded-full transition-colors ${step <= conversationDepth ? 'bg-[#FF6B00]' : 'bg-[#E8EBED]'}`}
+          <section className="rounded-[12px] border border-[var(--agent-border)] bg-white px-3 py-2">
+            <div className="mb-1.5 flex items-center justify-between">
+              <p className="text-[11px] font-semibold text-[#6B7684]">
+                오늘의 이슈 진행상태
+              </p>
+              <p className="text-[11px] tabular-nums text-[#8B95A1]">{homeProgress}%</p>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-[#E8EBED]">
+              <div
+                className="h-full rounded-full bg-[#FF6B00] transition-all duration-300"
+                style={{ width: `${homeProgress}%` }}
               />
-            ))}
+            </div>
           </section>
         )}
 

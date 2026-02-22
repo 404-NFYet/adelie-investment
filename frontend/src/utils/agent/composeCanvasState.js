@@ -111,6 +111,49 @@ function buildModeLabel(mode) {
   return '홈 컨텍스트';
 }
 
+function normalizeSources(sources) {
+  if (!Array.isArray(sources)) return [];
+
+  return sources
+    .filter((item) => item && typeof item === 'object')
+    .map((item) => ({
+      title: String(item.title || item.content || '출처').trim(),
+      url: String(item.url || '').trim(),
+      source_kind: String(item.source_kind || item.type || 'internal').trim(),
+      is_reachable: item.is_reachable === null || item.is_reachable === undefined
+        ? null
+        : Boolean(item.is_reachable),
+      metrics: item.metrics && typeof item.metrics === 'object' ? item.metrics : null,
+    }));
+}
+
+function collectMetricRows(sources) {
+  const labelMap = {
+    revenue: '매출액',
+    operating_income: '영업이익',
+    net_income: '당기순이익',
+    total_assets: '자산총계',
+    total_liabilities: '부채총계',
+  };
+
+  for (const source of sources) {
+    if (!source?.metrics) continue;
+    const rows = Object.entries(source.metrics)
+      .filter(([key, value]) => labelMap[key] && Number.isFinite(Number(value)))
+      .map(([key, value]) => ({
+        key,
+        label: labelMap[key],
+        value: Number(value),
+      }));
+
+    if (rows.length > 0) {
+      return rows;
+    }
+  }
+
+  return [];
+}
+
 export default function composeCanvasState({
   messages,
   mode = 'home',
@@ -128,6 +171,8 @@ export default function composeCanvasState({
   const sentences = splitSentences(assistantText);
   const hasStructuredMarkdown = hasStructuredSignal(assistantText);
   const normalizedUiActions = normalizeUiActions(assistantTurn?.uiActions);
+  const normalizedSources = normalizeSources(assistantTurn?.sources);
+  const metricRows = collectMetricRows(normalizedSources);
   const fallbackActions = buildActions(mode).map((action, index) => ({
     id: `fallback-${index}`,
     label: action,
@@ -165,5 +210,7 @@ export default function composeCanvasState({
     userPrompt,
     structured,
     rawAssistantText: assistantText,
+    sources: normalizedSources,
+    metricRows,
   };
 }

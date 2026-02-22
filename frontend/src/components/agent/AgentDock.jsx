@@ -26,29 +26,39 @@ function getVisibleSectionsByMode(mode) {
 }
 
 const SEARCH_TOGGLE_KEY = 'adelie_agent_web_search';
+const DEV_GLOW_ALPHA_DEFAULT = 0.34;
+const DEV_GLOW_BLUR_DEFAULT = 28;
+const DEV_GLOW_SPREAD_DEFAULT = 0.22;
 
-function readSearchToggle() {
+function readSearchToggle(mode) {
   try {
-    return localStorage.getItem(SEARCH_TOGGLE_KEY) === '1';
+    const value = localStorage.getItem(SEARCH_TOGGLE_KEY);
+    if (value === '1') return true;
+    if (value === '0') return false;
+    return mode === 'stock';
   } catch {
-    return false;
+    return mode === 'stock';
   }
 }
 
 export default function AgentDock() {
+  const { shouldHide, mode, placeholder, suggestedPrompt } = useAgentPromptHints();
   const [input, setInput] = useState('');
   const [inlineMessage, setInlineMessage] = useState(null);
   const [isRouting, setIsRouting] = useState(false);
-  const [searchEnabled, setSearchEnabled] = useState(readSearchToggle);
+  const [searchEnabled, setSearchEnabled] = useState(() => readSearchToggle(mode));
+  const [showGlowTuner, setShowGlowTuner] = useState(false);
+  const [glowAlpha, setGlowAlpha] = useState(DEV_GLOW_ALPHA_DEFAULT);
+  const [glowBlur, setGlowBlur] = useState(DEV_GLOW_BLUR_DEFAULT);
+  const [glowSpread, setGlowSpread] = useState(DEV_GLOW_SPREAD_DEFAULT);
   const location = useLocation();
   const navigate = useNavigate();
-  const { shouldHide, mode, placeholder, suggestedPrompt } = useAgentPromptHints();
   const { messages, agentStatus, isStreamingActive } = useTutor();
-  const { keyboardOffset, keyboardOpen, inputFocused } = useKeyboardInset();
+  const { keyboardOffset, shouldHideBottomNav } = useKeyboardInset();
 
   const hasActiveSession = Array.isArray(messages) && messages.length > 0;
   const isAgentRoute = location.pathname.startsWith('/agent');
-  const hideBottomNav = keyboardOpen || inputFocused;
+  const hideBottomNav = shouldHideBottomNav;
 
   useEffect(() => {
     try {
@@ -59,11 +69,36 @@ export default function AgentDock() {
   }, [searchEnabled]);
 
   useEffect(() => {
+    try {
+      const hasStoredValue = localStorage.getItem(SEARCH_TOGGLE_KEY);
+      if (hasStoredValue === null) {
+        setSearchEnabled(mode === 'stock');
+      }
+    } catch {
+      setSearchEnabled(mode === 'stock');
+    }
+  }, [mode]);
+
+  useEffect(() => {
     document.documentElement.style.setProperty('--keyboard-offset', `${keyboardOffset}px`);
     return () => {
       document.documentElement.style.setProperty('--keyboard-offset', '0px');
     };
   }, [keyboardOffset]);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return undefined;
+
+    document.documentElement.style.setProperty('--agent-glow-alpha', String(glowAlpha));
+    document.documentElement.style.setProperty('--agent-glow-blur', `${glowBlur}px`);
+    document.documentElement.style.setProperty('--agent-glow-spread', String(glowSpread));
+
+    return () => {
+      document.documentElement.style.removeProperty('--agent-glow-alpha');
+      document.documentElement.style.removeProperty('--agent-glow-blur');
+      document.documentElement.style.removeProperty('--agent-glow-spread');
+    };
+  }, [glowAlpha, glowBlur, glowSpread]);
 
   const baseContextPayload = useMemo(() => {
     if (mode === 'stock' && location.state?.stockContext) {
@@ -246,6 +281,26 @@ export default function AgentDock() {
       style={{ bottom: `calc(${hideBottomNav ? '0px' : 'var(--bottom-nav-h,68px)'} + var(--keyboard-offset,0px))` }}
     >
       <div className="w-full max-w-mobile space-y-1.5">
+        {import.meta.env.DEV && showGlowTuner && (
+          <div className="pointer-events-auto rounded-[14px] border border-[var(--agent-border,#E8EBED)] bg-white px-3 py-2 shadow-[var(--agent-shadow)]">
+            <p className="mb-1 text-[11px] font-semibold text-[#6B7684]">Glow Tuner</p>
+            <div className="space-y-2">
+              <label className="block text-[10px] text-[#8B95A1]">
+                Alpha {glowAlpha.toFixed(2)}
+                <input type="range" min="0.12" max="0.56" step="0.01" value={glowAlpha} onChange={(e) => setGlowAlpha(Number(e.target.value))} className="w-full" />
+              </label>
+              <label className="block text-[10px] text-[#8B95A1]">
+                Blur {glowBlur}px
+                <input type="range" min="10" max="46" step="1" value={glowBlur} onChange={(e) => setGlowBlur(Number(e.target.value))} className="w-full" />
+              </label>
+              <label className="block text-[10px] text-[#8B95A1]">
+                Spread {glowSpread.toFixed(2)}
+                <input type="range" min="0.08" max="0.45" step="0.01" value={glowSpread} onChange={(e) => setGlowSpread(Number(e.target.value))} className="w-full" />
+              </label>
+            </div>
+          </div>
+        )}
+
         {/* 인라인 메시지 (트레이 대체 — 필요할 때만 노출) */}
         {inlineMessage?.text && (
           <div className="pointer-events-auto flex items-center justify-between gap-2 rounded-[14px] border border-[var(--agent-border,#E8EBED)] bg-white px-3 py-2 shadow-[var(--agent-shadow)]">
@@ -267,7 +322,15 @@ export default function AgentDock() {
 
         {/* 볼드 입력바 */}
         <AgentControlPulse active={pulseActive}>
-          <div className="pointer-events-auto rounded-[20px] bg-white shadow-[0_8px_22px_rgba(255,107,0,0.2)] ring-1 ring-[#FF6B00]/10">
+          <div className="pointer-events-auto relative rounded-[20px] bg-white shadow-[0_10px_26px_rgba(255,107,0,0.26)] ring-1 ring-[#FF6B00]/14">
+          <div className="pointer-events-none absolute left-2 top-2 flex items-center gap-1">
+            <span className="agent-sparkle-primary">
+              ✦
+            </span>
+            <span className="agent-sparkle-secondary">
+              ✦
+            </span>
+          </div>
           {/* 상단 상태 라인 (항상 노출) */}
           <div className="flex items-center gap-2 border-b border-[#F2F4F6] px-3 py-1.5">
             <button
@@ -325,6 +388,22 @@ export default function AgentDock() {
                   <circle cx="12" cy="12" r="9" />
                 </svg>
               </button>
+
+              {import.meta.env.DEV && (
+                <button
+                  type="button"
+                  onClick={() => setShowGlowTuner((prev) => !prev)}
+                  className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition-colors ${
+                    showGlowTuner ? 'bg-[#FFF2E8] text-[#FF6B00]' : 'bg-[#F2F4F6] text-[#8B95A1]'
+                  }`}
+                  aria-label="글로우 튜너 토글"
+                  title="글로우 튜너"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="m12 3 1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8L12 3z" />
+                  </svg>
+                </button>
+              )}
             </div>
           </div>
 

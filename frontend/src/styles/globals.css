@@ -53,6 +53,9 @@
   --agent-text-title: 16px;
   --agent-text-body: 14px;
   --agent-text-caption: 12px;
+  --agent-glow-alpha: 0.28;
+  --agent-glow-blur: 24px;
+  --agent-glow-spread: 0.2;
 
   /* Glassmorphism */
   --glass-bg: rgba(255, 255, 255, 0.7);
@@ -327,10 +330,14 @@
 
 @keyframes agentControlPulse {
   0%, 100% {
-    box-shadow: 0 0 0 1px rgba(255, 118, 72, 0.14), 0 0 14px rgba(255, 118, 72, 0.18);
+    box-shadow:
+      0 0 0 1px rgba(255, 118, 72, calc(var(--agent-glow-alpha) * 0.55)),
+      0 0 var(--agent-glow-blur) rgba(255, 118, 72, calc(var(--agent-glow-alpha) * 0.8));
   }
   50% {
-    box-shadow: 0 0 0 1px rgba(255, 118, 72, 0.2), 0 0 22px rgba(255, 118, 72, 0.28);
+    box-shadow:
+      0 0 0 1px rgba(255, 118, 72, calc(var(--agent-glow-alpha) * 0.7)),
+      0 0 calc(var(--agent-glow-blur) * 1.3) rgba(255, 118, 72, calc(var(--agent-glow-alpha) + var(--agent-glow-spread)));
   }
 }
 
@@ -344,6 +351,34 @@
 
 .animate-agent-control-pulse {
   animation: agentControlPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes agentSparkleTwinkle {
+  0%, 100% {
+    transform: scale(0.8);
+    opacity: 0.45;
+    filter: drop-shadow(0 0 3px rgba(255, 107, 0, 0.35));
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+    filter: drop-shadow(0 0 8px rgba(255, 107, 0, 0.7));
+  }
+}
+
+.agent-sparkle-primary {
+  color: #ff6b00;
+  font-size: 11px;
+  line-height: 1;
+  animation: agentSparkleTwinkle 1.1s ease-in-out infinite;
+}
+
+.agent-sparkle-secondary {
+  color: #ffffff;
+  font-size: 9px;
+  line-height: 1;
+  animation: agentSparkleTwinkle 1.6s ease-in-out infinite;
+  animation-delay: 0.25s;
 }
 
 /* ── 부드러운 스크롤바 ── */

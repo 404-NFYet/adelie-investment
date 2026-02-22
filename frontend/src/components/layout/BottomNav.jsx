@@ -58,13 +58,12 @@ function isActivePath(tabPath, pathname, stateMode) {
 export default function BottomNav() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { keyboardOpen, inputFocused } = useKeyboardInset();
+  const { shouldHideBottomNav } = useKeyboardInset();
 
   if (
     HIDDEN_EXACT.includes(location.pathname) ||
     HIDDEN_PREFIXES.some((prefix) => location.pathname.startsWith(prefix)) ||
-    keyboardOpen ||
-    inputFocused
+    shouldHideBottomNav
   ) {
     return null;
   }
