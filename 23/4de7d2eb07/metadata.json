@@ -3,7 +3,7 @@
   "checkpoint_id": "234de7d2eb07",
   "strategy": "manual-commit",
   "branch": "feature/dashboard-chatbot",
-  "checkpoints_count": 10,
+  "checkpoints_count": 11,
   "files_touched": [
     ".dockerignore",
     ".env.example",
@@ -18,6 +18,7 @@
     "datapipeline/config.py",
     "datapipeline/db/writer.py",
     "datapipeline/graph.py",
+    "datapipeline/prompts/__init__.py",
     "datapipeline/requirements.txt",
     "datapipeline/run.py",
     "devassistant/Dockerfile",
@@ -98,7 +99,16 @@
     "frontend/src/pages/Profile.jsx",
     "frontend/vite.config.js",
     "infra/docker-compose.yml",
+    "infra/docker-dashboard/app.py",
+    "infra/docker-dashboard/config.py",
+    "infra/docker-dashboard/pages/chatbot.py",
     "infra/docker-dashboard/pages/feedback.py",
+    "infra/docker-dashboard/pages/team_member.py",
+    "infra/docker-dashboard/requirements.txt",
+    "infra/docker-dashboard/utils/claude_client.py",
+    "infra/docker-dashboard/utils/context_collector.py",
+    "infra/docker-dashboard/utils/database.py",
+    "infra/docker-dashboard/utils/ui_components.py",
     "infra/monitoring/alertmanager.yml",
     "infra/monitoring/docker-compose.yml",
     "infra/monitoring/prometheus.yml",
@@ -235,13 +245,20 @@
       "context": "/23/4de7d2eb07/14/context.md",
       "content_hash": "/23/4de7d2eb07/14/content_hash.txt",
       "prompt": "/23/4de7d2eb07/14/prompt.txt"
+    },
+    {
+      "metadata": "/23/4de7d2eb07/15/metadata.json",
+      "transcript": "/23/4de7d2eb07/15/full.jsonl",
+      "context": "/23/4de7d2eb07/15/context.md",
+      "content_hash": "/23/4de7d2eb07/15/content_hash.txt",
+      "prompt": "/23/4de7d2eb07/15/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 9070,
-    "cache_creation_tokens": 1714563,
-    "cache_read_tokens": 64697326,
-    "output_tokens": 310131,
-    "api_call_count": 854
+    "input_tokens": 11986,
+    "cache_creation_tokens": 2128417,
+    "cache_read_tokens": 72966500,
+    "output_tokens": 370260,
+    "api_call_count": 953
   }
 }

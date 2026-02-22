@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "234de7d2eb07",
+  "session_id": "a9e4b7ef-3b03-4331-aec8-349925cd22de",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-22T21:45:01.356520729Z",
+  "branch": "feature/dashboard-chatbot",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "datapipeline/prompts/__init__.py",
+    "infra/docker-dashboard/app.py",
+    "infra/docker-dashboard/config.py",
+    "infra/docker-dashboard/pages/chatbot.py",
+    "infra/docker-dashboard/pages/team_member.py",
+    "infra/docker-dashboard/requirements.txt",
+    "infra/docker-dashboard/utils/claude_client.py",
+    "infra/docker-dashboard/utils/context_collector.py",
+    "infra/docker-dashboard/utils/database.py",
+    "infra/docker-dashboard/utils/ui_components.py",
+    "infra/monitoring/docker-compose.yml"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 2916,
+    "cache_creation_tokens": 413854,
+    "cache_read_tokens": 8269174,
+    "output_tokens": 60129,
+    "api_call_count": 99
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-22T21:45:01.007387637Z",
+    "agent_lines": 0,
+    "human_added": 461,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 461,
+    "agent_percentage": 0
+  }
+}
