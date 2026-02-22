@@ -3,25 +3,39 @@
   "checkpoint_id": "234de7d2eb07",
   "strategy": "manual-commit",
   "branch": "develop",
-  "checkpoints_count": 5,
+  "checkpoints_count": 6,
   "files_touched": [
     ".dockerignore",
     ".env.example",
     "CLAUDE.md",
     "Makefile",
     "database/scripts/sync_dev_data.sh",
+    "datapipeline/config.py",
     "datapipeline/db/writer.py",
+    "datapipeline/graph.py",
+    "datapipeline/requirements.txt",
+    "datapipeline/run.py",
     "docker-compose.staging.yml",
     "docs/README.md",
     "docs/getting-started/database-guide.md",
+    "fastapi/Dockerfile",
+    "fastapi/app/api/routes/briefing.py",
+    "fastapi/app/api/routes/cases.py",
     "fastapi/app/api/routes/feedback.py",
     "fastapi/app/api/routes/pipeline.py",
     "fastapi/app/api/routes/tutor.py",
     "fastapi/app/core/auth.py",
     "fastapi/app/core/config.py",
     "fastapi/app/core/database.py",
+    "fastapi/app/core/exceptions.py",
     "fastapi/app/core/scheduler.py",
     "fastapi/app/main.py",
+    "fastapi/app/repositories/__init__.py",
+    "fastapi/app/repositories/base.py",
+    "fastapi/app/repositories/briefing.py",
+    "fastapi/app/repositories/glossary.py",
+    "fastapi/app/repositories/narrative.py",
+    "fastapi/app/repositories/portfolio.py",
     "fastapi/app/services/auth_service.py",
     "fastapi/app/services/market_calendar.py",
     "fastapi/app/services/stock_price_service.py",
@@ -35,6 +49,7 @@
     "frontend/src/contexts/TutorUIContext.jsx",
     "frontend/src/contexts/index.js",
     "frontend/src/pages/Profile.jsx",
+    "frontend/vite.config.js",
     "infra/docker-compose.yml",
     "infra/docker-dashboard/pages/feedback.py",
     "infra/monitoring/alertmanager.yml",
@@ -52,7 +67,9 @@
     "infra/terraform/modules/storage/variables.tf",
     "infra/terraform/outputs.tf",
     "infra/terraform/variables.tf",
-    "lxd/Makefile"
+    "lxd/Makefile",
+    "pytest.ini",
+    "tests/conftest.py"
   ],
   "sessions": [
     {
@@ -117,13 +134,20 @@
       "context": "/23/4de7d2eb07/8/context.md",
       "content_hash": "/23/4de7d2eb07/8/content_hash.txt",
       "prompt": "/23/4de7d2eb07/8/prompt.txt"
+    },
+    {
+      "metadata": "/23/4de7d2eb07/9/metadata.json",
+      "transcript": "/23/4de7d2eb07/9/full.jsonl",
+      "context": "/23/4de7d2eb07/9/context.md",
+      "content_hash": "/23/4de7d2eb07/9/content_hash.txt",
+      "prompt": "/23/4de7d2eb07/9/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 6394,
-    "cache_creation_tokens": 1094378,
-    "cache_read_tokens": 30600190,
-    "output_tokens": 150675,
-    "api_call_count": 419
+    "input_tokens": 6476,
+    "cache_creation_tokens": 1181237,
+    "cache_read_tokens": 36900263,
+    "output_tokens": 166186,
+    "api_call_count": 499
   }
 }

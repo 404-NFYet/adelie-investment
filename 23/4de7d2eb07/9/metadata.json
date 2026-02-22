@@ -1,0 +1,48 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "234de7d2eb07",
+  "session_id": "bb510430-b9bb-48c7-9e3f-1ec450df86ea",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-22T09:23:30.591351848Z",
+  "branch": "develop",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "CLAUDE.md",
+    "datapipeline/config.py",
+    "datapipeline/graph.py",
+    "datapipeline/requirements.txt",
+    "datapipeline/run.py",
+    "fastapi/Dockerfile",
+    "fastapi/app/api/routes/briefing.py",
+    "fastapi/app/api/routes/cases.py",
+    "fastapi/app/core/exceptions.py",
+    "fastapi/app/main.py",
+    "fastapi/app/repositories/__init__.py",
+    "fastapi/app/repositories/base.py",
+    "fastapi/app/repositories/briefing.py",
+    "fastapi/app/repositories/glossary.py",
+    "fastapi/app/repositories/narrative.py",
+    "fastapi/app/repositories/portfolio.py",
+    "fastapi/requirements-dev.txt",
+    "frontend/vite.config.js",
+    "pytest.ini",
+    "tests/conftest.py"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 82,
+    "cache_creation_tokens": 86859,
+    "cache_read_tokens": 6300073,
+    "output_tokens": 15511,
+    "api_call_count": 80
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-22T09:23:30.554802194Z",
+    "agent_lines": 0,
+    "human_added": 0,
+    "human_modified": 582,
+    "human_removed": 72,
+    "total_committed": 582,
+    "agent_percentage": 0
+  }
+}

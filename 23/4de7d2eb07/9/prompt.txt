@@ -1,0 +1,366 @@
+Implement the following plan:
+
+# 스킬 통합 및 프로젝트 세팅 점검 계획
+
+## Context
+
+8개 스킬(vercel-react-best-practices, webapp-testing, langgraph, docker-expert,
+fastapi-templates, postgresql-best-practices, python-testing-patterns, find-skills)을
+전역 설치 완료. 프로젝트 전체 탐색 결과 다음 상황을 확인:
+
+- 스킬이 설치되었으나 **프로젝트에 통합되지 않음** (CLAUDE.md 미반영, 어떤 작업에 어떤 스킬을 쓸지 미정의)
+- 프론트엔드 · 백엔드 · 파이프라인 각 영역에 **명확한 갭** 존재
+
+이 계획은 **스킬 통합 + 갭 해소 작업**을 우선순위별로 정리한다.
+
+---
+
+## Phase A: 스킬-프로젝트 통합 (즉시, 코드 변경 없음)
+
+### A-1. CLAUDE.md에 스킬 활용 가이드 섹션 추가
+
+**파일**: `/home/hj/2026/project/adelie-investment/CLAUDE.md`
+
+Skills 섹션 아래 또는 Code Conventions 섹션 위에 다음 블록 추가:
+
+```markdown
+## Skills 활용 가이드
+
+| 작업 영역 | 사용 스킬 | 적용 시점 |
+|---------|---------|---------|
+| React 컴포넌트 작성·리뷰 | `vercel-react-best-practices` | 번들 최적화, 렌더링 개선, 데이터 페칭 패턴 |
+| Python 테스트 작성 | `python-testing-patterns` | pytest 픽스처, async 테스트, LLM 모킹 |
+| FastAPI 라우터·서비스 | `fastapi-templates` | repository 패턴, 에러 처리, 의존성 주입 |
+| LangGraph 파이프라인 | `langgraph` | 그래프 구성, checkpointer, 병렬 분기 |
+| PostgreSQL 쿼리·스키마 | `postgresql-best-practices` | 인덱스 전략, EXPLAIN ANALYZE, JSONB 패턴 |
+| Docker·배포 | `docker-expert` | 멀티스테이지 빌드, 헬스체크, 리소스 제한 |
+| E2E 테스트 | `webapp-testing` | Playwright 선택자, 스크린샷, 서버 라이프사이클 |
+
+### 프로젝트별 스킬 우선 적용 규칙
+- `vercel-react-best-practices`: async-parallel, bundle-barrel-imports 우선
+  (SWR 미사용, 3개 차트 라이브러리 번들 분리 주의)
+- `python-testing-patterns`: asyncio 픽스처 + LLM provider mock 필수
+  (OpenAI, Perplexity, Claude 실제 호출 금지)
+- `langgraph`: checkpointer 없는 노드에 새 노드 추가 시 반드시 에러 라우터 추가
+- `fastapi-templates`: 신규 라우터 작성 시 repository 계층 분리 필수
+```
+
+---
+
+## Phase B: TIER 1 — Critical (이번 스프린트)
+
+### B-1. LangGraph 체크포인터 구현
+
+**파일**: `datapipeline/graph.py`, `datapipeline/config.py`
+
+**현황**: 18노드 파이프라인이 완전히 stateless — 중간 실패 시 처음부터 재실행
+**목표**: Redis 기반 체크포인터로 중단 지점부터 재개 가능
+
+```python
+# datapipeline/graph.py 수정
+from langgraph.checkpoint.redis import RedisSaver
+
+checkpointer = RedisSaver.from_conn_string(settings.REDIS_URL)
+graph = builder.compile(checkpointer=checkpointer)
+
+# 실행 시 thread_id로 상태 추적
+result = await graph.ainvoke(
+    initial_state,
+    config={"configurable": {"thread_id": f"pipeline-{kst_today()}-{topic_index}"}}
+)
+```
+
+**검증**: `python -m datapipeline.run --backend mock` 실행 중 강제 중단 후 재실행 시 크롤링 단계 skip 확인
+
+---
+
+### B-2. 테스트 DB 픽스처 + LLM 모킹
+
+**파일**: `tests/conftest.py`, `tests/unit/test_services.py`
+
+**현황**: DB 픽스처 없음 — 통합 테스트가 실제 DB(infra-server 10.10.10.10) 사용
+**목표**: 테스트 격리 + LLM 호출 차단
+
+```python
+# tests/conftest.py 추가
+import pytest
+from unittest.mock import AsyncMock, patch
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+
+TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
+
+@pytest.fixture(scope="session")
+async def engine():
+    engine = create_async_engine(TEST_DB_URL)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield engine
+    await engine.dispose()
+
+@pytest.fixture
+async def db_session(engine):
+    async with AsyncSession(engine) as session:
+        yield session
+        await session.rollback()
+
+@pytest.fixture
+def mock_openai():
+    with patch("openai.AsyncOpenAI") as m:
+        m.return_value.chat.completions.create = AsyncMock(
+            return_value=MagicMock(choices=[MagicMock(message=MagicMock(content="mock response"))])
+        )
+        yield m
+```
+
+**검증**: `pytest tests/unit/ -v --tb=short` 실행 — 실제 DB/LLM 연결 없이 통과
+
+---
+
+### B-3. 번들 분석기 설정
+
+**파일**: `frontend/vite.config.js`, `frontend/package.json`
+
+**현황**: 3개 차트 라이브러리(Plotly, EChart, Chart.js) 동시 로드, 번들 크기 미파악
+**목표**: 번들 시각화 → 불필요한 의존성 제거 포인트 확인
+
+```bash
+# package.json devDependencies에 추가
+npm install -D rollup-plugin-visualizer
+
+# vite.config.js에 추가
+import { visualizer } from 'rollup-plugin-visualizer'
+
+plugins: [
+  // 기존 플러그인...
+  visualizer({
+    filename: 'dist/stats.html',
+    open: false,
+    gzipSize: true
+  })
+]
+```
+
+**검증**: `npm run build` 후 `dist/stats.html` 열어 Plotly/EChart 청크 크기 확인
+- 목표: 초기 로드 청크 < 200KB gzip
+- Plotly (~800KB raw) 차트 페이지 진입 전까지 지연 로드 확인
+
+---
+
+## Phase C: TIER 2 — High (다음 스프린트)
+
+### C-1. Repository 패턴 도입
+
+**파일**: `fastapi/app/repositories/` (신규), 기존 라우터 리팩토링 대상
+
+**현황**: 라우터에서 SQLAlchemy 직접 쿼리 — 테스트/재사용 어려움
+**목표**: `app/repositories/` 계층 추가, 라우터는 repository만 호출
+
+```
+fastapi/app/repositories/
+├── __init__.py
+├── base.py            (GenericRepository[T] — get, list, create, update, delete)
+├── portfolio.py       (PortfolioRepository)
+├── narrative.py       (NarrativeRepository)
+├── briefing.py        (BriefingRepository)
+└── glossary.py        (GlossaryRepository)
+```
+
+**적용 순서**: portfolio.py (가장 복잡, 776줄) → keywords.py → glossary.py
+**검증**: 기존 E2E 테스트 (`make test-e2e`) 통과 확인
+
+---
+
+### C-2. 표준 에러 처리
+
+**파일**: `fastapi/app/core/exceptions.py` (신규), `fastapi/app/main.py`
+
+**현황**: 각 라우터가 개별적으로 HTTPException 발생 — 응답 포맷 불일치
+**목표**: 통일된 에러 응답 + 글로벌 핸들러
+
+```python
+# app/core/exceptions.py
+class AdelieException(Exception):
+    def __init__(self, status_code: int, code: str, message: str):
+        self.status_code = status_code
+        self.code = code
+        self.message = message
+
+class NotFoundError(AdelieException):
+    def __init__(self, resource: str):
+        super().__init__(404, "NOT_FOUND", f"{resource}을(를) 찾을 수 없습니다")
+
+class UnauthorizedError(AdelieException):
+    def __init__(self):
+        super().__init__(401, "UNAUTHORIZED", "인증이 필요합니다")
+
+# main.py에 핸들러 등록
+@app.exception_handler(AdelieException)
+async def adelie_exception_handler(request, exc):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"code": exc.code, "message": exc.message}
+    )
+```
+
+**검증**: `pytest tests/backend/test_api_health.py tests/backend/test_api_smoke.py -v` 통과
+
+---
+
+### C-3. 캐싱 전략 확장
+
+**파일**: `fastapi/app/api/routes/glossary.py`, `fastapi/app/api/routes/cases.py`
+
+**현황**: keywords, portfolio만 Redis 캐시 적용 (조회 빈도 높은 다른 엔드포인트 미적용)
+**목표**: 읽기 위주 엔드포인트에 TTL 캐시 적용
+
+| 엔드포인트 | 캐시 TTL | 무효화 조건 |
+|-----------|---------|-----------|
+| `GET /glossary/{term}` | 24시간 | 용어 DB 업데이트 시 |
+| `GET /cases/{id}` | 1시간 | 파이프라인 재실행 시 |
+| `GET /briefing/today` | 30분 | 새 브리핑 생성 시 |
+
+**검증**: Redis 연결 없이도 fallback 동작 확인 (기존 패턴 유지)
+
+---
+
+## Phase D: TIER 3 — Medium (백로그)
+
+### D-1. Docker 멀티스테이지 빌드
+
+**파일**: `fastapi/Dockerfile`
+
+**현황**: 단일 빌드 스테이지 — gcc, libpq-dev 등 빌드 도구가 런타임 이미지에 포함
+**목표**: builder → runtime 분리로 이미지 크기 감소
+
+```dockerfile
+# Builder stage
+FROM python:3.11-slim AS builder
+RUN apt-get update && apt-get install -y gcc libpq-dev
+COPY fastapi/requirements.txt .
+RUN pip install --user --no-cache-dir -r requirements.txt
+
+# Runtime stage
+FROM python:3.11-slim
+RUN apt-get update && apt-get install -y --no-install-recommends libpq5 curl
+COPY --from=builder /root/.local /root/.local
+# ... 소스 복사
+```
+
+**예상 효과**: 이미지 크기 ~30% 감소 (gcc 제거)
+
+---
+
+### D-2. 테스트 커버리지 리포트
+
+**파일**: `Makefile`, `pytest.ini` 또는 `pyproject.toml`
+
+**현황**: 커버리지 측정 없음
+**목표**: `make test` 실행 시 HTML 커버리지 리포트 생성 (목표: 60%+)
+
+```ini
+# pytest.ini에 추가
+[pytest]
+addopts = --cov=fastapi/app --cov=datapipeline --cov-report=html:coverage_html --cov-fail-under=60
+```
+
+---
+
+### D-3. PostgreSQL 파티셔닝 계획
+
+**파일**: `database/alembic/versions/` (새 마이그레이션)
+
+**현황**: `narrative_scenarios`, `tutor_messages`, `simulation_trades`가 무한 증가
+**목표**: 날짜 기반 RANGE 파티셔닝 로드맵 수립 (즉시 구현 아님)
+
+| 테이블 | 파티션 기준 | 보존 정책 |
+|-------|----------|---------|
+| `narrative_scenarios` | `date` (월 단위) | 6개월 |
+| `tutor_messages` | `created_at` (월 단위) | 3개월 |
+| `simulation_trades` | `traded_at` (월 단위) | 12개월 |
+
+---
+
+---
+
+## Phase E: 추가 스킬 설치 권장
+
+현재 8개 설치 스킬 외에 프로젝트 상황에 맞는 5개 추가 스킬을 권장한다.
+
+### 이미 설치되지 않은 고관련성 스킬
+
+| 스킬 | 설치 명령 | 근거 |
+|------|---------|------|
+| **playwright-cli** (Microsoft 공식) | `npx skills add microsoft/playwright-cli@playwright-cli -g -y` | E2E 테스트 20개 스펙, 모바일 9종 프로젝트 운영 중. 공식 스킬로 selector 전략, trace 분석 포함 |
+| **terraform-style-guide** (HashiCorp 공식) | `npx skills add hashicorp/agent-skills@terraform-style-guide -g -y` | `infra/terraform/` AWS IaC 구성 중 (ECS, RDS, CloudFront, ECR). 공식 스타일 가이드 |
+| **redis-development** (Redis 공식) | `npx skills add redis/agent-skills@redis-development -g -y` | 캐싱(keywords, portfolio) + Redis 세션 사용 중. 캐싱 전략 확장(Phase C-3) 시 필요 |
+| **api-security-best-practices** | `npx skills add sickn33/antigravity-awesome-skills@api-security-best-practices -g -y` | JWT 인증, 금융 데이터 처리 — OWASP Top 10, rate limiting, input validation 패턴 |
+| **github-actions-templates** | `npx skills add sickn33/antigravity-awesome-skills@github-actions-templates -g -y` | `.github/workflows/deploy-aws.yml` ECR→ECS 워크플로우 개선, CI/CD 자동화 강화 |
+
+### 스킬 선정 제외 사유
+
+| 스킬 | 제외 사유 |
+|------|---------|
+| tailwind-v4-shadcn | 현재 Tailwind v3 + 커스텀 CSS 변수 체계 이미 완성. v4 마이그레이션 계획 없음 |
+| aws-serverless | ECS 기반 컨테이너 배포 전략 — 서버리스(Lambda) 미사용 |
+| security-review | api-security-best-practices가 더 구체적 (FastAPI/REST API 특화) |
+| vercel-react-native | React Native 아님, 모바일 웹앱 (PWA) |
+
+### Phase E 설치 후 CLAUDE.md 스킬 가이드 업데이트
+
+```markdown
+| Playwright E2E 작성 | `playwright-cli` | 셀렉터 전략, 모바일 뷰포트, trace 분석 |
+| AWS Terraform 작성 | `terraform-style-guide` | 모듈 구조, 리소스 명명 규칙, state 관리 |
+| Redis 캐싱 패턴 | `redis-development` | TTL 전략, pipeline, pub/sub |
+| API 보안 리뷰 | `api-security-best-practices` | JWT 검증, rate limit, SQL injection |
+| GitHub Actions 개선 | `github-actions-templates` | ECR push, ECS deploy, 캐시 전략 |
+```
+
+---
+
+## 작업 순서 요약
+
+```
+[즉시] Phase E: 추가 스킬 5개 설치 (playwright-cli, terraform-style-guide, redis-development, api-security-best-practices, github-actions-templates)
+  ↓
+[즉시] Phase A: CLAUDE.md 스킬 가이드 추가 (총 13개 스킬 반영)
+  ↓
+[이번 스프린트] Phase B:
+  B-1: LangGraph 체크포인터 (datapipeline/graph.py)
+  B-2: 테스트 픽스처 (tests/conftest.py)
+  B-3: 번들 분석기 (frontend/vite.config.js)
+  ↓
+[다음 스프린트] Phase C:
+  C-1: Repository 패턴 (fastapi/app/repositories/)
+  C-2: 표준 에러 처리 (fastapi/app/core/exceptions.py)
+  C-3: 캐싱 확장 (glossary, cases, briefing 라우터)
+  ↓
+[백로그] Phase D:
+  D-1: Docker 멀티스테이지 빌드
+  D-2: 커버리지 리포트
+  D-3: PostgreSQL 파티셔닝 계획
+```
+
+## 담당자 배정 (참고)
+
+| Phase | 작업 | 담당자 |
+|-------|------|--------|
+| A | CLAUDE.md 업데이트 | 도형준 (dorae222, 인프라) |
+| B-1 | LangGraph 체크포인터 | 정지훈 (J2hoon10, AI) |
+| B-2 | 테스트 픽스처·LLM 모킹 | 안례진 (ryejinn, QA) |
+| B-3 | 번들 분석기 | 손영진 (YJ99Son, FE) |
+| C-1 | Repository 패턴 | 허진서 (jjjh02, 백엔드) |
+| C-2 | 표준 에러 처리 | 허진서 (jjjh02, 백엔드) |
+| C-3 | 캐싱 확장 | 허진서 (jjjh02, 백엔드) |
+| D-1 | Docker 멀티스테이지 | 도형준 (dorae222, 인프라) |
+
+## 검증 방법 (전체)
+
+1. **Phase A**: CLAUDE.md 변경 후 git diff 검토
+2. **Phase B-1**: `python -m datapipeline.run --backend mock` 중단 → 재실행 (크롤링 skip 확인)
+3. **Phase B-2**: `pytest tests/ -v --no-header` 실제 DB/LLM 연결 없이 통과
+4. **Phase B-3**: `cd frontend && npm run build` → `dist/stats.html` 번들 크기 확인
+5. **Phase C**: `make test-e2e` 기존 E2E 모두 통과
+6. **전체**: `make test` + `make test-e2e` green
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
