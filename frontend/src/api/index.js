@@ -11,6 +11,7 @@ export { learningApi } from './learning';
 export { quizApi } from './quiz';
 
 export { authApi } from './auth';
+export { feedbackApi } from './feedback';
 
 // Cases API
 export const casesApi = {
@@ -31,8 +32,6 @@ export const casesApi = {
 export const keywordsApi = {
   getToday: (date) =>
     fetchJson(`${API_BASE_URL}/api/v1/keywords/today${date ? `?date=${date}` : ''}`),
-  getHistory: () =>
-    fetchJson(`${API_BASE_URL}/api/v1/keywords/history`),
 };
 
 // Notification API

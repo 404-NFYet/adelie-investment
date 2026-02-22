@@ -18,6 +18,9 @@ import ResponsiveEChart from '../components/charts/ResponsiveEChart';
 import ResponsivePlotly from '../components/charts/ResponsivePlotly';
 import { convertPlotlyToECharts } from '../utils/charts/plotlyToEcharts';
 import RewardResultScreen from '../components/narrative/RewardResultScreen';
+import BriefingFeedback from '../components/domain/BriefingFeedback';
+import ReactionButtons from '../components/common/ReactionButtons';
+import { trackEvent } from '../utils/analytics';
 
 const STEP_CONFIGS = [
   {
@@ -418,6 +421,7 @@ export default function Narrative() {
   const [rewardViewState, setRewardViewState] = useState('none');
   const [rewardData, setRewardData] = useState(null);
   const [rewardError, setRewardError] = useState('');
+  const [showBriefingFeedback, setShowBriefingFeedback] = useState(false);
   const [pendingResumeState, setPendingResumeState] = useState(null);
   const [isResumeDialogOpen, setIsResumeDialogOpen] = useState(false);
   const hasRestoredResumeRef = useRef(false);
@@ -674,6 +678,7 @@ export default function Narrative() {
 
   const goToStep = (nextIndex) => {
     if (nextIndex < 0 || nextIndex >= totalSteps) return;
+    trackEvent('narrative_step', { case_id: caseId, step_key: STEP_CONFIGS[nextIndex].key, step_index: nextIndex });
     setDirection(nextIndex > currentStep ? 1 : -1);
     setCurrentStep(nextIndex);
   };
@@ -693,6 +698,7 @@ export default function Narrative() {
       const reward = await claimReward(Number(caseId));
       if (reward) {
         setRewardData(reward);
+        trackEvent('narrative_complete', { case_id: caseId });
         setRewardViewState('success');
         clearResumeState();
         upsertLearningProgress('completed', 100);
@@ -727,6 +733,11 @@ export default function Narrative() {
   const closeReward = () => {
     setRewardViewState('none');
     clearResumeState();
+    setShowBriefingFeedback(true);
+  };
+
+  const handleFeedbackDone = () => {
+    setShowBriefingFeedback(false);
     navigate('/portfolio');
   };
 
@@ -819,6 +830,10 @@ export default function Narrative() {
               </section>
             )}
 
+            <div className="mt-3 flex justify-end">
+              <ReactionButtons contentType="narrative_step" contentId={`${caseId}-${stepConfig.key}`} />
+            </div>
+
             <div className="mt-4 space-y-3">
               <NarrativeSources sources={stepData?.sources} />
               {isLastStep ? <NarrativeSources sources={data.sources} /> : null}
@@ -901,6 +916,15 @@ export default function Narrative() {
           rewardAmount={rewardData?.base_reward}
           onBack={() => setRewardViewState('none')}
           onPrimaryAction={closeReward}
+        />
+      ) : null}
+
+      {showBriefingFeedback ? (
+        <BriefingFeedback
+          briefingId={data?.briefing_id}
+          scenarioKeyword={data?.scenario_keyword || data?.title}
+          onComplete={handleFeedbackDone}
+          onSkip={handleFeedbackDone}
         />
       ) : null}
     </div>

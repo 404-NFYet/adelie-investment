@@ -1,9 +1,29 @@
 /**
  * InstallPrompt.jsx - PWA 설치 유도 배너
  * 모바일에서 "홈 화면에 추가" 유도
+ * 닫으면 30일 후 재노출 (timestamp 기반 쿨다운)
  */
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+
+const DISMISS_KEY = 'pwa-install-dismissed';
+const COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000; // 30일
+
+function isDismissedOrInstalled() {
+  try {
+    const raw = localStorage.getItem(DISMISS_KEY);
+    if (!raw) return false;
+    if (raw === 'installed') return true;
+    // timestamp 기반 쿨다운
+    const ts = Number(raw);
+    if (Number.isFinite(ts) && Date.now() - ts < COOLDOWN_MS) return true;
+    // 레거시 'dismissed' 문자열 → 쿨다운 만료로 간주
+    if (raw === 'dismissed') return false;
+    return false;
+  } catch {
+    return false;
+  }
+}
 
 export default function InstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
@@ -11,8 +31,7 @@ export default function InstallPrompt() {
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
-    // 이미 설치했거나 닫은 적 있으면 표시하지 않음
-    if (localStorage.getItem('pwa-install-dismissed')) return;
+    if (isDismissedOrInstalled()) return;
 
     const handler = (e) => {
       e.preventDefault();
@@ -29,7 +48,7 @@ export default function InstallPrompt() {
     deferredPrompt.prompt();
     const { outcome } = await deferredPrompt.userChoice;
     if (outcome === 'accepted') {
-      localStorage.setItem('pwa-install-dismissed', 'installed');
+      localStorage.setItem(DISMISS_KEY, 'installed');
     }
     setDeferredPrompt(null);
     setShow(false);
@@ -38,7 +57,8 @@ export default function InstallPrompt() {
   const handleDismiss = () => {
     setDismissed(true);
     setShow(false);
-    localStorage.setItem('pwa-install-dismissed', 'dismissed');
+    // 30일 후 재노출을 위해 타임스탬프 저장
+    localStorage.setItem(DISMISS_KEY, String(Date.now()));
   };
 
   if (!show || dismissed) return null;

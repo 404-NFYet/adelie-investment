@@ -8,6 +8,8 @@ import { usePortfolio } from '../contexts/PortfolioContext';
 import useActivityFeed from '../hooks/useActivityFeed';
 import buildActionCatalog from '../utils/agent/buildActionCatalog';
 import { formatRelativeDate } from '../utils/dateFormat';
+import ReactionButtons from '../components/common/ReactionButtons';
+import { trackEvent } from '../utils/analytics';
 import buildUiSnapshot from '../utils/agent/buildUiSnapshot';
 import { formatKRW } from '../utils/formatNumber';
 import { getKstTodayDateKey, getKstWeekDays } from '../utils/kstDate';
@@ -22,7 +24,6 @@ export default function Home() {
   const { sessions, refreshSessions } = useTutorSession();
   const { portfolio, summary } = usePortfolio();
   const { activitiesByDate, isLoading: isActivityLoading } = useActivityFeed();
-
   const [keywords, setKeywords] = useState([]);
   const [marketSummary, setMarketSummary] = useState('');
   const [isLoadingKeywords, setIsLoadingKeywords] = useState(true);
@@ -314,13 +315,19 @@ export default function Home() {
                   </button>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => openAgentFromHome('아델리와 알아보기')}
-                  className="mt-5 w-full rounded-2xl bg-primary py-3 text-sm font-semibold text-white"
-                >
-                  아델리와 알아보기
-                </button>
+                <div className="mt-4 flex items-center justify-between">
+                  <ReactionButtons contentType="keyword_card" contentId={issueCard.case_id || issueCard.title} />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      trackEvent('issue_card_click', { case_id: issueCard?.case_id, title: issueCard?.title });
+                      openAgentFromHome('아델리와 알아보기');
+                    }}
+                    className="rounded-2xl bg-primary px-5 py-2.5 text-sm font-semibold text-white"
+                  >
+                    아델리와 알아보기
+                  </button>
+                </div>
               </>
             )}
 
@@ -382,6 +389,7 @@ export default function Home() {
           </div>
         </section>
       </main>
+
     </div>
   );
 }

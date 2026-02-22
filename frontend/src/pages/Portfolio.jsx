@@ -18,6 +18,7 @@ import useCountUp from '../hooks/useCountUp';
 import buildActionCatalog from '../utils/agent/buildActionCatalog';
 import buildUiSnapshot from '../utils/agent/buildUiSnapshot';
 import { formatKRW } from '../utils/formatNumber';
+import { trackEvent } from '../utils/analytics';
 
 /* ── 보유 종목 카드 ── */
 const HoldingCard = React.memo(function HoldingCard({ holding, onClick }) {
@@ -372,7 +373,10 @@ export default function Portfolio() {
           ].map(tab => (
             <button
               key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
+              onClick={() => {
+                trackEvent('portfolio_tab', { tab: tab.key });
+                setActiveTab(tab.key);
+              }}
               className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
                 activeTab === tab.key ? 'bg-primary text-white' : 'bg-surface border border-border text-text-secondary'
               }`}
@@ -465,6 +469,7 @@ export default function Portfolio() {
         stock={tradeModal.stock}
         tradeType={tradeModal.type}
       />
+
     </div>
   );
 }

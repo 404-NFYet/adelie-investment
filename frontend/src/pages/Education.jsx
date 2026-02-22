@@ -10,6 +10,7 @@ import useActivityFeed from '../hooks/useActivityFeed';
 import buildActionCatalog from '../utils/agent/buildActionCatalog';
 import buildUiSnapshot from '../utils/agent/buildUiSnapshot';
 import { getKstDateParts, getKstTodayDateKey, shiftYearMonth } from '../utils/kstDate';
+import { trackEvent } from '../utils/analytics';
 
 const REVIEW_META_PREFIX = 'review_meta:';
 
@@ -52,7 +53,6 @@ export default function Education() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { activitiesByDate, isLoading: isActivityLoading, error: activityError } = useActivityFeed();
-
   const todayParts = useMemo(() => getKstDateParts(new Date()), []);
   const [currentMonth, setCurrentMonth] = useState({
     year: todayParts.year,
@@ -222,6 +222,7 @@ export default function Education() {
   };
 
   const handleSelectDateKey = (dateKey) => {
+    trackEvent('calendar_click', { date_key: dateKey });
     setSelectedDateKey(dateKey);
     const parsed = parseDateKey(dateKey);
     if (parsed) {
@@ -446,6 +447,7 @@ export default function Education() {
           )}
         </section>
       </main>
+
     </div>
   );
 }

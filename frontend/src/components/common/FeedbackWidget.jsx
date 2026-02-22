@@ -4,6 +4,7 @@
  */
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { feedbackApi } from '../../api';
 
 const CATEGORIES = [
   { id: 'design', label: '디자인' },
@@ -13,7 +14,7 @@ const CATEGORIES = [
   { id: 'other', label: '기타' },
 ];
 
-export default function FeedbackWidget({ externalOpen = false, onExternalClose }) {
+export default function FeedbackWidget({ externalOpen = false, onExternalClose, onSubmitSuccess }) {
   const [isOpen, setIsOpen] = useState(false);
   const [rating, setRating] = useState(0);
   const [category, setCategory] = useState('');
@@ -37,22 +38,19 @@ export default function FeedbackWidget({ externalOpen = false, onExternalClose }
     if (rating === 0) return;
     setIsSubmitting(true);
     try {
-      await fetch('/api/v1/feedback', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          page: currentPage,
-          rating,
-          category: category || null,
-          comment: comment || null,
-          device_info: {
-            userAgent: navigator.userAgent,
-            screen: `${screen.width}x${screen.height}`,
-            pwa: window.matchMedia('(display-mode: standalone)').matches,
-          },
-        }),
+      await feedbackApi.submit({
+        page: currentPage,
+        rating,
+        category: category || null,
+        comment: comment || null,
+        device_info: {
+          userAgent: navigator.userAgent,
+          screen: `${screen.width}x${screen.height}`,
+          pwa: window.matchMedia('(display-mode: standalone)').matches,
+        },
       });
       setSubmitted(true);
+      onSubmitSuccess?.();
       setTimeout(() => {
         handleClose();
         setSubmitted(false);

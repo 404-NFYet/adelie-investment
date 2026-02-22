@@ -155,11 +155,28 @@ export default function Profile() {
           </button>
         </motion.div>
 
+        {/* 서비스 평가 */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.22 }}
+          className="card cursor-pointer hover:shadow-md transition-shadow"
+          onClick={() => navigate('/feedback-survey')}
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-bold">서비스 평가하기</h2>
+              <p className="text-sm text-text-secondary mt-1">아델리에 서비스에 대한 의견을 남겨주세요</p>
+            </div>
+            <span className="text-2xl">📝</span>
+          </div>
+        </motion.div>
+
         {/* 문의사항 */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.25 }}
+          transition={{ duration: 0.3, delay: 0.27 }}
           className="card"
         >
           <ContactSection />
@@ -169,7 +186,7 @@ export default function Profile() {
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ duration: 0.3, delay: 0.3 }}
+          transition={{ duration: 0.3, delay: 0.32 }}
           className="text-center pt-4"
         >
           <p className="text-text-secondary text-xs">Narrative Investment v0.1.0</p>

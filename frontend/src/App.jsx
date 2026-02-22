@@ -2,8 +2,9 @@
  * App.jsx - Main application component
  * 코드 스플리팅 적용 (React.lazy + Suspense)
  */
-import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
+import { lazy, Suspense, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useParams, useLocation } from 'react-router-dom';
+import { trackPageView } from './utils/analytics';
 import { UserProvider, useUser } from './contexts/UserContext';
 import { PortfolioProvider } from './contexts/PortfolioContext';
 import { TutorProvider } from './contexts/TutorContext';
@@ -15,6 +16,7 @@ import BottomNav from './components/layout/BottomNav';
 import AgentDock from './components/agent/AgentDock';
 import PenguinLoading from './components/common/PenguinLoading';
 import UpdatePrompt from './components/common/UpdatePrompt';
+import UpdateNotice from './components/common/UpdateNotice';
 
 // 코드 스플리팅: 각 페이지를 동적 import
 const Auth = lazy(() => import('./pages/Auth'));
@@ -34,6 +36,7 @@ const Profile = lazy(() => import('./pages/Profile'));
 const TutorChat = lazy(() => import('./pages/TutorChat'));
 const AgentCanvasPage = lazy(() => import('./pages/AgentCanvasPage'));
 const AgentHistoryPage = lazy(() => import('./pages/AgentHistoryPage'));
+const FeedbackSurvey = lazy(() => import('./pages/FeedbackSurvey'));
 
 function CaseRedirect() {
   const { caseId } = useParams();
@@ -54,6 +57,14 @@ function PageLoader() {
       <PenguinLoading size="sm" />
     </div>
   );
+}
+
+function PageViewTracker() {
+  const location = useLocation();
+  useEffect(() => {
+    trackPageView(location.pathname);
+  }, [location.pathname]);
+  return null;
 }
 
 function AppRoutes() {
@@ -80,6 +91,7 @@ function AppRoutes() {
         <Route path="/tutor" element={<ProtectedRoute><TutorChat /></ProtectedRoute>} />
         <Route path="/agent" element={<ProtectedRoute><AgentCanvasPage /></ProtectedRoute>} />
         <Route path="/agent/history" element={<ProtectedRoute><AgentHistoryPage /></ProtectedRoute>} />
+        <Route path="/feedback-survey" element={<ProtectedRoute><FeedbackSurvey /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>
@@ -96,8 +108,10 @@ export default function App() {
             <TermProvider>
               <ErrorBoundary>
                 <ToastProvider>
+                  <PageViewTracker />
                   <div className="app-container">
                     <UpdatePrompt />
+                    <UpdateNotice />
                     <AppRoutes />
                     <TermBottomSheet />
                     <TutorModal />

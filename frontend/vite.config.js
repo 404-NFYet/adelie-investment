@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { visualizer } from 'rollup-plugin-visualizer';
 import path from 'path';
 
 // Docker dev: PROXY_TARGET=http://backend-api:8082 (docker-compose에서 설정)
@@ -10,9 +11,16 @@ const proxyTarget = process.env.PROXY_TARGET || 'http://localhost:8082';
 export default defineConfig({
   plugins: [
     react(),
+    // 번들 크기 시각화: npm run build 후 dist/stats.html 확인
+    visualizer({
+      filename: 'dist/stats.html',
+      open: false,
+      gzipSize: true,
+      brotliSize: true,
+    }),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'images/logo-icon.png'],
+      includeAssets: ['favicon.ico', 'images/icon-192.png', 'images/icon-512.png'],
       manifest: {
         name: '아델리에',
         short_name: '아델리에',
@@ -31,25 +39,41 @@ export default defineConfig({
             name: '오늘의 키워드',
             short_name: '키워드',
             url: '/',
-            icons: [{ src: '/images/logo-icon.png', sizes: '192x192', type: 'image/png' }],
+            icons: [{ src: '/images/icon-192.png', sizes: '192x192', type: 'image/png' }],
           },
         ],
         icons: [
           {
-            src: '/images/logo-icon.png',
+            src: '/images/icon-192.png',
             sizes: '192x192',
             type: 'image/png',
           },
           {
-            src: '/images/logo-icon.png',
+            src: '/images/icon-512.png',
             sizes: '512x512',
             type: 'image/png',
           },
           {
-            src: '/images/logo-icon.png',
+            src: '/images/icon-512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',
+          },
+        ],
+        screenshots: [
+          {
+            src: '/images/screenshot-home.png',
+            sizes: '430x932',
+            type: 'image/png',
+            form_factor: 'narrow',
+            label: '홈 화면',
+          },
+          {
+            src: '/images/screenshot-narrative.png',
+            sizes: '430x932',
+            type: 'image/png',
+            form_factor: 'narrow',
+            label: '내러티브',
           },
         ],
       },
