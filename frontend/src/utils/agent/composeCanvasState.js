@@ -72,10 +72,10 @@ function buildActions(mode) {
   }
 
   if (mode === 'education') {
-    return ['핵심 개념만 복습하기', '이걸 투자에 연결해줘'];
+    return ['핵심 개념만 복습하기', '이걸 쉽게 다시 설명해줘'];
   }
 
-  return ['모의투자에 반영하기', '과거 비슷한 사례 보기'];
+  return ['핵심만 다시 정리해줘', '이 내용 더 쉽게 설명해줘'];
 }
 
 function normalizeUiActions(uiActions) {
@@ -88,6 +88,7 @@ function normalizeUiActions(uiActions) {
         return {
           id: `action-${index}`,
           label: action,
+          type: 'prompt',
           prompt: action,
         };
       }
@@ -98,7 +99,9 @@ function normalizeUiActions(uiActions) {
       return {
         id: action.id || `action-${index}`,
         label,
+        type: action.type || 'prompt',
         prompt: action.prompt || label,
+        params: action.params || {},
       };
     })
     .filter(Boolean);

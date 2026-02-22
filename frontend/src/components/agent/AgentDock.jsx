@@ -184,18 +184,17 @@ export default function AgentDock() {
     tool_call: '도구 실행 중',
     answering: '답변 생성 중',
     stopped: '중단됨',
-    notice: '주의 안내',
+    notice: '답변 생성 중',
     error: '오류 발생',
     idle: '대기 중',
   };
+  const isActivelyWorking = isStreamingActive || isAgentRoute;
   const dockStatusText = isAgentRoute
     ? (phaseTextByPhase[agentStatus?.phase] || phaseTextByPhase.idle)
-    : (hasActiveSession ? '진행 중인 대화가 있어요' : '대답할 준비가 되었어요');
+    : '질문하세요';
   const shouldShowChevron = hasActiveSession && !isAgentRoute;
   const pulseActive = isRouting || isAgentControlling || isStreamingActive;
-  const statusDotClass = pulseActive || hasActiveSession || isAgentRoute
-    ? 'agent-status-dot-pulse'
-    : '';
+  const statusDotClass = pulseActive ? 'agent-status-dot-pulse' : '';
 
   const submitPrompt = async (prompt) => {
     const normalized = String(prompt || '').trim();
@@ -292,16 +291,11 @@ export default function AgentDock() {
                 onClick={hasActiveSession ? handleResumeChat : undefined}
                 className={`flex min-w-0 flex-1 items-center gap-2 text-left ${hasActiveSession ? 'active:bg-[#F7F8FA]' : ''}`}
               >
-                <span className={`h-1.5 w-1.5 rounded-full ${hasActiveSession ? 'bg-[#FF6B00]' : 'bg-[#16A34A]'} ${statusDotClass}`} />
+                <span className={`h-1.5 w-1.5 rounded-full ${isActivelyWorking ? 'bg-[#FF6B00]' : 'bg-[#16A34A]'} ${statusDotClass}`} />
                 <div className="min-w-0">
-                  <p className={`truncate text-[12px] font-medium ${hasActiveSession ? 'text-[#4E5968]' : 'text-[#166534]'}`}>
+                  <p className={`truncate text-[12px] font-medium ${isActivelyWorking ? 'text-[#4E5968]' : 'text-[#166534]'}`}>
                     {dockStatusText}
                   </p>
-                  {!hasActiveSession && !isAgentRoute && (
-                    <p className="truncate text-[11px] text-[#16A34A]/80">
-                      
-                    </p>
-                  )}
                 </div>
                 {shouldShowChevron && (
                   <svg className="ml-auto text-[#B0B8C1]" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

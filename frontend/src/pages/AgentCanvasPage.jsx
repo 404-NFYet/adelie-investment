@@ -7,6 +7,7 @@ import SelectionAskChip from '../components/agent/SelectionAskChip';
 import AgentStatusDots from '../components/agent/AgentStatusDots';
 import { DEFAULT_HOME_ICON_KEY } from '../constants/homeIconCatalog';
 import { useTutor, useUser } from '../contexts';
+import useAgentControlOrchestrator from '../hooks/useAgentControlOrchestrator';
 import useSelectionAskPrompt from '../hooks/useSelectionAskPrompt';
 import buildActionCatalog from '../utils/agent/buildActionCatalog';
 import buildUiSnapshot from '../utils/agent/buildUiSnapshot';
@@ -172,6 +173,7 @@ export default function AgentCanvasPage() {
   const selectableContentRef = useRef(null);
 
   const mode = location.state?.mode || (location.state?.stockContext ? 'stock' : 'home');
+  const stockContext = mode === 'stock' ? (location.state?.stockContext || null) : null;
   const initialPrompt = location.state?.initialPrompt || '';
   const requestedSessionId = location.state?.sessionId || null;
   const useWebSearch = location.state?.useWebSearch ?? readSearchToggleFromStorage(mode);
@@ -191,22 +193,43 @@ export default function AgentCanvasPage() {
     return getContextByMode(mode);
   }, [location.state, mode]);
 
+  const { executeAction, actionCatalog } = useAgentControlOrchestrator({
+    mode,
+    stockContext: stockContext || contextPayload,
+  });
+
   const buildContextInfoForPrompt = useCallback(
-    (focusedPrompt = '') => ({
-      type: mode === 'stock' ? 'case' : 'briefing',
-      id: null,
-      stepContent: JSON.stringify(
-        buildAgentContextEnvelope({
-          mode,
-          pathname: location.pathname,
-          contextPayload,
-          userPrompt: focusedPrompt,
-          searchEnabled: useWebSearch,
-        }),
-        null,
-        2,
-      ),
-    }),
+    (focusedPrompt = '') => {
+      let ctxType = 'briefing';
+      let ctxId = null;
+
+      if (mode === 'stock') {
+        ctxType = 'case';
+        ctxId = contextPayload?.case_id || null;
+      } else if (mode === 'home') {
+        const firstCaseId = contextPayload?.keywords?.[0]?.case_id;
+        if (firstCaseId) {
+          ctxType = 'case';
+          ctxId = firstCaseId;
+        }
+      }
+
+      return {
+        type: ctxType,
+        id: ctxId,
+        stepContent: JSON.stringify(
+          buildAgentContextEnvelope({
+            mode,
+            pathname: location.pathname,
+            contextPayload,
+            userPrompt: focusedPrompt,
+            searchEnabled: useWebSearch,
+          }),
+          null,
+          2,
+        ),
+      };
+    },
     [contextPayload, location.pathname, mode, useWebSearch],
   );
 
@@ -475,12 +498,30 @@ export default function AgentCanvasPage() {
   );
 
   const handleActionClick = useCallback(
-    (action) => {
-      const nextPrompt = typeof action === 'string' ? action : action?.prompt || action?.label || '';
+    async (action) => {
+      if (typeof action === 'string') {
+        sendCanvasMessage(action);
+        return;
+      }
+
+      if (action?.type === 'tool' && action?.id) {
+        const catalogEntry = actionCatalog.find((item) => item.id === action.id);
+        const mergedAction = { ...(catalogEntry || {}), ...action };
+        const result = await executeAction(mergedAction, { contextPayload });
+        if (result?.ok && result?.result) {
+          const summary = JSON.stringify(result.result, null, 2);
+          sendCanvasMessage(
+            `[Tool Result: ${action.label}]\n\`\`\`json\n${summary}\n\`\`\`\n위 결과를 바탕으로 설명해줘.`
+          );
+        }
+        return;
+      }
+
+      const nextPrompt = action?.prompt || action?.label || '';
       if (!nextPrompt) return;
       sendCanvasMessage(nextPrompt);
     },
-    [sendCanvasMessage],
+    [actionCatalog, contextPayload, executeAction, sendCanvasMessage],
   );
 
   const handleAskSelectedText = useCallback(
@@ -500,7 +541,7 @@ export default function AgentCanvasPage() {
     containerRef: selectableContentRef,
     enabled: true,
     onAsk: handleAskSelectedText,
-    minLength: 10,
+    minLength: 2,
     maxLength: 280,
   });
 

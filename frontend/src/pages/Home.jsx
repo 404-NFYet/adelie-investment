@@ -377,7 +377,7 @@ export default function Home() {
                     <button
                       type="button"
                       onClick={() => moveIssue(-1)}
-                      className="absolute left-1 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-[#E5E7EB] bg-white text-[#4E5968] shadow-sm"
+                      className="absolute left-1 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full text-[#4E5968]/40 active:text-[#4E5968]/70"
                       aria-label="이전 이슈 보기"
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -390,7 +390,7 @@ export default function Home() {
                     <button
                       type="button"
                       onClick={() => moveIssue(1)}
-                      className="absolute right-1 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-[#E5E7EB] bg-white text-[#4E5968] shadow-sm"
+                      className="absolute right-1 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full text-[#4E5968]/40 active:text-[#4E5968]/70"
                       aria-label="다음 이슈 보기"
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

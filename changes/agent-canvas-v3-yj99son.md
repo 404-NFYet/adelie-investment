@@ -849,3 +849,152 @@
 - 아직 남은 리스크:
   - 네트워크 지연/대형 응답에서 SSE 체감 편차 가능.
   - 공매도/레버리지는 백엔드 대비 프론트 노출 불균형.
+
+## 18. Agent Canvas v3.1 — 캔버스 품질 개선 + 에이전트 툴 시스템
+
+### 18-1. 개요
+- 목표: "분석만 하는 캔버스"에서 "공부→투자를 연결하는 에이전트"로 전환
+- 핵심: 마크다운 렌더링 개선, 응답 잘림 해결, 에이전트가 투자 액션을 직접 실행할 수 있는 툴 시스템 구축, 난이도 맞춤 응답
+
+### 18-2. 적용 완료
+
+#### (A) Dock 입력바 레이아웃 재설계
+- 파일: `frontend/src/components/agent/AgentDock.jsx`
+- 변경:
+  - 입력바를 `[✦ 스파클] [input] [↑ 전송]` 좌우 대칭 구조로 변경
+  - 왼쪽 스파클 버튼: 3개의 사각별(큰/중/소) SVG, 클릭 시 추천 질문 전송
+  - 오른쪽 전송 버튼: 위 화살표 SVG, form submit
+  - 기존 외부 플로팅 스파클 뱃지(`absolute -left-2`) 제거
+  - 기존 2열(스파클 + 화살표) → 대칭 1열로 통합
+
+#### (B) 캔버스 마크다운 통합 (카드 제거)
+- 파일: `frontend/src/components/agent/AgentCanvasSections.jsx`
+- 변경:
+  - 요약 카드, 핵심 수치 카드, 근거 출처 카드, `SourceKindBadge`, `formatMetricValue` 등 모두 제거
+  - 마크다운 본문 하나 + ActionButtons만 남김
+  - `react-markdown`의 `components` prop에 커스텀 `code` 렌더러 추가
+  - ` ```chart ` 또는 ` ```plotly ` 코드펜스에 JSON이 오면 `ResponsivePlotly`로 Plotly 차트 렌더링
+  - `ResponsivePlotly`는 `React.lazy`로 코드 스플릿
+
+#### (C) 홈 "오늘의 이슈" 좌우 버튼 경량화
+- 파일: `frontend/src/pages/Home.jsx`
+- 변경:
+  - `bg-white`, `border border-[#E5E7EB]`, `shadow-sm` 제거
+  - `text-[#4E5968]/40`(반투명) + `active:text-[#4E5968]/70` 으로 변경
+  - 좌우 버튼 모두 동일 적용
+
+#### (D) API 응답 잘림(토큰 제한) 해결
+- 파일: `fastapi/app/api/routes/tutor.py`
+- 변경:
+  - Responses API `max_output_tokens`: 1000 → **4096** (764번 라인)
+  - Chat Completions `max_tokens`: 1000 → **4096** (845번 라인)
+  - 시각화 프롬프트 컨텍스트: `full_response[:500]` → `full_response[:2000]` (909번 라인)
+
+### 18-3. 플랜 확정 (구현 예정)
+
+#### (E) 마크다운 렌더링 + ASCII 시각화 방지
+- 파일: `fastapi/app/api/routes/tutor.py` (573-581번 라인)
+- `canvas_markdown` 응답 규칙 강화:
+  - `## 소제목`, `**볼드**`, 불릿/번호 목록 적극 활용 지시
+  - ASCII art/text chart 절대 금지 (시각화는 별도 파이프라인이 Plotly로 처리)
+  - 테이블(`|`) 사용 허용하되 2-3열 이내로 제한
+
+#### (F) 채팅바 상태 초록색 복원
+- 파일: `frontend/src/components/agent/AgentDock.jsx`
+- 변경:
+  - 상태 돈 색상: `isStreamingActive || isAgentRoute`일 때만 주황, 그 외 초록
+  - 펄스 애니메이션: `pulseActive`일 때만 (기존 `hasActiveSession` 조건 제거)
+  - 상태 텍스트 조정
+
+#### (G) 액션 버튼 개선
+- 파일: `frontend/src/utils/agent/composeCanvasState.js`
+- 폴백 액션 변경:
+  - home: `['핵심만 다시 정리해줘', '이 내용 더 쉽게 설명해줘']`
+  - stock: `['내 포트폴리오 영향은?', '리스크 포인트만 추려줘']` (유지)
+  - education: `['핵심 개념만 복습하기', '이걸 쉽게 다시 설명해줘']`
+- 파일: `fastapi/app/api/routes/tutor.py`
+  - `_extract_structured_from_markdown()` 단순화 (키워드 기반 suggested_actions 추출 제거)
+
+#### (H) 난이도별 프롬프트 강화
+- 파일: `fastapi/app/services/tutor_engine.py` (54-80번 라인)
+- beginner: "중학생도 이해할 수 있도록", "한 번에 핵심 1-2개만", "3-5문장 이내", "비유와 예시 필수"
+- elementary: "고등학생 수준", "핵심 포인트 3개 이내"
+- canvas_markdown 규칙에 난이도 연동: beginner일 때 "## 소제목 2개 이내, 5문단 이내"
+
+#### (I) Briefing 전문 컨텍스트 주입
+- 프론트: `AgentCanvasPage.jsx` `buildContextInfoForPrompt`에서 `case_id` 전달 (현재 `null` → 실제 값)
+- 백엔드: `tutor.py` 489번 라인 `SELECT title, summary, full_content FROM historical_cases`
+  - `full_content` 앞 3000자까지 `page_context`에 포함
+
+#### (J) 텍스트 선택 질문 최소 길이 하향
+- 파일: `frontend/src/pages/AgentCanvasPage.jsx` (504번 라인)
+- `minLength: 10` → `minLength: 2` (짧은 용어 1-2단어도 선택 가능)
+
+#### (K) 에이전트 툴 호출 시스템 (공부→투자 연결)
+- 핵심 목표: 에이전트가 응답 끝에 실행 가능한 "툴 버튼"을 제안하고, 사용자 클릭 시 실제 앱 동작 실행
+
+##### K-1. 백엔드: 응답 후 액션 추천 (`tutor.py`)
+- `done` SSE 이벤트에 `actions` 배열 추가
+- mode + 응답 내용 기반으로 적합한 액션 2-3개 규칙 기반 선별
+- 액션 형식: `{ "id": "buy_stock", "label": "이 종목 매수하기", "type": "tool", "params": {...} }`
+- `type: "tool"` → 프론트 오케스트레이터 실행, `type: "prompt"` → 텍스트 재전송
+
+##### K-2. 프론트: ActionButtons 실행 분기 (`AgentCanvasSections.jsx` + `AgentCanvasPage.jsx`)
+- `ActionButtons`에 `action.type` 구분 렌더링:
+  - `type: "tool"` → 주황 배경 버튼 (실행 강조)
+  - `type: "prompt"` → 기존 흰 배경 버튼
+- `handleActionClick`에서 `type === 'tool'` 분기 → `executeAction()` 호출
+- high-risk 액션(매수/매도)은 기존 `window.confirm` 플로우 유지
+
+##### K-3. 오케스트레이터 API 호출 확장 (`useAgentControlOrchestrator.js`)
+- `buy_stock`: 시세 조회(`GET /trading/stocks/{code}`) → 사용자 확인 → 주문 실행(`POST /trading/order`) → 결과 반환
+- `sell_stock`: 동일 흐름
+- `check_portfolio`: `GET /portfolio/summary` → 인라인 결과 반환
+- `check_stock_price`: `GET /trading/stocks/{code}` → 인라인 결과 반환
+- `executeAction` 반환을 `{ ok, result }`로 확장 → 결과를 다음 대화 컨텍스트로 주입
+
+##### K-4. 액션 카탈로그 확장 (`buildActionCatalog.js`)
+- `buy_stock`/`sell_stock`: stock 모드뿐 아니라 **home 모드에서도** 종목 코드가 컨텍스트에 있으면 포함
+- `check_portfolio`: 모든 모드에서 사용 가능
+- `check_stock_price`: 종목 코드가 컨텍스트에 있으면 사용 가능
+- prompt 타입: `explain_simpler`, `show_related_case`
+
+### 18-4. 파일 매핑
+
+| 영역 | 파일 | 상태 |
+|------|------|------|
+| Dock 레이아웃 | `frontend/src/components/agent/AgentDock.jsx` | 적용 완료 |
+| 캔버스 마크다운 | `frontend/src/components/agent/AgentCanvasSections.jsx` | 적용 완료 |
+| 홈 이슈 화살표 | `frontend/src/pages/Home.jsx` | 적용 완료 |
+| 토큰 제한 | `fastapi/app/api/routes/tutor.py` | 적용 완료 |
+| 마크다운 프롬프트 | `fastapi/app/api/routes/tutor.py` | 예정 |
+| 상태 돈 로직 | `frontend/src/components/agent/AgentDock.jsx` | 예정 |
+| 폴백 액션 | `frontend/src/utils/agent/composeCanvasState.js` | 예정 |
+| 난이도 프롬프트 | `fastapi/app/services/tutor_engine.py` | 예정 |
+| 브리핑 전문 주입 | `frontend/src/pages/AgentCanvasPage.jsx`, `fastapi/app/api/routes/tutor.py` | 예정 |
+| 텍스트 선택 질문 | `frontend/src/pages/AgentCanvasPage.jsx` | 예정 |
+| 툴 시스템 백엔드 | `fastapi/app/api/routes/tutor.py` | 예정 |
+| 툴 시스템 프론트 | `AgentCanvasSections.jsx`, `AgentCanvasPage.jsx`, `useAgentControlOrchestrator.js`, `buildActionCatalog.js` | 예정 |
+
+### 18-5. 사용자 체감 변화
+- 캔버스 답변이 노션처럼 깔끔한 마크다운으로 렌더링됨 (카드 분리 없이 통합)
+- 시각화가 ASCII 텍스트 대신 Plotly 인터랙티브 차트로 표시
+- 응답이 중간에 잘리지 않고 완전한 분석 제공
+- 짧은 용어도 선택해서 바로 질문 가능
+- beginner 난이도에서 훨씬 쉽고 짧은 답변 제공
+- **이슈 분석(공부) → 종목 분석 → 매수/매도(투자)가 캔버스 안에서 끊김 없이 연결**
+- 대화 저장 후 홈 복귀 시 하단바가 초록색으로 안정 상태 표시
+
+### 18-6. 검증 체크리스트
+- [x] Dock 스파클 대칭 레이아웃 적용
+- [x] 캔버스 마크다운 통합 + Plotly 코드펜스 렌더러
+- [x] 홈 이슈 화살표 반투명 처리
+- [x] `max_tokens` 4096 적용
+- [ ] canvas_markdown 프롬프트 규칙 강화
+- [ ] 상태 돈 초록색 복원
+- [ ] 폴백 액션 실용적 변경
+- [ ] beginner/elementary 프롬프트 쉽게 조정
+- [ ] case_id 전달 + full_content 컨텍스트 주입
+- [ ] minLength 2 적용
+- [ ] 에이전트 툴 시스템 (백엔드 actions + 프론트 실행 분기 + 오케스트레이터 API 호출)
+- [ ] `npm run build` 성공
