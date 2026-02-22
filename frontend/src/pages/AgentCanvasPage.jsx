@@ -109,6 +109,7 @@ export default function AgentCanvasPage() {
 
   const [activeTurnIndex, setActiveTurnIndex] = useState(0);
   const [swipeToast, setSwipeToast] = useState('');
+  const [showContextInfo, setShowContextInfo] = useState(false);
   const [dragDistance, setDragDistance] = useState(0);
 
   const processedPromptRef = useRef(new Set());
@@ -254,6 +255,18 @@ export default function AgentCanvasPage() {
     }, SWIPE_TOAST_DURATION_MS);
   }, []);
 
+  useEffect(() => {
+    if (turns.length < 2) return;
+    try {
+      const seen = localStorage.getItem('adelie_swipe_hint_seen');
+      if (seen === '1') return;
+      showSwipeToast('위/아래로 길게 당기면 같은 세션의 이전 답변을 볼 수 있어요.');
+      localStorage.setItem('adelie_swipe_hint_seen', '1');
+    } catch {
+      // ignore storage errors
+    }
+  }, [turns.length, showSwipeToast]);
+
   const handleSwipeDelta = useCallback(
     (deltaY) => {
       if (turns.length < 2) {
@@ -348,111 +361,111 @@ export default function AgentCanvasPage() {
 
   const dragProgress = Math.min(100, Math.round((Math.abs(dragDistance) / SWIPE_THRESHOLD_PX) * 100));
   const statusSubline = selectedTurn?.model
-    ? `${canvasState.aiStatus} · model ${selectedTurn.model}`
+    ? `${canvasState.aiStatus} · ${selectedTurn.model}`
     : canvasState.aiStatus;
 
   return (
-    <div className="min-h-screen bg-[#f9fafb] pb-44">
-      <header className="sticky top-0 z-10 border-b border-[#f3f4f6] bg-white/95 backdrop-blur">
-        <div className="container py-3.5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex min-w-0 items-start gap-2.5">
+    <div className="min-h-screen bg-[#f9fafb] pb-[calc(var(--bottom-nav-h,68px)+var(--agent-dock-h,96px)+18px)]">
+      <header className="sticky top-0 z-10 border-b border-[#eceff3] bg-white/95 backdrop-blur">
+        <div className="container h-14 flex items-center justify-between gap-2">
+          <div className="min-w-0 flex items-center gap-2">
+            <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={handleBack}
-                className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[#f3f4f6] text-[#6a7282] transition-colors hover:bg-[#eceef1]"
+                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[#f3f4f6] text-[#6a7282] transition-colors hover:bg-[#eceef1]"
                 aria-label="뒤로가기"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="m15 18-6-6 6-6" />
                 </svg>
               </button>
-
-              <div className="min-w-0">
-                <h1 className="truncate text-[18px] font-extrabold tracking-[-0.02em] text-[#101828]">
-                  {canvasState.title}
-                </h1>
-                <p className="mt-1 truncate text-[11px] text-[#99a1af]">AI가 보고 있는 것 · {contextSummary}</p>
-
-                <div className="mt-2 flex flex-wrap items-center gap-2.5">
-                  <span className="rounded-lg bg-[#fff0eb] px-2 py-1 text-[10px] font-black text-[#ff7648]">
-                    {canvasState.modeLabel}
-                  </span>
-
-                  <AgentStatusDots phase={agentStatus?.phase} label={statusSubline} />
-
-                  {mode === 'home' && (
-                    <div className="flex items-center gap-1 text-[11px] text-[#6a7282]">
-                      {[1, 2, 3].map((step) => (
-                        <span
-                          key={step}
-                          className={`h-1.5 w-3.5 rounded-full ${step <= conversationDepth ? 'bg-[#ff7648]' : 'bg-[#e5e7eb]'}`}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
             </div>
 
+            <h1 className="truncate text-[16px] font-semibold text-[#111827]">
+              {canvasState.title}
+            </h1>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <AgentStatusDots phase={agentStatus?.phase} compact />
+            <button
+              type="button"
+              onClick={() => setShowContextInfo((prev) => !prev)}
+              className="rounded-lg border border-[#eceff3] bg-white px-2 py-1 text-[11px] font-medium text-[#4a5565] transition-colors hover:bg-[#f7f9fb]"
+              aria-label="컨텍스트 정보 토글"
+            >
+              정보
+            </button>
             <button
               type="button"
               onClick={openHistory}
-              className="rounded-lg border border-[#e5e7eb] bg-white px-2.5 py-1.5 text-[12px] font-semibold text-[#4a5565] transition-colors hover:bg-[#f9fafb]"
+              className="rounded-lg border border-[#eceff3] bg-white px-2 py-1 text-[11px] font-medium text-[#4a5565] transition-colors hover:bg-[#f7f9fb]"
               aria-label="대화 기록 보기"
             >
               기록
             </button>
           </div>
-
-          {selectedUserPrompt && (
-            <p className="mt-2 truncate text-[11px] text-[#99a1af]">요청: {selectedUserPrompt}</p>
-          )}
-          {isBrowsingPrevious && (
-            <p className="mt-1 text-[11px] font-semibold text-[#ff7648]">이전 답변 탐색 중</p>
-          )}
         </div>
+
+        {showContextInfo && (
+          <div className="container border-t border-[#eceff3] py-2">
+            <p className="truncate text-[12px] text-[#6b7280]">AI가 보고 있는 것 · {contextSummary}</p>
+            <p className="truncate text-[11px] text-[#9ca3af]">{statusSubline}</p>
+          </div>
+        )}
       </header>
 
-      <main className="container space-y-4 py-4">
+      <main className="container space-y-3 py-3">
+        {mode === 'home' && (
+          <section className="flex items-center gap-1.5">
+            {[1, 2, 3].map((step) => (
+              <span
+                key={step}
+                className={`h-1.5 flex-1 rounded-full ${step <= conversationDepth ? 'bg-[#ff7648]' : 'bg-[#e5e7eb]'}`}
+              />
+            ))}
+          </section>
+        )}
+
         <section
           onTouchStart={handleSwipeTouchStart}
           onTouchMove={handleSwipeTouchMove}
           onTouchEnd={handleSwipeTouchEnd}
-          className="rounded-xl border border-[#fde1d4] bg-white px-3.5 py-3"
+          className="rounded-[14px] border border-[#eceff3] bg-white px-3 py-2.5 shadow-[0_2px_10px_rgba(15,23,42,0.06)]"
           aria-label="세션 응답 스와이프 탐색"
         >
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <div className="flex h-5 w-8 items-center justify-center rounded-full bg-[#f3f4f6]">
-                <span className="h-1.5 w-4 rounded-full bg-[#cfd4dc]" />
-              </div>
-              <div className="flex items-center gap-1.5 text-[12px] font-semibold text-[#364153]">
-                <span className="text-[#ff7648]">↕</span>
-                <span>길게 당겨 같은 세션 답변 이동</span>
-              </div>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-[12px] text-[#4b5563]">
+              <span className="inline-flex h-5 w-8 items-center justify-center rounded-full bg-[#f3f4f6]">
+                <span className="h-1.5 w-4 rounded-full bg-[#d1d5db]" />
+              </span>
+              <span className="font-medium">세션 탐색</span>
             </div>
-
             <span className="rounded-md bg-[#fff0eb] px-2 py-1 text-[11px] font-bold text-[#ff7648]">
               {turns.length > 0 ? `${activeTurnIndex + 1}/${turns.length}` : '0/0'}
             </span>
           </div>
 
-          <div className="mt-2">
+          <div className="mt-1.5">
             <div className="h-1.5 rounded-full bg-[#f3f4f6]">
               <div
                 className="h-1.5 rounded-full bg-[#ff7648] transition-all"
                 style={{ width: `${dragProgress}%` }}
               />
             </div>
-            <p className="mt-1 text-[10px] text-[#6a7282]">
-              {SWIPE_THRESHOLD_PX}px 이상 위/아래로 길게 당기면 이전/다음 답변으로 이동합니다.
-            </p>
             {swipeToast && (
-              <p className="mt-1 text-[10px] font-semibold text-[#ff7648]">{swipeToast}</p>
+              <p className="mt-1 text-[10px] font-medium text-[#ff7648]">{swipeToast}</p>
             )}
           </div>
         </section>
+
+        {isBrowsingPrevious && (
+          <p className="text-[11px] font-medium text-[#ff7648]">이전 답변 탐색 중</p>
+        )}
+        {selectedUserPrompt && (
+          <p className="truncate text-[11px] text-[#9ca3af]">요청: {selectedUserPrompt}</p>
+        )}
 
         <AgentCanvasSections canvasState={canvasState} onActionClick={handleActionClick} />
 

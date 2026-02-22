@@ -22,7 +22,12 @@ from app.core.database import get_db
 from app.core.limiter import limiter
 from app.models.tutor import TutorSession, TutorMessage
 from app.models.glossary import Glossary
-from app.schemas.tutor import TutorChatRequest, TutorChatEvent
+from app.schemas.tutor import (
+    TutorChatRequest,
+    TutorChatEvent,
+    TutorRouteRequest,
+    TutorRouteResponse,
+)
 from app.services import get_redis_cache
 from app.services.tutor_engine import (
     _collect_glossary_context,
@@ -135,6 +140,154 @@ async def explain_term(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _to_float(value: object, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _normalize_route_response(
+    payload: dict,
+    *,
+    allowed_action_ids: list[str],
+    confidence_threshold: float,
+    fallback_prompt: str,
+) -> TutorRouteResponse:
+    decision = str(payload.get("decision") or "inline_reply").strip()
+    if decision not in {"inline_action", "inline_reply", "open_canvas"}:
+        decision = "inline_reply"
+
+    confidence = max(0.0, min(1.0, _to_float(payload.get("confidence"), 0.0)))
+    reason = str(payload.get("reason") or "router_default").strip()
+    action_id = str(payload.get("action_id") or "").strip() or None
+    inline_text = str(payload.get("inline_text") or "").strip() or None
+    canvas_prompt = str(payload.get("canvas_prompt") or "").strip() or None
+
+    if confidence < confidence_threshold:
+        decision = "inline_reply"
+        action_id = None
+        if not inline_text:
+            inline_text = "요청을 짧게 처리할게요. 필요하면 캔버스로 이어서 볼 수 있어요."
+        reason = reason or "low_confidence"
+
+    if decision == "inline_action":
+        if not action_id or action_id not in allowed_action_ids:
+            decision = "inline_reply"
+            action_id = None
+            inline_text = inline_text or "바로 실행 가능한 액션을 찾지 못했어요."
+            reason = reason or "invalid_action_id"
+
+    if decision == "open_canvas":
+        canvas_prompt = canvas_prompt or fallback_prompt
+
+    if decision == "inline_reply":
+        inline_text = inline_text or "요청을 반영했어요. 더 깊게 보려면 캔버스로 이어갈 수 있어요."
+
+    return TutorRouteResponse(
+        decision=decision,  # type: ignore[arg-type]
+        action_id=action_id,
+        inline_text=inline_text,
+        canvas_prompt=canvas_prompt,
+        confidence=confidence,
+        reason=reason or "ok",
+    )
+
+
+async def _route_with_llm(route_request: TutorRouteRequest) -> TutorRouteResponse:
+    settings = get_settings()
+    api_key = settings.OPENAI_API_KEY
+    if not api_key:
+        return TutorRouteResponse(
+            decision="inline_reply",
+            inline_text="현재는 인라인으로 안내할게요. 필요하면 캔버스로 이어갈 수 있어요.",
+            canvas_prompt=route_request.message,
+            confidence=0.0,
+            reason="openai_key_missing",
+        )
+
+    action_catalog = route_request.action_catalog or []
+    compact_actions = [
+        {
+            "id": str(item.get("id") or "").strip(),
+            "label": str(item.get("label") or "").strip(),
+            "risk": str(item.get("risk") or "").strip(),
+            "description": str(item.get("description") or "").strip(),
+        }
+        for item in action_catalog
+        if str(item.get("id") or "").strip()
+    ]
+    allowed_action_ids = [item["id"] for item in compact_actions]
+
+    system_prompt = (
+        "You are an action router for an investing app. "
+        "Return JSON only with keys: decision, action_id, inline_text, canvas_prompt, confidence, reason. "
+        "decision must be one of inline_action, inline_reply, open_canvas. "
+        "Use inline_action only when one action_id from action_catalog can be safely executed now. "
+        "Use open_canvas for analysis/deep explanation requests. "
+        "Use inline_reply for short direct guidance. "
+        "Never invent action_id outside action_catalog. "
+        "confidence must be 0~1."
+    )
+
+    user_payload = {
+        "message": route_request.message,
+        "mode": route_request.mode,
+        "context_text": route_request.context_text,
+        "ui_snapshot": route_request.ui_snapshot,
+        "interaction_state": route_request.interaction_state,
+        "action_catalog": compact_actions,
+    }
+
+    client = AsyncOpenAI(api_key=api_key)
+    route_model = settings.TUTOR_ROUTE_MODEL or "gpt-4o-mini"
+    response = await client.chat.completions.create(
+        model=route_model,
+        temperature=0.1,
+        max_tokens=280,
+        response_format={"type": "json_object"},
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
+        ],
+    )
+    content = response.choices[0].message.content or "{}"
+    try:
+        parsed = json.loads(content)
+    except json.JSONDecodeError:
+        parsed = {}
+
+    return _normalize_route_response(
+        parsed,
+        allowed_action_ids=allowed_action_ids,
+        confidence_threshold=settings.TUTOR_ROUTE_CONFIDENCE_THRESHOLD,
+        fallback_prompt=route_request.message,
+    )
+
+
+@router.post("/route", response_model=TutorRouteResponse)
+@limiter.limit("30/minute")
+async def tutor_route(
+    request: Request,
+    route_request: TutorRouteRequest,
+    current_user: Optional[dict] = Depends(get_current_user_optional),
+) -> TutorRouteResponse:
+    """Route user prompt to inline action/reply or canvas transition."""
+    _ = request
+    _ = current_user
+    try:
+        return await _route_with_llm(route_request)
+    except Exception as e:
+        logger.warning("tutor route fallback: %s", e)
+        return TutorRouteResponse(
+            decision="inline_reply",
+            inline_text="지금은 간단히 안내할게요. 자세한 답변은 캔버스로 이어볼 수 있어요.",
+            canvas_prompt=route_request.message,
+            confidence=0.0,
+            reason="router_error",
+        )
 
 
 async def _collect_context(
@@ -330,7 +483,8 @@ async def generate_tutor_response(
     except Exception as e:
         logger.warning("Guardrail check failed, falling open: %s", type(e).__name__)
 
-    api_key = get_settings().OPENAI_API_KEY
+    settings = get_settings()
+    api_key = settings.OPENAI_API_KEY
     if not api_key:
         yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'OpenAI API key not configured'})}\n\n"
         return
@@ -345,14 +499,32 @@ async def generate_tutor_response(
 
     try:
         client = AsyncOpenAI(api_key=api_key)
-        chat_model = "gpt-4o-mini"
+        chat_model = settings.TUTOR_CHAT_MODEL or "gpt-5-mini"
+        reasoning_effort = (settings.TUTOR_REASONING_EFFORT or "").strip().lower()
+        completion_kwargs = {
+            "model": chat_model,
+            "messages": messages,
+            "max_tokens": 1000,
+            "stream": True,
+        }
 
-        response = await client.chat.completions.create(
-            model=chat_model,
-            messages=messages,
-            max_tokens=1000,
-            stream=True,
-        )
+        if reasoning_effort:
+            try:
+                response = await client.chat.completions.create(
+                    **completion_kwargs,
+                    reasoning_effort=reasoning_effort,
+                )
+            except Exception as e:
+                logger.warning(
+                    "reasoning_effort fallback model=%s effort=%s reason=%s",
+                    chat_model,
+                    reasoning_effort,
+                    type(e).__name__,
+                )
+                response = await client.chat.completions.create(**completion_kwargs)
+                reasoning_effort = ""
+        else:
+            response = await client.chat.completions.create(**completion_kwargs)
 
         total_tokens = 0
         full_response = ""
@@ -455,6 +627,8 @@ async def generate_tutor_response(
         done_data = {'session_id': session_id, 'total_tokens': total_tokens}
         done_data['type'] = 'done'
         done_data['model'] = chat_model
+        if reasoning_effort:
+            done_data['reasoning_effort'] = reasoning_effort
         if sources:
             done_data['sources'] = sources
         yield f"event: done\ndata: {json.dumps(done_data)}\n\n"

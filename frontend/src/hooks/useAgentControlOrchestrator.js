@@ -4,10 +4,6 @@ import buildActionCatalog from '../utils/agent/buildActionCatalog';
 
 const RESET_DELAY_MS = 1400;
 
-function normalizeText(text) {
-  return String(text || '').trim().toLowerCase();
-}
-
 function isHighRisk(action) {
   return action?.risk === 'high';
 }
@@ -32,7 +28,7 @@ export default function useAgentControlOrchestrator({
   );
 
   const suggestedActions = useMemo(
-    () => actionCatalog.filter((item) => item.risk === 'low').slice(0, 4),
+    () => actionCatalog.filter((item) => item.risk === 'low').slice(0, 2),
     [actionCatalog],
   );
 
@@ -69,16 +65,6 @@ export default function useAgentControlOrchestrator({
       }
     };
   }, []);
-
-  const resolvePromptAction = useCallback((prompt) => {
-    const normalized = normalizeText(prompt);
-    if (!normalized) return null;
-
-    return actionCatalog.find((action) =>
-      Array.isArray(action.intent_keywords)
-      && action.intent_keywords.some((keyword) => normalized.includes(normalizeText(keyword)))
-    ) || null;
-  }, [actionCatalog]);
 
   const executeAction = useCallback(async (action, options = {}) => {
     if (!action?.id) return { ok: false, reason: 'invalid_action' };
@@ -170,7 +156,6 @@ export default function useAgentControlOrchestrator({
     traySummary,
     controlState,
     isAgentControlling: controlState.phase === 'running',
-    resolvePromptAction,
     executeAction,
   };
 }

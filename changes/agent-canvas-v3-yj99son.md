@@ -118,3 +118,55 @@
 - `context_text`가 커질수록 토큰/지연 증가 가능
 - `ui_action` SSE는 현재 optional 계약(프론트 fallback 우선)
 - `앱기획방향v3.md` 사용자 수정본은 변경하지 않음
+
+## 9. 3차 통합 반영 (상황기반 분기 + Toss 톤 + 모델 속도)
+### 문제 재현
+- 텍스트 입력이 룰베이스 키워드(`종목`, `투자`)에 과매칭되어 의도치 않게 투자 탭 이동
+- 액션 매칭 실패 시 `/agent`로 강제 전환되어 “항상 캔버스로 감”
+- 캔버스 상단 정보가 과밀하여 본문 가독성 저하
+
+### 의사결정
+- 프론트 텍스트 파싱 제거, `/api/v1/tutor/route` 결정만 신뢰
+- 인라인 트레이 칩은 최대 2개로 최소화
+- 캔버스 헤더는 1줄 컴팩트 구성으로 축소
+- Tutor 본응답 모델은 `gpt-5-mini`, reasoning effort는 `low` (환경변수)
+
+### API 계약 변경
+- 신규: `POST /api/v1/tutor/route`
+  - request: `message`, `mode`, `context_text`, `ui_snapshot`, `action_catalog`, `interaction_state`
+  - response: `decision`, `action_id`, `inline_text`, `canvas_prompt`, `confidence`, `reason`
+- 기존 `/api/v1/tutor/chat` done 이벤트 확장
+  - `model`, `reasoning_effort` 필드 포함
+
+### UI 스크린 단위 변경
+- Dock
+  - 입력 시 항상 `/tutor/route` 호출
+  - `inline_action` 즉시 실행, `inline_reply`는 1줄 메시지 노출, `open_canvas`만 캔버스 전환
+  - 라우터 실패 시 자동 캔버스 전환 금지 + “캔버스 열기” 보조 버튼 제공
+- Canvas
+  - 상단 1줄: 뒤로가기/타이틀/상태점/정보/기록
+  - 긴 컨텍스트 문구는 접힘 정보영역으로 이동
+  - 스와이프 안내는 핸들 + `n/m` + 토스트 중심으로 단순화
+- Style
+  - 에이전트 전용 토큰(`--agent-*`) 추가
+  - 얇은 보더/약한 그림자/작은 반경으로 톤 정리
+
+### 왜 바꿨는지
+- 사용자의 실제 의도와 다른 자동 이동을 막고, 상황 기반 전환으로 제어 신뢰도를 높이기 위해
+
+### 사용자가 체감하는 변화
+- “아무거나 눌렀는데 투자 탭으로 이동” 현상 감소
+- 입력 후 무조건 캔버스 전환이 아닌, 인라인 처리와 캔버스 전환이 자연스럽게 분리
+- 상단이 덜 가려지고 화면이 가볍고 정돈된 느낌으로 개선
+
+### 코드 위치
+- 백엔드 라우팅/모델: `fastapi/app/api/routes/tutor.py`, `fastapi/app/schemas/tutor.py`, `fastapi/app/core/config.py`
+- 프론트 분기/트레이: `frontend/src/components/agent/AgentDock.jsx`, `frontend/src/hooks/useAgentControlOrchestrator.js`, `frontend/src/utils/agent/buildActionCatalog.js`
+- 캔버스/스타일: `frontend/src/pages/AgentCanvasPage.jsx`, `frontend/src/components/agent/AgentInlineControlTray.jsx`, `frontend/src/components/agent/AgentStatusDots.jsx`, `frontend/src/components/layout/BottomNav.jsx`, `frontend/src/styles/globals.css`
+
+### 검증 결과
+- [ ] 홈에서 임의 문장 입력 시 오탐 이동이 재현되지 않는지
+- [ ] 입력 후 `inline_action|inline_reply|open_canvas` 분기 동작
+- [ ] `/tutor/route` 장애 시 인라인 fallback + 캔버스 보조 버튼 동작
+- [ ] 캔버스 상단 1줄 유지 및 본문 가림 없음
+- [ ] `npm run build` 성공

@@ -15,27 +15,46 @@ export default function AgentInlineControlTray({
   summary,
   actions = [],
   controlState,
+  inlineMessage,
+  onOpenCanvas,
   onActionClick,
 }) {
+  const hasInlineMessage = Boolean(inlineMessage?.text);
+
   return (
-    <div className="pointer-events-auto mb-2 rounded-2xl border border-[rgba(255,118,72,0.18)] bg-[rgba(255,255,255,0.94)] px-3.5 py-2.5 shadow-[0_6px_24px_rgba(255,118,72,0.12)] backdrop-blur">
+    <div className="pointer-events-auto mb-1.5 rounded-[18px] border border-[#eceff3] bg-white px-3 py-2 shadow-[0_2px_10px_rgba(15,23,42,0.06)]">
       <div className="flex items-center justify-between gap-2">
-        <p className="truncate text-[11px] font-semibold text-[#364153]">{summary}</p>
+        <p className="truncate text-[12px] font-semibold text-[#1f2937]">{summary}</p>
         {controlState?.phase === 'running' && (
-          <span className="rounded-md bg-[#fff0eb] px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.06em] text-[#ff7648]">
-            Agent control active
+          <span className="rounded-full bg-[#fff2eb] px-2 py-0.5 text-[10px] font-semibold text-[#ff7648]">
+            Active
           </span>
         )}
       </div>
 
+      {hasInlineMessage && (
+        <div className="mt-1.5 flex items-center justify-between gap-2">
+          <p className="truncate text-[11px] text-[#4b5563]">{inlineMessage.text}</p>
+          {inlineMessage.canvasPrompt && (
+            <button
+              type="button"
+              onClick={() => onOpenCanvas?.(inlineMessage.canvasPrompt)}
+              className="flex-shrink-0 rounded-full border border-[#eceff3] px-2 py-0.5 text-[10px] font-semibold text-[#364153] hover:bg-[#f7f9fb]"
+            >
+              캔버스 열기
+            </button>
+          )}
+        </div>
+      )}
+
       {actions.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-1.5">
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
           {actions.map((action) => (
             <button
               key={action.id}
               type="button"
               onClick={() => onActionClick(action)}
-              className="rounded-full border border-[#f3f4f6] bg-[#f9fafb] px-2.5 py-1 text-[11px] font-semibold text-[#4a5565] transition-colors hover:bg-[#fff0eb] hover:text-[#ff7648]"
+              className="rounded-full border border-[#eceff3] bg-[#f7f9fb] px-2 py-0.5 text-[10px] font-semibold text-[#4a5565] transition-colors hover:bg-[#eef2f6]"
             >
               {action.label}
             </button>
@@ -43,7 +62,7 @@ export default function AgentInlineControlTray({
         </div>
       )}
 
-      <p className={`mt-2 truncate text-[10px] font-semibold ${statusColor(controlState?.phase)}`}>
+      <p className={`mt-1.5 truncate text-[10px] font-medium ${statusColor(controlState?.phase)}`}>
         상태: {controlState?.text || '대기 중'}
       </p>
     </div>

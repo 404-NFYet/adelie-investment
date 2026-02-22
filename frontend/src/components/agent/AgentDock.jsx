@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { API_BASE_URL, authFetch } from '../../api/client';
 import useAgentPromptHints from '../../hooks/useAgentPromptHints';
 import useAgentControlOrchestrator from '../../hooks/useAgentControlOrchestrator';
 import buildUiSnapshot from '../../utils/agent/buildUiSnapshot';
@@ -25,6 +26,8 @@ function getVisibleSectionsByMode(mode) {
 
 export default function AgentDock() {
   const [input, setInput] = useState('');
+  const [inlineMessage, setInlineMessage] = useState(null);
+  const [isRouting, setIsRouting] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const { shouldHide, mode, placeholder, suggestedPrompt } = useAgentPromptHints();
@@ -50,7 +53,7 @@ export default function AgentDock() {
     traySummary,
     controlState,
     isAgentControlling,
-    resolvePromptAction,
+    actionCatalog: orchestratorActionCatalog,
     executeAction,
   } = useAgentControlOrchestrator({
     mode,
@@ -108,25 +111,69 @@ export default function AgentDock() {
     });
   }, [buildControlContextPayload, location.pathname, mode, navigate]);
 
+  const routePrompt = useCallback(async (prompt, payload) => {
+    const response = await authFetch(`${API_BASE_URL}/api/v1/tutor/route`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: prompt,
+        mode,
+        context_text: JSON.stringify(payload),
+        ui_snapshot: payload.ui_snapshot || null,
+        action_catalog: payload.action_catalog || [],
+        interaction_state: payload.interaction_state || null,
+      }),
+    });
+    if (!response.ok) {
+      throw new Error('route_failed');
+    }
+    return response.json();
+  }, [mode]);
+
   if (shouldHide) return null;
 
   const submitPrompt = async (prompt) => {
     const normalized = String(prompt || '').trim();
     if (!normalized) return;
 
-    const resolvedAction = resolvePromptAction(normalized);
     const controlPayload = buildControlContextPayload(normalized);
+    setIsRouting(true);
+    setInlineMessage(null);
 
-    if (resolvedAction) {
-      await executeAction(resolvedAction, {
-        contextPayload: controlPayload,
-        prompt: normalized,
+    try {
+      const decision = await routePrompt(normalized, controlPayload);
+      const nextDecision = decision?.decision;
+
+      if (nextDecision === 'inline_action') {
+        const matchedAction = orchestratorActionCatalog.find((item) => item.id === decision?.action_id);
+        if (!matchedAction) {
+          setInlineMessage({
+            text: '실행 가능한 액션을 찾지 못했어요.',
+            canvasPrompt: normalized,
+          });
+        } else {
+          await executeAction(matchedAction, {
+            contextPayload: controlPayload,
+            prompt: normalized,
+          });
+        }
+      } else if (nextDecision === 'open_canvas') {
+        submitPromptToCanvas(decision?.canvas_prompt || normalized);
+      } else {
+        setInlineMessage({
+          text: decision?.inline_text || '간단히 안내드렸어요. 더 자세히 보려면 캔버스를 열어주세요.',
+          canvasPrompt: decision?.canvas_prompt || normalized,
+        });
+      }
+    } catch {
+      setInlineMessage({
+        text: '지금은 인라인으로 안내할게요. 자세한 분석은 캔버스로 이어갈 수 있어요.',
+        canvasPrompt: normalized,
       });
-      setInput('');
-      return;
+    } finally {
+      setIsRouting(false);
     }
 
-    submitPromptToCanvas(normalized);
     setInput('');
   };
 
@@ -136,34 +183,43 @@ export default function AgentDock() {
   };
 
   const handleActionClick = async (action) => {
+    setInlineMessage(null);
     await executeAction(action, {
       contextPayload: buildControlContextPayload(''),
       prompt: suggestedPrompt,
     });
   };
 
+  const openCanvasFromInline = (prompt) => {
+    const normalized = String(prompt || '').trim();
+    if (!normalized) return;
+    submitPromptToCanvas(normalized);
+  };
+
   return (
-    <div className="pointer-events-none fixed bottom-[68px] left-0 right-0 z-30 flex justify-center px-4">
+    <div className="pointer-events-none fixed bottom-[var(--bottom-nav-h,68px)] left-0 right-0 z-30 flex justify-center px-4">
       <div className="w-full max-w-mobile">
         <AgentControlPulse active={isAgentControlling}>
           <AgentInlineControlTray
             summary={traySummary}
             actions={suggestedActions}
             controlState={controlState}
+            inlineMessage={inlineMessage}
+            onOpenCanvas={openCanvasFromInline}
             onActionClick={handleActionClick}
           />
 
           <form
             onSubmit={handleSubmit}
-            className="pointer-events-auto flex items-center gap-3 rounded-full border border-[rgba(255,118,72,0.25)] bg-[rgba(255,255,255,0.92)] px-2 py-2 shadow-[0_8px_30px_rgba(255,118,72,0.15)] backdrop-blur"
+            className="pointer-events-auto flex items-center gap-2 rounded-full border border-[#eceff3] bg-white px-2 py-1.5 shadow-[0_2px_10px_rgba(15,23,42,0.06)]"
           >
             <button
               type="button"
               onClick={() => submitPrompt(suggestedPrompt)}
-              className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#ff7648] text-white shadow-sm"
+              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[#ff7648] text-white shadow-sm"
               aria-label="추천 문구 사용"
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 3.2l1.85 4.3 4.3 1.85-4.3 1.85L12 15.5l-1.85-4.3-4.3-1.85 4.3-1.85L12 3.2z" />
                 <path d="M18.6 14.1l.95 2.2 2.2.95-2.2.95-.95 2.2-.95-2.2-2.2-.95 2.2-.95.95-2.2z" />
               </svg>
@@ -174,14 +230,15 @@ export default function AgentDock() {
               value={input}
               onChange={(event) => setInput(event.target.value)}
               placeholder={input ? placeholder : suggestedPrompt}
-              className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-[#364153] placeholder:text-[#94a3b8]/80 focus:outline-none"
+              className="min-w-0 flex-1 bg-transparent text-[14px] font-medium text-[#111827] placeholder:text-[#9ca3af]/70 focus:outline-none"
               aria-label="에이전트 질문 입력"
             />
 
             <button
               type="submit"
-              className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-[#f3f4f6] text-[#9ca3af] transition-colors hover:bg-[#eceef1]"
+              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[#f3f4f6] text-[#6b7280] transition-colors hover:bg-[#eceef1] disabled:opacity-40"
               aria-label="질문 전송"
+              disabled={isRouting}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M5 12h14" />

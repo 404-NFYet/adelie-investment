@@ -12,12 +12,12 @@ const TONE_CLASS = {
   error: 'bg-[#ef4444] agent-dot-blink',
 };
 
-export default function AgentStatusDots({ phase = 'idle', label = '' }) {
+export default function AgentStatusDots({ phase = 'idle', label = '', compact = false }) {
   const tone = getTone(phase);
   const toneClass = TONE_CLASS[tone];
 
   return (
-    <div className="flex items-center gap-2 text-xs text-[#6a7282]" aria-live="polite">
+    <div className="flex items-center gap-1.5 text-xs text-[#6a7282]" aria-live="polite">
       <div className="flex items-center gap-1">
         {[0, 1, 2].map((index) => (
           <span
@@ -27,7 +27,7 @@ export default function AgentStatusDots({ phase = 'idle', label = '' }) {
           />
         ))}
       </div>
-      <span className="truncate">{label || '대기 중'}</span>
+      {!compact && <span className="truncate">{label || '대기 중'}</span>}
     </div>
   );
 }

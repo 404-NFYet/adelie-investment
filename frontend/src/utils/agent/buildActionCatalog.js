@@ -3,30 +3,30 @@ function baseActions() {
     {
       id: 'nav_home',
       label: '홈으로 이동',
+      description: '현재 화면을 홈 탭으로 전환합니다.',
       risk: 'low',
       params_schema: {},
-      intent_keywords: ['홈', 'home', '메인'],
     },
     {
       id: 'nav_portfolio',
       label: '투자 탭으로 이동',
+      description: '현재 화면을 투자 탭으로 전환합니다.',
       risk: 'low',
       params_schema: {},
-      intent_keywords: ['투자', '포트', 'portfolio', '종목'],
     },
     {
       id: 'nav_education',
       label: '교육 탭으로 이동',
+      description: '현재 화면을 교육 탭으로 전환합니다.',
       risk: 'low',
       params_schema: {},
-      intent_keywords: ['교육', '학습', 'education', '브리핑'],
     },
     {
       id: 'open_agent_history',
       label: '대화 기록 열기',
+      description: '에이전트 대화 기록 목록 화면으로 이동합니다.',
       risk: 'low',
       params_schema: {},
-      intent_keywords: ['기록', '히스토리', 'history'],
     },
   ];
 }
@@ -43,11 +43,11 @@ export default function buildActionCatalog({
       {
         id: 'open_home_issue_agent',
         label: '오늘 이슈 분석 시작',
+        description: '홈 컨텍스트로 캔버스 분석 화면을 엽니다.',
         risk: 'low',
         params_schema: {
           prompt: 'string?',
         },
-        intent_keywords: ['이슈', '분석', '아델리와 알아보기'],
       },
     );
   }
@@ -57,32 +57,32 @@ export default function buildActionCatalog({
       {
         id: 'open_stock_agent',
         label: '종목 분석 캔버스 열기',
+        description: '선택 종목 컨텍스트로 캔버스 분석 화면을 엽니다.',
         risk: 'low',
         params_schema: {
           stock_code: 'string?',
           stock_name: 'string?',
         },
-        intent_keywords: ['종목 분석', '이 종목 물어보기', '체크포인트'],
       },
       {
         id: 'buy_stock',
         label: '매수 화면으로 이동',
+        description: '매수 흐름으로 이동합니다. 사용자 확인이 필요합니다.',
         risk: 'high',
         params_schema: {
           stock_code: 'string?',
           stock_name: 'string?',
         },
-        intent_keywords: ['매수', 'buy'],
       },
       {
         id: 'sell_stock',
         label: '매도 화면으로 이동',
+        description: '매도 흐름으로 이동합니다. 사용자 확인이 필요합니다.',
         risk: 'high',
         params_schema: {
           stock_code: 'string?',
           stock_name: 'string?',
         },
-        intent_keywords: ['매도', 'sell'],
       },
     );
   }
@@ -92,9 +92,9 @@ export default function buildActionCatalog({
       {
         id: 'open_learning_history',
         label: '학습 히스토리 보기',
+        description: '교육 아카이브 화면으로 이동합니다.',
         risk: 'low',
         params_schema: {},
-        intent_keywords: ['복습', '학습 이력', '아카이브'],
       },
     );
   }
@@ -103,11 +103,11 @@ export default function buildActionCatalog({
     actions.push({
       id: 'open_external_stock_info',
       label: '외부 종목 정보 열기',
+      description: '외부 종목 정보 페이지를 새 창으로 엽니다. 사용자 확인이 필요합니다.',
       risk: 'high',
       params_schema: {
         stock_code: 'string',
       },
-      intent_keywords: ['외부', '네이버', '공시'],
     });
   }
 
