@@ -109,9 +109,9 @@ export default function DailyQuizModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/40 px-4 pb-0 pt-10 sm:items-center sm:pb-8">
-      <section className="w-full max-w-mobile rounded-t-[30px] bg-[#f9fafb] px-4 pb-6 pt-5 shadow-2xl sm:rounded-[30px] sm:px-5 sm:pt-6 max-h-[80dvh] overflow-y-auto">
-        <div className="mb-4 flex items-center justify-between">
+    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/40 px-4 pb-0 pt-10">
+      <section className="w-full max-w-mobile rounded-t-[30px] bg-[#f9fafb] px-4 pb-6 pt-5 shadow-2xl max-h-[80dvh] overflow-y-auto">
+        <div className="sticky top-0 z-10 bg-[#f9fafb] pb-3 mb-1 flex items-center justify-between">
           <div>
             <span className="inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary">오늘의 미션</span>
             <h3 className="mt-2 text-[20px] font-extrabold text-[#101828]">퀴즈 카드 뉴스</h3>
@@ -119,7 +119,7 @@ export default function DailyQuizModal({
           <button
             type="button"
             onClick={onClose}
-            className="h-9 w-9 rounded-xl border border-[#e5e7eb] bg-white text-[#6b7280] transition hover:text-[#101828]"
+            className="h-10 w-10 rounded-xl border border-[#e5e7eb] bg-white text-[#6b7280] transition hover:text-[#101828]"
             aria-label="퀴즈 닫기"
           >
             ✕
@@ -157,7 +157,7 @@ export default function DailyQuizModal({
                 type="button"
                 onClick={() => setStep((prev) => Math.max(prev - 1, 0))}
                 disabled={step === 0 || isSubmitting}
-                className="flex h-12 w-[100px] items-center justify-center rounded-2xl bg-gray-100 text-[15px] font-bold text-gray-600 transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex h-12 min-w-[76px] items-center justify-center rounded-2xl bg-gray-100 text-[15px] font-bold text-gray-600 transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 이전
               </button>
