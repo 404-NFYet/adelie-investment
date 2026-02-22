@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from starlette.responses import StreamingResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from app.core.exceptions import AdelieException
 
 import importlib
 import logging as _logging
@@ -115,6 +116,20 @@ except ImportError:
 # --- Rate Limiter 등록 ---
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+# --- Adelie 커스텀 예외 핸들러 (NotFoundError, UnauthorizedError 등) ---
+@app.exception_handler(AdelieException)
+async def adelie_exception_handler(request: Request, exc: AdelieException):
+    """AdelieException 계층을 통일된 JSON 응답으로 변환."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "status": "error",
+            "code": exc.code,
+            "message": exc.message,
+        },
+    )
 
 
 # --- 글로벌 예외 핸들러 ---

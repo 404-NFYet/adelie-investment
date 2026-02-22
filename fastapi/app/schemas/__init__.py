@@ -27,6 +27,13 @@ from app.schemas.pipeline import (
     PipelineResult,
     PipelineTriggerResponse,
 )
+from app.schemas.feedback import (
+    FeedbackCreate,
+    BriefingFeedbackCreate,
+    ContentReactionCreate,
+    AnalyticsEventBatch,
+    FeedbackStats,
+)
 from app.schemas.common import ErrorResponse
 
 __all__ = [
@@ -47,5 +54,10 @@ __all__ = [
     "PipelineTriggerRequest",
     "PipelineResult",
     "PipelineTriggerResponse",
+    "FeedbackCreate",
+    "BriefingFeedbackCreate",
+    "ContentReactionCreate",
+    "AnalyticsEventBatch",
+    "FeedbackStats",
     "ErrorResponse",
 ]
