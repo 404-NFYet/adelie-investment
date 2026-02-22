@@ -87,7 +87,21 @@ export default function Home() {
   const activeIssueCard = issueCards[activeIssueIndex] || null;
   const conversationCards = useMemo(
     () => (Array.isArray(sessions) ? sessions.slice(0, 2) : []).map((session) => {
-      const meta = readSessionCardMeta(session.id);
+      const localMeta = readSessionCardMeta(session.id) || {};
+      const serverMeta = {
+        title: session.title || '',
+        icon_key: session.cover_icon_key || null,
+        keywords: Array.isArray(session.summary_keywords) ? session.summary_keywords : [],
+        snippet: session.summary_snippet || '',
+        is_pinned: Boolean(session.is_pinned),
+      };
+      const meta = {
+        title: serverMeta.title || localMeta.title || session.title,
+        icon_key: serverMeta.icon_key || localMeta.icon_key || DEFAULT_HOME_ICON_KEY,
+        keywords: serverMeta.keywords.length > 0 ? serverMeta.keywords : (localMeta.keywords || []),
+        snippet: serverMeta.snippet || localMeta.snippet || '',
+        is_pinned: serverMeta.is_pinned,
+      };
       return {
         ...session,
         meta,
@@ -508,6 +522,9 @@ export default function Home() {
                 <p className="line-limit-2 text-[18px] font-extrabold leading-7 tracking-[-0.01em] text-[#101828]">
                   {item.meta?.title || item.title}
                 </p>
+                {item.meta?.is_pinned && (
+                  <p className="mt-1 text-[10px] font-semibold text-[#FF6B00]">저장됨</p>
+                )}
                 {Array.isArray(item.meta?.keywords) && item.meta.keywords.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {item.meta.keywords.slice(0, 3).map((keyword) => (

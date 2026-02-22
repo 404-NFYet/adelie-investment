@@ -40,6 +40,7 @@ class Settings(BaseSettings):
 
     # API Keys (반드시 .env에서 설정 필요)
     OPENAI_API_KEY: str = ""
+    OPEN_DART_API_KEY: str = ""
     PERPLEXITY_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
     TUTOR_CHAT_MODEL: str = "gpt-5-mini"

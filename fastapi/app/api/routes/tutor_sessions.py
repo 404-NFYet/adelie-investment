@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +19,10 @@ from app.services.chart_storage import get_chart_presigned_url
 logger = logging.getLogger("narrative_api.tutor_sessions")
 
 router = APIRouter(prefix="/tutor", tags=["tutor sessions"])
+
+
+class SessionPinRequest(BaseModel):
+    pinned: bool = True
 
 
 @router.get("/sessions")
@@ -33,7 +38,12 @@ async def list_sessions(
             TutorSession.is_active == True,  # noqa: E712
             TutorSession.user_id == current_user["id"],
         )
-        .order_by(desc(TutorSession.last_message_at).nulls_last(), desc(TutorSession.started_at))
+        .order_by(
+            desc(TutorSession.is_pinned),
+            desc(TutorSession.pinned_at).nulls_last(),
+            desc(TutorSession.last_message_at).nulls_last(),
+            desc(TutorSession.started_at),
+        )
         .limit(limit)
     )
     sessions = result.scalars().all()
@@ -54,6 +64,11 @@ async def list_sessions(
         session_list.append({
             "id": str(s.session_uuid),
             "title": title,
+            "cover_icon_key": s.cover_icon_key,
+            "summary_keywords": s.summary_keywords or [],
+            "summary_snippet": s.summary_snippet,
+            "is_pinned": bool(s.is_pinned),
+            "pinned_at": s.pinned_at.isoformat() if s.pinned_at else None,
             "message_count": s.message_count,
             "last_message_at": s.last_message_at.isoformat() if s.last_message_at else None,
             "started_at": s.started_at.isoformat() if s.started_at else None,
@@ -118,6 +133,10 @@ async def get_session_messages(
     response_data = {
         "session_id": str(session.session_uuid),
         "title": session.title or "새 대화",
+        "cover_icon_key": session.cover_icon_key,
+        "summary_keywords": session.summary_keywords or [],
+        "summary_snippet": session.summary_snippet,
+        "is_pinned": bool(session.is_pinned),
         "messages": formatted_messages,
     }
 
@@ -141,6 +160,44 @@ async def create_new_session(
     await db.commit()
     await db.refresh(new_session)
     return {"session_id": str(new_session.session_uuid)}
+
+
+@router.post("/sessions/{session_id}/pin")
+async def pin_session(
+    session_id: str,
+    payload: SessionPinRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    """세션 고정/해제."""
+    try:
+        session_uuid = uuid.UUID(session_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="잘못된 세션 ID 형식입니다.")
+
+    result = await db.execute(
+        select(TutorSession).where(
+            TutorSession.session_uuid == session_uuid,
+            TutorSession.user_id == current_user["id"],
+        )
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
+
+    should_pin = bool(payload.pinned)
+    session.is_pinned = should_pin
+    session.pinned_at = datetime.utcnow() if should_pin else None
+    await db.commit()
+
+    cache = await get_redis_cache()
+    await cache.invalidate_session_cache(session_id)
+
+    return {
+        "id": str(session.session_uuid),
+        "is_pinned": bool(session.is_pinned),
+        "pinned_at": session.pinned_at.isoformat() if session.pinned_at else None,
+    }
 
 
 @router.delete("/sessions/{session_id}")

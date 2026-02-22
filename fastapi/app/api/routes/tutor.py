@@ -37,6 +37,10 @@ from app.services.tutor_engine import (
 )
 from app.services.stock_resolver import detect_stock_codes
 from app.services.guardrail import run_guardrail
+from app.services.investment_intel import (
+    annotate_reachable_links,
+    collect_stock_intelligence,
+)
 
 router = APIRouter(prefix="/tutor", tags=["AI tutor"])
 
@@ -371,6 +375,65 @@ def _extract_structured_from_markdown(markdown_text: str) -> Optional[dict[str, 
     }
 
 
+def _extract_session_cover_meta(
+    request: TutorChatRequest,
+    assistant_content: str,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    if request.context_text:
+        try:
+            parsed = json.loads(request.context_text)
+            if isinstance(parsed, dict):
+                payload = parsed
+        except json.JSONDecodeError:
+            payload = {}
+
+    context = payload.get("context") if isinstance(payload.get("context"), dict) else payload
+
+    keyword_items = []
+    if isinstance(context, dict) and isinstance(context.get("keywords"), list):
+        keyword_items = [item for item in context["keywords"] if isinstance(item, dict)]
+
+    keyword_labels = []
+    for item in keyword_items:
+        value = str(item.get("title") or item.get("keyword") or "").strip()
+        if value and value not in keyword_labels:
+            keyword_labels.append(value)
+        if len(keyword_labels) >= 5:
+            break
+
+    cover_icon_key = None
+    if keyword_items:
+        cover_icon_key = keyword_items[0].get("icon_key")
+    if not cover_icon_key and isinstance(context, dict):
+        cover_icon_key = context.get("icon_key")
+    if cover_icon_key:
+        cover_icon_key = str(cover_icon_key).strip() or None
+
+    summary_snippet = " ".join(str(assistant_content or "").split())[:220]
+
+    title_candidates = []
+    if keyword_items:
+        title_candidates.append(keyword_items[0].get("title"))
+    if isinstance(context, dict):
+        title_candidates.extend(
+            [
+                context.get("case_title"),
+                context.get("stock_name"),
+                context.get("market_summary"),
+            ]
+        )
+    title_candidates.append(request.message)
+    resolved_title = next((str(item).strip() for item in title_candidates if str(item or "").strip()), "")
+
+    return {
+        "title": resolved_title[:200] if resolved_title else None,
+        "cover_icon_key": cover_icon_key,
+        "summary_keywords": keyword_labels or None,
+        "summary_snippet": summary_snippet or None,
+    }
+
+
 @router.post("/route", response_model=TutorRouteResponse)
 @limiter.limit("30/minute")
 async def tutor_route(
@@ -460,13 +523,22 @@ async def _collect_context(
         stock_context, chart_data, stock_sources = await _collect_stock_context(
             request.message, detected_stocks, db
         )
+        stock_intel_context, stock_intel_sources, _ = await collect_stock_intelligence(
+            db,
+            request.context_text,
+            detected_stocks,
+        )
         sources = glossary_sources + db_sources + stock_sources
+        if stock_intel_sources:
+            sources += stock_intel_sources
         if glossary_context:
             extra_context += f"\n\n참고할 용어 정의:{glossary_context}"
         if db_context:
             extra_context += f"\n\n참고할 내부 데이터:{db_context}"
         if stock_context:
             extra_context += f"\n\n참고할 종목 데이터:{stock_context}"
+        if stock_intel_context:
+            extra_context += f"\n\n참고할 투자 인텔:{stock_intel_context}"
     except Exception as e:
         logger.warning("출처 수집 실패 (무시): %s", e)
 
@@ -483,6 +555,15 @@ async def _build_llm_messages(
 ) -> list:
     """LLM 메시지 배열 구성 — 시스템 프롬프트 + 이전 대화 + 현재 질문."""
     system_prompt = get_difficulty_prompt(request.difficulty)
+    context_mode = ""
+    if request.context_text:
+        try:
+            context_payload = json.loads(request.context_text)
+            if isinstance(context_payload, dict):
+                context_mode = str(context_payload.get("mode") or context_payload.get("context", {}).get("mode") or "").strip()
+        except json.JSONDecodeError:
+            context_mode = ""
+
     if page_context:
         system_prompt += page_context
     if extra_context:
@@ -497,6 +578,14 @@ async def _build_llm_messages(
             "- 핵심 포인트는 불릿 목록(3~5개)으로 정리하세요.\n"
             "- 필요한 경우 마지막에 '다음 액션' 섹션을 번호 목록으로 제시하세요.\n"
             "- 파이프(|) 같은 중간 메타 토큰이나 디버그 문자열은 출력하지 마세요.\n"
+        )
+    if context_mode == "stock":
+        system_prompt += (
+            "\n\nstock 모드 응답 규칙:\n"
+            "- 답변 시작은 한 줄 요약으로 시작하세요.\n"
+            "- 이어서 근거(내부 데이터/공시/뉴스)를 불릿으로 제시하세요.\n"
+            "- 공시나 뉴스 링크가 있다면 링크 텍스트를 명확히 적으세요.\n"
+            "- 마지막에는 리스크와 다음 액션(2~3개)을 분리해 작성하세요.\n"
         )
     if (guardrail_mode or "").strip().lower() == "soft":
         if guardrail_decision == "ADVICE":
@@ -566,6 +655,18 @@ async def _save_tutor_session(
             )
             db.add(session_obj)
             await db.flush()
+
+        cover_meta = _extract_session_cover_meta(request, assistant_content)
+        if cover_meta.get("title"):
+            session_obj.title = cover_meta["title"]
+        elif not session_obj.title:
+            session_obj.title = request.message[:50]
+        if cover_meta.get("cover_icon_key"):
+            session_obj.cover_icon_key = cover_meta["cover_icon_key"]
+        if cover_meta.get("summary_keywords"):
+            session_obj.summary_keywords = cover_meta["summary_keywords"]
+        if cover_meta.get("summary_snippet"):
+            session_obj.summary_snippet = cover_meta["summary_snippet"]
 
         db.add(TutorMessage(
             session_id=session_obj.id,
@@ -861,6 +962,21 @@ async def generate_tutor_response(
         structured = None
         if request.structured_extract and request.response_mode == "canvas_markdown":
             structured = _extract_structured_from_markdown(full_response)
+
+        if bool(search_used and use_web_search):
+            sources.append(
+                {
+                    "type": "web",
+                    "source_kind": "web",
+                    "title": "웹 검색 보강 근거",
+                    "url": "",
+                    "content": "OpenAI web_search로 최신 웹 근거를 보강했습니다.",
+                    "is_reachable": None,
+                }
+            )
+
+        if sources:
+            sources = await annotate_reachable_links(sources)
 
         done_data = {'session_id': session_id, 'total_tokens': total_tokens}
         done_data['type'] = 'done'
