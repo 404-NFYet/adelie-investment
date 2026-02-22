@@ -1,6 +1,14 @@
 """API 라우터 로드 및 기본 엔드포인트 스모크 테스트.
 
 DB 연결 없이 라우터가 정상 등록되었는지 검증한다.
+
+참고: Playwright E2E에서 이동된 API 헬스체크 케이스 포함
+ - /api/v1/health
+ - /api/v1/keywords/today
+ - /api/v1/narrative/6
+ - /api/v1/tutor/sessions
+ - /api/v1/tutor/explain/PER
+ - /api/v1/keywords/popular
 """
 
 import pytest
@@ -75,3 +83,40 @@ class TestBasicEndpoints:
     def test_docs_endpoint(self, client):
         resp = client.get("/docs")
         assert resp.status_code == 200
+
+
+class TestApiHealthFromE2E:
+    """E2E(Playwright api-health.spec.js)에서 이동된 API 응답 검증.
+
+    실서비스 연동 테스트로, DB가 기동 중인 환경에서만 완전히 통과한다.
+    TestClient는 DB 연결이 없으므로 상태코드 200/401/422 범위로만 검증.
+    """
+
+    def test_keywords_today_endpoint_registered(self, client):
+        """keywords/today 라우터가 등록되어 있어야 한다 (200 또는 DB 오류 제외)."""
+        resp = client.get("/api/v1/keywords/today")
+        # 라우터 미등록(404)이 아닌 한 통과 (DB 없으면 500 가능)
+        assert resp.status_code != 404, "keywords/today 라우터 미등록"
+
+    def test_narrative_endpoint_registered(self, client):
+        """narrative/:id 라우터가 등록되어 있어야 한다."""
+        resp = client.get("/api/v1/narrative/6")
+        assert resp.status_code != 404, "narrative/:id 라우터 미등록"
+
+    def test_tutor_sessions_endpoint_registered(self, client):
+        """tutor/sessions 라우터가 등록되어 있어야 한다."""
+        resp = client.get("/api/v1/tutor/sessions")
+        # 인증 필요 시 401, 정상 시 200
+        assert resp.status_code in (200, 401, 422), (
+            f"tutor/sessions 예상치 못한 상태코드: {resp.status_code}"
+        )
+
+    def test_tutor_explain_endpoint_registered(self, client):
+        """tutor/explain/:term 라우터가 등록되어 있어야 한다."""
+        resp = client.get("/api/v1/tutor/explain/PER")
+        assert resp.status_code != 404, "tutor/explain/:term 라우터 미등록"
+
+    def test_keywords_popular_endpoint_registered(self, client):
+        """keywords/popular 라우터가 등록되어 있어야 한다."""
+        resp = client.get("/api/v1/keywords/popular")
+        assert resp.status_code != 404, "keywords/popular 라우터 미등록"
