@@ -1,0 +1,150 @@
+name: AWS Deploy (ECR → ECS)
+
+# LXD/Docker Hub 방식에서 AWS ECS로 전환 시 활성화
+# Phase 2 완료 후 이 워크플로우 사용
+# 현재는 deploy.yml (Docker Hub + SSH) 방식 운영 중
+
+on:
+  workflow_dispatch:     # 수동 트리거만 허용 (전환 전)
+    inputs:
+      environment:
+        description: '배포 환경'
+        required: true
+        default: 'staging'
+        type: choice
+        options: [staging, prod]
+      image_tag:
+        description: 'ECR 이미지 태그 (기본: latest)'
+        required: false
+        default: 'latest'
+
+  # Phase 5 (DNS 전환 완료) 이후 주석 해제:
+  # push:
+  #   branches:
+  #     - main       # prod
+  #     - develop    # staging
+
+env:
+  AWS_REGION:     ap-northeast-2
+  ECR_REPOSITORY: adelie/backend-api
+
+concurrency:
+  group: aws-deploy-${{ github.event.inputs.environment || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-push:
+    name: Docker 빌드 → ECR 푸시
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag:  ${{ steps.tag.outputs.tag }}
+      full_image: ${{ steps.tag.outputs.full_image }}
+
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v4
+
+      - name: AWS 자격증명 설정
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: ECR 로그인
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: 이미지 태그 결정
+        id: tag
+        env:
+          ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+        run: |
+          INPUT_TAG="${{ github.event.inputs.image_tag }}"
+          SHORT_SHA=$(echo ${{ github.sha }} | head -c 8)
+          TAG="${INPUT_TAG:-${SHORT_SHA}}"
+          REGISTRY="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "full_image=${REGISTRY}/${ECR_REPOSITORY}:${TAG}" >> $GITHUB_OUTPUT
+          echo "latest_image=${REGISTRY}/${ECR_REPOSITORY}:latest" >> $GITHUB_OUTPUT
+
+      - name: Docker 이미지 빌드
+        run: |
+          docker build \
+            -f fastapi/Dockerfile \
+            -t ${{ steps.tag.outputs.full_image }} \
+            -t ${{ steps.tag.outputs.latest_image }} \
+            .
+
+      - name: ECR 이미지 푸시
+        run: |
+          docker push ${{ steps.tag.outputs.full_image }}
+          docker push ${{ steps.tag.outputs.latest_image }}
+
+  deploy-ecs:
+    name: ECS 롤링 배포
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+
+    steps:
+      - name: AWS 자격증명 설정
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: ECS 클러스터/서비스 이름 결정
+        id: ecs
+        run: |
+          ENV="${{ github.event.inputs.environment || 'staging' }}"
+          echo "cluster=adelie-${ENV}" >> $GITHUB_OUTPUT
+          echo "service=adelie-${ENV}-backend-api" >> $GITHUB_OUTPUT
+          echo "environment=${ENV}" >> $GITHUB_OUTPUT
+
+      - name: ECS 서비스 강제 재배포
+        run: |
+          aws ecs update-service \
+            --cluster ${{ steps.ecs.outputs.cluster }} \
+            --service  ${{ steps.ecs.outputs.service }} \
+            --force-new-deployment \
+            --region ${{ env.AWS_REGION }}
+
+      - name: 배포 안정화 대기 (최대 10분)
+        run: |
+          aws ecs wait services-stable \
+            --cluster  ${{ steps.ecs.outputs.cluster }} \
+            --services ${{ steps.ecs.outputs.service }} \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Discord 배포 알림
+        if: always()
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          STATUS="${{ job.status }}"
+          ENV="${{ steps.ecs.outputs.environment }}"
+          TAG="${{ needs.build-and-push.outputs.image_tag }}"
+
+          if [ "$STATUS" = "success" ]; then
+            COLOR=3066993
+            ICON=":white_check_mark:"
+          else
+            COLOR=15158332
+            ICON=":x:"
+          fi
+
+          curl -sf -H "Content-Type: application/json" \
+            -d "{
+              \"embeds\": [{
+                \"title\": \"${ICON} AWS ECS Deploy ${STATUS}\",
+                \"color\": ${COLOR},
+                \"fields\": [
+                  {\"name\": \"환경\", \"value\": \"\`${ENV}\`\", \"inline\": true},
+                  {\"name\": \"태그\", \"value\": \"\`${TAG}\`\", \"inline\": true},
+                  {\"name\": \"Run\", \"value\": \"[View](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\"}
+                ],
+                \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+              }]
+            }" \
+            "$DISCORD_WEBHOOK" || true

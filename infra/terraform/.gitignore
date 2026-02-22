@@ -1,0 +1,15 @@
+# Terraform 상태 파일 (절대 커밋 금지 - 민감 정보 포함)
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+terraform.tfvars
+*.auto.tfvars
+
+# 임시 파일
+*.tfplan
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
