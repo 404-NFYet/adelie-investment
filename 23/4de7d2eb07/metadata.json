@@ -13,12 +13,31 @@
     "Makefile",
     "README.md",
     "changes/dorae222.md",
+    "database/alembic/versions/20260223_devassistant_tables.py",
     "database/scripts/sync_dev_data.sh",
     "datapipeline/config.py",
     "datapipeline/db/writer.py",
     "datapipeline/graph.py",
     "datapipeline/requirements.txt",
     "datapipeline/run.py",
+    "devassistant/Dockerfile",
+    "devassistant/__init__.py",
+    "devassistant/agent/__init__.py",
+    "devassistant/agent/workers/__init__.py",
+    "devassistant/config.py",
+    "devassistant/db/__init__.py",
+    "devassistant/db/base.py",
+    "devassistant/db/models.py",
+    "devassistant/db/repository.py",
+    "devassistant/mcp/__init__.py",
+    "devassistant/mcp/prompts/__init__.py",
+    "devassistant/mcp/resources/__init__.py",
+    "devassistant/mcp/tools/__init__.py",
+    "devassistant/rag/__init__.py",
+    "devassistant/requirements.txt",
+    "devassistant/schemas.py",
+    "devassistant/services/__init__.py",
+    "devassistant/tests/__init__.py",
     "docker-compose.staging.yml",
     "docs/README.md",
     "docs/getting-started/database-guide.md",
@@ -209,13 +228,20 @@
       "context": "/23/4de7d2eb07/13/context.md",
       "content_hash": "/23/4de7d2eb07/13/content_hash.txt",
       "prompt": "/23/4de7d2eb07/13/prompt.txt"
+    },
+    {
+      "metadata": "/23/4de7d2eb07/14/metadata.json",
+      "transcript": "/23/4de7d2eb07/14/full.jsonl",
+      "context": "/23/4de7d2eb07/14/context.md",
+      "content_hash": "/23/4de7d2eb07/14/content_hash.txt",
+      "prompt": "/23/4de7d2eb07/14/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 9000,
-    "cache_creation_tokens": 1644301,
-    "cache_read_tokens": 60189855,
-    "output_tokens": 296706,
-    "api_call_count": 790
+    "input_tokens": 9070,
+    "cache_creation_tokens": 1714563,
+    "cache_read_tokens": 64697326,
+    "output_tokens": 310131,
+    "api_call_count": 854
   }
 }

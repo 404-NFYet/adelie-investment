@@ -1,0 +1,47 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "234de7d2eb07",
+  "session_id": "7a043fc4-0615-4667-8c86-ffb2aad9cf27",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-22T21:45:00.640491359Z",
+  "branch": "feature/dashboard-chatbot",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "database/alembic/versions/20260223_devassistant_tables.py",
+    "devassistant/Dockerfile",
+    "devassistant/__init__.py",
+    "devassistant/agent/__init__.py",
+    "devassistant/agent/workers/__init__.py",
+    "devassistant/config.py",
+    "devassistant/db/__init__.py",
+    "devassistant/db/base.py",
+    "devassistant/db/models.py",
+    "devassistant/db/repository.py",
+    "devassistant/mcp/__init__.py",
+    "devassistant/mcp/prompts/__init__.py",
+    "devassistant/mcp/resources/__init__.py",
+    "devassistant/mcp/tools/__init__.py",
+    "devassistant/rag/__init__.py",
+    "devassistant/requirements.txt",
+    "devassistant/schemas.py",
+    "devassistant/services/__init__.py",
+    "devassistant/tests/__init__.py"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 70,
+    "cache_creation_tokens": 70262,
+    "cache_read_tokens": 4507471,
+    "output_tokens": 13425,
+    "api_call_count": 64
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-22T21:45:00.604400483Z",
+    "agent_lines": 0,
+    "human_added": 0,
+    "human_modified": 461,
+    "human_removed": 619,
+    "total_committed": 461,
+    "agent_percentage": 0
+  }
+}
