@@ -190,7 +190,7 @@ export default function AgentDock() {
   };
   const dockStatusText = isAgentRoute
     ? (phaseTextByPhase[agentStatus?.phase] || phaseTextByPhase.idle)
-    : (hasActiveSession ? '진행 중인 대화가 있어요' : '질문하세요');
+    : (hasActiveSession ? '진행 중인 대화가 있어요' : '대답할 준비가 되었어요');
   const shouldShowChevron = hasActiveSession && !isAgentRoute;
   const pulseActive = isRouting || isAgentControlling || isStreamingActive;
   const statusDotClass = pulseActive || hasActiveSession || isAgentRoute
@@ -299,7 +299,7 @@ export default function AgentDock() {
                   </p>
                   {!hasActiveSession && !isAgentRoute && (
                     <p className="truncate text-[11px] text-[#16A34A]/80">
-                      한 줄로 물어보세요
+                      
                     </p>
                   )}
                 </div>
@@ -353,10 +353,12 @@ export default function AgentDock() {
                 type="button"
                 onClick={() => submitPrompt(suggestedPrompt)}
                 className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[#FF6B00] text-white shadow-sm active:scale-95"
-                aria-label="추천 문구 사용"
+                aria-label="추천 질문 사용"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 3.2l1.85 4.3 4.3 1.85-4.3 1.85L12 15.5l-1.85-4.3-4.3-1.85 4.3-1.85L12 3.2z" />
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2 2-5z" />
+                  <path d="M19 4l.7 1.6 1.6.7-1.6.7-.7 1.6-.7-1.6-1.6-.7 1.6-.7.7-1.6z" />
+                  <path d="M5.5 15l.7 1.6 1.6.7-1.6.7-.7 1.6-.7-1.6-1.6-.7 1.6-.7.7-1.6z" />
                 </svg>
               </button>
 
@@ -372,19 +374,16 @@ export default function AgentDock() {
 
               <button
                 type="submit"
-                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[#F2F4F6] text-[#6B7684] transition-colors active:bg-[#E8EBED] disabled:opacity-30"
+                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[#FF6B00] text-white shadow-sm active:scale-95"
                 aria-label="질문 전송"
                 disabled={isRouting}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M5 12h14" />
-                  <path d="m12 5 7 7-7 7" />
+                  <path d="m12 19V5" />
+                  <path d="m5 12 7-7 7 7" />
                 </svg>
               </button>
             </form>
-            <div className="pointer-events-none absolute -left-2 bottom-3 flex h-5 w-5 items-center justify-center rounded-full bg-[#FF6B00] shadow-[0_2px_10px_rgba(255,107,0,0.52)]">
-              <span className="text-[10px] leading-none text-white">✦</span>
-            </div>
           </div>
         </AgentControlPulse>
       </div>
