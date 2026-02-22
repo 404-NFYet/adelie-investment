@@ -49,7 +49,12 @@ export function useTutor() {
     messages,
     assistantTurns,
     isLoading,
+    isStreamingActive,
+    canRegenerate,
+    sessionId,
     sendMessage: sendChatMessage,
+    stopGeneration: stopGenerationRaw,
+    regenerateLastResponse: regenerateLastResponseRaw,
     clearMessages: clearChatMessages,
     loadChatHistory: loadChatHistoryRaw,
     setSessionId,
@@ -83,18 +88,44 @@ export function useTutor() {
   }, [loadChatHistoryRaw, setActiveSessionId]);
 
   const sendMessage = useCallback(async (message, difficulty = 'beginner', options = {}) => {
+    const contextInfoToUse = options?.contextInfoOverride || contextInfo;
+    const chatOptions = options?.chatOptions || options;
     await sendChatMessage(
       message,
       difficulty,
-      contextInfo,
+      contextInfoToUse,
       setAgentStatus,
       (newSessionId) => {
         setActiveSessionId(newSessionId);
       },
-      options,
+      chatOptions,
     );
     await refreshSessions();
   }, [sendChatMessage, contextInfo, setAgentStatus, setActiveSessionId, refreshSessions]);
+
+  const stopGeneration = useCallback(() => {
+    return stopGenerationRaw();
+  }, [stopGenerationRaw]);
+
+  const regenerateLastResponse = useCallback(async (options = {}) => {
+    const success = await regenerateLastResponseRaw(
+      setAgentStatus,
+      (newSessionId) => {
+        setActiveSessionId(newSessionId);
+      },
+      {
+        difficulty: options?.difficulty,
+        contextInfo: options?.contextInfoOverride || contextInfo,
+        options: options?.chatOptions,
+      },
+    );
+
+    if (success) {
+      await refreshSessions();
+    }
+
+    return success;
+  }, [regenerateLastResponseRaw, setAgentStatus, setActiveSessionId, contextInfo, refreshSessions]);
 
   const requestVisualization = useCallback((query) => {
     requestVisualizationUI(query, (msg, diff) => sendMessage(msg, diff));
@@ -128,7 +159,12 @@ export function useTutor() {
     messages,
     assistantTurns,
     isLoading,
+    isStreamingActive,
+    canRegenerate,
+    sessionId,
     sendMessage,
+    stopGeneration,
+    regenerateLastResponse,
     clearMessages,
     loadChatHistory,
   };

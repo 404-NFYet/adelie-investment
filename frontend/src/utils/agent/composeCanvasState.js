@@ -72,10 +72,10 @@ function buildActions(mode) {
   }
 
   if (mode === 'education') {
-    return ['핵심 개념만 복습하기', '이걸 투자에 연결해줘'];
+    return ['핵심 개념만 복습하기', '이걸 쉽게 다시 설명해줘'];
   }
 
-  return ['모의투자에 반영하기', '과거 비슷한 사례 보기'];
+  return ['핵심만 다시 정리해줘', '이 내용 더 쉽게 설명해줘'];
 }
 
 function normalizeUiActions(uiActions) {
@@ -88,6 +88,7 @@ function normalizeUiActions(uiActions) {
         return {
           id: `action-${index}`,
           label: action,
+          type: 'prompt',
           prompt: action,
         };
       }
@@ -98,7 +99,9 @@ function normalizeUiActions(uiActions) {
       return {
         id: action.id || `action-${index}`,
         label,
+        type: action.type || 'prompt',
         prompt: action.prompt || label,
+        params: action.params || {},
       };
     })
     .filter(Boolean);
@@ -109,6 +112,49 @@ function buildModeLabel(mode) {
   if (mode === 'education') return '학습 컨텍스트';
   if (mode === 'my') return 'MY 컨텍스트';
   return '홈 컨텍스트';
+}
+
+function normalizeSources(sources) {
+  if (!Array.isArray(sources)) return [];
+
+  return sources
+    .filter((item) => item && typeof item === 'object')
+    .map((item) => ({
+      title: String(item.title || item.content || '출처').trim(),
+      url: String(item.url || '').trim(),
+      source_kind: String(item.source_kind || item.type || 'internal').trim(),
+      is_reachable: item.is_reachable === null || item.is_reachable === undefined
+        ? null
+        : Boolean(item.is_reachable),
+      metrics: item.metrics && typeof item.metrics === 'object' ? item.metrics : null,
+    }));
+}
+
+function collectMetricRows(sources) {
+  const labelMap = {
+    revenue: '매출액',
+    operating_income: '영업이익',
+    net_income: '당기순이익',
+    total_assets: '자산총계',
+    total_liabilities: '부채총계',
+  };
+
+  for (const source of sources) {
+    if (!source?.metrics) continue;
+    const rows = Object.entries(source.metrics)
+      .filter(([key, value]) => labelMap[key] && Number.isFinite(Number(value)))
+      .map(([key, value]) => ({
+        key,
+        label: labelMap[key],
+        value: Number(value),
+      }));
+
+    if (rows.length > 0) {
+      return rows;
+    }
+  }
+
+  return [];
 }
 
 export default function composeCanvasState({
@@ -128,6 +174,8 @@ export default function composeCanvasState({
   const sentences = splitSentences(assistantText);
   const hasStructuredMarkdown = hasStructuredSignal(assistantText);
   const normalizedUiActions = normalizeUiActions(assistantTurn?.uiActions);
+  const normalizedSources = normalizeSources(assistantTurn?.sources);
+  const metricRows = collectMetricRows(normalizedSources);
   const fallbackActions = buildActions(mode).map((action, index) => ({
     id: `fallback-${index}`,
     label: action,
@@ -165,5 +213,7 @@ export default function composeCanvasState({
     userPrompt,
     structured,
     rawAssistantText: assistantText,
+    sources: normalizedSources,
+    metricRows,
   };
 }

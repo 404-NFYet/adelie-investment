@@ -14,6 +14,9 @@ class HoldingResponse(BaseModel):
     stock_name: str
     quantity: int
     avg_buy_price: float
+    position_side: str = "long"
+    leverage: float = 1.0
+    borrow_rate_bps: int = 0
     current_price: Optional[float] = None
     current_value: Optional[float] = None
     profit_loss: Optional[float] = None
@@ -70,6 +73,10 @@ class TradeRequest(BaseModel):
     stock_name: str
     trade_type: Literal["buy", "sell"]
     quantity: int = Field(gt=0)
+    order_kind: Literal["market", "limit"] = "market"
+    target_price: Optional[int] = Field(default=None, gt=0)
+    position_side: Literal["long", "short"] = "long"
+    leverage: float = Field(default=1.0, ge=1.0, le=2.0)
     trade_reason: Optional[str] = None
     case_id: Optional[int] = None
 
@@ -81,8 +88,18 @@ class TradeResponse(BaseModel):
     stock_code: str
     stock_name: str
     quantity: int
+    filled_quantity: int = 0
     price: float
+    requested_price: Optional[float] = None
+    executed_price: Optional[float] = None
+    slippage_bps: Optional[float] = None
+    fee_amount: Optional[float] = None
+    order_kind: str = "market"
+    order_status: str = "filled"
+    position_side: str = "long"
+    leverage: float = 1.0
     total_amount: float
+    remaining_quantity: int = 0
     trade_reason: Optional[str] = None
     traded_at: datetime
     remaining_cash: int

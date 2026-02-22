@@ -42,6 +42,7 @@
   /* Agent UI tokens – Toss-tone */
   --bottom-nav-h: 68px;
   --agent-dock-h: 104px;
+  --keyboard-offset: 0px;
   --agent-radius-sm: 14px;
   --agent-radius-md: 18px;
   --agent-border: #E8EBED;
@@ -52,6 +53,9 @@
   --agent-text-title: 16px;
   --agent-text-body: 14px;
   --agent-text-caption: 12px;
+  --agent-glow-alpha: 0.4;
+  --agent-glow-blur: 34px;
+  --agent-glow-spread: 0.32;
 
   /* Glassmorphism */
   --glass-bg: rgba(255, 255, 255, 0.7);
@@ -326,10 +330,14 @@
 
 @keyframes agentControlPulse {
   0%, 100% {
-    box-shadow: 0 0 0 1px rgba(255, 118, 72, 0.08), 0 0 6px rgba(255, 118, 72, 0.08);
+    box-shadow:
+      0 -12px calc(var(--agent-glow-blur) * 0.92) rgba(255, 118, 72, calc(var(--agent-glow-alpha) * 0.8)),
+      0 16px calc(var(--agent-glow-blur) * 1.05) rgba(255, 118, 72, calc(var(--agent-glow-alpha) * 0.95));
   }
   50% {
-    box-shadow: 0 0 0 1px rgba(255, 118, 72, 0.12), 0 0 10px rgba(255, 118, 72, 0.12);
+    box-shadow:
+      0 -14px calc(var(--agent-glow-blur) * 1.08) rgba(255, 118, 72, calc(var(--agent-glow-alpha) * 0.95)),
+      0 20px calc(var(--agent-glow-blur) * 1.2) rgba(255, 118, 72, calc(var(--agent-glow-alpha) + var(--agent-glow-spread)));
   }
 }
 
@@ -343,6 +351,22 @@
 
 .animate-agent-control-pulse {
   animation: agentControlPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes agentStatusDotPulse {
+  0%, 100% {
+    transform: scale(0.86);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scale(1.14);
+    opacity: 1;
+  }
+}
+
+.agent-status-dot-pulse {
+  animation: agentStatusDotPulse 1s ease-in-out infinite;
+  transform-origin: center;
 }
 
 /* ── 부드러운 스크롤바 ── */

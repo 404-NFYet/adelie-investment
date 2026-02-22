@@ -1,4 +1,5 @@
 import { useNavigate, useLocation } from 'react-router-dom';
+import useKeyboardInset from '../../hooks/useKeyboardInset';
 
 const HIDDEN_PREFIXES = [
   '/landing',
@@ -57,10 +58,12 @@ function isActivePath(tabPath, pathname, stateMode) {
 export default function BottomNav() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { shouldHideBottomNav } = useKeyboardInset();
 
   if (
     HIDDEN_EXACT.includes(location.pathname) ||
-    HIDDEN_PREFIXES.some((prefix) => location.pathname.startsWith(prefix))
+    HIDDEN_PREFIXES.some((prefix) => location.pathname.startsWith(prefix)) ||
+    shouldHideBottomNav
   ) {
     return null;
   }

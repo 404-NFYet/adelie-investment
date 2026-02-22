@@ -1,8 +1,9 @@
-import { createContext, useContext, useState, useCallback, startTransition } from 'react';
+import { createContext, useContext, useState, useCallback, startTransition, useRef } from 'react';
 import { API_BASE_URL, authFetch } from '../api/client';
+import { buildSessionCardMeta, writeSessionCardMeta } from '../utils/agent/sessionCardMetaStore';
 
 const TutorChatContext = createContext(null);
-const STREAM_FLUSH_INTERVAL_MS = 240;
+const STREAM_FLUSH_INTERVAL_MS = 180;
 
 const parseVisualizationPayload = (content) => {
   if (!content) return null;
@@ -83,6 +84,9 @@ const mapHistoryMessage = (message, index) => {
     uiActions: message.ui_actions || null,
     model: message.model || null,
     structured: message.structured || null,
+    guardrailNotice: message.guardrail_notice || null,
+    guardrailDecision: message.guardrail_decision || null,
+    guardrailMode: message.guardrail_mode || null,
   };
 };
 
@@ -109,6 +113,9 @@ function buildAssistantTurns(messages = []) {
       uiActions: Array.isArray(message.uiActions) ? message.uiActions : [],
       model: message.model || null,
       structured: message.structured || null,
+      guardrailNotice: message.guardrailNotice || null,
+      guardrailDecision: message.guardrailDecision || null,
+      guardrailMode: message.guardrailMode || null,
     });
   });
 
@@ -126,6 +133,8 @@ export function TutorChatProvider({ children }) {
   const [messages, setMessages] = useState([]);
   const [assistantTurns, setAssistantTurns] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isStreamingActive, setIsStreamingActive] = useState(false);
+  const [canRegenerate, setCanRegenerate] = useState(false);
   const [sessionId, setSessionId] = useState(() => {
     try {
       return localStorage.getItem('adelie_tutor_session') || null;
@@ -133,6 +142,26 @@ export function TutorChatProvider({ children }) {
       return null;
     }
   });
+  const activeStreamControllerRef = useRef(null);
+  const lastRequestRef = useRef(null);
+
+  const persistSessionMeta = useCallback((targetSessionId, contextInfo, userPrompt, assistantText) => {
+    const normalizedSessionId = String(targetSessionId || '').trim();
+    if (!normalizedSessionId) return;
+
+    const normalizedSnippet = String(assistantText || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 180);
+    const fallbackTitle = String(userPrompt || '').trim().slice(0, 40) || '대화 정리 카드';
+    const nextMeta = buildSessionCardMeta({
+      contextInfo,
+      fallbackTitle,
+      fallbackSnippet: normalizedSnippet,
+    });
+
+    writeSessionCardMeta(normalizedSessionId, nextMeta);
+  }, []);
 
   const sendMessage = useCallback(
     async (
@@ -143,21 +172,43 @@ export function TutorChatProvider({ children }) {
       onSessionCreated = null,
       options = {},
     ) => {
-      if (!message.trim()) return;
+      const normalizedMessage = String(message || '').trim();
+      if (!normalizedMessage) return;
+
+      if (activeStreamControllerRef.current) {
+        activeStreamControllerRef.current.abort();
+        activeStreamControllerRef.current = null;
+      }
 
       const DEFAULT_STATUS = { phase: 'idle', text: '응답 대기 중' };
       let hasError = false;
+      let wasStopped = false;
       let pendingSources = [];
       let pendingUiActions = [];
       let pendingModel = null;
       let pendingStructured = null;
+      let pendingGuardrailNotice = null;
+      let pendingGuardrailDecision = null;
+      let pendingGuardrailMode = null;
       let pendingBuffer = '';
       let renderedContent = '';
       let lastFlushAt = Date.now();
+      let doneReceived = false;
       const normalizedOptions = {
         useWebSearch: Boolean(options?.useWebSearch),
         responseMode: options?.responseMode || 'plain',
         structuredExtract: Boolean(options?.structuredExtract),
+      };
+      let resolvedSessionId = sessionId;
+      const streamController = new AbortController();
+      activeStreamControllerRef.current = streamController;
+      setIsStreamingActive(true);
+      setCanRegenerate(true);
+      lastRequestRef.current = {
+        message: normalizedMessage,
+        difficulty,
+        contextInfo,
+        options: normalizedOptions,
       };
 
       const turnId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -166,7 +217,7 @@ export function TutorChatProvider({ children }) {
         id: `${Date.now()}-user`,
         turnId,
         role: 'user',
-        content: message,
+        content: normalizedMessage,
         timestamp: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, userMessage]);
@@ -181,6 +232,9 @@ export function TutorChatProvider({ children }) {
         timestamp: new Date().toISOString(),
         isStreaming: true,
         structured: null,
+        guardrailNotice: null,
+        guardrailDecision: null,
+        guardrailMode: null,
       };
       setMessages((prev) => [...prev, assistantMessage]);
       setAssistantTurns((prev) => [
@@ -188,7 +242,7 @@ export function TutorChatProvider({ children }) {
         {
           id: turnId,
           assistantMessageId: assistantMessage.id,
-          userPrompt: message,
+          userPrompt: normalizedMessage,
           assistantText: '',
           status: 'streaming',
           createdAt: assistantMessage.timestamp,
@@ -196,6 +250,9 @@ export function TutorChatProvider({ children }) {
           uiActions: [],
           model: null,
           structured: null,
+          guardrailNotice: null,
+          guardrailDecision: null,
+          guardrailMode: null,
         },
       ]);
 
@@ -207,6 +264,9 @@ export function TutorChatProvider({ children }) {
           uiActions = pendingUiActions,
           model = pendingModel,
           structured = pendingStructured,
+          guardrailNotice = pendingGuardrailNotice,
+          guardrailDecision = pendingGuardrailDecision,
+          guardrailMode = pendingGuardrailMode,
           status = 'streaming',
         } = options;
 
@@ -223,6 +283,9 @@ export function TutorChatProvider({ children }) {
                 uiActions,
                 model,
                 structured,
+                guardrailNotice,
+                guardrailDecision,
+                guardrailMode,
               };
             })
           );
@@ -237,6 +300,9 @@ export function TutorChatProvider({ children }) {
             uiActions,
             model,
             structured,
+            guardrailNotice,
+            guardrailDecision,
+            guardrailMode,
           }))
         );
       };
@@ -261,17 +327,21 @@ export function TutorChatProvider({ children }) {
 
       const processSseLine = (line, eventName = '') => {
         const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith('data: ')) return;
+        if (!trimmed || !trimmed.startsWith('data:')) return;
 
         try {
-          const data = JSON.parse(trimmed.slice(6));
-          const normalizedEventType = data.type || eventName || '';
+          const payload = trimmed.slice(5).trimStart();
+          const data = JSON.parse(payload);
+          const dataType = typeof data.type === 'string' ? data.type.trim() : '';
+          const eventType = typeof eventName === 'string' ? eventName.trim() : '';
+          const normalizedEventType = dataType || eventType;
 
-          if (!data.type && normalizedEventType) {
+          if (!dataType && normalizedEventType) {
             data.type = normalizedEventType;
           }
 
           if (data.session_id) {
+            resolvedSessionId = data.session_id;
             setSessionId(data.session_id);
             try { localStorage.setItem('adelie_tutor_session', data.session_id); } catch {}
             if (onSessionCreated) onSessionCreated(data.session_id);
@@ -288,6 +358,23 @@ export function TutorChatProvider({ children }) {
             if (setAgentStatus) {
               setAgentStatus({ phase: 'tool_call', text: `도구 실행 중: ${data.tool || '분석 도구'}`, tool: data.tool || undefined });
             }
+            return;
+          }
+
+          if (data.type === 'guardrail_notice') {
+            pendingGuardrailNotice = typeof data.content === 'string' ? data.content : null;
+            pendingGuardrailDecision = typeof data.guardrail_decision === 'string' ? data.guardrail_decision : pendingGuardrailDecision;
+            pendingGuardrailMode = typeof data.guardrail_mode === 'string' ? data.guardrail_mode : pendingGuardrailMode;
+            if (setAgentStatus && pendingGuardrailNotice) {
+              setAgentStatus({ phase: 'notice', text: pendingGuardrailNotice });
+            }
+            syncAssistantState(renderedContent, {
+              isStreaming: true,
+              status: 'streaming',
+              guardrailNotice: pendingGuardrailNotice,
+              guardrailDecision: pendingGuardrailDecision,
+              guardrailMode: pendingGuardrailMode,
+            });
             return;
           }
 
@@ -334,6 +421,7 @@ export function TutorChatProvider({ children }) {
           }
 
           if (data.type === 'done') {
+            doneReceived = true;
             if (Array.isArray(data.sources)) {
               pendingSources = data.sources;
             }
@@ -346,6 +434,12 @@ export function TutorChatProvider({ children }) {
             if (data.structured && typeof data.structured === 'object') {
               pendingStructured = data.structured;
             }
+            if (typeof data.guardrail_decision === 'string') {
+              pendingGuardrailDecision = data.guardrail_decision;
+            }
+            if (typeof data.guardrail_mode === 'string') {
+              pendingGuardrailMode = data.guardrail_mode;
+            }
 
             flushBuffer(true);
             syncAssistantState(renderedContent, {
@@ -357,6 +451,13 @@ export function TutorChatProvider({ children }) {
           }
 
           if (typeof data.content === 'string') {
+            const contentType = typeof data.type === 'string' ? data.type : '';
+            const isTextDelta = !contentType
+              || contentType === 'text_delta'
+              || contentType === 'response.output_text.delta'
+              || contentType === 'message_delta';
+            if (!isTextDelta) return;
+
             const sanitized = sanitizeStreamDelta(data.content);
             if (!sanitized) return;
 
@@ -383,10 +484,11 @@ export function TutorChatProvider({ children }) {
       try {
         const response = await authFetch(`${API_BASE_URL}/api/v1/tutor/chat`, {
           method: 'POST',
+          signal: streamController.signal,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             session_id: sessionId,
-            message,
+            message: normalizedMessage,
             difficulty,
             context_type: contextInfo?.type,
             context_id: contextInfo?.id,
@@ -444,12 +546,39 @@ export function TutorChatProvider({ children }) {
 
         flushBuffer(true);
 
-        syncAssistantState(renderedContent, {
-          isStreaming: false,
-          isError: hasError,
-          status: hasError ? 'error' : 'done',
-        });
+        if (!doneReceived) {
+          syncAssistantState(renderedContent, {
+            isStreaming: false,
+            isError: hasError,
+            status: hasError ? 'error' : 'done',
+          });
+        }
+
+        persistSessionMeta(
+          resolvedSessionId,
+          contextInfo,
+          normalizedMessage,
+          renderedContent,
+        );
       } catch (error) {
+        if (error?.name === 'AbortError') {
+          wasStopped = true;
+          flushBuffer(true);
+          if (setAgentStatus) setAgentStatus({ phase: 'stopped', text: '생성이 중단되었습니다.' });
+          syncAssistantState(renderedContent, {
+            isStreaming: false,
+            isError: false,
+            status: 'stopped',
+          });
+          persistSessionMeta(
+            resolvedSessionId,
+            contextInfo,
+            normalizedMessage,
+            renderedContent,
+          );
+          return;
+        }
+
         console.error('Tutor error:', error);
         hasError = true;
         if (setAgentStatus) setAgentStatus({ phase: 'error', text: '오류가 발생했습니다.' });
@@ -461,11 +590,15 @@ export function TutorChatProvider({ children }) {
           status: 'error',
         });
       } finally {
+        if (activeStreamControllerRef.current === streamController) {
+          activeStreamControllerRef.current = null;
+        }
+        setIsStreamingActive(false);
         setIsLoading(false);
-        if (setAgentStatus && !hasError) setAgentStatus(DEFAULT_STATUS);
+        if (setAgentStatus && !hasError && !wasStopped) setAgentStatus(DEFAULT_STATUS);
       }
     },
-    [sessionId]
+    [persistSessionMeta, sessionId]
   );
 
   const loadChatHistory = useCallback(async (id, setActiveSessionId) => {
@@ -481,10 +614,46 @@ export function TutorChatProvider({ children }) {
     try { localStorage.setItem('adelie_tutor_session', id); } catch {}
   }, []);
 
+  const stopGeneration = useCallback(() => {
+    const controller = activeStreamControllerRef.current;
+    if (!controller) return false;
+
+    controller.abort();
+    activeStreamControllerRef.current = null;
+    setIsStreamingActive(false);
+    return true;
+  }, []);
+
+  const regenerateLastResponse = useCallback(
+    async (setAgentStatus = null, onSessionCreated = null, overrides = {}) => {
+      const previous = lastRequestRef.current;
+      if (!previous?.message) return false;
+
+      await sendMessage(
+        previous.message,
+        overrides?.difficulty || previous.difficulty || 'beginner',
+        overrides?.contextInfo || previous.contextInfo || null,
+        setAgentStatus,
+        onSessionCreated,
+        overrides?.options || previous.options || {},
+      );
+
+      return true;
+    },
+    [sendMessage],
+  );
+
   const clearMessages = useCallback(() => {
+    if (activeStreamControllerRef.current) {
+      activeStreamControllerRef.current.abort();
+      activeStreamControllerRef.current = null;
+    }
     setMessages((prev) => (prev.length > 0 ? [] : prev));
     setAssistantTurns((prev) => (prev.length > 0 ? [] : prev));
     setSessionId((prev) => (prev === null ? prev : null));
+    setIsStreamingActive(false);
+    setCanRegenerate(false);
+    lastRequestRef.current = null;
     try {
       if (localStorage.getItem('adelie_tutor_session') !== null) {
         localStorage.removeItem('adelie_tutor_session');
@@ -497,9 +666,13 @@ export function TutorChatProvider({ children }) {
       messages,
       assistantTurns,
       isLoading,
+      isStreamingActive,
+      canRegenerate,
       sessionId,
       setSessionId,
       sendMessage,
+      stopGeneration,
+      regenerateLastResponse,
       loadChatHistory,
       clearMessages,
     }}>

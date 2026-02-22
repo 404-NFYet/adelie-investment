@@ -111,19 +111,29 @@ def _build_portfolio_response(portfolio: UserPortfolio, price_map: dict[str, int
 
     for h in portfolio.holdings:
         current_price = price_map.get(h.stock_code) or int(h.avg_buy_price)
-        current_value = current_price * h.quantity
-        invested = float(h.avg_buy_price) * h.quantity
-        profit_loss = current_value - invested
+        avg_price = float(h.avg_buy_price)
+        leverage = float(h.leverage or 1.0)
+        position_side = h.position_side or "long"
+
+        invested = avg_price * h.quantity / max(leverage, 1.0)
+        if position_side == "short":
+            profit_loss = (avg_price - current_price) * h.quantity * leverage
+        else:
+            profit_loss = (current_price - avg_price) * h.quantity * leverage
+        current_value = invested + profit_loss
         profit_loss_pct = (profit_loss / invested * 100) if invested > 0 else 0
 
-        total_holdings_value += current_value
+        total_holdings_value += max(current_value, 0)
         holdings_response.append(HoldingResponse(
             stock_code=h.stock_code,
             stock_name=h.stock_name,
             quantity=h.quantity,
-            avg_buy_price=float(h.avg_buy_price),
+            avg_buy_price=avg_price,
+            position_side=position_side,
+            leverage=leverage,
+            borrow_rate_bps=int(h.borrow_rate_bps or 0),
             current_price=current_price,
-            current_value=current_value,
+            current_value=max(current_value, 0),
             profit_loss=profit_loss,
             profit_loss_pct=round(profit_loss_pct, 2),
         ))
@@ -151,7 +161,14 @@ def _build_portfolio_summary(portfolio: UserPortfolio, price_map: dict[str, int]
     total_holdings = 0
     for h in portfolio.holdings:
         cp = price_map.get(h.stock_code) or int(h.avg_buy_price)
-        total_holdings += cp * h.quantity
+        avg_price = float(h.avg_buy_price)
+        leverage = float(h.leverage or 1.0)
+        invested = avg_price * h.quantity / max(leverage, 1.0)
+        if (h.position_side or "long") == "short":
+            unrealized = (avg_price - cp) * h.quantity * leverage
+        else:
+            unrealized = (cp - avg_price) * h.quantity * leverage
+        total_holdings += max(invested + unrealized, 0)
 
     total_value = portfolio.current_cash + total_holdings
     rewards = portfolio.total_rewards_received or 0
@@ -368,11 +385,15 @@ async def create_trade(
     user_id = current_user["id"]
     portfolio = await get_or_create_portfolio(db, user_id)
     try:
-        trade = await execute_trade(
+        execution = await execute_trade(
             db, portfolio,
             req.stock_code, req.stock_name,
             req.trade_type, req.quantity,
             req.trade_reason,
+            order_kind=req.order_kind,
+            target_price=req.target_price,
+            position_side=req.position_side,
+            leverage=req.leverage,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -380,14 +401,25 @@ async def create_trade(
     await db.refresh(portfolio)
     await invalidate_portfolio_summary_cache(user_id)
 
+    trade = execution.trade
     return TradeResponse(
         id=trade.id,
         trade_type=trade.trade_type,
         stock_code=trade.stock_code,
         stock_name=trade.stock_name,
         quantity=trade.quantity,
+        filled_quantity=int(trade.filled_quantity or 0),
         price=float(trade.price),
+        requested_price=float(trade.requested_price) if trade.requested_price is not None else None,
+        executed_price=float(trade.executed_price) if trade.executed_price is not None else None,
+        slippage_bps=float(trade.slippage_bps) if trade.slippage_bps is not None else None,
+        fee_amount=float(trade.fee_amount) if trade.fee_amount is not None else None,
+        order_kind=trade.order_kind,
+        order_status=trade.order_status,
+        position_side=trade.position_side,
+        leverage=float(trade.leverage or 1.0),
         total_amount=float(trade.total_amount),
+        remaining_quantity=execution.remaining_quantity,
         trade_reason=trade.trade_reason,
         traded_at=trade.traded_at,
         remaining_cash=portfolio.current_cash,
@@ -421,8 +453,18 @@ async def get_trade_history(
                 stock_code=t.stock_code,
                 stock_name=t.stock_name,
                 quantity=t.quantity,
+                filled_quantity=int(t.filled_quantity or 0),
                 price=float(t.price),
+                requested_price=float(t.requested_price) if t.requested_price is not None else None,
+                executed_price=float(t.executed_price) if t.executed_price is not None else None,
+                slippage_bps=float(t.slippage_bps) if t.slippage_bps is not None else None,
+                fee_amount=float(t.fee_amount) if t.fee_amount is not None else None,
+                order_kind=t.order_kind,
+                order_status=t.order_status,
+                position_side=t.position_side,
+                leverage=float(t.leverage or 1.0),
                 total_amount=float(t.total_amount),
+                remaining_quantity=max(0, int(t.quantity or 0) - int(t.filled_quantity or 0)),
                 trade_reason=t.trade_reason,
                 traded_at=t.traded_at,
                 remaining_cash=portfolio.current_cash,

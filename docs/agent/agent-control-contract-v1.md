@@ -66,6 +66,7 @@
 
 - `thinking`
 - `tool_call`
+- `guardrail_notice`
 - `text_delta`
 - `visualization` (optional)
 - `ui_action` (optional)
@@ -81,6 +82,41 @@
 - `search_used` (optional)
 - `response_mode` (optional, `plain | canvas_markdown`)
 - `structured` (optional)
+- `guardrail_decision` (optional: `SAFE|ADVICE|OFF_TOPIC|MALICIOUS|PARSE_ERROR`)
+- `guardrail_mode` (optional: `strict|soft`)
+- `sources[].source_kind` (optional: `news|dart|internal|web`)
+- `sources[].is_reachable` (optional: `true|false|null`)
+
+## 투자 실행 메타 계약 (v7)
+포트폴리오/트레이딩 응답은 아래 실행 메타를 포함할 수 있다.
+
+- `requested_price`
+- `executed_price`
+- `slippage_bps`
+- `fee_amount`
+- `order_kind` (`market|limit`)
+- `order_status` (`pending|partial|filled|cancelled`)
+- `position_side` (`long|short`)
+- `leverage` (`1.0~2.0`)
+- `filled_quantity`
+- `remaining_quantity`
+
+목적:
+- 상한가/저유동성 상황에서 단순 체결이 아닌 현실형 체결 결과를 프론트가 그대로 시각화할 수 있도록 함.
+
+## 세션 메타/저장 계약 (v7)
+`/api/v1/tutor/sessions` 목록에 다음 필드를 포함한다.
+
+- `cover_icon_key`
+- `summary_keywords`
+- `summary_snippet`
+- `is_pinned`
+- `pinned_at`
+
+신규 endpoint:
+- `POST /api/v1/tutor/sessions/{session_id}/pin`
+  - request: `{ \"pinned\": true|false }`
+  - response: `{ id, is_pinned, pinned_at }`
 
 ## LLM 호출 경로 비교 (기존 vs Responses API)
 현재 `/api/v1/tutor/chat`는 `Responses API`를 우선 사용하고, 실패 시 기존 `chat.completions` 스트리밍으로 폴백한다.
@@ -101,6 +137,7 @@
 - `*web_search*`/`*tool*` 이벤트 -> `tool_call` (step)
 - `response.completed` -> `done`
 - `response.error`/`error` -> `error`
+- 소프트 가드레일 통지 -> `guardrail_notice` (step)
 
 프론트는 `event:` 라인과 `data.type` 둘 다 읽어야 하며, 누락 시 이벤트명을 타입으로 보정한다.
 
@@ -113,6 +150,9 @@
 - 텍스트가 안 흐르면:
   - Responses 이벤트에서 `response.output_text.delta` 수신 여부 확인
   - 폴백 여부 로그(`responses_api_fallback`) 확인
+- 가드레일 안내가 안 뜨면:
+  - `step.type=guardrail_notice` 수신 여부 확인
+  - `done.guardrail_decision / done.guardrail_mode` 값 확인
 - 검색이 안 붙으면:
   - 요청의 `use_web_search` 값 확인
   - 완료 이벤트 `done.search_used` 확인

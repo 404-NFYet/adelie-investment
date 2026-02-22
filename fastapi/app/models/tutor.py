@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import uuid4
 
-from sqlalchemy import Boolean, Integer, String, Text, ForeignKey, Index
+from sqlalchemy import JSON, Boolean, Integer, String, Text, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -24,6 +24,28 @@ class TutorSession(Base):
     )
     context_id: Mapped[Optional[int]] = mapped_column(comment="관련 컨텐츠 ID")
     title: Mapped[Optional[str]] = mapped_column(String(200), nullable=True, comment="세션 제목")
+    cover_icon_key: Mapped[Optional[str]] = mapped_column(
+        String(80),
+        nullable=True,
+        comment="세션 커버 아이콘 키",
+    )
+    summary_keywords: Mapped[Optional[list[str]]] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="세션 요약 키워드",
+    )
+    summary_snippet: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+        comment="세션 요약 스니펫",
+    )
+    is_pinned: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default="false",
+        comment="홈 고정 여부",
+    )
+    pinned_at: Mapped[Optional[datetime]] = mapped_column(nullable=True, comment="고정 시각")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, comment="활성 세션 여부")
     message_count: Mapped[int] = mapped_column(Integer, default=0, comment="메시지 수")
     last_message_at: Mapped[Optional[datetime]] = mapped_column(nullable=True, comment="마지막 메시지 시각")

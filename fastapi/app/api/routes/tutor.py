@@ -37,6 +37,10 @@ from app.services.tutor_engine import (
 )
 from app.services.stock_resolver import detect_stock_codes
 from app.services.guardrail import run_guardrail
+from app.services.investment_intel import (
+    annotate_reachable_links,
+    collect_stock_intelligence,
+)
 
 router = APIRouter(prefix="/tutor", tags=["AI tutor"])
 
@@ -325,6 +329,87 @@ def _extract_response_text(response_payload: dict[str, Any]) -> str:
     return "".join(chunks).strip()
 
 
+def _recommend_actions(
+    response_text: str,
+    context_mode: str,
+    context_envelope: Optional[dict],
+) -> list[dict[str, Any]]:
+    """응답 내용과 컨텍스트 기반으로 추천 액션 2~3개를 선별한다."""
+    actions: list[dict[str, Any]] = []
+    text_lower = (response_text or "").lower()
+    catalog = []
+    if context_envelope and isinstance(context_envelope.get("action_catalog"), list):
+        catalog = context_envelope["action_catalog"]
+
+    catalog_by_id = {a["id"]: a for a in catalog if isinstance(a, dict) and "id" in a}
+    stock_code = None
+    stock_name = None
+    ctx = context_envelope.get("context") if context_envelope else None
+    if isinstance(ctx, dict):
+        stock_code = ctx.get("stock_code")
+        stock_name = ctx.get("stock_name")
+        if not stock_code:
+            keywords = ctx.get("keywords")
+            if isinstance(keywords, list) and keywords:
+                stock_code = keywords[0].get("stock_code") if isinstance(keywords[0], dict) else None
+
+    buy_keywords = ["매수", "상승", "호재", "긍정", "반등", "저평가", "기회", "buy"]
+    sell_keywords = ["매도", "하락", "리스크", "악재", "고평가", "차익실현", "sell"]
+    has_buy_signal = any(kw in text_lower for kw in buy_keywords)
+    has_sell_signal = any(kw in text_lower for kw in sell_keywords)
+
+    if stock_code and has_buy_signal and "buy_stock" in catalog_by_id:
+        actions.append({
+            "id": "buy_stock",
+            "label": f"{stock_name or stock_code} 매수하기",
+            "type": "tool",
+            "params": {"stock_code": stock_code, "stock_name": stock_name or ""},
+        })
+
+    if stock_code and has_sell_signal and "sell_stock" in catalog_by_id:
+        actions.append({
+            "id": "sell_stock",
+            "label": f"{stock_name or stock_code} 매도하기",
+            "type": "tool",
+            "params": {"stock_code": stock_code, "stock_name": stock_name or ""},
+        })
+
+    if stock_code and "check_stock_price" in catalog_by_id and len(actions) < 3:
+        actions.append({
+            "id": "check_stock_price",
+            "label": f"{stock_name or stock_code} 현재 시세 확인",
+            "type": "tool",
+            "params": {"stock_code": stock_code},
+        })
+
+    if "check_portfolio" in catalog_by_id and len(actions) < 3:
+        actions.append({
+            "id": "check_portfolio",
+            "label": "내 포트폴리오 확인",
+            "type": "tool",
+            "params": {},
+        })
+
+    prompt_suggestions = []
+    if context_mode == "stock":
+        prompt_suggestions = ["리스크 포인트만 추려줘", "비슷한 과거 사례 있어?"]
+    elif context_mode == "home":
+        prompt_suggestions = ["핵심만 다시 정리해줘", "이 내용 더 쉽게 설명해줘"]
+    else:
+        prompt_suggestions = ["핵심 개념만 복습하기", "이걸 쉽게 다시 설명해줘"]
+
+    for idx, label in enumerate(prompt_suggestions):
+        if len(actions) >= 3:
+            break
+        actions.append({
+            "id": f"followup_{idx}",
+            "label": label,
+            "type": "prompt",
+        })
+
+    return actions[:3]
+
+
 def _extract_structured_from_markdown(markdown_text: str) -> Optional[dict[str, Any]]:
     text = (markdown_text or "").strip()
     if not text:
@@ -344,30 +429,80 @@ def _extract_structured_from_markdown(markdown_text: str) -> Optional[dict[str, 
         summary = text[:200]
 
     key_points: list[str] = []
-    suggested_actions: list[str] = []
     for line in lines:
         if line.startswith(("- ", "* ")):
             bullet = line[2:].strip()
-        elif line[:2].isdigit() and line[1] == ".":
+        elif len(line) >= 2 and line[0].isdigit() and line[1] == ".":
             bullet = line[2:].strip()
         else:
-            bullet = ""
-
-        if not bullet:
             continue
-
-        if any(keyword in bullet for keyword in ["실행", "확인", "비교", "체크", "다음"]):
-            suggested_actions.append(bullet)
-        else:
+        if bullet:
             key_points.append(bullet)
 
     key_points = key_points[:5]
-    suggested_actions = suggested_actions[:3]
 
     return {
         "summary": summary,
         "key_points": key_points,
-        "suggested_actions": suggested_actions,
+    }
+
+
+def _extract_session_cover_meta(
+    request: TutorChatRequest,
+    assistant_content: str,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    if request.context_text:
+        try:
+            parsed = json.loads(request.context_text)
+            if isinstance(parsed, dict):
+                payload = parsed
+        except json.JSONDecodeError:
+            payload = {}
+
+    context = payload.get("context") if isinstance(payload.get("context"), dict) else payload
+
+    keyword_items = []
+    if isinstance(context, dict) and isinstance(context.get("keywords"), list):
+        keyword_items = [item for item in context["keywords"] if isinstance(item, dict)]
+
+    keyword_labels = []
+    for item in keyword_items:
+        value = str(item.get("title") or item.get("keyword") or "").strip()
+        if value and value not in keyword_labels:
+            keyword_labels.append(value)
+        if len(keyword_labels) >= 5:
+            break
+
+    cover_icon_key = None
+    if keyword_items:
+        cover_icon_key = keyword_items[0].get("icon_key")
+    if not cover_icon_key and isinstance(context, dict):
+        cover_icon_key = context.get("icon_key")
+    if cover_icon_key:
+        cover_icon_key = str(cover_icon_key).strip() or None
+
+    summary_snippet = " ".join(str(assistant_content or "").split())[:220]
+
+    title_candidates = []
+    if keyword_items:
+        title_candidates.append(keyword_items[0].get("title"))
+    if isinstance(context, dict):
+        title_candidates.extend(
+            [
+                context.get("case_title"),
+                context.get("stock_name"),
+                context.get("market_summary"),
+            ]
+        )
+    title_candidates.append(request.message)
+    resolved_title = next((str(item).strip() for item in title_candidates if str(item or "").strip()), "")
+
+    return {
+        "title": resolved_title[:200] if resolved_title else None,
+        "cover_icon_key": cover_icon_key,
+        "summary_keywords": keyword_labels or None,
+        "summary_snippet": summary_snippet or None,
     }
 
 
@@ -423,11 +558,15 @@ async def _collect_context(
                     page_context = f"\n\n[현재 보고 있는 브리핑]\n시장 요약: {ctx_row[0]}\n키워드: {ctx_row[1]}"
             elif request.context_type == "case":
                 ctx_result = await db.execute(text(
-                    "SELECT title, summary FROM historical_cases WHERE id = :id"
+                    "SELECT title, summary, full_content FROM historical_cases WHERE id = :id"
                 ), {"id": request.context_id})
                 ctx_row = ctx_result.fetchone()
                 if ctx_row:
+                    full_content = (ctx_row[2] or "") if len(ctx_row) > 2 else ""
+                    content_snippet = full_content[:3000] if full_content else ""
                     page_context = f"\n\n[현재 보고 있는 사례]\n제목: {ctx_row[0]}\n요약: {ctx_row[1]}"
+                    if content_snippet:
+                        page_context += f"\n\n[사례 내러티브 전문 (참고용)]\n{content_snippet}"
         except Exception:
             pass  # 컨텍스트 로드 실패해도 대화는 계속
 
@@ -460,13 +599,22 @@ async def _collect_context(
         stock_context, chart_data, stock_sources = await _collect_stock_context(
             request.message, detected_stocks, db
         )
+        stock_intel_context, stock_intel_sources, _ = await collect_stock_intelligence(
+            db,
+            request.context_text,
+            detected_stocks,
+        )
         sources = glossary_sources + db_sources + stock_sources
+        if stock_intel_sources:
+            sources += stock_intel_sources
         if glossary_context:
             extra_context += f"\n\n참고할 용어 정의:{glossary_context}"
         if db_context:
             extra_context += f"\n\n참고할 내부 데이터:{db_context}"
         if stock_context:
             extra_context += f"\n\n참고할 종목 데이터:{stock_context}"
+        if stock_intel_context:
+            extra_context += f"\n\n참고할 투자 인텔:{stock_intel_context}"
     except Exception as e:
         logger.warning("출처 수집 실패 (무시): %s", e)
 
@@ -478,9 +626,20 @@ async def _build_llm_messages(
     db: AsyncSession,
     page_context: str,
     extra_context: str,
+    guardrail_decision: Optional[str] = None,
+    guardrail_mode: str = "strict",
 ) -> list:
     """LLM 메시지 배열 구성 — 시스템 프롬프트 + 이전 대화 + 현재 질문."""
     system_prompt = get_difficulty_prompt(request.difficulty)
+    context_mode = ""
+    if request.context_text:
+        try:
+            context_payload = json.loads(request.context_text)
+            if isinstance(context_payload, dict):
+                context_mode = str(context_payload.get("mode") or context_payload.get("context", {}).get("mode") or "").strip()
+        except json.JSONDecodeError:
+            context_mode = ""
+
     if page_context:
         system_prompt += page_context
     if extra_context:
@@ -491,11 +650,45 @@ async def _build_llm_messages(
         system_prompt += (
             "\n\n응답 형식 규칙:\n"
             "- 반드시 Markdown으로 응답하세요.\n"
+            "- ## 소제목으로 내용을 구분하고, **볼드**로 핵심 단어를 강조하세요.\n"
             "- 첫 문단에 핵심 요약 1~2문장을 먼저 제시하세요.\n"
-            "- 핵심 포인트는 불릿 목록(3~5개)으로 정리하세요.\n"
+            "- 핵심 포인트는 불릿 목록(- )으로 정리하세요.\n"
+            "- 순서가 중요한 내용은 번호 목록(1. 2. 3.)을 사용하세요.\n"
+            "- 비교 데이터가 있으면 2~3열의 간단한 마크다운 테이블을 사용해도 됩니다.\n"
+            "- 절대로 ASCII art, 텍스트 차트, 막대 그래프 문자열을 만들지 마세요. 시각화는 별도 시스템이 Plotly 차트로 처리합니다.\n"
+            "- 숫자 데이터는 텍스트로만 서술하세요 (예: '삼성전자 매출은 전년 대비 12% 증가').\n"
             "- 필요한 경우 마지막에 '다음 액션' 섹션을 번호 목록으로 제시하세요.\n"
             "- 파이프(|) 같은 중간 메타 토큰이나 디버그 문자열은 출력하지 마세요.\n"
         )
+        if request.difficulty == "beginner":
+            system_prompt += (
+                "- beginner 난이도: ## 소제목은 2개 이내, 전체 5문단 이내로 짧게 유지하세요.\n"
+            )
+        elif request.difficulty == "elementary":
+            system_prompt += (
+                "- elementary 난이도: ## 소제목은 3개 이내, 핵심 포인트 3개 이내로 정리하세요.\n"
+            )
+    if context_mode == "stock":
+        system_prompt += (
+            "\n\nstock 모드 응답 규칙:\n"
+            "- 답변 시작은 한 줄 요약으로 시작하세요.\n"
+            "- 이어서 근거(내부 데이터/공시/뉴스)를 불릿으로 제시하세요.\n"
+            "- 공시나 뉴스 링크가 있다면 링크 텍스트를 명확히 적으세요.\n"
+            "- 마지막에는 리스크와 다음 액션(2~3개)을 분리해 작성하세요.\n"
+        )
+    if (guardrail_mode or "").strip().lower() == "soft":
+        if guardrail_decision == "ADVICE":
+            system_prompt += (
+                "\n\n안전 지침(소프트 가드레일):\n"
+                "- 사용자의 질문이 매수/매도 권유 성격이어도 직접 권유(사라/팔아라)는 하지 마세요.\n"
+                "- 판단 기준(밸류에이션, 실적, 리스크, 시나리오)을 설명하는 교육형 답변으로 전환하세요.\n"
+            )
+        elif guardrail_decision == "OFF_TOPIC":
+            system_prompt += (
+                "\n\n안전 지침(소프트 가드레일):\n"
+                "- 금융과 거리가 있는 질문은 정중하게 금융 학습 맥락으로 재유도하세요.\n"
+                "- 사용자 의도를 금융/투자 학습 질문으로 바꿀 수 있는 예시 질문 1~2개를 제안하세요.\n"
+            )
 
     # 이전 대화 내역 로드 (멀티턴)
     prev_msgs = []
@@ -552,6 +745,18 @@ async def _save_tutor_session(
             db.add(session_obj)
             await db.flush()
 
+        cover_meta = _extract_session_cover_meta(request, assistant_content)
+        if cover_meta.get("title"):
+            session_obj.title = cover_meta["title"]
+        elif not session_obj.title:
+            session_obj.title = request.message[:50]
+        if cover_meta.get("cover_icon_key"):
+            session_obj.cover_icon_key = cover_meta["cover_icon_key"]
+        if cover_meta.get("summary_keywords"):
+            session_obj.summary_keywords = cover_meta["summary_keywords"]
+        if cover_meta.get("summary_snippet"):
+            session_obj.summary_snippet = cover_meta["summary_snippet"]
+
         db.add(TutorMessage(
             session_id=session_obj.id,
             role="user",
@@ -582,21 +787,29 @@ async def generate_tutor_response(
 
     session_id = request.session_id or str(uuid.uuid4())
     user_id = current_user["id"] if current_user else None
+    settings = get_settings()
+    guardrail_policy = (settings.TUTOR_GUARDRAIL_POLICY or "soft").strip().lower()
+    if guardrail_policy not in {"strict", "soft"}:
+        guardrail_policy = "soft"
+    guardrail_decision = "SAFE"
 
     yield f"event: step\ndata: {json.dumps({'type': 'thinking', 'content': '질문을 분석하고 있습니다...'})}\n\n"
 
     # 가드레일 검사
     try:
-        guardrail_result = await run_guardrail(request.message)
-        if not guardrail_result.is_allowed:
+        guardrail_result = await run_guardrail(request.message, policy=guardrail_policy)
+        guardrail_decision = guardrail_result.decision
+
+        if guardrail_result.hard_block:
             # 차단 메시지를 스트리밍으로 전송 후 즉시 종료 (DB 저장 없음)
             yield f"event: text_delta\ndata: {json.dumps({'content': guardrail_result.block_message})}\n\n"
-            yield f"event: done\ndata: {json.dumps({'type': 'done', 'session_id': session_id, 'total_tokens': 0, 'guardrail': guardrail_result.decision, 'response_mode': request.response_mode or 'plain', 'search_used': False})}\n\n"
+            yield f"event: done\ndata: {json.dumps({'type': 'done', 'session_id': session_id, 'total_tokens': 0, 'guardrail_decision': guardrail_result.decision, 'guardrail_mode': guardrail_result.mode, 'response_mode': request.response_mode or 'plain', 'search_used': False})}\n\n"
             return
+        if guardrail_result.soft_notice:
+            yield f"event: step\ndata: {json.dumps({'type': 'guardrail_notice', 'content': guardrail_result.soft_notice, 'guardrail_decision': guardrail_result.decision, 'guardrail_mode': guardrail_result.mode})}\n\n"
     except Exception as e:
         logger.warning("Guardrail check failed, falling open: %s", type(e).__name__)
 
-    settings = get_settings()
     api_key = settings.OPENAI_API_KEY
     if not api_key:
         yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'OpenAI API key not configured'})}\n\n"
@@ -607,8 +820,31 @@ async def generate_tutor_response(
         request, db, user_id
     )
 
+    # 컨텍스트 envelope 파싱 (액션 추천용)
+    context_envelope = None
+    context_mode_for_actions = ""
+    if request.context_text:
+        try:
+            _parsed_ctx = json.loads(request.context_text)
+            if isinstance(_parsed_ctx, dict):
+                context_envelope = _parsed_ctx
+                context_mode_for_actions = str(
+                    _parsed_ctx.get("mode")
+                    or _parsed_ctx.get("interaction_state", {}).get("mode")
+                    or ""
+                ).strip()
+        except (json.JSONDecodeError, AttributeError):
+            pass
+
     # LLM 메시지 배열 구성
-    messages = await _build_llm_messages(request, db, page_context, extra_context)
+    messages = await _build_llm_messages(
+        request,
+        db,
+        page_context,
+        extra_context,
+        guardrail_decision=guardrail_decision,
+        guardrail_mode=guardrail_policy,
+    )
 
     try:
         client = AsyncOpenAI(api_key=api_key)
@@ -630,7 +866,7 @@ async def generate_tutor_response(
                 "model": chat_model,
                 "input": response_input,
                 "stream": True,
-                "max_output_tokens": 1000,
+                "max_output_tokens": 4096,
             }
 
             if reasoning_effort:
@@ -711,7 +947,7 @@ async def generate_tutor_response(
             completion_kwargs = {
                 "model": chat_model,
                 "messages": messages,
-                "max_tokens": 1000,
+                "max_tokens": 4096,
                 "stream": True,
             }
 
@@ -775,7 +1011,7 @@ async def generate_tutor_response(
                     "다음 내용을 Plotly.js 차트 JSON으로 변환하세요.\n"
                     "반드시 아래 형식의 JSON만 반환하세요 (마크다운 코드블록 없이):\n"
                     '{"data": [트레이스 객체들], "layout": {레이아웃 옵션}}\n\n'
-                    f"내용:\n{full_response[:500]}"
+                    f"내용:\n{full_response[:2000]}"
                 )
 
                 claude_api_key = os.getenv("CLAUDE_API_KEY") or get_settings().ANTHROPIC_API_KEY
@@ -832,17 +1068,41 @@ async def generate_tutor_response(
         if request.structured_extract and request.response_mode == "canvas_markdown":
             structured = _extract_structured_from_markdown(full_response)
 
+        if bool(search_used and use_web_search):
+            sources.append(
+                {
+                    "type": "web",
+                    "source_kind": "web",
+                    "title": "웹 검색 보강 근거",
+                    "url": "",
+                    "content": "OpenAI web_search로 최신 웹 근거를 보강했습니다.",
+                    "is_reachable": None,
+                }
+            )
+
+        if sources:
+            sources = await annotate_reachable_links(sources)
+
         done_data = {'session_id': session_id, 'total_tokens': total_tokens}
         done_data['type'] = 'done'
         done_data['model'] = chat_model
         done_data['search_used'] = bool(search_used and use_web_search)
         done_data['response_mode'] = response_mode
+        done_data['guardrail_decision'] = guardrail_decision
+        done_data['guardrail_mode'] = guardrail_policy
         if reasoning_effort:
             done_data['reasoning_effort'] = reasoning_effort
         if sources:
             done_data['sources'] = sources
         if structured:
             done_data['structured'] = structured
+
+        recommended_actions = _recommend_actions(
+            full_response, context_mode_for_actions, context_envelope
+        )
+        if recommended_actions:
+            done_data['actions'] = recommended_actions
+
         yield f"event: done\ndata: {json.dumps(done_data)}\n\n"
 
     except asyncio.TimeoutError:
