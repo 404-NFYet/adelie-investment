@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "234de7d2eb07",
+  "session_id": "b4f0596b-c6ad-44e5-8d48-2c78f4c05325",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-23T05:38:26.971539745Z",
+  "branch": "develop",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "frontend/src/components/agent/AgentDock.jsx",
+    "frontend/src/pages/AgentCanvasPage.jsx",
+    "frontend/src/styles/globals.css"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 4176,
+    "cache_creation_tokens": 377571,
+    "cache_read_tokens": 6421739,
+    "output_tokens": 34528,
+    "api_call_count": 73
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-23T05:38:26.719561169Z",
+    "agent_lines": 13,
+    "human_added": 79,
+    "human_modified": 1,
+    "human_removed": 0,
+    "total_committed": 93,
+    "agent_percentage": 13.978494623655912
+  }
+}

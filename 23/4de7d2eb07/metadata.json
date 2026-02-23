@@ -3,7 +3,7 @@
   "checkpoint_id": "234de7d2eb07",
   "strategy": "manual-commit",
   "branch": "develop",
-  "checkpoints_count": 18,
+  "checkpoints_count": 19,
   "files_touched": [
     ".dockerignore",
     ".env.example",
@@ -121,6 +121,7 @@
     "frontend/src/pages/Matching.jsx",
     "frontend/src/pages/Onboarding.jsx",
     "frontend/src/pages/Profile.jsx",
+    "frontend/src/styles/globals.css",
     "frontend/vite.config.js",
     "infra/docker-compose.yml",
     "infra/docker-dashboard/app.py",
@@ -330,13 +331,20 @@
       "context": "/23/4de7d2eb07/22/context.md",
       "content_hash": "/23/4de7d2eb07/22/content_hash.txt",
       "prompt": "/23/4de7d2eb07/22/prompt.txt"
+    },
+    {
+      "metadata": "/23/4de7d2eb07/23/metadata.json",
+      "transcript": "/23/4de7d2eb07/23/full.jsonl",
+      "context": "/23/4de7d2eb07/23/context.md",
+      "content_hash": "/23/4de7d2eb07/23/content_hash.txt",
+      "prompt": "/23/4de7d2eb07/23/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 17274,
-    "cache_creation_tokens": 3466714,
-    "cache_read_tokens": 112736364,
-    "output_tokens": 475653,
-    "api_call_count": 1445
+    "input_tokens": 21450,
+    "cache_creation_tokens": 3844285,
+    "cache_read_tokens": 119158103,
+    "output_tokens": 510181,
+    "api_call_count": 1518
   }
 }
