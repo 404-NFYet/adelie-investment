@@ -1189,66 +1189,17 @@ async def generate_tutor_response(
 
         if should_viz and full_response:
             try:
-                import anthropic
-                import os
+                from app.services.tutor_chart_generator import generate_tutor_chart
 
-                viz_prompt = (
-                    "다음 내용을 Plotly.js 차트 JSON으로 변환하세요.\n"
-                    "반드시 아래 형식의 JSON만 반환하세요 (마크다운 코드블록 없이):\n"
-                    '{"data": [트레이스 객체들], "layout": {레이아웃 옵션}}\n\n'
-                    f"내용:\n{full_response[:2000]}"
+                viz_chart = await generate_tutor_chart(
+                    chart_data=chart_data,
+                    full_response=full_response,
+                    user_message=request.message,
                 )
-
-                claude_api_key = os.getenv("CLAUDE_API_KEY") or get_settings().ANTHROPIC_API_KEY
-                if claude_api_key:
-                    claude_client = anthropic.AsyncAnthropic(api_key=claude_api_key)
-                    viz_response = await claude_client.messages.create(
-                        model="claude-3-5-haiku-20241022",
-                        max_tokens=2000,
-                        system=(
-                            "당신은 Plotly.js 차트 전문가입니다. "
-                            "주어진 내용을 시각화하는 Plotly JSON config를 생성하세요. "
-                            '반드시 {"data": [...], "layout": {...}} 형식의 JSON만 반환하세요. '
-                            "디자인 규칙: 주요 색상 #FF6B00(주황), 보조 색상 #FF8C33, "
-                            "배경 투명(transparent), 한글 레이블 사용. "
-                            "마크다운 코드블록(```)으로 감싸지 마세요. 오직 JSON만 반환하세요."
-                        ),
-                        messages=[{"role": "user", "content": viz_prompt}],
-                    )
-                    json_content = viz_response.content[0].text.strip()
-                else:
-                    # Claude API 키 없으면 OpenAI fallback
-                    viz_response = await client.chat.completions.create(
-                        model="gpt-4o-mini",
-                        messages=[
-                            {"role": "system", "content": (
-                                "당신은 Plotly.js 차트 전문가입니다. "
-                                "주어진 내용을 시각화하는 Plotly JSON config를 생성하세요. "
-                                '반드시 {"data": [...], "layout": {...}} 형식의 JSON만 반환하세요. '
-                                "디자인 규칙: 주요 색상 #FF6B00(주황), 보조 색상 #FF8C33, "
-                                "배경 투명(transparent), 한글 레이블 사용. "
-                                "마크다운 코드블록(```)으로 감싸지 마세요. 오직 JSON만 반환하세요."
-                            )},
-                            {"role": "user", "content": viz_prompt},
-                        ],
-                        max_tokens=2000,
-                    )
-                    json_content = viz_response.choices[0].message.content.strip()
-
-                # ```json 코드 블록 제거 (LLM이 감쌀 수 있음)
-                if json_content.startswith("```"):
-                    json_content = json_content.split("```", 2)[1]
-                    if json_content.startswith("json"):
-                        json_content = json_content[4:]
-                    if "```" in json_content:
-                        json_content = json_content.rsplit("```", 1)[0]
-                    json_content = json_content.strip()
-                chart_data = json.loads(json_content)
-                if "data" in chart_data and isinstance(chart_data["data"], list):
-                    yield f"event: visualization\ndata: {json.dumps({'type': 'visualization', 'format': 'json', 'chartData': chart_data})}\n\n"
+                if viz_chart and viz_chart.get("data"):
+                    yield f"event: visualization\ndata: {json.dumps({'type': 'visualization', 'format': 'json', 'chartData': viz_chart})}\n\n"
             except Exception as viz_err:
                 logger.warning("시각화 생성 실패: %s", viz_err)
-                yield f"event: text_delta\ndata: {json.dumps({'type': 'text_delta', 'content': '\n\n> 차트 생성에 실패했어요. 텍스트로 설명해 드릴게요.\n'})}\n\n"
 
         structured = None
         if request.structured_extract and request.response_mode == "canvas_markdown":
