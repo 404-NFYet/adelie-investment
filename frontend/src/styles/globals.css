@@ -354,6 +354,23 @@
   animation: agentControlPulse 1.6s ease-in-out infinite;
 }
 
+@keyframes agentControlPulseBlue {
+  0%, 100% {
+    box-shadow:
+      0 -12px calc(var(--agent-glow-blur) * 0.92) rgba(29, 111, 222, calc(var(--agent-glow-alpha) * 0.8)),
+      0 16px calc(var(--agent-glow-blur) * 1.05) rgba(29, 111, 222, calc(var(--agent-glow-alpha) * 0.95));
+  }
+  50% {
+    box-shadow:
+      0 -14px calc(var(--agent-glow-blur) * 1.08) rgba(29, 111, 222, calc(var(--agent-glow-alpha) * 0.95)),
+      0 20px calc(var(--agent-glow-blur) * 1.2) rgba(29, 111, 222, calc(var(--agent-glow-alpha) + var(--agent-glow-spread)));
+  }
+}
+
+.animate-agent-control-pulse-blue {
+  animation: agentControlPulseBlue 1.6s ease-in-out infinite;
+}
+
 @keyframes agentStatusDotPulse {
   0%, 100% {
     transform: scale(0.86);

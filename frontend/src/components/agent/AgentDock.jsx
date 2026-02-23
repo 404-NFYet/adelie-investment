@@ -213,7 +213,7 @@ export default function AgentDock() {
   const effectiveDockMode = dockMode || (mode === 'education' ? 'chat' : 'canvas');
 
   const phaseTextByPhase = {
-    thinking: '분석 중',
+    thinking: '에이전트 분석 중',
     tool_call: '도구 실행 중',
     answering: '답변 생성 중',
     stopped: '중단됨',
@@ -325,7 +325,7 @@ export default function AgentDock() {
         )}
 
         {/* 볼드 입력바 */}
-        <AgentControlPulse active={pulseActive}>
+        <AgentControlPulse active={pulseActive} mode={effectiveDockMode}>
           <div className="pointer-events-auto relative rounded-[20px] bg-white shadow-[0_2px_16px_rgba(0,0,0,0.08)]">
             {/* 상단 상태 라인 (항상 노출) */}
             <div className="flex items-center gap-2 border-b border-[#F2F4F6] px-3 py-1.5">
@@ -334,7 +334,11 @@ export default function AgentDock() {
                 onClick={hasActiveSession ? handleResumeChat : undefined}
                 className={`flex min-w-0 flex-1 items-center gap-2 text-left ${hasActiveSession ? 'active:bg-[#F7F8FA]' : ''}`}
               >
-                <span className={`h-1.5 w-1.5 rounded-full ${isActivelyWorking ? 'bg-[#FF6B00]' : 'bg-[#16A34A]'} ${statusDotClass}`} />
+                <span className={`h-1.5 w-1.5 rounded-full ${
+                  isActivelyWorking
+                    ? (effectiveDockMode === 'canvas' ? 'bg-[#1D6FDE]' : 'bg-[#FF6B00]')
+                    : 'bg-[#16A34A]'
+                } ${statusDotClass}`} />
                 <div className="min-w-0">
                   <p className={`truncate text-[12px] font-medium ${isActivelyWorking ? 'text-[#4E5968]' : 'text-[#166534]'}`}>
                     {dockStatusText}
@@ -369,7 +373,7 @@ export default function AgentDock() {
                       : 'text-[#8B95A1]'
                   }`}
                 >
-                  분석
+                  에이전트
                 </button>
               </div>
 
