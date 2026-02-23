@@ -1,11 +1,11 @@
 /**
- * ChatBubble - 말풍선 컴포넌트
+ * ChatBubble - 채팅 메시지 컴포넌트
  * 
- * - 사용자: 주황색 배경(#FF6B00) + 흰색 텍스트, 우측 정렬
- * - 에이전트: 흰색 배경 + 검은색 텍스트, 좌측 정렬
- * - 마크다운 렌더링 개선 (줄 간격, 제목, 불렛, 표, 인용구)
+ * - 사용자: 주황색 말풍선 (우측)
+ * - 에이전트: 말풍선 없이 흰 바탕에 마크다운 렌더링
+ * - 시각화: Plotly/HTML 인라인 렌더링
  */
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
@@ -26,44 +26,50 @@ function normalizeMathDelimiters(content) {
 
 const markdownComponents = {
   h1: ({ children }) => (
-    <h1 className="text-lg font-bold text-[#191F28] mt-4 mb-2 first:mt-0">{children}</h1>
+    <h1 className="text-xl font-bold text-[#191F28] mt-6 mb-3 first:mt-0">{children}</h1>
   ),
   h2: ({ children }) => (
-    <h2 className="text-base font-bold text-[#191F28] mt-3 mb-2 first:mt-0">{children}</h2>
+    <h2 className="text-lg font-bold text-[#191F28] mt-5 mb-2.5 first:mt-0 pb-2 border-b border-[#F2F4F6]">{children}</h2>
   ),
   h3: ({ children }) => (
-    <h3 className="text-sm font-bold text-[#191F28] mt-3 mb-1.5 first:mt-0">{children}</h3>
+    <h3 className="text-base font-semibold text-[#191F28] mt-4 mb-2 first:mt-0">{children}</h3>
   ),
   p: ({ children }) => (
-    <p className="text-sm leading-[1.7] text-[#333D4B] mb-2.5 last:mb-0">{children}</p>
+    <p className="text-[15px] leading-[1.8] text-[#333D4B] mb-4 last:mb-0">{children}</p>
   ),
   ul: ({ children }) => (
-    <ul className="list-disc pl-4 space-y-1 mb-3 last:mb-0">{children}</ul>
+    <ul className="list-disc pl-5 space-y-2 mb-4 last:mb-0 text-[15px] text-[#333D4B]">{children}</ul>
   ),
   ol: ({ children }) => (
-    <ol className="list-decimal pl-4 space-y-1 mb-3 last:mb-0">{children}</ol>
+    <ol className="list-decimal pl-5 space-y-2 mb-4 last:mb-0 text-[15px] text-[#333D4B]">{children}</ol>
   ),
   li: ({ children }) => (
-    <li className="text-sm leading-[1.6] text-[#333D4B]">{children}</li>
+    <li className="leading-[1.7]">{children}</li>
   ),
   blockquote: ({ children }) => (
-    <blockquote className="border-l-4 border-[#FFB380] bg-[#FFF8F3] pl-4 pr-3 py-2 my-3 rounded-r-lg italic text-[#6B7684]">
+    <blockquote className="border-l-4 border-[#FF6B00] bg-[#FFF8F3] pl-4 pr-4 py-3 my-4 rounded-r-lg text-[#6B7684]">
       {children}
     </blockquote>
   ),
   table: ({ children }) => (
-    <div className="overflow-x-auto my-3">
-      <table className="min-w-full border-collapse text-sm">{children}</table>
+    <div className="overflow-x-auto my-4 rounded-xl border border-[#E5E8EB] shadow-sm">
+      <table className="w-full border-collapse text-sm">{children}</table>
     </div>
   ),
   thead: ({ children }) => (
     <thead className="bg-[#F7F8FA]">{children}</thead>
   ),
+  tbody: ({ children }) => (
+    <tbody className="divide-y divide-[#F2F4F6]">{children}</tbody>
+  ),
+  tr: ({ children }) => (
+    <tr className="hover:bg-[#FAFBFC] transition-colors">{children}</tr>
+  ),
   th: ({ children }) => (
-    <th className="border border-[#E5E8EB] px-3 py-2 text-left font-semibold text-[#333D4B]">{children}</th>
+    <th className="px-4 py-3 text-left font-semibold text-[#191F28] text-sm whitespace-nowrap border-b-2 border-[#E5E8EB]">{children}</th>
   ),
   td: ({ children }) => (
-    <td className="border border-[#E5E8EB] px-3 py-2 text-[#4E5968]">{children}</td>
+    <td className="px-4 py-3 text-[#4E5968] text-sm">{children}</td>
   ),
   strong: ({ children }) => (
     <strong className="font-semibold text-[#191F28]">{children}</strong>
@@ -71,7 +77,7 @@ const markdownComponents = {
   em: ({ children }) => (
     <em className="italic text-[#6B7684]">{children}</em>
   ),
-  code: ({ inline, children }) => {
+  code: ({ inline, children, className }) => {
     if (inline) {
       return (
         <code className="bg-[#F2F4F6] text-[#D63384] px-1.5 py-0.5 rounded text-[13px] font-mono">
@@ -80,8 +86,8 @@ const markdownComponents = {
       );
     }
     return (
-      <pre className="bg-[#1E293B] text-[#E2E8F0] p-3 rounded-lg overflow-x-auto my-3 text-[13px] font-mono">
-        <code>{children}</code>
+      <pre className="bg-[#1E293B] text-[#E2E8F0] p-4 rounded-xl overflow-x-auto my-4 text-[13px] font-mono">
+        <code className={className}>{children}</code>
       </pre>
     );
   },
@@ -90,29 +96,36 @@ const markdownComponents = {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="text-[#FF6B00] hover:underline"
+      className="text-[#FF6B00] hover:underline font-medium"
     >
       {children}
     </a>
+  ),
+  hr: () => <div className="my-4" />,
+  img: ({ alt }) => (
+    <span className="inline-flex items-center gap-1 px-2 py-1 bg-[#F7F8FA] rounded text-xs text-[#8B95A1]">
+      <span>📊</span>
+      <span>{alt || '차트 데이터'}</span>
+    </span>
   ),
 };
 
 function UserBubble({ content }) {
   return (
     <motion.div
-      className="flex justify-end mb-3"
+      className="flex justify-end mb-4"
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
     >
-      <div className="max-w-[85%] px-4 py-2.5 bg-[#FF6B00] text-white rounded-2xl rounded-br-md shadow-sm">
-        <p className="text-sm leading-relaxed whitespace-pre-wrap">{content}</p>
+      <div className="max-w-[80%] px-4 py-3 bg-[#FF6B00] text-white rounded-2xl rounded-br-md shadow-sm">
+        <p className="text-[15px] leading-relaxed whitespace-pre-wrap">{content}</p>
       </div>
     </motion.div>
   );
 }
 
-function AssistantBubble({ content, isStreaming, sources }) {
+function AssistantContent({ content, isStreaming, sources }) {
   const markdownContent = useMemo(
     () => normalizeMathDelimiters(content),
     [content],
@@ -120,35 +133,27 @@ function AssistantBubble({ content, isStreaming, sources }) {
 
   return (
     <motion.div
-      className="flex items-start gap-2 mb-4"
+      className="mb-6"
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
     >
-      <div className="w-7 h-7 rounded-full bg-[#F2F4F6] flex items-center justify-center flex-shrink-0 mt-0.5">
-        <img src="/images/penguin-3d.png" alt="" className="w-5 h-5" />
+      <div className="prose-agent">
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm, remarkMath]}
+          rehypePlugins={[rehypeRaw, rehypeKatex]}
+          components={markdownComponents}
+        >
+          {markdownContent}
+        </ReactMarkdown>
       </div>
-      <div className="max-w-[88%] min-w-0">
-        <div className="bg-white border border-[#E5E8EB] rounded-2xl rounded-tl-md px-4 py-3 shadow-sm">
-          <div className="prose-agent">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm, remarkMath]}
-              rehypePlugins={[rehypeRaw, rehypeKatex]}
-              components={markdownComponents}
-            >
-              {markdownContent}
-            </ReactMarkdown>
-          </div>
-          {isStreaming && (
-            <span className="inline-block w-1.5 h-4 bg-[#FF6B00] animate-pulse ml-0.5 rounded-sm" />
-          )}
-        </div>
+      {isStreaming && (
+        <span className="inline-block w-1.5 h-5 bg-[#FF6B00] animate-pulse ml-0.5 rounded-sm" />
+      )}
 
-        {/* Sources */}
-        {sources && sources.length > 0 && (
-          <SourceBadge sources={sources} />
-        )}
-      </div>
+      {sources && sources.length > 0 && (
+        <SourceBadge sources={sources} />
+      )}
     </motion.div>
   );
 }
@@ -168,19 +173,19 @@ function SourceBadge({ sources }) {
   };
 
   return (
-    <div className="mt-2 pl-1">
+    <div className="mt-4 pt-3 border-t border-[#F2F4F6]">
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1 text-xs text-[#8B95A1] hover:text-[#FF6B00] transition-colors"
+        className="flex items-center gap-1.5 text-xs text-[#8B95A1] hover:text-[#FF6B00] transition-colors"
       >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
           <polyline points="14 2 14 8 20 8" />
         </svg>
-        <span>{sources.length}개 출처</span>
+        <span>{sources.length}개 출처 참고</span>
         <svg
-          width="10"
-          height="10"
+          width="12"
+          height="12"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -192,12 +197,12 @@ function SourceBadge({ sources }) {
       </button>
 
       {open && (
-        <div className="mt-2 space-y-1.5">
+        <div className="mt-3 space-y-2">
           {sources.map((s, i) => {
             const meta = SOURCE_LABELS[s.type] || SOURCE_LABELS.web;
             const hasUrl = s.url && (s.url.startsWith('http') || s.url.startsWith('/'));
             return (
-              <div key={i} className="flex items-center gap-2 text-[11px]">
+              <div key={i} className="flex items-center gap-2 text-xs">
                 <span>{meta.icon}</span>
                 {hasUrl ? (
                   <a
@@ -220,23 +225,72 @@ function SourceBadge({ sources }) {
   );
 }
 
-function ErrorBubble({ content }) {
+function ErrorContent({ content }) {
   return (
     <motion.div
-      className="flex items-start gap-2 mb-4"
+      className="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl"
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
     >
-      <div className="w-7 h-7 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-        <span className="text-red-500 text-sm">!</span>
-      </div>
-      <div className="max-w-[88%]">
-        <div className="bg-red-50 border border-red-200 rounded-2xl rounded-tl-md px-4 py-3">
-          <p className="text-sm text-red-600">{content}</p>
-        </div>
+      <div className="flex items-center gap-2 text-red-600">
+        <span className="text-base">⚠️</span>
+        <p className="text-sm">{content}</p>
       </div>
     </motion.div>
   );
+}
+
+function VisualizationContent({ message }) {
+  const { chartData, content, format } = message;
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    if (chartData && chartData.data && containerRef.current && window.Plotly) {
+      window.Plotly.newPlot(containerRef.current, chartData.data, {
+        ...chartData.layout,
+        margin: { t: 40, r: 20, b: 40, l: 50 },
+        paper_bgcolor: 'transparent',
+        plot_bgcolor: 'transparent',
+        font: { family: 'Pretendard, sans-serif', size: 12 },
+      }, { responsive: true, displayModeBar: false });
+    }
+  }, [chartData]);
+
+  if (chartData && chartData.data) {
+    return (
+      <motion.div
+        className="mb-6"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
+        <div className="rounded-xl border border-[#E5E8EB] bg-white p-4 shadow-sm">
+          {chartData.layout?.title && (
+            <h3 className="text-base font-semibold text-[#191F28] mb-3">
+              {chartData.layout.title}
+            </h3>
+          )}
+          <div ref={containerRef} className="w-full h-64" />
+        </div>
+      </motion.div>
+    );
+  }
+
+  if (content && format === 'html') {
+    return (
+      <motion.div
+        className="mb-6"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
+        <div
+          className="rounded-xl border border-[#E5E8EB] bg-white p-4 shadow-sm overflow-x-auto visualization-html"
+          dangerouslySetInnerHTML={{ __html: content }}
+        />
+      </motion.div>
+    );
+  }
+
+  return null;
 }
 
 export default React.memo(function ChatBubble({ message }) {
@@ -246,7 +300,7 @@ export default React.memo(function ChatBubble({ message }) {
 
   if (message.role === 'assistant') {
     return (
-      <AssistantBubble
+      <AssistantContent
         content={message.content}
         isStreaming={message.isStreaming}
         sources={message.sources}
@@ -254,8 +308,12 @@ export default React.memo(function ChatBubble({ message }) {
     );
   }
 
+  if (message.role === 'visualization') {
+    return <VisualizationContent message={message} />;
+  }
+
   if (message.isError) {
-    return <ErrorBubble content={message.content} />;
+    return <ErrorContent content={message.content} />;
   }
 
   return null;

@@ -43,8 +43,121 @@ from app.services.investment_intel import (
     annotate_reachable_links,
     collect_stock_intelligence,
 )
+from app.services.stock_price_service import get_batch_prices
 
 router = APIRouter(prefix="/tutor", tags=["AI tutor"])
+
+
+def detect_action_intent(message: str) -> dict:
+    """
+    자연어 메시지에서 사용자 의도(액션)를 감지.
+    Returns: { "action": str, "params": dict, "todo_list": list, "confidence": float }
+    """
+    msg = message.lower().strip()
+    
+    # 매수 의도 감지
+    buy_patterns = [
+        r'(.+?)\s*(\d+)\s*주?\s*(사줘|매수|구매|살게|사고\s*싶어|매수해줘|사|살래)',
+        r'(매수|사줘|구매).+?(.+?)\s*(\d+)\s*주?',
+        r'(.+?)\s*(매수|사고|구매).+?(\d+)\s*주?',
+    ]
+    for pattern in buy_patterns:
+        match = re.search(pattern, msg)
+        if match:
+            groups = match.groups()
+            stock_name = None
+            quantity = 1
+            for g in groups:
+                if g and g.isdigit():
+                    quantity = int(g)
+                elif g and not any(kw in g for kw in ['매수', '사줘', '구매', '살게', '사고', '주']):
+                    if len(g) > 1:
+                        stock_name = g.strip()
+            if stock_name:
+                return {
+                    "action": "buy_stock",
+                    "params": {"stock_name": stock_name, "quantity": quantity},
+                    "todo_list": [
+                        {"title": f"{stock_name} 종목 확인", "status": "pending"},
+                        {"title": "현재가 조회", "status": "pending"},
+                        {"title": f"{quantity}주 매수 주문 준비", "status": "pending"},
+                        {"title": "주문 확인 요청", "status": "pending"},
+                    ],
+                    "confidence": 0.85,
+                }
+    
+    # 매도 의도 감지
+    sell_patterns = [
+        r'(.+?)\s*(\d+)\s*주?\s*(팔아줘|매도|판매|팔게|팔고\s*싶어|매도해줘|팔아|팔래)',
+        r'(매도|팔아줘|판매).+?(.+?)\s*(\d+)\s*주?',
+    ]
+    for pattern in sell_patterns:
+        match = re.search(pattern, msg)
+        if match:
+            groups = match.groups()
+            stock_name = None
+            quantity = 1
+            for g in groups:
+                if g and g.isdigit():
+                    quantity = int(g)
+                elif g and not any(kw in g for kw in ['매도', '팔아', '판매', '팔게', '팔고', '주']):
+                    if len(g) > 1:
+                        stock_name = g.strip()
+            if stock_name:
+                return {
+                    "action": "sell_stock",
+                    "params": {"stock_name": stock_name, "quantity": quantity},
+                    "todo_list": [
+                        {"title": f"{stock_name} 보유 확인", "status": "pending"},
+                        {"title": "현재가 조회", "status": "pending"},
+                        {"title": f"{quantity}주 매도 주문 준비", "status": "pending"},
+                        {"title": "주문 확인 요청", "status": "pending"},
+                    ],
+                    "confidence": 0.85,
+                }
+    
+    # 포트폴리오 분석 의도
+    if any(kw in msg for kw in ['포트폴리오', '내 주식', '보유 종목', '수익률', '평가액']):
+        return {
+            "action": "portfolio_analysis",
+            "params": {},
+            "todo_list": [
+                {"title": "보유 종목 조회", "status": "pending"},
+                {"title": "실시간 시세 수집", "status": "pending"},
+                {"title": "수익률 계산", "status": "pending"},
+                {"title": "분석 결과 정리", "status": "pending"},
+            ],
+            "confidence": 0.8,
+        }
+    
+    # 시세 조회 의도
+    price_match = re.search(r'(.+?)\s*(시세|가격|현재가|주가)', msg)
+    if price_match:
+        stock_name = price_match.group(1).strip()
+        if len(stock_name) > 1 and stock_name not in ['현재', '지금', '오늘']:
+            return {
+                "action": "check_price",
+                "params": {"stock_name": stock_name},
+                "todo_list": [
+                    {"title": f"{stock_name} 종목 검색", "status": "pending"},
+                    {"title": "실시간 시세 조회", "status": "pending"},
+                ],
+                "confidence": 0.8,
+            }
+    
+    # 브리핑 의도
+    if any(kw in msg for kw in ['브리핑', '오늘 시장', '시장 동향', '증시']):
+        return {
+            "action": "get_briefing",
+            "params": {},
+            "todo_list": [
+                {"title": "오늘의 시장 데이터 수집", "status": "pending"},
+                {"title": "주요 이슈 정리", "status": "pending"},
+            ],
+            "confidence": 0.75,
+        }
+    
+    return {"action": None, "params": {}, "todo_list": [], "confidence": 0}
 
 
 async def get_term_explanation_from_llm(term: str, difficulty: str) -> str:
@@ -726,7 +839,7 @@ async def _collect_context(
         except Exception:
             pass  # 컨텍스트 로드 실패해도 대화는 계속
 
-    # 포트폴리오 컨텍스트 주입 (개인화된 조언용)
+    # 포트폴리오 컨텍스트 주입 (개인화된 조언용, 현재가 포함)
     if user_id:
         try:
             portfolio_result = await db.execute(text(
@@ -735,13 +848,36 @@ async def _collect_context(
             pf_row = portfolio_result.fetchone()
             if pf_row:
                 holdings_result = await db.execute(text(
-                    "SELECT stock_name, quantity, avg_buy_price FROM portfolio_holdings WHERE portfolio_id = (SELECT id FROM user_portfolios WHERE user_id = :uid LIMIT 1)"
+                    "SELECT stock_code, stock_name, quantity, avg_buy_price FROM portfolio_holdings WHERE portfolio_id = (SELECT id FROM user_portfolios WHERE user_id = :uid LIMIT 1)"
                 ), {"uid": user_id})
                 holdings = holdings_result.fetchall()
-                holdings_text = ", ".join(f"{h[0]} {h[1]}주(평균 {int(h[2]):,}원)" for h in holdings) if holdings else "없음"
-                page_context += f"\n\n[사용자 포트폴리오]\n보유 현금: {int(pf_row[0]):,}원 / 초기 자본: {int(pf_row[1]):,}원\n보유 종목: {holdings_text}"
-        except Exception:
-            pass
+                
+                if holdings:
+                    stock_codes = [h[0] for h in holdings if h[0]]
+                    prices = await get_batch_prices(stock_codes) if stock_codes else []
+                    price_map = {p["stock_code"]: p["current_price"] for p in prices if p}
+                    
+                    holdings_lines = []
+                    total_eval = int(pf_row[0])
+                    for h in holdings:
+                        code, name, qty, avg_price = h[0], h[1], h[2], h[3]
+                        current_price = price_map.get(code)
+                        if current_price:
+                            eval_amount = current_price * qty
+                            profit_pct = ((current_price - avg_price) / avg_price * 100) if avg_price else 0
+                            total_eval += eval_amount
+                            holdings_lines.append(
+                                f"  - {name}: {qty}주 × {current_price:,}원 = {eval_amount:,}원 (평균 {int(avg_price):,}원, {profit_pct:+.1f}%)"
+                            )
+                        else:
+                            holdings_lines.append(f"  - {name}: {qty}주 (평균 {int(avg_price):,}원, 현재가 조회 불가)")
+                    
+                    holdings_text = "\n".join(holdings_lines) if holdings_lines else "없음"
+                    page_context += f"\n\n[사용자 포트폴리오]\n보유 현금: {int(pf_row[0]):,}원\n총 평가액: {total_eval:,}원\n초기 자본: {int(pf_row[1]):,}원\n수익률: {((total_eval - pf_row[1]) / pf_row[1] * 100):+.1f}%\n보유 종목:\n{holdings_text}"
+                else:
+                    page_context += f"\n\n[사용자 포트폴리오]\n보유 현금: {int(pf_row[0]):,}원 / 초기 자본: {int(pf_row[1]):,}원\n보유 종목: 없음"
+        except Exception as e:
+            logger.warning(f"포트폴리오 컨텍스트 로드 실패: {e}")
 
     # 출처 수집 (glossary, DB 사례/리포트, 주가/기업관계)
     sources = []
@@ -789,9 +925,34 @@ async def _build_llm_messages(
     extra_context: str,
     guardrail_decision: Optional[str] = None,
     guardrail_mode: str = "strict",
+    detected_intent: Optional[dict] = None,
 ) -> list:
     """LLM 메시지 배열 구성 — 시스템 프롬프트 + 이전 대화 + 현재 질문."""
     system_prompt = get_difficulty_prompt(request.difficulty)
+    
+    # 감지된 의도와 투두 리스트가 있으면 프롬프트에 추가
+    if detected_intent and detected_intent.get("action") and detected_intent.get("todo_list"):
+        action = detected_intent["action"]
+        params = detected_intent.get("params", {})
+        todo_list = detected_intent["todo_list"]
+        
+        todo_steps = "\n".join([f"  {i+1}. {t['title']}" for i, t in enumerate(todo_list)])
+        
+        system_prompt += f"""
+
+## 현재 작업 컨텍스트
+사용자가 **{action}** 작업을 요청했습니다.
+파라미터: {json.dumps(params, ensure_ascii=False)}
+
+### 수행해야 할 단계
+{todo_steps}
+
+### 지시사항
+1. 위 단계를 순서대로 수행하세요.
+2. 각 단계를 수행하면서 진행 상황을 사용자에게 알려주세요.
+3. 모든 데이터는 마크다운 테이블 형식으로 정리하세요.
+4. 마지막 단계에서 사용자에게 확인을 요청하세요.
+"""
     context_mode = ""
     if request.context_text:
         try:
@@ -807,6 +968,44 @@ async def _build_llm_messages(
         system_prompt += extra_context
     # 용어 설명은 LLM이 응답 내에서 자연스럽게 처리하도록 프롬프트에 지시
     system_prompt += "\n\n투자 용어가 나오면 괄호 안에 쉬운 설명을 덧붙여주세요. 예: PER(주가수익비율, 주가를 이익으로 나눈 값)."
+    
+    # 자연어 명령어 처리 능력
+    system_prompt += """
+
+## 명령어 처리 규칙
+사용자가 자연어로 다음 요청을 하면 해당 작업을 수행하세요:
+
+### 매수/매도 요청
+- "삼성전자 5주 사줘", "삼성전자 매수해줘 10주" 등의 요청
+- 반드시 마크다운 테이블로 주문 내역을 정리하세요:
+  | 항목 | 내용 |
+  |------|------|
+  | 종목명 | {종목명} |
+  | 주문 수량 | {수량}주 |
+  | 현재가 | {현재가}원 |
+  | 예상 금액 | {금액}원 |
+- 마지막에 "위 주문을 진행할까요?"라고 확인을 요청하세요.
+
+### 포트폴리오 조회
+- "내 포트폴리오", "보유 종목", "수익률" 등의 요청
+- 컨텍스트에 포트폴리오 정보가 있으면 테이블로 정리하세요.
+
+### 시세 조회
+- "삼성전자 시세", "현재가 알려줘" 등의 요청
+- 종목의 현재가, 등락률, 거래량 등을 테이블로 보여주세요.
+
+### 데이터 시각화 및 테이블 규칙
+- 숫자 데이터가 있을 때는 반드시 파이프(|) 마크다운 테이블을 사용하세요.
+- 테이블 예시:
+  | 항목 | 값 |
+  |------|-----|
+  | 주가 | 68,300원 |
+- **절대 금지 사항:**
+  - ASCII 차트, 텍스트 차트, 이모지 막대 금지
+  - <img> 태그 금지 (이미지 태그 사용 금지)
+  - 가짜 URL이나 placeholder 이미지 금지
+  - 대시(-)나 등호(=)로 만든 표 금지
+- 차트/그래프는 텍스트로 설명하세요. 시각화는 별도 시스템이 자동 생성합니다."""
     if request.response_mode == "canvas_markdown":
         system_prompt += (
             "\n\n응답 형식 규칙:\n"
@@ -815,11 +1014,14 @@ async def _build_llm_messages(
             "- 첫 문단에 핵심 요약 1~2문장을 먼저 제시하세요.\n"
             "- 핵심 포인트는 불릿 목록(- )으로 정리하세요.\n"
             "- 순서가 중요한 내용은 번호 목록(1. 2. 3.)을 사용하세요.\n"
-            "- 비교 데이터가 있으면 2~4열의 간단한 마크다운 테이블을 사용해도 됩니다.\n"
-            "- 절대로 ASCII art, 텍스트 차트, 막대 그래프 문자열을 만들지 마세요. 시각화는 별도 시스템이 Plotly 차트로 처리합니다.\n"
-            "- 숫자 데이터는 텍스트로만 서술하세요 (예: '삼성전자 매출은 전년 대비 12% 증가').\n"
+            "- 비교 데이터가 있으면 마크다운 테이블(| 헤더 | 헤더 | + |---| 구분자)을 적극 활용하세요.\n"
+            "- 테이블 앞뒤에 반드시 빈 줄을 넣으세요.\n"
+            "- --- 수평선(horizontal rule)은 사용하지 마세요. 섹션 구분은 ## 소제목으로 하세요.\n"
+            "- <img> 태그, 가짜 이미지 URL, placeholder 이미지는 절대 사용하지 마세요.\n"
+            "- ASCII art, 텍스트 차트, 막대 그래프 문자열을 만들지 마세요.\n"
+            "- 숫자 데이터는 텍스트 또는 표로 서술하세요.\n"
             "- 필요한 경우 마지막에 '다음 액션' 섹션을 번호 목록으로 제시하세요.\n"
-            "- 파이프(|) 같은 중간 메타 토큰이나 디버그 문자열은 출력하지 마세요.\n"
+            "- 디버그 문자열이나 중간 메타 토큰은 출력하지 마세요.\n"
         )
         if request.difficulty == "beginner":
             system_prompt += (
@@ -974,6 +1176,13 @@ async def generate_tutor_response(
 
     yield f"event: step\ndata: {json.dumps({'type': 'thinking', 'content': '질문을 분석하고 있습니다...'})}\n\n"
 
+    # 자연어 명령어 의도 감지 및 todo_list 전송
+    detected_intent = detect_action_intent(request.message)
+    if detected_intent["action"] and detected_intent["todo_list"]:
+        # todo_list 전송 (진행 상황 표시용)
+        yield f"event: todo_list\ndata: {json.dumps({'type': 'todo_list', 'todos': detected_intent['todo_list'], 'action': detected_intent['action']})}\n\n"
+        logger.info(f"Detected action intent: {detected_intent['action']} with confidence {detected_intent['confidence']}")
+
     # 가드레일 검사
     try:
         guardrail_result = await run_guardrail(request.message, policy=guardrail_policy)
@@ -1015,7 +1224,7 @@ async def generate_tutor_response(
         except (json.JSONDecodeError, AttributeError):
             pass
 
-    # LLM 메시지 배열 구성
+    # LLM 메시지 배열 구성 (감지된 의도 포함)
     messages = await _build_llm_messages(
         request,
         db,
@@ -1023,6 +1232,7 @@ async def generate_tutor_response(
         extra_context,
         guardrail_decision=guardrail_decision,
         guardrail_mode=guardrail_policy,
+        detected_intent=detected_intent,
     )
 
     try:
@@ -1186,12 +1396,27 @@ async def generate_tutor_response(
                 import anthropic
                 import os
 
-                viz_prompt = (
-                    "다음 내용을 Plotly.js 차트 JSON으로 변환하세요.\n"
-                    "반드시 아래 형식의 JSON만 반환하세요 (마크다운 코드블록 없이):\n"
-                    '{"data": [트레이스 객체들], "layout": {레이아웃 옵션}}\n\n'
-                    f"내용:\n{full_response[:2000]}"
-                )
+                # pykrx 실제 주가 데이터가 있으면 우선 사용, 없으면 full_response 기반
+                _pykrx_chart = chart_data if (chart_data and isinstance(chart_data, dict) and
+                                              any(isinstance(v, dict) and "history" in v
+                                                  for v in chart_data.values())) else None
+                if _pykrx_chart:
+                    _data_json = json.dumps(_pykrx_chart, ensure_ascii=False)
+                    viz_prompt = (
+                        "아래 주가 데이터로 Plotly.js 라인 차트 JSON을 생성하세요.\n"
+                        "반드시 아래 형식의 JSON만 반환하세요 (마크다운 코드블록 없이):\n"
+                        '{"data": [{"type":"scatter","mode":"lines+markers","x":[날짜들],"y":[종가들],"name":"종목명"}], '
+                        '"layout": {"title":"...", "xaxis":{"title":"날짜"}, "yaxis":{"title":"주가(원)"}}}\n\n'
+                        f"[주가 데이터 (JSON)]\n{_data_json}\n\n"
+                        f"[AI 응답 요약]\n{full_response[:300]}"
+                    )
+                else:
+                    viz_prompt = (
+                        "다음 내용을 Plotly.js 차트 JSON으로 변환하세요.\n"
+                        "반드시 아래 형식의 JSON만 반환하세요 (마크다운 코드블록 없이):\n"
+                        '{"data": [트레이스 객체들], "layout": {레이아웃 옵션}}\n\n'
+                        f"내용:\n{full_response[:2000]}"
+                    )
 
                 claude_api_key = os.getenv("CLAUDE_API_KEY") or get_settings().ANTHROPIC_API_KEY
                 if claude_api_key:

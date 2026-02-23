@@ -104,18 +104,18 @@ export default function useAgentControlOrchestrator({
           navigate('/education');
           break;
         case 'open_agent_history':
-          navigate('/agent/history', { state: { mode, contextPayload } });
+          navigate('/tutor/history', { state: { mode, contextPayload } });
           break;
         case 'open_learning_history':
           navigate('/education/archive');
           break;
         case 'open_home_issue_agent':
-          navigate('/agent', {
+          navigate('/tutor', {
             state: {
               mode: 'home',
               initialPrompt: options.prompt || '오늘의 이슈 핵심만 정리해줘',
               contextPayload,
-              resetConversation: location.pathname !== '/agent',
+              resetConversation: true,
             },
           });
           break;
@@ -123,12 +123,12 @@ export default function useAgentControlOrchestrator({
           if (!stockContext?.stock_code && !contextPayload?.stock_code) {
             throw new Error('종목 컨텍스트가 없습니다.');
           }
-          navigate('/agent', {
+          navigate('/tutor', {
             state: {
               mode: 'stock',
               stockContext: stockContext || contextPayload,
               initialPrompt: options.prompt || `${(stockContext || contextPayload).stock_name || '선택 종목'} 체크포인트를 요약해줘`,
-              resetConversation: location.pathname !== '/agent',
+              resetConversation: true,
             },
           });
           break;

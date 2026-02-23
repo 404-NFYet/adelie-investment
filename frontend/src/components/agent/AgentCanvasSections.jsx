@@ -2,7 +2,6 @@ import { lazy, Suspense, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
-import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 
@@ -43,6 +42,11 @@ function CodeBlockRenderer({ className, children, ...rest }) {
   return <code className={className} {...rest}>{children}</code>;
 }
 
+function normalizeMarkdownForTables(text) {
+  if (!text) return '';
+  return text.replace(/\n(\|[^\n]+\|)\n/g, '\n\n$1\n');
+}
+
 function ActionButtons({ actions, onActionClick }) {
   if (!Array.isArray(actions) || actions.length === 0) return null;
 
@@ -78,6 +82,17 @@ function ActionButtons({ actions, onActionClick }) {
 
 const markdownComponents = {
   code: CodeBlockRenderer,
+  table: ({ children }) => (
+    <div className="my-4 overflow-x-auto rounded-xl border border-[#E5E8EB]">
+      <table className="w-full border-collapse text-sm">{children}</table>
+    </div>
+  ),
+  thead: ({ children }) => <thead className="bg-[#F7F8FA]">{children}</thead>,
+  tbody: ({ children }) => <tbody className="divide-y divide-[#F2F4F6]">{children}</tbody>,
+  tr: ({ children }) => <tr className="hover:bg-[#FAFBFC] transition-colors">{children}</tr>,
+  th: ({ children }) => <th className="px-3 py-2.5 text-left text-[12px] font-semibold text-[#191F28] whitespace-nowrap border-b-2 border-[#E5E8EB]">{children}</th>,
+  td: ({ children }) => <td className="px-3 py-2.5 text-[12px] text-[#4E5968]">{children}</td>,
+  hr: () => <div className="my-4" />,
 };
 
 export default function AgentCanvasSections({
@@ -86,7 +101,10 @@ export default function AgentCanvasSections({
   contentRef = null,
 }) {
   const actions = Array.isArray(canvasState.actions) ? canvasState.actions : [];
-  const markdownText = canvasState.rawAssistantText || '';
+  const markdownText = useMemo(
+    () => normalizeMarkdownForTables(canvasState.rawAssistantText || ''),
+    [canvasState.rawAssistantText],
+  );
 
   if (canvasState.viewType === 'empty') {
     return (
@@ -107,7 +125,7 @@ export default function AgentCanvasSections({
             className="agent-markdown prose prose-sm max-w-none touch-pan-y text-[14px] leading-[1.75] text-[#333D4B] prose-headings:text-[#191F28] prose-strong:text-[#191F28] prose-code:rounded prose-code:bg-[#F2F4F6] prose-code:px-1 prose-code:py-0.5 prose-code:text-[#374151]"
           >
             <ReactMarkdown
-              remarkPlugins={[remarkGfm, remarkBreaks, remarkMath]}
+              remarkPlugins={[remarkGfm, remarkMath]}
               rehypePlugins={[rehypeRaw, rehypeKatex]}
               components={markdownComponents}
             >

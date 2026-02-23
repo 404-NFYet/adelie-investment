@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Adelie Agent Monitor</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+    .header { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 20px 24px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }
+    .header h1 { font-size: 20px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+    .header h1::before { content: '🐧'; font-size: 24px; }
+    .status-badge { padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+    .status-badge.connected { background: #166534; color: #86efac; }
+    .status-badge.disconnected { background: #7f1d1d; color: #fca5a5; }
+    .container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 20px; max-width: 1400px; margin: 0 auto; }
+    @media (max-width: 900px) { .container { grid-template-columns: 1fr; } }
+    .panel { background: #1e293b; border-radius: 12px; border: 1px solid #334155; overflow: hidden; }
+    .panel-header { padding: 16px 20px; border-bottom: 1px solid #334155; font-weight: 600; font-size: 14px; display: flex; justify-content: space-between; align-items: center; }
+    .panel-header .count { background: #334155; padding: 4px 10px; border-radius: 12px; font-size: 12px; }
+    .panel-content { padding: 16px; max-height: 400px; overflow-y: auto; }
+    .log-entry { padding: 12px; border-radius: 8px; margin-bottom: 8px; background: #0f172a; border-left: 3px solid #64748b; font-size: 13px; }
+    .log-entry.request { border-left-color: #3b82f6; }
+    .log-entry.response { border-left-color: #22c55e; }
+    .log-entry.error { border-left-color: #ef4444; }
+    .log-entry.tool { border-left-color: #a855f7; }
+    .log-time { color: #64748b; font-size: 11px; margin-bottom: 4px; }
+    .log-type { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; margin-bottom: 6px; }
+    .log-type.request { background: #1e3a8a; color: #93c5fd; }
+    .log-type.response { background: #14532d; color: #86efac; }
+    .log-type.error { background: #7f1d1d; color: #fca5a5; }
+    .log-type.tool { background: #581c87; color: #d8b4fe; }
+    .log-content { color: #cbd5e1; line-height: 1.5; word-break: break-all; }
+    .log-content pre { background: #0f172a; padding: 8px; border-radius: 4px; overflow-x: auto; font-size: 11px; margin-top: 8px; }
+    .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    .stat-card { background: #0f172a; border-radius: 8px; padding: 16px; text-align: center; }
+    .stat-value { font-size: 28px; font-weight: 700; color: #f8fafc; }
+    .stat-label { font-size: 12px; color: #64748b; margin-top: 4px; }
+    .stat-card.primary .stat-value { color: #FF6B00; }
+    .sessions-list { display: flex; flex-direction: column; gap: 8px; }
+    .session-item { background: #0f172a; border-radius: 8px; padding: 12px; display: flex; justify-content: space-between; align-items: center; }
+    .session-id { font-family: monospace; font-size: 12px; color: #94a3b8; }
+    .session-status { padding: 4px 8px; border-radius: 4px; font-size: 11px; }
+    .session-status.active { background: #166534; color: #86efac; }
+    .session-status.idle { background: #334155; color: #94a3b8; }
+    .clear-btn { background: #334155; border: none; color: #94a3b8; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+    .clear-btn:hover { background: #475569; color: #e2e8f0; }
+    .empty-state { text-align: center; padding: 40px; color: #64748b; }
+    .tool-call { background: #1e1b4b; border-radius: 6px; padding: 10px; margin-top: 8px; }
+    .tool-name { color: #a78bfa; font-weight: 600; font-size: 12px; }
+    .tool-args { color: #94a3b8; font-size: 11px; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Adelie Agent Monitor</h1>
+    <span id="connection-status" class="status-badge disconnected">연결 안됨</span>
+  </div>
+  
+  <div class="container">
+    <!-- Stats Panel -->
+    <div class="panel">
+      <div class="panel-header">
+        <span>📊 통계</span>
+      </div>
+      <div class="panel-content">
+        <div class="stats-grid">
+          <div class="stat-card primary">
+            <div class="stat-value" id="total-requests">0</div>
+            <div class="stat-label">총 요청</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="total-responses">0</div>
+            <div class="stat-label">총 응답</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="total-tools">0</div>
+            <div class="stat-label">도구 호출</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="total-errors">0</div>
+            <div class="stat-label">오류</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Active Sessions -->
+    <div class="panel">
+      <div class="panel-header">
+        <span>🔗 활성 세션</span>
+        <span class="count" id="session-count">0</span>
+      </div>
+      <div class="panel-content">
+        <div class="sessions-list" id="sessions-list">
+          <div class="empty-state">활성 세션 없음</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Request Logs -->
+    <div class="panel" style="grid-column: span 2;">
+      <div class="panel-header">
+        <span>📝 로그</span>
+        <button class="clear-btn" onclick="clearLogs()">지우기</button>
+      </div>
+      <div class="panel-content" id="logs-container">
+        <div class="empty-state">로그가 없습니다. 채팅을 시작하면 여기에 표시됩니다.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = window.location.hostname === 'localhost' 
+      ? 'http://localhost:8082' 
+      : '';
+    
+    let stats = { requests: 0, responses: 0, tools: 0, errors: 0 };
+    let sessions = new Map();
+    let logs = [];
+
+    function updateStats() {
+      document.getElementById('total-requests').textContent = stats.requests;
+      document.getElementById('total-responses').textContent = stats.responses;
+      document.getElementById('total-tools').textContent = stats.tools;
+      document.getElementById('total-errors').textContent = stats.errors;
+    }
+
+    function updateSessions() {
+      const container = document.getElementById('sessions-list');
+      const count = document.getElementById('session-count');
+      count.textContent = sessions.size;
+      
+      if (sessions.size === 0) {
+        container.innerHTML = '<div class="empty-state">활성 세션 없음</div>';
+        return;
+      }
+      
+      container.innerHTML = Array.from(sessions.entries()).map(([id, data]) => `
+        <div class="session-item">
+          <div>
+            <div class="session-id">${id.slice(0, 8)}...</div>
+            <div style="font-size: 11px; color: #64748b; margin-top: 4px;">
+              ${data.messages || 0} 메시지 · ${data.lastActivity || '방금'}
+            </div>
+          </div>
+          <span class="session-status ${data.status || 'idle'}">${data.status === 'active' ? '활성' : '대기'}</span>
+        </div>
+      `).join('');
+    }
+
+    function addLog(type, content, details = null) {
+      const time = new Date().toLocaleTimeString('ko-KR');
+      const log = { type, content, details, time };
+      logs.unshift(log);
+      if (logs.length > 100) logs.pop();
+      renderLogs();
+    }
+
+    function renderLogs() {
+      const container = document.getElementById('logs-container');
+      if (logs.length === 0) {
+        container.innerHTML = '<div class="empty-state">로그가 없습니다. 채팅을 시작하면 여기에 표시됩니다.</div>';
+        return;
+      }
+      
+      container.innerHTML = logs.map(log => `
+        <div class="log-entry ${log.type}">
+          <div class="log-time">${log.time}</div>
+          <span class="log-type ${log.type}">${getTypeLabel(log.type)}</span>
+          <div class="log-content">
+            ${log.content}
+            ${log.details ? `<pre>${JSON.stringify(log.details, null, 2)}</pre>` : ''}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function getTypeLabel(type) {
+      const labels = { request: '요청', response: '응답', error: '오류', tool: '도구' };
+      return labels[type] || type;
+    }
+
+    function clearLogs() {
+      logs = [];
+      renderLogs();
+    }
+
+    // Intercept fetch to monitor API calls
+    const originalFetch = window.fetch;
+    window.fetch = async function(...args) {
+      const [url, options] = args;
+      
+      if (typeof url === 'string' && url.includes('/api/v1/tutor')) {
+        markActivity();
+        const method = options?.method || 'GET';
+        let body = null;
+        
+        try {
+          if (options?.body) {
+            body = JSON.parse(options.body);
+          }
+        } catch {}
+        
+        stats.requests++;
+        updateStats();
+        addLog('request', `${method} ${url.split('/api')[1]}`, body);
+        
+        if (body?.session_id) {
+          sessions.set(body.session_id, { 
+            status: 'active', 
+            lastActivity: '방금',
+            messages: (sessions.get(body.session_id)?.messages || 0) + 1
+          });
+          updateSessions();
+        }
+      }
+      
+      try {
+        const response = await originalFetch.apply(this, args);
+        
+        if (typeof url === 'string' && url.includes('/api/v1/tutor')) {
+          if (response.ok) {
+            stats.responses++;
+          } else {
+            stats.errors++;
+            addLog('error', `HTTP ${response.status}`, { url });
+          }
+          updateStats();
+        }
+        
+        return response;
+      } catch (error) {
+        if (typeof url === 'string' && url.includes('/api/v1/tutor')) {
+          stats.errors++;
+          updateStats();
+          addLog('error', error.message);
+        }
+        throw error;
+      }
+    };
+
+    // Monitor SSE events
+    const originalEventSource = window.EventSource;
+    window.EventSource = function(url, config) {
+      const es = new originalEventSource(url, config);
+      
+      if (url.includes('/tutor')) {
+        markActivity();
+        addLog('request', 'SSE 연결 시작');
+        
+        es.addEventListener('message', (event) => {
+          markActivity();
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'tool_call') {
+              stats.tools++;
+              updateStats();
+              addLog('tool', `${data.tool || data.tool_name || 'unknown'}`, data);
+            } else if (data.type === 'todo_list') {
+              addLog('tool', '작업 계획 생성', { action: data.action, todos: data.todos });
+            } else if (data.type === 'visualization') {
+              addLog('response', '차트 데이터 생성', data.chartData);
+            } else if (data.type === 'done') {
+              stats.responses++;
+              updateStats();
+              addLog('response', '응답 완료', { tokens: data.total_tokens });
+            } else if (data.type === 'thinking') {
+              addLog('tool', data.content || '분석 중...');
+            } else if (data.content) {
+              // text_delta - 너무 많아서 로그 안 함
+            }
+          } catch {}
+        });
+        
+        es.addEventListener('error', () => {
+          addLog('error', 'SSE 연결 오류');
+        });
+      }
+      
+      return es;
+    };
+
+    // Connection status - based on activity
+    let lastActivityTime = null;
+    let isMonitoring = false;
+    
+    function updateConnectionStatus() {
+      const statusEl = document.getElementById('connection-status');
+      if (isMonitoring || (lastActivityTime && Date.now() - lastActivityTime < 30000)) {
+        statusEl.textContent = '모니터링 중';
+        statusEl.className = 'status-badge connected';
+      } else if (stats.requests > 0) {
+        statusEl.textContent = '대기 중';
+        statusEl.className = 'status-badge connected';
+      } else {
+        statusEl.textContent = '대기 중 (채팅 시작 시 활성화)';
+        statusEl.className = 'status-badge disconnected';
+      }
+    }
+    
+    function markActivity() {
+      lastActivityTime = Date.now();
+      isMonitoring = true;
+      updateConnectionStatus();
+    }
+
+    // Initial load
+    updateStats();
+    updateSessions();
+    updateConnectionStatus();
+    renderLogs();
+    
+    // Periodic connection status update
+    setInterval(updateConnectionStatus, 5000);
+
+    // Demo: Add some initial logs for testing
+    console.log('🐧 Adelie Agent Monitor 시작됨');
+    addLog('response', '모니터링 대시보드가 시작되었습니다. 메인 앱에서 채팅을 시작하면 여기에 로그가 표시됩니다.');
+  </script>
+</body>
+</html>

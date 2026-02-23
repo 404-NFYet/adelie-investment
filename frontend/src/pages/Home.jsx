@@ -4,7 +4,7 @@ import { keywordsApi } from '../api';
 import SelectionAskChip from '../components/agent/SelectionAskChip';
 import DashboardHeader from '../components/layout/DashboardHeader';
 import { DEFAULT_HOME_ICON_KEY, getHomeIconSrc } from '../constants/homeIconCatalog';
-import { useTutorSession } from '../contexts';
+import { useTutorSession, useTutor } from '../contexts';
 import useSelectionAskPrompt from '../hooks/useSelectionAskPrompt';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import useActivityFeed from '../hooks/useActivityFeed';
@@ -188,41 +188,18 @@ export default function Home() {
     }
   }, [enrichedHomeContextPayload]);
 
+  const { openTutor, sendMessage } = useTutor();
+  
   const openAgentFromHome = useCallback((initialPrompt) => {
-    navigate('/agent', {
-      state: {
-        mode: 'home',
-        initialPrompt,
-        contextPayload: {
-          ...enrichedHomeContextPayload,
-          interaction_state: {
-            ...enrichedHomeContextPayload.interaction_state,
-            trigger: 'home_cta',
-            last_prompt: initialPrompt,
-          },
-        },
-        resetConversation: true,
-      },
-    });
-  }, [enrichedHomeContextPayload, navigate]);
+    openTutor();
+    setTimeout(() => {
+      sendMessage(initialPrompt, 'beginner');
+    }, 100);
+  }, [openTutor, sendMessage]);
 
   const openSessionSummaryCard = (session) => {
     if (!session?.id) return;
-    navigate('/agent', {
-      state: {
-        mode: 'home',
-        sessionId: session.id,
-        contextPayload: {
-          ...enrichedHomeContextPayload,
-          interaction_state: {
-            ...enrichedHomeContextPayload.interaction_state,
-            entry_source: 'saved_review_card',
-            selected_session_id: session.id,
-          },
-        },
-        resetConversation: false,
-      },
-    });
+    openTutor();
   };
 
   const stopIssueAutoPlay = useCallback(() => {
@@ -495,7 +472,7 @@ export default function Home() {
             <h2 className="text-[22px] font-extrabold tracking-[-0.02em] text-[#101828]">대화 정리</h2>
             <button
               type="button"
-              onClick={() => navigate('/agent/history')}
+              onClick={() => openTutor()}
               className="rounded-lg bg-[#f3f4f6] px-2 py-1 text-xs font-bold text-[#99a1af]"
             >
               전체 기록

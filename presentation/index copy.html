@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <title>ADELIE — 에이전틱 서비스의 본질에 대하여</title>
+    <link rel="stylesheet" href="style-os.css">
+</head>
+
+<body>
+
+    <div class="presentation-container">
+
+        <!-- ==========================================
+       SLIDE 0: COVER
+       ========================================== -->
+        <div class="slide active" id="slide-0">
+            <div class="center-content">
+                <h1 class="cover-title">에이전틱 서비스의<br>본질에 대하여</h1>
+                <p class="cover-subtitle">모의투자 환경 안에서 AI 에이전트가 함께 배우는 앱</p>
+            </div>
+            <div class="slide-footer">
+                <span class="slide-footer__logo">adelie team</span>
+            </div>
+        </div>
+
+        <!-- ==========================================
+       SLIDE 1: CONTENTS
+       ========================================== -->
+        <div class="slide" id="slide-1">
+            <div class="slide-header">
+                <h2 class="slide-header__title">OVERVIEW</h2>
+                <p class="slide-header__subtitle">[Base: ADELIE 프로젝트 내러티브 구조]</p>
+            </div>
+            <div class="split-layout">
+                <!-- Changed to Flat List Style -->
+                <div class="flat-list" style="padding: 0 40px; margin-top:0;">
+                    <div class="flat-item">
+                        <div class="flat-item__icon">01</div>
+                        <div class="flat-item__content">
+                            <h3>서비스 소개</h3>
+                            <p>서비스 소개와 핵심 컨셉. 모의투자 환경과 AI 에이전트의 결합.</p>
+                        </div>
+                    </div>
+                    <div class="flat-item">
+                        <div class="flat-item__icon">02</div>
+                        <div class="flat-item__content">
+                            <h3>시장 환경 및 문제 정의</h3>
+                            <p>시장 분석, 사용자 문제, 그리고 일방향 교육의 실패와 깨달음.</p>
+                        </div>
+                    </div>
+                    <div class="flat-item">
+                        <div class="flat-item__icon">03</div>
+                        <div class="flat-item__content">
+                            <h3>핵심 전략 및 미래 비전</h3>
+                            <p>에이전트 통제권, 개발자 도구의 성공 패턴, Vibe Investing.</p>
+                        </div>
+                    </div>
+                    <div class="flat-item">
+                        <div class="flat-item__icon">04</div>
+                        <div class="flat-item__content">
+                            <h3>프로젝트 레슨런</h3>
+                            <p>에이전틱 서비스의 본질은 기능의 대체가 아니라 '연결'이다.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="slide-footer">
+                <span class="slide-footer__logo">adelie</span> <span class="slide-footer__page">1</span>
+            </div>
+        </div>
+
+        <!-- ==========================================
+       SLIDE 2: PART 1 INTRO
+       ========================================== -->
+        <div class="slide" id="slide-2">
+            <div class="center-content">
+                <p style="font-weight:800; color:var(--primary-blue); margin-bottom:12px; font-size:18px;">Part 1</p>
+                <h2 class="cover-title">서비스 소개</h2>
+            </div>
+            <div class="slide-footer">
+                <span class="slide-footer__logo">adelie</span> <span class="slide-footer__page">2</span>
+            </div>
+        </div>
+
+        <!-- ==========================================
+       SLIDE 3: TARGET AUDIENCE
+       ========================================== -->
+        <div class="slide" id="slide-3">
+            <div class="slide-header">
+                <h2 class="slide-header__title">타겟: 투자는 일상이 되었지만 <em>확신은 없는 2030</em></h2>
+                <p class="slide-header__subtitle">[Base: 국내 일상 투자자 현황 데이터, 단위: 명/%, 오픈서베이·비누랩스 2025]</p>
+            </div>
+
+            <div class="split-layout">
+                <!-- Left side: Horizontal bars -->
+                <div style="flex:2">
+                    <div class="bar-list-h">
+                        <div class="bar-item-h">
+                            <div class="bar-item-h__label">국내 개인투자자 수<br><span
+                                    style="font-weight:500; color:var(--text-light); font-size:12px">(성인 3명 중 1명)</span>
+                            </div>
+                            <div class="bar-item-h__chart">
+                                <div class="bar-item-h__fill" style="width: 100%;">1,410만명</div>
+                            </div>
+                        </div>
+                        <div class="bar-item-h">
+                            <div class="bar-item-h__label">토스증권 가입자<br><span
+                                    style="font-weight:500; color:var(--text-light); font-size:12px">(2024.03)</span>
+                            </div>
+                            <div class="bar-item-h__chart">
+                                <div class="bar-item-h__fill bar-item-h__fill--light" style="width: 41%;">580만명</div>
+                            </div>
+                        </div>
+                        <div class="bar-item-h" style="margin-top:20px;">
+                            <div class="bar-item-h__label">Z세대 투자 중 비율<br><span
+                                    style="font-weight:500; color:var(--text-light); font-size:12px">(2025 기준)</span>
+                            </div>
+                            <div class="bar-item-h__chart">
+                                <div class="bar-item-h__fill" style="width: 43.4%;">43.4%</div>
+                                <span class="bar-item-h__tag">▲15.8%p</span>
+                            </div>
+                        </div>
+                        <div class="bar-item-h">
+                            <div class="bar-item-h__label">Z세대의 앱 선택 이유 1위<br><span
+                                    style="font-weight:500; color:var(--text-light); font-size:12px">("모바일 앱이
+                                    편리해서")</span></div>
+                            <div class="bar-item-h__chart">
+                                <div class="bar-item-h__fill" style="width: 72.1%;">72.1%</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Right side: Summary box -->
+                <div style="flex:1; display:flex; align-items:center;">
+                    <div class="summary-box">
+                        <div style="color:var(--primary-blue); font-weight:800; font-size:14px; margin-bottom:16px;">핵심
+                            타겟 정의</div>
+                        <div style="font-size:32px; font-weight:900; line-height:1.25; text-align:center;">일상적인
+                            2030<br>초보 투자자</div>
+                        <div
+                            style="margin-top:24px; font-size:14px; color:var(--text-gray); text-align:center; padding-top:24px; border-top:1px dashed var(--border-color); line-height: 1.5;">
+                            전문가용 툴(HTS)을 쓸 시간도,<br>유튜브로 파편화된 공부를<br>각 잡고 할 여력도 부족한 세대
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="slide-note-bottom">* (▲) : 2023년 대비 증감 수치</div>
+            <div class="slide-footer">
+                <span class="slide-footer__logo">adelie</span> <span class="slide-footer__page">3</span>
+            </div>
+        </div>
+
+        <!-- ==========================================
+       SLIDE 4: ADELIE CONCEPT
+       ========================================== -->
+        <div class="slide" id="slide-4">
+            <div class="slide-header">
+                <h2 class="slide-header__title">ADELIE가 제공하는 <em>세 가지 핵심 요소</em></h2>
+                <p class="slide-header__subtitle">[Base: ADELIE 서비스 구조도]</p>
+            </div>
+
+            <div class="flat-list">
+                <div class="flat-item">
+                    <div class="flat-item__icon" style="background:#f4f5f7; color:#111;">01</div>
+                    <div class="flat-item__content">
+                        <h3>모의투자 (투자 탭) <span class="chip chip--gray">현실적 시뮬레이션</span></h3>
+                        <p>실제 시세 기반, 슬리피지·부분체결·레버리지까지 반영한 현실적인 투자 연습 환경을 제공합니다.</p>
+                    </div>
+                </div>
+
+                <div class="flat-item">
+                    <div class="flat-item__icon" style="background:#f4f5f7; color:#111;">02</div>
+                    <div class="flat-item__content">
+                        <h3>AI 에이전트 (전체 탭 연동) <span class="chip chip--gray">대화형 튜터</span></h3>
+                        <p>별도 화면이 아닌 하단 입력바 형태로 상시 대기하며, 투자 맥락 안에서 질문에 답하고 판단을 돕습니다.</p>
+                    </div>
+                </div>
+
+                <div class="flat-item">
+                    <div class="flat-item__icon" style="background:#f4f5f7; color:#111;">03</div>
+                    <div class="flat-item__content">
+                        <h3>학습 축적 (교육 탭) <span class="chip chip--gray">지식의 자산화</span>
+                        </h3>
+                        <p>에이전트와의 대화에서 배운 개념이 복습 카드로 쌓이고, 이 컨텍스트가 다음 대화에 반영됩니다.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="slide-footer">
+                <span class="slide-footer__logo">adelie</span> <span class="slide-footer__page">4</span>
+            </div>
+        </div>
+
+        <!-- ==========================================
+       SLIDE 5: PART 2 INTRO
+       ========================================== -->
+        <div class="slide" id="slide-5">
+            <div class="center-content">
+                <p style="font-weight:800; color:var(--primary-blue); margin-bottom:12px; font-size:18px;">Part 2</p>
+                <h2 class="cover-title">시장 환경 및 문제 정의</h2>
+            </div>
+            <div class="slide-footer">
+                <span class="slide-footer__logo">adelie</span> <span class="slide-footer__page">5</span>
+            </div>
+        </div>
+
+        <!-- ==========================================
+       SLIDE 6: TWO EXTREMES 
+       ========================================== -->
+        <div class="slide" id="slide-6">
+            <div class="slide-header">
+                <h2 class="slide-header__title">간편해졌지만 얕아졌다: <em>두 개의 극단 차이</em></h2>
+                <p class="slide-header__subtitle">[Base: 국내 주식 투자 앱 UI/UX 비교분석]</p>
+            </div>
+
+            <div style="text-align:center; margin-bottom:10px;">
+                <span
+                    style="display:inline-block; border-bottom: 2px solid var(--primary-blue); padding-bottom: 6px; font-weight:800; font-size:15px; color:#111;">
+                    투자 앱의 뎁스(Depth) 구조 비교
+                </span>
+            </div>
+
+            <div class="compare-h-container">
+                <!-- Left: HTS -->
+                <div class="compare-h-col"
+                    style="border-right:1px dashed var(--border-color); padding-right:40px; align-items:flex-end; text-align:right;">
+                    <h3 style="font-size:22px; font-weight:800; margin-bottom:20px; color:#444;">영웅문 (전문 HTS)</h3>
+
+                    <div class="compare-h-row left" style="width:100%;">
+                        <div class="compare-h-diff" style="color:#555">깊음</div>
+                        <div class="compare-h-val">정보 뎁스</div>
+                        <div class="compare-h-bar" style="width: 80%; background:#d0d0d0;"></div>
+                    </div>
+                    <div class="compare-h-row left" style="width:100%;">
+                        <div class="compare-h-diff" style="color:var(--accent-red)">높음</div>
+                        <div class="compare-h-val">진입 장벽</div>
+                        <div class="compare-h-bar" style="width: 90%; background:#d0d0d0;"></div>
+                    </div>
+                    <div class="compare-h-row left" style="width:100%;">
+                        <div class="compare-h-diff" style="color:#555">없음</div>
+                        <div class="compare-h-val">학습 지원</div>
+                        <div class="compare-h-bar" style="width: 5%; background:#d0d0d0;"></div>
+                    </div>
+
+                    <div style="margin-top:24px; font-size:14px; color:var(--text-gray); line-height: 1.5;">
+                        호가창, 체결강도, 재무제표, 보조지표 수백 종<br>
+                        <strong style="color:#111;">전업 / 반전업 트레이더 대상</strong>
+                    </div>
+                </div>
+
+                <!-- Right: MTS -->
+                <div class="compare-h-col" style="padding-left:40px; align-items:flex-start;">
+                    <h3 style="font-size:22px; font-weight:800; margin-bottom:20px; color:var(--primary-blue);">토스증권 (일상
+                        MTS)</h3>
+
+                    <div class="compare-h-row" style="width:100%;">
+                        <div class="compare-h-bar" style="width: 20%; background:var(--primary-blue);"></div>
+                        <div class="compare-h-val" style="color:var(--primary-blue)">정보 뎁스</div>
+                        <div class="compare-h-diff" style="color:var(--primary-blue)">매우 얕음</div>
+                    </div>
+                    <div class="compare-h-row" style="width:100%;">
+                        <div class="compare-h-bar" style="width: 10%; background:var(--primary-blue);"></div>
+                        <div class="compare-h-val" style="color:var(--primary-blue)">진입 장벽</div>
+                        <div class="compare-h-diff" style="color:var(--primary-blue)">매우 낮음</div>
+                    </div>
+                    <div class="compare-h-row" style="width:100%;">
+                        <div class="compare-h-bar" style="width: 15%; background:var(--primary-blue);"></div>
+                        <div class="compare-h-val" style="color:var(--primary-blue)">학습 지원</div>
+                        <div class="compare-h-diff" style="color:var(--primary-blue)">거의 없음</div>
+                    </div>
+
+                    <div
+                        style="margin-top:24px; font-size:14px; color:var(--text-gray); text-align:left; line-height: 1.5;">
+                        현재가, 일봉, 간단한 뉴스, 용어 툴팁 수준<br>
+                        <strong style="color:var(--primary-blue);">2030 일상 투자자 최선호 앱</strong>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top:40px; text-align:center; font-size:16px; font-weight:800; color:var(--accent-red);">
+                "3탭 만에 매수하지만, 왜 사는지 모른 채 투자하며 기저에 불안함을 안고 있음"
+            </div>
+
+            <div class="slide-footer">
+                <span class="slide-footer__logo">adelie</span> <span class="slide-footer__page">6</span>
+            </div>
+        </div>
+
+        <!-- ==========================================
+       SLIDE 7: FAILURE 
+       ========================================== -->
+        <div class="slide" id="slide-7">
+            <div class="slide-header">
+                <h2 class="slide-header__title">우리의 첫 시도와 실패: <em>행동 패턴의 오판</em></h2>
+                <p class="slide-header__subtitle">[Base: 초기 앱 사용자 동선 분석 로그]</p>
+            </div>
+
+            <div class="line-chart-container" style="border:none;">
+                <!-- Expected -->
+                <div class="line-chart-col" style="padding-left:0;">
+                    <div class="line-title-top"><span class="icon">A</span> 기준 플로우 (가설)</div>
+
+                    <div style="display:flex; flex-direction:column; align-items:center; gap:16px; margin-top:10px;">
+                        <div
+                            style="padding:16px; width:100%; text-align:center; border:1px solid var(--border-color); border-radius:4px; font-weight:700; color:#555;">
+                            1. 교육 콘텐츠 선행 학습</div>
+                        <div style="color:#ccc;">↓</div>
+                        <div
+                            style="padding:16px; width:100%; text-align:center; border:1px solid #111; color:#111; font-weight:800; border-radius:4px;">
+                            2. 모의 투자 환경 진입</div>
+                        <div style="color:#ccc;">↓</div>
+                        <div
+                            style="padding:16px; width:100%; text-align:center; border:1px solid var(--border-color); border-radius:4px; font-weight:700; color:#555;">
+                            3. 안정적인 투자 수행</div>
+                    </div>
+                </div>
+
+                <!-- Reality -->
+                <div class="line-chart-col" style="padding-right:0;">
+                    <div class="line-title-top"><span class="icon highlight" style="background:#111;">B</span> 실제 사용자 행동
+                        (로그)</div>
+
+                    <div style="display:flex; flex-direction:column; align-items:center; gap:16px; margin-top:10px;">
+                        <div
+                            style="padding:16px; width:100%; text-align:center; border:1px solid #111; color:#111; font-weight:800; border-radius:4px;">
+                            1. 사전 지식 없이 직행</div>
+                        <div style="color:#111; font-weight:800; font-size:20px;">↓</div>
+                        <div
+                            style="padding:16px; width:100%; text-align:center; border:1px solid #111; background:#f4f5f7; color:#111; font-weight:800; border-radius:4px;">
+                            2. 손실 발생 및 시행착오 누적</div>
+                        <div style="color:#111; font-weight:800; font-size:20px;">↓</div>
+                        <div
+                            style="padding:16px; width:100%; text-align:center; border:1px dashed #111; color:#111; font-weight:800; border-radius:4px;">
+                            3. 원인 파악을 위한 사후 탐색</div>
+                    </div>
+                </div>
+            </div>
+
+            <div
+                style="margin-top:30px; background:#f8f9fc; padding:20px 24px; border-radius:8px; display:flex; gap:20px; align-items:center;">
+                <div class="chip" style="font-size:14px; padding:6px 16px;">Insight</div>
+                <div style="font-size:15px; font-weight:500; color:#333; line-height: 1.5;">교육은 투자의 전 단계가 아니며, 일방향으로
+                    콘텐츠를 밀어넣으면 작동하지
+                    않는다.<br>자유롭게 움직이되, <strong style="color:var(--primary-blue)">결정의 순간에 교육이 에이전트 형태로 개입</strong>해야 한다.
+                </div>
+            </div>
+
+            <div class="slide-footer">
+                <span class="slide-footer__logo">adelie</span> <span class="slide-footer__page">7</span>
+            </div>
+        </div>
+
+        <!-- ==========================================
+       SLIDE 8: PART 3 INTRO
+       ========================================== -->
+        <div class="slide" id="slide-8">
+            <div class="center-content">
+                <p style="font-weight:800; color:var(--primary-blue); margin-bottom:12px; font-size:18px;">Part 3</p>
+                <h2 class="cover-title">핵심 전략 및 미래 비전</h2>
+            </div>
+            <div class="slide-footer">
+                <span class="slide-footer__logo">adelie</span> <span class="slide-footer__page">8</span>
+            </div>
+        </div>
+
+        <!-- ==========================================
+       SLIDE 9: AGENT ERA & RISK 
+       ========================================== -->
+        <div class="slide" id="slide-9">
+            <div class="slide-header">
+                <h2 class="slide-header__title">거대한 흐름: <em>에이전트의 성장과 통제권의 불안</em></h2>
+                <p class="slide-header__subtitle">[Base: Gartner 2028 예측 및 SailPoint 2026 보안 리스크 조사]</p>
+            </div>
+
+            <div class="rank-grid">
+                <div class="rank-grid__header">
+                    <div class="rank-grid__header-item">도입 (Gartner)<span>앱 내장 확대</span></div>
+                    <div class="rank-grid__header-item">사례 (OpenClaw)<span>메신저 통합</span></div>
+                    <div class="rank-grid__header-item" style="color:var(--accent-red)">보안 (SailPoint)<span>리스크
+                            체감</span></div>
+                </div>
+
+                <div class="rank-row rank-row--top">
+                    <div class="rank-badge">성장성</div>
+                    <div class="rank-cols">
+                        <div class="rank-col">
+                            <div class="rank-item">
+                                <span class="rank-item-title">기업 앱 에이전트 내장</span>
+                                <span class="rank-item-value diff--up">33% (2028)</span>
+                            </div>
+                        </div>
+                        <div class="rank-col">
+                            <div class="rank-item">
+                                <span class="rank-item-title">GitHub 20만 스타 돌파</span>
+                                <span class="rank-item-value diff--up">최단기록</span>
+                            </div>
+                        </div>
+                        <div class="rank-col" style="background:#fffafa;">
+                            <div class="rank-item">
+                                <span class="rank-item-title">"에이전트는 보안 리스크"</span>
+                                <span class="rank-item-value diff--down">응답의 66%</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="rank-row">
+                    <div class="rank-badge rank-badge--light">특징</div>
+                    <div class="rank-cols">
+                        <div class="rank-col">
+                            <div class="rank-item">
+                                <span class="rank-item-title">AI 에이전트 시장 규모 전망</span>
+                                <span class="rank-item-value" style="color:var(--primary-blue);">2030년 503억 달러</span>
+                            </div>
+                        </div>
+                        <div class="rank-col">
+                            <div class="rank-item">
+                                <span class="rank-item-title">50개 앱(메일,시스템) 연결 조작</span>
+                                <span class="rank-item-value" style="color:var(--primary-blue);">"기존 메뉴들을 대체"</span>
+                            </div>
+                        </div>
+                        <div class="rank-col" style="background:#fffafa;">
+                            <div class="rank-item">
+                                <span class="rank-item-title" style="color:var(--accent-red);">프롬프트 인젝션·데이터탈취</span>
+                                <span class="rank-item-value" style="color:var(--accent-red);">원격코드실행 (CVE 발견)</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top:24px; font-size:15px; font-weight:700; text-align:center; line-height:1.6;">
+                결론: 강력하지만 내 돈이 걸린 금융에서는 "뭘 하는 거지?" 하는 신뢰(보안) 문제가 발생.<br>
+                <span style="color:var(--primary-blue)">→ ADELIE는 "설명가능한 UI(출처 표시)" + "모의투자(안전지대 훈련장)"로 해결</span>
+            </div>
+
+            <div class="slide-footer">
+                <span class="slide-footer__logo">adelie</span> <span class="slide-footer__page">9</span>
+            </div>
+        </div>
+
+        <!-- ==========================================
+       SLIDE 10: VIBE INVESTING 
+       ========================================== -->
+        <div class="slide" id="slide-10">
+            <div class="slide-header">
+                <h2 class="slide-header__title">대체가 아닌 공존: <em>Vibe Investing</em></h2>
+                <p class="slide-header__subtitle">[Base: 개발자 도구의 성공 패턴과 ADELIE의 개념 매핑]</p>
+            </div>
+
+            <div class="split-layout">
+                <div style="display:flex; flex-direction:column; gap:20px;">
+                    <div>
+                        <h3 style="font-size:22px; font-weight:800; color:#111;">Vibe Coding <span
+                                style="font-size:12px; font-weight:600; color:var(--text-light); vertical-align:middle; margin-left:6px;">(2025
+                                올해의 단어)</span></h3>
+                        <p style="font-size:15px; line-height:1.6; color:var(--text-gray); margin-top:12px;">
+                            "정확한 문법(Syntax)을 몰라도 '이런 느낌으로 만들어줘'라고 에이전트에게 지시하면 코드가 나옵니다."
+                        </p>
+                    </div>
+                    <div style="padding:20px 0; border-top:1px solid var(--border-light);">
+                        <strong style="color:#111; display:block; margin-bottom:8px; font-size:14px;">개발자 도구(Cursor)의
+                            접근 방식</strong>
+                        <span style="font-size:14px; color:var(--text-gray); line-height:1.5;">에디터(IDE) 환경을 보존하며 에이전트가 그
+                            위에서 제안합니다. 개발자는 승인하며 새 패턴을 학습합니다.</span>
+                    </div>
+                </div>
+
+                <div style="display:flex; align-items:center; justify-content:center; flex:0 0 30px;">
+                    <span style="font-size:24px; font-weight:800; color:var(--border-color);">→</span>
+                </div>
+
+                <div style="display:flex; flex-direction:column; gap:20px;">
+                    <div>
+                        <h3 style="font-size:22px; font-weight:800; color:#111;">Vibe Investing <span
+                                style="font-size:12px; font-weight:600; background:#f4f5f7; color:#111; padding:4px 8px; border-radius:12px; vertical-align:middle; margin-left:6px;">(ADELIE
+                                설계 철학)</span></h3>
+                        <p style="font-size:15px; line-height:1.6; color:var(--text-gray); margin-top:12px;">
+                            "정밀한 재무 분석 지식이 없어도 '반도체 요즘 어떤가요?' 등의 직관적 질의로 시작하면 에이전트가 투자 맥락을 보완합니다."
+                        </p>
+                    </div>
+                    <div style="padding:20px 0; border-top:1px solid #111;">
+                        <strong style="color:#111; display:block; margin-bottom:8px; font-size:14px;">ADELIE의
+                            접근 방식</strong>
+                        <span style="font-size:14px; color:var(--text-gray); line-height:1.5;">투자의 주도권 및 최종 승인권은 사용자에게
+                            있습니다.
+                            에이전트는 신뢰도 높은 데이터를 기반으로 질의응답 및 검토 과정을 보조합니다.</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="slide-footer">
+                <span class="slide-footer__logo">adelie</span> <span class="slide-footer__page">10</span>
+            </div>
+        </div>
+
+        <!-- ==========================================
+       SLIDE 11: FLOW
+       ========================================== -->
+        <div class="slide" id="slide-11">
+            <div class="slide-header">
+                <h2 class="slide-header__title">감(Vibe)으로 시작하여 <em>구조(자산)로 남긴다</em></h2>
+                <p class="slide-header__subtitle">[Base: ADELIE 사용자 인터랙션 시나리오]</p>
+            </div>
+
+            <div
+                style="display:flex; flex-direction:column; gap:24px; align-items: center; justify-content: center; flex: 1; padding: 0 40px;">
+
+                <!-- Replace chat bubbles with a clean list flow to avoid boxy borders -->
+                <div
+                    style="display:flex; align-items:flex-start; gap:24px; border-bottom:1px solid var(--border-light); padding-bottom:24px;">
+                    <div style="font-size:14px; color:#111; font-weight:700; width:120px; flex-shrink:0;">Step
+                        01<br><span style="font-size:12px; color:var(--text-light); font-weight:500;">탐색 및 동기 발현</span>
+                    </div>
+                    <div>
+                        <div style="font-size:16px; font-weight:700; color:#111; margin-bottom:8px;">비목적성 종목 및 이슈 탐색
+                        </div>
+                        <p style="font-size:14px; color:var(--text-gray);">사용자가 단순한 직관이나 감(Vibe)에 의존하여 투자 대상을 탐색합니다.</p>
+                    </div>
+                </div>
+
+                <div
+                    style="display:flex; align-items:flex-start; gap:24px; border-bottom:1px solid var(--border-light); padding-bottom:24px;">
+                    <div style="font-size:14px; color:#111; font-weight:700; width:120px; flex-shrink:0;">
+                        Step 02<br><span style="font-size:12px; color:var(--text-light); font-weight:500;">맥락 인식 및
+                            개입</span></div>
+                    <div>
+                        <div style="font-size:16px; font-weight:700; color:#111; margin-bottom:8px;">
+                            개인화된 포트폴리오 진단 및 맥락 질의</div>
+                        <p style="font-size:14px; color:var(--text-gray);">에이전트가 보유 자산 데이터와 시장 지표를 연계하여 객관적인 시각을 요구합니다.
+                        </p>
+                    </div>
+                </div>
+
+                <div
+                    style="display:flex; align-items:flex-start; gap:24px; border-bottom:1px solid var(--border-light); padding-bottom:24px;">
+                    <div style="font-size:14px; color:#111; font-weight:700; width:120px; flex-shrink:0;">Step
+                        03<br><span style="font-size:12px; color:var(--text-light); font-weight:500;">결핍 인지</span></div>
+                    <div>
+                        <div style="font-size:16px; font-weight:700; color:#111; margin-bottom:8px;">지식의 결핍과 필요성 자각
+                        </div>
+                        <p style="font-size:14px; color:var(--text-gray);">사용자가 질의응답 과정을 통해 투자 결정의 논리적 근거가 부족함을 인지합니다.
+                        </p>
+                    </div>
+                </div>
+
+                <div style="display:flex; align-items:flex-start; gap:24px;">
+                    <div style="font-size:14px; color:#111; font-weight:700; width:120px; flex-shrink:0;">
+                        Step 04<br><span style="font-size:12px; color:var(--text-light); font-weight:500;">구조화 및
+                            자산화</span>
+                    </div>
+                    <div>
+                        <div style="font-size:16px; font-weight:800; color:#111; margin-bottom:8px;">맞춤형 개념 지도 생성 및 저장
+                        </div>
+                        <p style="font-size:14px; color:var(--text-gray); margin-bottom:8px;">이해한 데이터가 마크다운 기반의 지식 카드로
+                            저장되어 개인의 자산이 됩니다.</p>
+                        <span class="chip chip--gray">향후 동명 종목의 갱신 시 연속적 컨텍스트로 자동 재호출 가능</span>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="slide-footer">
+                <span class="slide-footer__logo">adelie</span> <span class="slide-footer__page">11</span>
+            </div>
+        </div>
+
+        <!-- ==========================================
+       SLIDE 12: PART 4 & CLOSING
+       ========================================== -->
+        <div class="slide" id="slide-12">
+            <div class="slide-header">
+                <h2 class="slide-header__title">레슨런: <em>에이전틱 서비스의 본질</em></h2>
+                <p class="slide-header__subtitle">[Base: 프로젝트 구현 중 도출된 원칙]</p>
+            </div>
+
+            <div style="display:flex; flex-direction:column; justify-content:center; flex:1; padding-bottom:40px;">
+                <div style="display:flex; gap:40px; margin-top:0; width:100%;">
+                    <div style="flex:1; padding-top:20px; border-top:1px solid #111;">
+                        <div style="font-size:24px; font-weight:900; color:#111; margin-bottom:16px; line-height: 1;">
+                            01.</div>
+                        <h3 style="font-size:18px; font-weight:800; margin-bottom:12px; color:#111;">대체가 아니라 공존</h3>
+                        <p style="font-size:14px; color:var(--text-gray); line-height:1.6;">
+                            에이전트는 독립된 기능이 아니라 <strong style="color:#111;">기존 기능(모의투자, 탐색)을 영리하게 연결하는 매개체</strong>입니다.
+                            서비스를
+                            완전히 대체하거나 은닉하는 블랙박스 구조가 되어서는 안 됩니다.
+                        </p>
+                    </div>
+
+                    <div style="flex:1; padding-top:20px; border-top:1px solid #111;">
+                        <div style="font-size:24px; font-weight:900; color:#111; margin-bottom:16px; line-height: 1;">
+                            02.</div>
+                        <h3 style="font-size:18px; font-weight:800; margin-bottom:12px; color:#111;">통제권과 투명성 확보</h3>
+                        <p style="font-size:14px; color:var(--text-gray); line-height:1.6;">
+                            도출된 결과만 제공하는 것은 고객의 신뢰를 잃습니다. 근거 데이터(출처)와 액션의 한계점을 명확히 공지하는 <strong
+                                style="color:#111;">Explainable UI</strong>가 필수적으로 수반되어야 합니다.
+                        </p>
+                    </div>
+
+                    <div style="flex:1; padding-top:20px; border-top:1px solid #111;">
+                        <div style="font-size:24px; font-weight:900; color:#111; margin-bottom:16px; line-height: 1;">
+                            03.
+                        </div>
+                        <h3 style="font-size:18px; font-weight:800; margin-bottom:12px; color:#111;">자산화되는 사용자 데이터</h3>
+                        <p style="font-size:14px; color:var(--text-gray); line-height:1.6;">
+                            휘발성의 일회성 응답 구조를 탈피해야 합니다. 누적된 상호작용 컨텍스트(개념, 이력 등)를 체계적으로 관리하며 개인화된 <strong
+                                style="color:#111;">Knowledge Graph</strong>를 형성해야 합니다.
+                        </p>
+                    </div>
+                </div>
+
+                <div style="margin-top:60px; text-align:center;">
+                    <p style="font-size:18px; font-weight:500; color:var(--text-gray);">"얼마나 똑똑하게 알아서 해주느냐가 아니라,</p>
+                    <p style="font-size:26px; font-weight:800; color:#111; margin-top:8px;">투자의 주도권을 지키며 <span
+                            style="color:var(--primary-blue)">유저의 통제 가능한 사이드킥</span>이 되는 것이 핵심입니다."</p>
+                </div>
+            </div>
+
+            <div class="slide-footer">
+                <span class="slide-footer__logo">adelie</span> <span class="slide-footer__page">12</span>
+            </div>
+        </div>
+
+    </div> <!-- End Container -->
+
+    <!-- Navigation Hint -->
+    <div class="nav-hint">좌우 방향키(← →)로 이동하세요</div>
+
+    <script>
+        const slides = document.querySelectorAll('.slide');
+        let currentSlide = 0;
+
+        function showSlide(index) {
+            slides.forEach(s => {
+                s.classList.remove('active');
+                s.style.opacity = '0';
+            });
+
+            if (slides[index]) {
+                slides[index].classList.add('active');
+                setTimeout(() => slides[index].style.opacity = '1', 50);
+            }
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' || e.key === ' ') {
+                if (currentSlide < slides.length - 1) {
+                    currentSlide++;
+                    showSlide(currentSlide);
+                }
+            } else if (e.key === 'ArrowLeft') {
+                if (currentSlide > 0) {
+                    currentSlide--;
+                    showSlide(currentSlide);
+                }
+            }
+        });
+
+        // Click to advance
+        document.querySelector('.presentation-container').addEventListener('click', (e) => {
+            const x = e.clientX;
+            const width = window.innerWidth;
+            if (x > width / 2 && currentSlide < slides.length - 1) {
+                currentSlide++;
+                showSlide(currentSlide);
+            } else if (x <= width / 2 && currentSlide > 0) {
+                currentSlide--;
+                showSlide(currentSlide);
+            }
+        });
+
+        showSlide(0);
+    </script>
+
+</body>
+
+</html>

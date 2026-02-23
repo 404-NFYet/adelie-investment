@@ -237,7 +237,7 @@ export default function Education() {
     }
 
     const briefingDate = toDateKeyFromNumber(card.contentId);
-    navigate('/agent', {
+    navigate('/tutor', {
       state: {
         mode: 'home',
         initialPrompt: `${card.title} 핵심만 복습해줘`,
@@ -387,7 +387,7 @@ export default function Education() {
             </div>
             <button
               type="button"
-              onClick={() => navigate('/agent', {
+              onClick={() => navigate('/tutor', {
                 state: {
                   mode: 'education',
                   initialPrompt: '오늘 학습 기준으로 핵심 개념만 정리해줘',

@@ -1,77 +1,35 @@
 /**
  * AgentChatHeader - 채팅 헤더 컴포넌트
  * 
- * - AI 상태 표시
- * - 세션 목록 토글
+ * - AI 상태 표시 (글로우 효과)
+ * - 세션 목록 화면 전환
  * - 새 대화 버튼
  */
-import { motion, AnimatePresence } from 'framer-motion';
-
-function SessionItem({ session, isActive, onClick, onDelete }) {
-  const formatDate = (dateStr) => {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffDays = Math.floor((now - date) / (1000 * 60 * 60 * 24));
-    
-    if (diffDays === 0) return '오늘';
-    if (diffDays === 1) return '어제';
-    if (diffDays < 7) return `${diffDays}일 전`;
-    return date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
-  };
-
-  return (
-    <div
-      className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition-colors ${
-        isActive ? 'bg-[#FFF4ED] border border-[#FFB380]' : 'bg-[#F7F8FA] hover:bg-[#F2F4F6]'
-      }`}
-      onClick={onClick}
-    >
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-[#191F28] truncate">
-          {session.title || '새 대화'}
-        </p>
-        <p className="text-xs text-[#8B95A1] mt-0.5">
-          {formatDate(session.updated_at || session.created_at)}
-        </p>
-      </div>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onDelete(session.id);
-        }}
-        className="p-1.5 text-[#AEB5BC] hover:text-[#EF4444] transition-colors ml-2"
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-        </svg>
-      </button>
-    </div>
-  );
-}
+import { motion } from 'framer-motion';
 
 export default function AgentChatHeader({
   contextInfo,
   agentStatus,
   difficulty,
-  isSessionsOpen,
   onToggleSessions,
+  onToggleFlashCards,
   onNewChat,
   onClose,
-  sessions,
-  activeSessionId,
-  onSessionClick,
-  onDeleteSession,
 }) {
   const statusText = agentStatus?.text || '대기 중';
-  const statusDot = {
-    idle: 'bg-[#AEB5BC]',
-    thinking: 'bg-[#FF6B00] animate-pulse',
-    tool_call: 'bg-[#FF6B00] animate-pulse',
-    streaming: 'bg-[#22C55E] animate-pulse',
-    answering: 'bg-[#22C55E] animate-pulse',
-    done: 'bg-[#22C55E]',
-    error: 'bg-[#EF4444]',
-  }[agentStatus?.status || 'idle'];
+  const statusKey = agentStatus?.phase || agentStatus?.status || 'idle';
+  
+  const statusColors = {
+    idle: { bg: '#AEB5BC', glow: false },
+    thinking: { bg: '#FF6B00', glow: true },
+    tool_call: { bg: '#FF6B00', glow: true },
+    streaming: { bg: '#22C55E', glow: true },
+    answering: { bg: '#22C55E', glow: true },
+    done: { bg: '#22C55E', glow: false },
+    error: { bg: '#EF4444', glow: false },
+  };
+  
+  const config = statusColors[statusKey] || statusColors.idle;
 
   return (
     <div className="border-b border-[#F2F4F6]">
@@ -84,7 +42,28 @@ export default function AgentChatHeader({
               alt="AI 튜터"
               className="w-10 h-10"
             />
-            <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${statusDot}`} />
+            {/* 상태 도트 with 글로우 */}
+            <div className="absolute -bottom-0.5 -right-0.5">
+              {config.glow && (
+                <motion.span
+                  className="absolute inset-0 w-3.5 h-3.5 rounded-full blur-sm"
+                  style={{ backgroundColor: config.bg }}
+                  animate={{
+                    scale: [1, 1.8, 1],
+                    opacity: [0.6, 0, 0.6],
+                  }}
+                  transition={{ duration: 1.5, repeat: Infinity }}
+                />
+              )}
+              <motion.span 
+                className="relative block w-3.5 h-3.5 rounded-full border-2 border-white"
+                style={{ backgroundColor: config.bg }}
+                animate={config.glow ? {
+                  scale: [1, 1.15, 1],
+                } : {}}
+                transition={{ duration: 1, repeat: Infinity }}
+              />
+            </div>
           </div>
           <div>
             <h2 className="font-bold text-[#191F28]">AI 튜터</h2>
@@ -108,10 +87,19 @@ export default function AgentChatHeader({
             새 대화
           </button>
           <button
+            onClick={onToggleFlashCards}
+            className="p-2 rounded-lg bg-[#F7F8FA] text-[#6B7684] hover:bg-[#F2F4F6] transition-colors"
+            title="내 복습카드"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="2" y="5" width="20" height="14" rx="2" />
+              <path d="M2 10h20" />
+            </svg>
+          </button>
+          <button
             onClick={onToggleSessions}
-            className={`p-2 rounded-lg transition-colors ${
-              isSessionsOpen ? 'bg-[#FFF4ED] text-[#FF6B00]' : 'bg-[#F7F8FA] text-[#6B7684] hover:bg-[#F2F4F6]'
-            }`}
+            className="p-2 rounded-lg bg-[#F7F8FA] text-[#6B7684] hover:bg-[#F2F4F6] transition-colors"
+            title="대화 기록"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
@@ -143,39 +131,6 @@ export default function AgentChatHeader({
           </div>
         </div>
       )}
-
-      {/* Sessions Dropdown */}
-      <AnimatePresence>
-        {isSessionsOpen && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="border-t border-[#F2F4F6] bg-white overflow-hidden"
-          >
-            <div className="p-4 max-h-[200px] overflow-y-auto">
-              <p className="text-xs text-[#8B95A1] mb-3">최근 대화</p>
-              <div className="space-y-2">
-                {sessions?.length > 0 ? (
-                  sessions.map((session) => (
-                    <SessionItem
-                      key={session.id}
-                      session={session}
-                      isActive={session.id === activeSessionId}
-                      onClick={() => onSessionClick(session.id)}
-                      onDelete={onDeleteSession}
-                    />
-                  ))
-                ) : (
-                  <p className="text-sm text-[#AEB5BC] text-center py-4">
-                    저장된 대화가 없습니다
-                  </p>
-                )}
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

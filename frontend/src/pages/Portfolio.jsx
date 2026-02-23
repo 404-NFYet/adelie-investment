@@ -233,7 +233,7 @@ export default function Portfolio() {
       },
     };
 
-    navigate('/agent', {
+    navigate('/tutor', {
       state: {
         mode: 'stock',
         stockContext,

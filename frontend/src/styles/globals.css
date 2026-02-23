@@ -542,39 +542,117 @@
 /* 다크모드 대응 (CSS 변수 기반이므로 자동 적용) */
 
 /* Agent canvas markdown rendering quality */
-.agent-markdown p {
+.agent-markdown p,
+.prose-agent p {
   margin-top: 0.45rem;
   margin-bottom: 0.45rem;
 }
 
-.agent-markdown table {
+.agent-markdown table,
+.prose-agent table {
   width: 100%;
   border-collapse: collapse;
   margin: 0.75rem 0;
-  min-width: 360px;
+  font-size: 0.8rem;
 }
 
-.agent-markdown thead th {
-  background: #f8fafc;
+.agent-markdown thead th,
+.prose-agent thead th {
+  background: #f7f8fa;
   color: #344054;
-  font-weight: 700;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .agent-markdown th,
-.agent-markdown td {
-  border: 1px solid #e6eaf0;
+.agent-markdown td,
+.prose-agent th,
+.prose-agent td {
+  border: 1px solid #e5e8eb;
   padding: 0.5rem 0.6rem;
   text-align: left;
   vertical-align: top;
-  font-size: 0.82rem;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.agent-markdown tbody tr:hover,
+.prose-agent tbody tr:hover {
+  background: #fafbfc;
 }
 
 .agent-markdown ul,
-.agent-markdown ol {
+.agent-markdown ol,
+.prose-agent ul,
+.prose-agent ol {
   margin-top: 0.45rem;
   margin-bottom: 0.45rem;
 }
 
-.agent-markdown pre {
+.agent-markdown pre,
+.prose-agent pre {
   overflow-x: auto;
+}
+
+/* 테이블 오버플로우 스크롤 */
+.prose-agent > div:has(table) {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 시각화 HTML 컨테이너 스타일 */
+.visualization-html {
+  font-family: var(--font-sans);
+}
+
+.visualization-html table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  font-size: 0.85rem;
+}
+
+.visualization-html th {
+  background: #f7f8fa;
+  font-weight: 600;
+  text-align: left;
+  padding: 0.75rem;
+  border-bottom: 2px solid #e5e8eb;
+}
+
+.visualization-html td {
+  padding: 0.75rem;
+  border-bottom: 1px solid #f2f4f6;
+}
+
+.visualization-html tr:hover {
+  background: #fafbfc;
+}
+
+.visualization-html .positive,
+.visualization-html .gain {
+  color: #10b981;
+  font-weight: 500;
+}
+
+.visualization-html .negative,
+.visualization-html .loss {
+  color: #ef4444;
+  font-weight: 500;
+}
+
+.visualization-html .highlight {
+  background: #fff8f3;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  border-left: 3px solid #ff6b00;
+}
+
+/* Plotly 차트 컨테이너 */
+.js-plotly-plot {
+  width: 100% !important;
+}
+
+.js-plotly-plot .plotly {
+  width: 100% !important;
 }

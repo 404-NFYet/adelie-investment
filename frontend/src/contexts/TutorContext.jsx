@@ -95,7 +95,10 @@ export function useTutor() {
 
   const sendMessage = useCallback(async (message, difficulty = 'beginner', options = {}) => {
     const contextInfoToUse = options?.contextInfoOverride || contextInfo;
-    const chatOptions = options?.chatOptions || options;
+    const chatOptions = {
+      ...(options?.chatOptions || options),
+      onTodoUpdate: updateTodoList,
+    };
     await sendChatMessage(
       message,
       difficulty,
@@ -107,7 +110,7 @@ export function useTutor() {
       chatOptions,
     );
     await refreshSessions();
-  }, [sendChatMessage, contextInfo, setAgentStatus, setActiveSessionId, refreshSessions]);
+  }, [sendChatMessage, contextInfo, setAgentStatus, setActiveSessionId, refreshSessions, updateTodoList]);
 
   const stopGeneration = useCallback(() => {
     return stopGenerationRaw();

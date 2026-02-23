@@ -630,8 +630,8 @@ export default function AgentCanvasPage() {
     <div className="min-h-screen bg-[var(--agent-bg-page,#F7F8FA)] pb-[calc(var(--safe-bottom-offset,172px)+16px)]">
       {/* ── 1줄 컴팩트 헤더 ── */}
       <header className="sticky top-0 z-10 border-b border-[var(--agent-border)] bg-white/97 backdrop-blur-sm">
-        <div className="container flex h-11 items-center justify-between">
-          <div className="flex min-w-0 items-center gap-2">
+        <div className="container flex h-11 items-center gap-2">
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
             <button
               type="button"
               onClick={handleBack}
@@ -642,12 +642,12 @@ export default function AgentCanvasPage() {
                 <path d="m15 18-6-6 6-6" />
               </svg>
             </button>
-            <h1 className="truncate text-[15px] font-semibold text-[#191F28]">
+            <h1 className="truncate text-[14px] font-semibold text-[#191F28]">
               {canvasState.title}
             </h1>
           </div>
 
-          <div className="flex shrink-0 items-center gap-1.5 whitespace-nowrap">
+          <div className="flex flex-shrink-0 items-center gap-1 whitespace-nowrap">
             {isStreamingActive ? (
               <button
                 type="button"

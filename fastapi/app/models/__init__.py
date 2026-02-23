@@ -10,6 +10,7 @@ from app.models.report import BrokerReport
 from app.models.portfolio import UserPortfolio, PortfolioHolding, SimulationTrade
 from app.models.reward import BriefingReward, DwellReward
 from app.models.narrative import DailyNarrative, NarrativeScenario
+from app.models.flashcard import FlashCard
 
 __all__ = [
     "User",
@@ -31,4 +32,5 @@ __all__ = [
     "DwellReward",
     "DailyNarrative",
     "NarrativeScenario",
+    "FlashCard",
 ]

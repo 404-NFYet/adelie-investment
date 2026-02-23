@@ -180,7 +180,7 @@ export function TutorChatProvider({ children }) {
         activeStreamControllerRef.current = null;
       }
 
-      const DEFAULT_STATUS = { phase: 'idle', text: '응답 대기 중' };
+      const DEFAULT_STATUS = { phase: 'idle', status: 'idle', text: '대기 중' };
       let hasError = false;
       let wasStopped = false;
       let pendingSources = [];
@@ -222,7 +222,7 @@ export function TutorChatProvider({ children }) {
       };
       setMessages((prev) => [...prev, userMessage]);
       setIsLoading(true);
-      if (setAgentStatus) setAgentStatus({ phase: 'thinking', text: '질문을 분석 중입니다.' });
+      if (setAgentStatus) setAgentStatus({ phase: 'thinking', status: 'thinking', text: '질문을 분석 중입니다.' });
 
       const assistantMessage = {
         id: `${Date.now()}-assistant`,
@@ -352,14 +352,14 @@ export function TutorChatProvider({ children }) {
 
           if (data.type === 'thinking') {
             if (setAgentStatus) {
-              setAgentStatus({ phase: 'thinking', text: data.content || '질문을 분석 중입니다.' });
+              setAgentStatus({ phase: 'thinking', status: 'thinking', text: data.content || '질문을 분석 중입니다.' });
             }
             return;
           }
 
           if (data.type === 'tool_call') {
             if (setAgentStatus) {
-              setAgentStatus({ phase: 'tool_call', text: `도구 실행 중: ${data.tool || '분석 도구'}`, tool: data.tool || undefined });
+              setAgentStatus({ phase: 'tool_call', status: 'tool_call', text: `도구 실행 중: ${data.tool || '분석 도구'}`, tool: data.tool || undefined });
             }
             return;
           }
@@ -369,7 +369,7 @@ export function TutorChatProvider({ children }) {
             pendingGuardrailDecision = typeof data.guardrail_decision === 'string' ? data.guardrail_decision : pendingGuardrailDecision;
             pendingGuardrailMode = typeof data.guardrail_mode === 'string' ? data.guardrail_mode : pendingGuardrailMode;
             if (setAgentStatus && pendingGuardrailNotice) {
-              setAgentStatus({ phase: 'notice', text: pendingGuardrailNotice });
+              setAgentStatus({ phase: 'notice', status: 'notice', text: pendingGuardrailNotice });
             }
             syncAssistantState(renderedContent, {
               isStreaming: true,
@@ -410,11 +410,18 @@ export function TutorChatProvider({ children }) {
             return;
           }
 
+          if (data.type === 'todo_list' && Array.isArray(data.todos)) {
+            if (options?.onTodoUpdate) {
+              options.onTodoUpdate(data.todos);
+            }
+            return;
+          }
+
           if (data.type === 'error' && data.error) {
             hasError = true;
             flushBuffer(true);
             const errorText = renderedContent || `오류: ${data.error}`;
-            if (setAgentStatus) setAgentStatus({ phase: 'error', text: '오류가 발생했습니다.' });
+            if (setAgentStatus) setAgentStatus({ phase: 'error', status: 'error', text: '오류가 발생했습니다.' });
             syncAssistantState(errorText, {
               isStreaming: false,
               isError: true,
@@ -456,6 +463,12 @@ export function TutorChatProvider({ children }) {
               ctaButtons,
             });
             if (setAgentStatus && !hasError) setAgentStatus({ ...DEFAULT_STATUS, status: 'done' });
+
+            // 투두리스트 2.5초 후 자동 clear
+            if (options?.onTodoUpdate) {
+              setTimeout(() => options.onTodoUpdate(null), 2500);
+            }
+
             return;
           }
 
@@ -471,7 +484,7 @@ export function TutorChatProvider({ children }) {
             if (!sanitized) return;
 
             if (!renderedContent && setAgentStatus) {
-              setAgentStatus({ phase: 'answering', text: '답변을 생성 중입니다.' });
+              setAgentStatus({ phase: 'answering', status: 'answering', text: '답변을 생성 중입니다.' });
             }
 
             pendingBuffer += sanitized;
@@ -573,7 +586,7 @@ export function TutorChatProvider({ children }) {
         if (error?.name === 'AbortError') {
           wasStopped = true;
           flushBuffer(true);
-          if (setAgentStatus) setAgentStatus({ phase: 'stopped', text: '생성이 중단되었습니다.' });
+          if (setAgentStatus) setAgentStatus({ phase: 'stopped', status: 'stopped', text: '생성이 중단되었습니다.' });
           syncAssistantState(renderedContent, {
             isStreaming: false,
             isError: false,
@@ -590,7 +603,7 @@ export function TutorChatProvider({ children }) {
 
         console.error('Tutor error:', error);
         hasError = true;
-        if (setAgentStatus) setAgentStatus({ phase: 'error', text: '오류가 발생했습니다.' });
+        if (setAgentStatus) setAgentStatus({ phase: 'error', status: 'error', text: '오류가 발생했습니다.' });
 
         const fallbackText = renderedContent || '죄송합니다. 오류가 발생했습니다.';
         syncAssistantState(fallbackText, {

@@ -35,7 +35,6 @@ const Notifications = lazy(() => import('./pages/Notifications'));
 const Portfolio = lazy(() => import('./pages/Portfolio'));
 const Profile = lazy(() => import('./pages/Profile'));
 const TutorChat = lazy(() => import('./pages/TutorChat'));
-const AgentCanvasPage = lazy(() => import('./pages/AgentCanvasPage'));
 const AgentHistoryPage = lazy(() => import('./pages/AgentHistoryPage'));
 const FeedbackSurvey = lazy(() => import('./pages/FeedbackSurvey'));
 
@@ -90,8 +89,9 @@ function AppRoutes() {
         <Route path="/portfolio" element={<ProtectedRoute><Portfolio /></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
         <Route path="/tutor" element={<ProtectedRoute><TutorChat /></ProtectedRoute>} />
-        <Route path="/agent" element={<ProtectedRoute><AgentCanvasPage /></ProtectedRoute>} />
-        <Route path="/agent/history" element={<ProtectedRoute><AgentHistoryPage /></ProtectedRoute>} />
+        <Route path="/tutor/history" element={<ProtectedRoute><AgentHistoryPage /></ProtectedRoute>} />
+        <Route path="/agent" element={<Navigate to="/tutor" replace />} />
+        <Route path="/agent/history" element={<Navigate to="/tutor/history" replace />} />
         <Route path="/feedback-survey" element={<ProtectedRoute><FeedbackSurvey /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

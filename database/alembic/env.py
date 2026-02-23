@@ -30,6 +30,7 @@ from app.models import (
     HistoricalCase, CaseStockRelation, CaseMatch,
     TutorSession, TutorMessage,
     LearningProgress,
+    FlashCard,
     BrokerReport,
     UserPortfolio, PortfolioHolding, SimulationTrade,
     BriefingReward, DwellReward,

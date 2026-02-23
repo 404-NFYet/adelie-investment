@@ -32,7 +32,7 @@ export default function AgentHistoryPage() {
       return;
     }
 
-    navigate('/agent', {
+    navigate('/tutor', {
       replace: true,
       state: {
         mode,
@@ -46,7 +46,7 @@ export default function AgentHistoryPage() {
 
     try {
       await loadChatHistory(sessionId);
-      navigate('/agent', {
+      navigate('/tutor', {
         state: {
           mode,
           contextPayload,
