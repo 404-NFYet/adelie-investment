@@ -3,7 +3,7 @@
   "checkpoint_id": "234de7d2eb07",
   "strategy": "manual-commit",
   "branch": "develop",
-  "checkpoints_count": 14,
+  "checkpoints_count": 15,
   "files_touched": [
     ".dockerignore",
     ".env.example",
@@ -16,6 +16,7 @@
     "database/alembic/env.py",
     "database/alembic/versions/20260223_devassistant_tables.py",
     "database/alembic/versions/20260223_feedback_surveys.py",
+    "database/alembic/versions/20260223_merge_agent_feedback.py",
     "database/scripts/sync_dev_data.sh",
     "datapipeline/config.py",
     "datapipeline/db/writer.py",
@@ -103,6 +104,7 @@
     "frontend/src/pages/AgentCanvasPage.jsx",
     "frontend/src/pages/AgentHistoryPage.jsx",
     "frontend/src/pages/FeedbackSurvey.jsx",
+    "frontend/src/pages/Home.jsx",
     "frontend/src/pages/Landing.jsx",
     "frontend/src/pages/Matching.jsx",
     "frontend/src/pages/Onboarding.jsx",
@@ -288,13 +290,20 @@
       "context": "/23/4de7d2eb07/18/context.md",
       "content_hash": "/23/4de7d2eb07/18/content_hash.txt",
       "prompt": "/23/4de7d2eb07/18/prompt.txt"
+    },
+    {
+      "metadata": "/23/4de7d2eb07/19/metadata.json",
+      "transcript": "/23/4de7d2eb07/19/full.jsonl",
+      "context": "/23/4de7d2eb07/19/context.md",
+      "content_hash": "/23/4de7d2eb07/19/content_hash.txt",
+      "prompt": "/23/4de7d2eb07/19/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 12215,
-    "cache_creation_tokens": 2745188,
-    "cache_read_tokens": 89738088,
-    "output_tokens": 399471,
-    "api_call_count": 1166
+    "input_tokens": 12284,
+    "cache_creation_tokens": 2944937,
+    "cache_read_tokens": 94783526,
+    "output_tokens": 409009,
+    "api_call_count": 1231
   }
 }
