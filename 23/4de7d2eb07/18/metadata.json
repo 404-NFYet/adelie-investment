@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "234de7d2eb07",
+  "session_id": "826a8ea7-7cec-4f73-854b-ece8f1639b0b",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-23T03:28:11.413750574Z",
+  "branch": "develop",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "datapipeline/graph.py",
+    "datapipeline/nodes/interface2.py",
+    "fastapi/Dockerfile",
+    "fastapi/app/core/scheduler.py",
+    "fastapi/app/services/dev_db_sync.py"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 77,
+    "cache_creation_tokens": 215662,
+    "cache_read_tokens": 5452713,
+    "output_tokens": 6927,
+    "api_call_count": 74
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-23T03:28:11.361643712Z",
+    "agent_lines": 0,
+    "human_added": 385,
+    "human_modified": 128,
+    "human_removed": 0,
+    "total_committed": 513,
+    "agent_percentage": 0
+  }
+}

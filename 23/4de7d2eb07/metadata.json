@@ -20,6 +20,7 @@
     "datapipeline/config.py",
     "datapipeline/db/writer.py",
     "datapipeline/graph.py",
+    "datapipeline/nodes/interface2.py",
     "datapipeline/prompts/__init__.py",
     "datapipeline/requirements.txt",
     "datapipeline/run.py",
@@ -65,6 +66,7 @@
     "fastapi/app/repositories/narrative.py",
     "fastapi/app/repositories/portfolio.py",
     "fastapi/app/services/auth_service.py",
+    "fastapi/app/services/dev_db_sync.py",
     "fastapi/app/services/market_calendar.py",
     "fastapi/app/services/stock_price_service.py",
     "fastapi/requirements-dev.txt",
@@ -279,13 +281,20 @@
       "context": "/23/4de7d2eb07/17/context.md",
       "content_hash": "/23/4de7d2eb07/17/content_hash.txt",
       "prompt": "/23/4de7d2eb07/17/prompt.txt"
+    },
+    {
+      "metadata": "/23/4de7d2eb07/18/metadata.json",
+      "transcript": "/23/4de7d2eb07/18/full.jsonl",
+      "context": "/23/4de7d2eb07/18/context.md",
+      "content_hash": "/23/4de7d2eb07/18/content_hash.txt",
+      "prompt": "/23/4de7d2eb07/18/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 12138,
-    "cache_creation_tokens": 2529526,
-    "cache_read_tokens": 84285375,
-    "output_tokens": 392544,
-    "api_call_count": 1092
+    "input_tokens": 12215,
+    "cache_creation_tokens": 2745188,
+    "cache_read_tokens": 89738088,
+    "output_tokens": 399471,
+    "api_call_count": 1166
   }
 }
