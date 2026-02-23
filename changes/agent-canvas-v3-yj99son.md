@@ -998,3 +998,121 @@
 - [ ] minLength 2 적용
 - [ ] 에이전트 툴 시스템 (백엔드 actions + 프론트 실행 분기 + 오케스트레이터 API 호출)
 - [ ] `npm run build` 성공
+
+## 19. v7.2 반영 내역 (Agent UX 안정화 + 저장/검색/온보딩 통합)
+
+### 19-1. 문제 재현
+- 홈/이슈 하단의 피드백(리액션) 조작부가 하단 Dock/BottomNav와 겹쳐 눌림성이 낮았음.
+- 복습 카드가 저장 여부와 무관하게 노출되어 "저장한 대화만 복습" 정책과 불일치.
+- 캔버스 응답 Markdown에서 줄바꿈/표가 일부 렌더되지 않음.
+- 매수/매도 툴 버튼은 뜨지만 실제 포트폴리오 반영 체인이 약해 체감상 "실행 안 됨"처럼 보이는 케이스 존재.
+- 홈/교육/캔버스에서 종목 질의 시 전역 검색 액션이 일관되게 노출되지 않음.
+
+### 19-2. 의사결정
+- 홈/교육의 기존 브리핑 카드 영역은 유지하지 않고, 저장 기반 복습 카드 중심으로 전환.
+- 복습 카드는 `is_pinned` + `learning_progress` 경로를 기준으로 노출(미저장 세션은 히스토리 전용).
+- 온보딩 액션은 자동 이동 우선, 고위험 액션만 확인 모달 유지.
+- 종목 탐색은 광범위 조회 요구를 수용하되, 백엔드에서는 읽기 전용 화이트리스트(종목 마스터)만 코드 경로로 허용.
+
+### 19-3. 구현 상세
+
+#### A) 하단 겹침/가림 해결
+- 파일: `frontend/src/components/agent/AgentDock.jsx`
+- 변경:
+  - Dock 높이를 `ResizeObserver`로 실측해 `--agent-dock-h` 동적 반영.
+  - `--safe-bottom-offset` 동기화.
+- 파일: `frontend/src/components/common/FeedbackWidget.jsx`
+- 변경:
+  - 피드백 바텀시트 하단 마진을 `var(--safe-bottom-offset) + keyboard-offset` 기준으로 보정.
+  - z-index를 Dock보다 높은 인터랙션 레벨로 조정.
+- 파일: `frontend/src/styles/globals.css`
+- 변경:
+  - `--safe-bottom-offset` 기본 토큰 추가.
+- 파일: `frontend/src/pages/Home.jsx`, `frontend/src/pages/Education.jsx`, `frontend/src/pages/Portfolio.jsx`, `frontend/src/pages/AgentCanvasPage.jsx`, `frontend/src/pages/AgentHistoryPage.jsx`
+- 변경:
+  - 하단 패딩 계산을 `pb-[calc(var(--safe-bottom-offset,172px)+16px)]`로 통일.
+
+#### B) 저장/미저장 세션 분리
+- 파일: `frontend/src/pages/Home.jsx`
+- 변경:
+  - 대화 정리 카드는 `sessions.filter(is_pinned)`만 사용.
+  - fallback 카드 제거, 저장 카드 없으면 빈 상태 문구만 노출.
+  - 카드 클릭 시 `entry_source: saved_review_card`를 상태에 포함해 복습 진입 컨텍스트를 명확화.
+- 파일: `frontend/src/pages/AgentCanvasPage.jsx`
+- 변경:
+  - 자동 `learning_progress` 저장 effect 제거.
+  - 저장 버튼(`pin`) 성공 시에만 `learning_progress` upsert + `review_meta` 저장.
+
+#### C) 교육 탭 브리핑 카드 제거 + 복습 중심
+- 파일: `frontend/src/pages/Education.jsx`
+- 변경:
+  - 기존 "오늘의 교육 브리핑" 카드 섹션 제거.
+  - 복습 카드 제목 중심 렌더(상세 snippet 미노출).
+  - 보조 섹션 "에이전트 학습 도우미" 추가(바로 `/agent` 진입).
+
+#### D) 마크다운 렌더 품질 개선
+- 파일: `frontend/src/components/agent/AgentCanvasSections.jsx`
+- 변경:
+  - `remark-gfm`, `remark-breaks` 추가.
+  - `agent-markdown` 클래스 적용.
+- 파일: `frontend/src/styles/globals.css`
+- 변경:
+  - 표/문단/리스트/코드블록 스타일 추가(`.agent-markdown ...`).
+- 파일: `frontend/package.json`, `frontend/package-lock.json`
+- 변경:
+  - `remark-gfm`, `remark-breaks` 의존성 추가.
+
+#### E) 종목 검색/툴 실행 체인 보강
+- 파일: `frontend/src/utils/agent/buildActionCatalog.js`
+- 변경:
+  - `check_stock_lookup`(종목 검색 툴) 기본 액션 추가.
+- 파일: `frontend/src/hooks/useAgentControlOrchestrator.js`
+- 변경:
+  - `check_stock_lookup` 실행 경로 추가 (`GET /api/v1/trading/search?q=`).
+  - `buy_stock`/`sell_stock` 실행 시 `stock_name`, `order_kind`를 포함해 주문 요청 정규화.
+  - 주문 성공 후 `refreshPortfolio(true)` 호출로 상태 반영 체인 고정.
+
+#### F) 백엔드 전역 종목 질의 강화(화이트리스트 읽기)
+- 파일: `fastapi/app/api/routes/tutor.py`
+- 변경:
+  - `_collect_stock_lookup_context()` 추가:
+    - `stock_listings` 테이블만 조회하는 read-only 경로.
+    - 종목명/코드 후보를 최대 5개 추려 컨텍스트/소스로 주입.
+  - `_collect_context()`에 종목 조회 컨텍스트 병합.
+  - `_recommend_actions()`에 `check_stock_lookup` 추천 분기 추가.
+
+### 19-4. API/계약 영향
+- 공개 엔드포인트 추가 없음.
+- 내부 계약 변경:
+  - 홈 대화 카드 = pinned session only.
+  - 복습 카드 생성 트리거 = 저장 버튼 성공 시.
+  - 액션 카탈로그에 `check_stock_lookup` 추가.
+
+### 19-5. 보안 경계
+- "광범위 DB 조회" 요구는 수용하되, 현재 코드에서 에이전트가 직접 접근하는 신규 경로는 `stock_listings` 한정.
+- 사용자 인증/PII/권한 관련 테이블은 본 변경 경로에서 접근하지 않음.
+- 추후 실제 SQL 에이전트 확장 시에도 읽기전용 계정, 테이블 화이트리스트, row/time 제한이 필수.
+
+### 19-6. 계산/로직 관점 메모
+- 하단 겹침 보정은 고정 상수 대신 실측 높이(`getBoundingClientRect`)로 계산.
+- 복습 카드 생성 로직은 `save(pin)` 이벤트 기반 상태 전이로 변경:
+  - 기존: `done` 턴마다 자동 저장
+  - 변경: `save` 클릭 시에만 `learning_progress(viewed,20%)` 생성
+- 툴 실행 체인은 "주문 성공 -> 포트폴리오 강제 refresh"로 일관화.
+
+### 19-7. 목업/임시 구현 솔직 공개 (v7.2 기준)
+- 유지되는 임시값:
+  - 홈 총자산 fallback (`12450000`)
+  - 일부 빈상태 문구/카드
+  - UX 임계값(스와이프/자동롤)
+- 이번 배치에서 제거된 임시 흐름:
+  - 저장 없이 자동 복습 카드 생성되던 경로
+  - 교육 탭의 기존 브리핑 카드 렌더 경로
+
+### 19-8. 검증 체크리스트
+- [ ] 홈/교육에서 미저장 세션이 복습 카드에 노출되지 않는지
+- [ ] 저장 버튼 클릭 시에만 복습 카드 생성되는지
+- [ ] 마크다운 줄바꿈/표 렌더 정상 동작하는지
+- [ ] 종목 검색 툴(`check_stock_lookup`)이 홈/교육/캔버스에서 동작하는지
+- [ ] 매수/매도 툴 후 포트폴리오 수치가 즉시 갱신되는지
+- [ ] 피드백/리액션 버튼이 Dock/BottomNav와 겹치지 않는지

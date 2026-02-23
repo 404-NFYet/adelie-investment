@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { API_BASE_URL, fetchJson, postJson } from '../api/client';
+import { usePortfolio } from '../contexts/PortfolioContext';
 import buildActionCatalog from '../utils/agent/buildActionCatalog';
 
 const RESET_DELAY_MS = 1400;
@@ -16,6 +17,7 @@ export default function useAgentControlOrchestrator({
   const location = useLocation();
   const navigate = useNavigate();
   const resetTimerRef = useRef(null);
+  const { refreshPortfolio } = usePortfolio();
 
   const [controlState, setControlState] = useState({
     phase: 'idle',
@@ -141,6 +143,24 @@ export default function useAgentControlOrchestrator({
           result = await fetchJson(`${API_BASE_URL}/api/v1/trading/stocks/${code}`);
           break;
         }
+        case 'check_stock_lookup': {
+          const query = String(
+            params.query
+            || params.stock_name
+            || stockContext?.stock_name
+            || contextPayload?.stock_name
+            || options.prompt
+            || ''
+          ).trim();
+          if (!query) throw new Error('검색어가 없습니다.');
+          const response = await fetchJson(`${API_BASE_URL}/api/v1/trading/search?q=${encodeURIComponent(query)}`);
+          result = {
+            query,
+            count: Number(response?.count || 0),
+            results: Array.isArray(response?.results) ? response.results.slice(0, 5) : [],
+          };
+          break;
+        }
         case 'buy_stock': {
           const buyCode = params.stock_code || stockContext?.stock_code || contextPayload?.stock_code;
           if (!buyCode) throw new Error('종목 코드가 없습니다.');
@@ -148,9 +168,9 @@ export default function useAgentControlOrchestrator({
           const buyPrice = priceData?.current_price || priceData?.price;
           if (!buyPrice) throw new Error('시세를 가져올 수 없습니다.');
           const buyQty = params.quantity || 1;
+          const buyName = params.stock_name || stockContext?.stock_name || contextPayload?.stock_name || buyCode;
           const confirmBuy = window.confirm(
-            `${params.stock_name || stockContext?.stock_name || buyCode} ${buyQty}주를 ` +
-            `현재가 ${Number(buyPrice).toLocaleString()}원에 매수합니다.\n진행할까요?`
+            `${buyName} ${buyQty}주를 현재가 ${Number(buyPrice).toLocaleString()}원에 매수합니다.\n진행할까요?`
           );
           if (!confirmBuy) {
             setTransientState({ phase: 'idle', text: '매수가 취소되었습니다.', activeActionId: action.id });
@@ -158,10 +178,12 @@ export default function useAgentControlOrchestrator({
           }
           result = await postJson(`${API_BASE_URL}/api/v1/trading/order`, {
             stock_code: buyCode,
+            stock_name: buyName,
             order_type: 'buy',
             quantity: buyQty,
-            price: buyPrice,
+            order_kind: 'market',
           });
+          await refreshPortfolio(true);
           break;
         }
         case 'sell_stock': {
@@ -171,9 +193,9 @@ export default function useAgentControlOrchestrator({
           const sellPrice = sellPriceData?.current_price || sellPriceData?.price;
           if (!sellPrice) throw new Error('시세를 가져올 수 없습니다.');
           const sellQty = params.quantity || 1;
+          const sellName = params.stock_name || stockContext?.stock_name || contextPayload?.stock_name || sellCode;
           const confirmSell = window.confirm(
-            `${params.stock_name || stockContext?.stock_name || sellCode} ${sellQty}주를 ` +
-            `현재가 ${Number(sellPrice).toLocaleString()}원에 매도합니다.\n진행할까요?`
+            `${sellName} ${sellQty}주를 현재가 ${Number(sellPrice).toLocaleString()}원에 매도합니다.\n진행할까요?`
           );
           if (!confirmSell) {
             setTransientState({ phase: 'idle', text: '매도가 취소되었습니다.', activeActionId: action.id });
@@ -181,10 +203,12 @@ export default function useAgentControlOrchestrator({
           }
           result = await postJson(`${API_BASE_URL}/api/v1/trading/order`, {
             stock_code: sellCode,
+            stock_name: sellName,
             order_type: 'sell',
             quantity: sellQty,
-            price: sellPrice,
+            order_kind: 'market',
           });
+          await refreshPortfolio(true);
           break;
         }
         case 'open_external_stock_info': {
@@ -206,7 +230,7 @@ export default function useAgentControlOrchestrator({
       setTransientState({ phase: 'error', text: error?.message || '실행에 실패했습니다.', activeActionId: action.id });
       return { ok: false, reason: 'execution_error', error };
     }
-  }, [location.pathname, mode, navigate, setTransientState, stockContext]);
+  }, [location.pathname, mode, navigate, refreshPortfolio, setTransientState, stockContext]);
 
   return {
     actionCatalog,

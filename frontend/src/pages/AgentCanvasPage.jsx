@@ -166,7 +166,6 @@ export default function AgentCanvasPage() {
   const processedPromptRef = useRef(new Set());
   const resetRef = useRef(new Set());
   const restoredSessionRef = useRef(new Set());
-  const savedReviewTurnRef = useRef(new Set());
   const touchStartXRef = useRef(null);
   const toastTimerRef = useRef(null);
   const prevTurnCountRef = useRef(0);
@@ -368,48 +367,6 @@ export default function AgentCanvasPage() {
     [contextPayload, mode],
   );
 
-  useEffect(() => {
-    if (!reviewTarget || !selectedTurn || selectedTurn.status !== 'done') return;
-
-    const turnKey = `${reviewTarget.contentType}:${reviewTarget.contentId}:${selectedTurn.id}`;
-    if (savedReviewTurnRef.current.has(turnKey)) return;
-    savedReviewTurnRef.current.add(turnKey);
-
-    const status = turns.length > 1 ? 'in_progress' : 'viewed';
-    const progressPercent = status === 'in_progress' ? 60 : 20;
-
-    learningApi.upsertProgress({
-      content_type: reviewTarget.contentType,
-      content_id: reviewTarget.contentId,
-      status,
-      progress_percent: progressPercent,
-    }).catch(() => {});
-
-    const titleCandidate = (
-      contextPayload?.keywords?.[0]?.title
-      || contextPayload?.case_title
-      || contextPayload?.stock_name
-      || selectedUserPrompt
-      || canvasState.title
-      || '복습 카드'
-    );
-    const snippet = (selectedTurn.assistantText || '').replace(/\s+/g, ' ').trim().slice(0, 180);
-    const iconKey = contextPayload?.keywords?.[0]?.icon_key || contextPayload?.icon_key || DEFAULT_HOME_ICON_KEY;
-
-    try {
-      localStorage.setItem(
-        `${REVIEW_META_PREFIX}${reviewTarget.contentType}:${reviewTarget.contentId}`,
-        JSON.stringify({
-          title: titleCandidate,
-          icon_key: iconKey,
-          last_summary_snippet: snippet,
-          updated_at: new Date().toISOString(),
-        }),
-      );
-    } catch {
-      // ignore storage errors
-    }
-  }, [canvasState.title, contextPayload, reviewTarget, selectedTurn, selectedUserPrompt, turns.length]);
 
   const showSwipeToast = useCallback((text) => {
     setSwipeToast(text);
@@ -569,14 +526,59 @@ export default function AgentCanvasPage() {
         body: JSON.stringify({ pinned: true }),
       });
       if (!response.ok) throw new Error('pin_failed');
+
+      if (reviewTarget) {
+        await learningApi.upsertProgress({
+          content_type: reviewTarget.contentType,
+          content_id: reviewTarget.contentId,
+          status: 'viewed',
+          progress_percent: 20,
+        });
+
+        const titleCandidate = (
+          contextPayload?.keywords?.[0]?.title
+          || contextPayload?.case_title
+          || contextPayload?.stock_name
+          || selectedUserPrompt
+          || canvasState.title
+          || '복습 카드'
+        );
+        const snippet = (selectedTurn?.assistantText || '').replace(/\s+/g, ' ').trim().slice(0, 180);
+        const iconKey = contextPayload?.keywords?.[0]?.icon_key || contextPayload?.icon_key || DEFAULT_HOME_ICON_KEY;
+
+        try {
+          localStorage.setItem(
+            `${REVIEW_META_PREFIX}${reviewTarget.contentType}:${reviewTarget.contentId}`,
+            JSON.stringify({
+              title: titleCandidate,
+              icon_key: iconKey,
+              last_summary_snippet: snippet,
+              updated_at: new Date().toISOString(),
+            }),
+          );
+        } catch {
+          // ignore storage errors
+        }
+      }
+
       await refreshSessions();
-      showSwipeToast('이 대화를 홈 카드로 저장했어요.');
+      showSwipeToast('이 대화를 홈/교육 복습 카드로 저장했어요.');
     } catch {
       showSwipeToast('대화 저장에 실패했어요. 잠시 후 다시 시도해 주세요.');
     } finally {
       setIsSavingSession(false);
     }
-  }, [activeSessionId, isSavingSession, refreshSessions, showSwipeToast]);
+  }, [
+    activeSessionId,
+    canvasState.title,
+    contextPayload,
+    isSavingSession,
+    refreshSessions,
+    reviewTarget,
+    selectedTurn?.assistantText,
+    selectedUserPrompt,
+    showSwipeToast,
+  ]);
 
   const handleStopGeneration = useCallback(() => {
     stopGeneration();
@@ -625,7 +627,7 @@ export default function AgentCanvasPage() {
     : Math.max(34, Math.min(100, Math.round((conversationDepth / 3) * 100)));
 
   return (
-    <div className="min-h-screen bg-[var(--agent-bg-page,#F7F8FA)] pb-[calc(var(--bottom-nav-h,68px)+var(--agent-dock-h,88px)+16px)]">
+    <div className="min-h-screen bg-[var(--agent-bg-page,#F7F8FA)] pb-[calc(var(--safe-bottom-offset,172px)+16px)]">
       {/* ── 1줄 컴팩트 헤더 ── */}
       <header className="sticky top-0 z-10 border-b border-[var(--agent-border)] bg-white/97 backdrop-blur-sm">
         <div className="container flex h-11 items-center justify-between">

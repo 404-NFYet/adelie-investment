@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { API_BASE_URL, authFetch } from '../../api/client';
 import { useTutor } from '../../contexts';
@@ -48,6 +48,7 @@ export default function AgentDock() {
   const navigate = useNavigate();
   const { messages, agentStatus, isStreamingActive } = useTutor();
   const { keyboardOffset, shouldHideBottomNav } = useKeyboardInset();
+  const dockRootRef = useRef(null);
 
   const hasActiveSession = Array.isArray(messages) && messages.length > 0;
   const isAgentRoute = location.pathname.startsWith('/agent');
@@ -78,6 +79,31 @@ export default function AgentDock() {
       document.documentElement.style.setProperty('--keyboard-offset', '0px');
     };
   }, [keyboardOffset]);
+
+  useEffect(() => {
+    const target = dockRootRef.current;
+    if (!target || typeof window === 'undefined') return undefined;
+
+    const updateDockHeight = () => {
+      const nextHeight = Math.max(72, Math.ceil(target.getBoundingClientRect().height));
+      document.documentElement.style.setProperty('--agent-dock-h', `${nextHeight}px`);
+      document.documentElement.style.setProperty(
+        '--safe-bottom-offset',
+        `calc(var(--bottom-nav-h,68px) + var(--agent-dock-h,${nextHeight}px))`,
+      );
+    };
+
+    updateDockHeight();
+
+    const observer = new ResizeObserver(updateDockHeight);
+    observer.observe(target);
+    window.addEventListener('resize', updateDockHeight);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateDockHeight);
+    };
+  }, []);
 
   const baseContextPayload = useMemo(() => {
     if (mode === 'stock' && location.state?.stockContext) {
@@ -258,6 +284,7 @@ export default function AgentDock() {
 
   return (
     <div
+      ref={dockRootRef}
       className="pointer-events-none fixed left-0 right-0 z-30 flex justify-center px-4 pb-2"
       style={{ bottom: `calc(${hideBottomNav ? '0px' : 'var(--bottom-nav-h,68px)'} + var(--keyboard-offset,0px))` }}
     >

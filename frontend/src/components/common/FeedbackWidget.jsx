@@ -72,7 +72,7 @@ export default function FeedbackWidget({ externalOpen = false, onExternalClose, 
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 bg-black/40 z-50 flex items-end justify-center"
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40"
           onClick={handleClose}
         >
           <motion.div
@@ -80,7 +80,8 @@ export default function FeedbackWidget({ externalOpen = false, onExternalClose, 
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="bg-surface-elevated rounded-t-3xl w-full max-w-mobile p-6"
+            className="w-full max-w-mobile rounded-t-3xl bg-surface-elevated p-6"
+            style={{ marginBottom: 'calc(var(--safe-bottom-offset, 172px) + var(--keyboard-offset, 0px) + 8px)' }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* 드래그 핸들 */}

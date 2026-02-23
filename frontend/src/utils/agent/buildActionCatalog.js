@@ -40,6 +40,14 @@ function baseActions() {
       risk: 'low',
       params_schema: {},
     },
+    {
+      id: 'check_stock_lookup',
+      label: '종목 검색하기',
+      description: '종목명/티커를 검색해 후보 목록과 기본 정보를 조회합니다.',
+      type: 'tool',
+      risk: 'low',
+      params_schema: { query: 'string' },
+    },
   ];
 }
 

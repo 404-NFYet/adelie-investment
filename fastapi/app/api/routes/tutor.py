@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import re
 import time
 import uuid
 from datetime import datetime
@@ -22,6 +23,7 @@ from app.core.database import get_db
 from app.core.limiter import limiter
 from app.models.tutor import TutorSession, TutorMessage
 from app.models.glossary import Glossary
+from app.models.stock_listing import StockListing
 from app.schemas.tutor import (
     TutorChatRequest,
     TutorChatEvent,
@@ -382,6 +384,14 @@ def _recommend_actions(
             "params": {"stock_code": stock_code},
         })
 
+    if not stock_code and "check_stock_lookup" in catalog_by_id and len(actions) < 3:
+        actions.append({
+            "id": "check_stock_lookup",
+            "label": "종목 검색하기",
+            "type": "tool",
+            "params": {"query": ""},
+        })
+
     if "check_portfolio" in catalog_by_id and len(actions) < 3:
         actions.append({
             "id": "check_portfolio",
@@ -506,6 +516,67 @@ def _extract_session_cover_meta(
     }
 
 
+
+
+async def _collect_stock_lookup_context(message: str, db: AsyncSession) -> tuple[str, list[dict[str, Any]]]:
+    """종목 조회성 질문에서 stock_listings 기반 후보를 수집한다 (read-only whitelist)."""
+    text_msg = str(message or "").strip()
+    if not text_msg:
+        return "", []
+
+    trigger_tokens = ["종목", "티커", "주식", "코드", "정보", "있어", "찾아", "검색"]
+    if not any(token in text_msg for token in trigger_tokens):
+        return "", []
+
+    words = re.findall(r"[A-Za-z0-9가-힣]{2,16}", text_msg)
+    stopwords = {"이종목", "종목", "주식", "정보", "알려줘", "있는지", "있어", "검색", "찾아줘", "좀", "현재", "가격"}
+    candidates = [word for word in words if word.lower() not in stopwords]
+    if not candidates:
+        return "", []
+
+    keyword = candidates[0]
+    code_match = re.search(r"\b(\d{6})\b", text_msg)
+    stock_code = code_match.group(1) if code_match else None
+
+    if stock_code:
+        rows = (
+            await db.execute(
+                select(StockListing)
+                .where(StockListing.is_active == True, StockListing.stock_code == stock_code)  # noqa: E712
+                .limit(5)
+            )
+        ).scalars().all()
+    else:
+        rows = (
+            await db.execute(
+                select(StockListing)
+                .where(StockListing.is_active == True, StockListing.stock_name.ilike(f"%{keyword}%"))  # noqa: E712
+                .limit(5)
+            )
+        ).scalars().all()
+
+    if not rows:
+        return "", []
+
+    context_lines = ["\n[내부 종목 검색 결과]"]
+    sources: list[dict[str, Any]] = []
+    for row in rows:
+        line = f"- {row.stock_name} ({row.stock_code}) · {row.market}"
+        if row.sector:
+            line += f" · 섹터: {row.sector}"
+        context_lines.append(line)
+        sources.append(
+            {
+                "type": "internal",
+                "source_kind": "internal",
+                "title": f"종목 마스터 {row.stock_name}",
+                "url": "",
+                "content": f"{row.stock_code} / {row.market} / {row.sector or '-'}",
+            }
+        )
+
+    return "\n".join(context_lines), sources
+
 @router.post("/route", response_model=TutorRouteResponse)
 @limiter.limit("30/minute")
 async def tutor_route(
@@ -599,12 +670,15 @@ async def _collect_context(
         stock_context, chart_data, stock_sources = await _collect_stock_context(
             request.message, detected_stocks, db
         )
+        stock_lookup_context, stock_lookup_sources = await _collect_stock_lookup_context(request.message, db)
         stock_intel_context, stock_intel_sources, _ = await collect_stock_intelligence(
             db,
             request.context_text,
             detected_stocks,
         )
         sources = glossary_sources + db_sources + stock_sources
+        if stock_lookup_sources:
+            sources += stock_lookup_sources
         if stock_intel_sources:
             sources += stock_intel_sources
         if glossary_context:
@@ -613,6 +687,8 @@ async def _collect_context(
             extra_context += f"\n\n참고할 내부 데이터:{db_context}"
         if stock_context:
             extra_context += f"\n\n참고할 종목 데이터:{stock_context}"
+        if stock_lookup_context:
+            extra_context += f"\n\n참고할 종목 검색:{stock_lookup_context}"
         if stock_intel_context:
             extra_context += f"\n\n참고할 투자 인텔:{stock_intel_context}"
     except Exception as e:
@@ -654,7 +730,7 @@ async def _build_llm_messages(
             "- 첫 문단에 핵심 요약 1~2문장을 먼저 제시하세요.\n"
             "- 핵심 포인트는 불릿 목록(- )으로 정리하세요.\n"
             "- 순서가 중요한 내용은 번호 목록(1. 2. 3.)을 사용하세요.\n"
-            "- 비교 데이터가 있으면 2~3열의 간단한 마크다운 테이블을 사용해도 됩니다.\n"
+            "- 비교 데이터가 있으면 2~4열의 간단한 마크다운 테이블을 사용해도 됩니다.\n"
             "- 절대로 ASCII art, 텍스트 차트, 막대 그래프 문자열을 만들지 마세요. 시각화는 별도 시스템이 Plotly 차트로 처리합니다.\n"
             "- 숫자 데이터는 텍스트로만 서술하세요 (예: '삼성전자 매출은 전년 대비 12% 증가').\n"
             "- 필요한 경우 마지막에 '다음 액션' 섹션을 번호 목록으로 제시하세요.\n"
