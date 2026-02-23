@@ -11,24 +11,16 @@ def setup_logging(
 ) -> logging.Logger:
     """
     애플리케이션 로깅 설정.
-    
+
     Args:
         level: 로그 레벨 (DEBUG, INFO, WARNING, ERROR)
         json_format: JSON 포맷 사용 여부 (프로덕션 권장)
     """
-    logger = logging.getLogger("narrative")
-    logger.setLevel(getattr(logging, level.upper(), logging.INFO))
-    
-    # 핸들러 중복 방지
-    if logger.handlers:
-        return logger
-    
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setLevel(getattr(logging, level.upper(), logging.INFO))
-    
+    log_level = getattr(logging, level.upper(), logging.INFO)
+
     if json_format:
         import json
-        
+
         class JsonFormatter(logging.Formatter):
             def format(self, record):
                 log_data = {
@@ -40,16 +32,32 @@ def setup_logging(
                 if record.exc_info and record.exc_info[0]:
                     log_data["exception"] = self.formatException(record.exc_info)
                 return json.dumps(log_data, ensure_ascii=False)
-        
-        handler.setFormatter(JsonFormatter())
+
+        formatter = JsonFormatter()
     else:
         formatter = logging.Formatter(
-            "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+            "[%(asctime)s] %(name)s.%(funcName)s:%(lineno)d %(levelname)s - %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
         )
+
+    # narrative 네임스페이스 (레거시 호환)
+    logger = logging.getLogger("narrative")
+    logger.setLevel(log_level)
+    if not logger.handlers:
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setLevel(log_level)
         handler.setFormatter(formatter)
-    
-    logger.addHandler(handler)
+        logger.addHandler(handler)
+
+    # narrative_api 네임스페이스 (FastAPI 라우트용)
+    api_logger = logging.getLogger("narrative_api")
+    api_logger.setLevel(log_level)
+    if not api_logger.handlers:
+        api_handler = logging.StreamHandler(sys.stdout)
+        api_handler.setLevel(log_level)
+        api_handler.setFormatter(formatter)
+        api_logger.addHandler(api_handler)
+
     return logger
 
 
