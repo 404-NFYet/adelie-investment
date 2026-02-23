@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { API_BASE_URL, authFetch } from '../../api/client';
 import { useTutor } from '../../contexts';
@@ -8,7 +7,6 @@ import SlashCommandMenu, { SLASH_COMMANDS } from './SlashCommandMenu';
 import useAgentPromptHints from '../../hooks/useAgentPromptHints';
 import useAgentControlOrchestrator from '../../hooks/useAgentControlOrchestrator';
 import useKeyboardInset from '../../hooks/useKeyboardInset';
-import useScrollDirection from '../../hooks/useScrollDirection';
 import buildUiSnapshot from '../../utils/agent/buildUiSnapshot';
 import buildActionCatalog from '../../utils/agent/buildActionCatalog';
 
@@ -53,7 +51,6 @@ export default function AgentDock() {
   const navigate = useNavigate();
   const { messages, agentStatus, isStreamingActive } = useTutor();
   const { keyboardOffset, shouldHideBottomNav } = useKeyboardInset();
-  const { scrolledDown } = useScrollDirection();
   const hasActiveSession = Array.isArray(messages) && messages.length > 0;
   const isAgentRoute = location.pathname.startsWith('/agent');
   const hideBottomNav = shouldHideBottomNav;
@@ -281,17 +278,8 @@ export default function AgentDock() {
     });
   };
 
-  // 스크롤 다운 시 AgentDock을 화면 밖으로 슬라이드
-  // hideBottomNav: 키보드 열림 → 본인 높이+여백만큼 아래로
-  // 일반: BottomNav도 함께 사라지므로 본인 높이+navH+여백만큼 아래로
-  const dockTranslateY = scrolledDown
-    ? (hideBottomNav ? 'calc(100% + 8px)' : 'calc(100% + var(--bottom-nav-h,68px) + 8px)')
-    : 0;
-
   return (
-    <motion.div
-      animate={{ y: dockTranslateY }}
-      transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+    <div
       className="pointer-events-none fixed left-0 right-0 z-30 flex justify-center px-4 pb-2"
       style={{ bottom: `calc(${hideBottomNav ? '0px' : 'var(--bottom-nav-h,68px)'} + var(--keyboard-offset,0px))` }}
     >
@@ -443,6 +431,6 @@ export default function AgentDock() {
           </div>
         </AgentControlPulse>
       </div>
-    </motion.div>
+    </div>
   );
 }

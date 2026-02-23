@@ -1,7 +1,5 @@
-import { motion } from 'framer-motion';
 import { useNavigate, useLocation } from 'react-router-dom';
 import useKeyboardInset from '../../hooks/useKeyboardInset';
-import useScrollDirection from '../../hooks/useScrollDirection';
 
 const HIDDEN_PREFIXES = [
   '/landing',
@@ -61,7 +59,6 @@ export default function BottomNav() {
   const navigate = useNavigate();
   const location = useLocation();
   const { shouldHideBottomNav } = useKeyboardInset();
-  const { scrolledDown } = useScrollDirection();
 
   if (
     HIDDEN_EXACT.includes(location.pathname) ||
@@ -74,11 +71,7 @@ export default function BottomNav() {
   const stateMode = location.pathname.startsWith('/agent') ? (location.state?.mode || 'home') : null;
 
   return (
-    <motion.nav
-      animate={{ y: scrolledDown ? '100%' : 0 }}
-      transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-      className="fixed bottom-0 left-0 right-0 z-20 mx-auto h-[var(--bottom-nav-h,68px)] max-w-mobile border-t border-border bg-surface-elevated py-2"
-    >
+    <nav className="fixed bottom-0 left-0 right-0 z-20 mx-auto h-[var(--bottom-nav-h,68px)] max-w-mobile border-t border-border bg-surface-elevated py-2">
       <div className="flex justify-around">
         {tabs.map((tab) => {
           const isActive = isActivePath(tab.path, location.pathname, stateMode);
@@ -97,6 +90,6 @@ export default function BottomNav() {
           );
         })}
       </div>
-    </motion.nav>
+    </nav>
   );
 }
