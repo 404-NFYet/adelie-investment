@@ -2,7 +2,7 @@
   "cli_version": "0.4.2",
   "checkpoint_id": "234de7d2eb07",
   "strategy": "manual-commit",
-  "branch": "revert/scroll",
+  "branch": "develop",
   "checkpoints_count": 20,
   "files_touched": [
     ".dockerignore",
@@ -15,6 +15,7 @@
     "changes/dorae222.md",
     "chatbot/services/__init__.py",
     "chatbot/services/term_highlighter.py",
+    "chatbot/tools/visualization_tool.py",
     "database/alembic/env.py",
     "database/alembic/versions/20260223_add_trade_expires_at.py",
     "database/alembic/versions/20260223_devassistant_tables.py",
@@ -27,6 +28,7 @@
     "datapipeline/graph.py",
     "datapipeline/nodes/interface2.py",
     "datapipeline/prompts/__init__.py",
+    "datapipeline/prompts/templates/chart_generation.md",
     "datapipeline/requirements.txt",
     "datapipeline/run.py",
     "devassistant/Dockerfile",
@@ -81,6 +83,8 @@
     "fastapi/app/services/portfolio_service.py",
     "fastapi/app/services/query_presets.py",
     "fastapi/app/services/stock_price_service.py",
+    "fastapi/app/services/tutor_chart_generator.py",
+    "fastapi/app/services/tutor_engine.py",
     "fastapi/requirements-dev.txt",
     "fastapi/requirements.txt",
     "frontend/docs/mobile-devices.md",
@@ -104,6 +108,7 @@
     "frontend/src/api/client.js",
     "frontend/src/components/agent/ActionConfirmDialog.jsx",
     "frontend/src/components/agent/AgentCanvasSections.jsx",
+    "frontend/src/components/agent/AgentControlPulse.jsx",
     "frontend/src/components/agent/AgentDock.jsx",
     "frontend/src/components/agent/AgentStatusDots.jsx",
     "frontend/src/components/agent/SlashCommandMenu.jsx",
@@ -363,10 +368,10 @@
     }
   ],
   "token_usage": {
-    "input_tokens": 21624,
-    "cache_creation_tokens": 3988919,
-    "cache_read_tokens": 136433361,
-    "output_tokens": 544055,
-    "api_call_count": 1690
+    "input_tokens": 21543,
+    "cache_creation_tokens": 4046232,
+    "cache_read_tokens": 126386428,
+    "output_tokens": 537075,
+    "api_call_count": 1591
   }
 }
