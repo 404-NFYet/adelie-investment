@@ -2,8 +2,8 @@
   "cli_version": "0.4.2",
   "checkpoint_id": "234de7d2eb07",
   "strategy": "manual-commit",
-  "branch": "develop",
-  "checkpoints_count": 19,
+  "branch": "revert/scroll",
+  "checkpoints_count": 20,
   "files_touched": [
     ".dockerignore",
     ".env.example",
@@ -16,6 +16,7 @@
     "chatbot/services/__init__.py",
     "chatbot/services/term_highlighter.py",
     "database/alembic/env.py",
+    "database/alembic/versions/20260223_add_trade_expires_at.py",
     "database/alembic/versions/20260223_devassistant_tables.py",
     "database/alembic/versions/20260223_feedback_surveys.py",
     "database/alembic/versions/20260223_merge_agent_feedback.py",
@@ -64,15 +65,21 @@
     "fastapi/app/core/exceptions.py",
     "fastapi/app/core/scheduler.py",
     "fastapi/app/main.py",
+    "fastapi/app/models/portfolio.py",
     "fastapi/app/repositories/__init__.py",
     "fastapi/app/repositories/base.py",
     "fastapi/app/repositories/briefing.py",
     "fastapi/app/repositories/glossary.py",
     "fastapi/app/repositories/narrative.py",
     "fastapi/app/repositories/portfolio.py",
+    "fastapi/app/schemas/portfolio.py",
     "fastapi/app/services/auth_service.py",
     "fastapi/app/services/dev_db_sync.py",
+    "fastapi/app/services/guardrail.py",
     "fastapi/app/services/market_calendar.py",
+    "fastapi/app/services/orderbook_simulator.py",
+    "fastapi/app/services/portfolio_service.py",
+    "fastapi/app/services/query_presets.py",
     "fastapi/app/services/stock_price_service.py",
     "fastapi/requirements-dev.txt",
     "fastapi/requirements.txt",
@@ -102,9 +109,12 @@
     "frontend/src/components/agent/SlashCommandMenu.jsx",
     "frontend/src/components/common/UpdateNotice.jsx",
     "frontend/src/components/domain/ReviewCard.jsx",
+    "frontend/src/components/domain/TradeModal.jsx",
     "frontend/src/components/layout/BottomNav.jsx",
     "frontend/src/components/layout/ChatFAB.jsx",
     "frontend/src/components/quiz/DailyQuizModal.jsx",
+    "frontend/src/components/tutor/MessageBubble.jsx",
+    "frontend/src/components/tutor/TutorModal.jsx",
     "frontend/src/contexts/PortfolioContext.jsx",
     "frontend/src/contexts/TutorChatContext.jsx",
     "frontend/src/contexts/TutorContext.jsx",
@@ -167,8 +177,13 @@
     "tests/api/test_api_feedback.py",
     "tests/backend/test_api_smoke.py",
     "tests/conftest.py",
+    "tests/integration/test_chatbot_qa.py",
     "tests/schemas/__init__.py",
-    "tests/schemas/test_feedback_schemas.py"
+    "tests/schemas/test_feedback_schemas.py",
+    "tests/unit/test_guardrail.py",
+    "tests/unit/test_intent_classifier.py",
+    "tests/unit/test_orderbook_simulator.py",
+    "tests/unit/test_visualization.py"
   ],
   "sessions": [
     {
@@ -338,13 +353,20 @@
       "context": "/23/4de7d2eb07/23/context.md",
       "content_hash": "/23/4de7d2eb07/23/content_hash.txt",
       "prompt": "/23/4de7d2eb07/23/prompt.txt"
+    },
+    {
+      "metadata": "/23/4de7d2eb07/24/metadata.json",
+      "transcript": "/23/4de7d2eb07/24/full.jsonl",
+      "context": "/23/4de7d2eb07/24/context.md",
+      "content_hash": "/23/4de7d2eb07/24/content_hash.txt",
+      "prompt": "/23/4de7d2eb07/24/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 21450,
-    "cache_creation_tokens": 3844285,
-    "cache_read_tokens": 119158103,
-    "output_tokens": 510181,
-    "api_call_count": 1518
+    "input_tokens": 21624,
+    "cache_creation_tokens": 3988919,
+    "cache_read_tokens": 136433361,
+    "output_tokens": 544055,
+    "api_call_count": 1690
   }
 }

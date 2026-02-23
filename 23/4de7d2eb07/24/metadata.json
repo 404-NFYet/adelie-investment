@@ -1,0 +1,47 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "234de7d2eb07",
+  "session_id": "e1ef20c6-eb14-4d4f-881d-768c2d9684a8",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-23T05:56:46.731494484Z",
+  "branch": "revert/scroll",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "database/alembic/versions/20260223_add_trade_expires_at.py",
+    "fastapi/app/api/routes/tutor.py",
+    "fastapi/app/models/portfolio.py",
+    "fastapi/app/schemas/portfolio.py",
+    "fastapi/app/services/guardrail.py",
+    "fastapi/app/services/orderbook_simulator.py",
+    "fastapi/app/services/portfolio_service.py",
+    "fastapi/app/services/query_presets.py",
+    "frontend/src/components/agent/AgentDock.jsx",
+    "frontend/src/components/agent/SlashCommandMenu.jsx",
+    "frontend/src/components/domain/TradeModal.jsx",
+    "frontend/src/components/tutor/MessageBubble.jsx",
+    "frontend/src/components/tutor/TutorModal.jsx",
+    "frontend/src/pages/AgentCanvasPage.jsx",
+    "tests/integration/test_chatbot_qa.py",
+    "tests/unit/test_guardrail.py",
+    "tests/unit/test_intent_classifier.py",
+    "tests/unit/test_orderbook_simulator.py",
+    "tests/unit/test_visualization.py"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 174,
+    "cache_creation_tokens": 144634,
+    "cache_read_tokens": 17275258,
+    "output_tokens": 33874,
+    "api_call_count": 172
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-23T05:56:46.591332915Z",
+    "agent_lines": 2,
+    "human_added": 2,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 4,
+    "agent_percentage": 50
+  }
+}
