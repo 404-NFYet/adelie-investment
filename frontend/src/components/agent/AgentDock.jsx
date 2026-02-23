@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { API_BASE_URL, authFetch } from '../../api/client';
-import { useTutor } from '../../contexts';
+import { useTutor, useTutorUI } from '../../contexts';
 import AgentControlPulse from './AgentControlPulse';
 import SlashCommandMenu, { SLASH_COMMANDS } from './SlashCommandMenu';
 import useAgentPromptHints from '../../hooks/useAgentPromptHints';
@@ -48,9 +48,11 @@ export default function AgentDock() {
   const [showSlashMenu, setShowSlashMenu] = useState(false);
   const [slashQuery, setSlashQuery] = useState('');
   const [activePrefix, setActivePrefix] = useState(null);
+  const [dockMode, setDockMode] = useState(null); // null = 자동, 'chat', 'canvas'
   const location = useLocation();
   const navigate = useNavigate();
   const { messages, agentStatus, isStreamingActive } = useTutor();
+  const { openTutor } = useTutorUI();
   const { keyboardOffset, shouldHideBottomNav } = useKeyboardInset();
   const hasActiveSession = Array.isArray(messages) && messages.length > 0;
   const isAgentRoute = location.pathname.startsWith('/agent');
@@ -207,6 +209,9 @@ export default function AgentDock() {
 
   if (shouldHide) return null;
 
+  // 모드 자동 결정: 교육 → 대화, 나머지 → 분석
+  const effectiveDockMode = dockMode || (mode === 'education' ? 'chat' : 'canvas');
+
   const phaseTextByPhase = {
     thinking: '분석 중',
     tool_call: '도구 실행 중',
@@ -228,6 +233,14 @@ export default function AgentDock() {
     const raw = String(prompt || '').trim();
     const normalized = activePrefix ? `${activePrefix.prefix}${raw}` : raw;
     if (!normalized) return;
+
+    // 대화 모드 → TutorModal 열기
+    if (effectiveDockMode === 'chat') {
+      openTutor(normalized);
+      setInput('');
+      setActivePrefix(null);
+      return;
+    }
 
     const controlPayload = buildControlContextPayload(normalized);
     setIsRouting(true);
@@ -334,6 +347,32 @@ export default function AgentDock() {
                 )}
               </button>
 
+              {/* 모드 토글: 대화 / 분석 */}
+              <div className="flex items-center gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => setDockMode('chat')}
+                  className={`rounded-full px-2 py-1 text-[11px] font-medium transition-colors ${
+                    effectiveDockMode === 'chat'
+                      ? 'bg-[#FF6B00]/10 text-[#FF6B00]'
+                      : 'text-[#8B95A1]'
+                  }`}
+                >
+                  대화
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDockMode('canvas')}
+                  className={`rounded-full px-2 py-1 text-[11px] font-medium transition-colors ${
+                    effectiveDockMode === 'canvas'
+                      ? 'bg-[#1D6FDE]/10 text-[#1D6FDE]'
+                      : 'text-[#8B95A1]'
+                  }`}
+                >
+                  분석
+                </button>
+              </div>
+
               <div className="ml-auto flex items-center gap-1">
                 <button
                   type="button"
@@ -435,7 +474,7 @@ export default function AgentDock() {
                       setActivePrefix(null);
                     }
                   }}
-                  placeholder={activePrefix ? '내용을 입력하세요' : (input ? placeholder : suggestedPrompt)}
+                  placeholder={activePrefix ? '내용을 입력하세요' : (input ? placeholder : (effectiveDockMode === 'chat' ? '궁금한 것을 물어보세요' : suggestedPrompt))}
                   data-agent-dock-input
                   className="min-w-0 flex-1 bg-transparent text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] focus:outline-none"
                   aria-label="에이전트 질문 입력"

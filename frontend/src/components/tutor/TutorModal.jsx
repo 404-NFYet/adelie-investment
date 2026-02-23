@@ -95,7 +95,7 @@ export default function TutorModal() {
                 <div className="flex items-center gap-2">
                   <img src="/images/penguin-3d.png" alt="AI Tutor" className="w-8 h-8" />
                   <div>
-                    <h2 className="font-bold text-text-primary">AI 튜터</h2>
+                    <h2 className="font-bold text-text-primary">AI 튜터와 대화</h2>
                     <p className="text-xs text-text-secondary capitalize">{settings.difficulty} 모드</p>
                   </div>
                 </div>
