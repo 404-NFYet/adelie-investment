@@ -474,6 +474,11 @@ export default function AgentCanvasPage() {
         return;
       }
 
+      if (action?.type === 'navigate' && action?.id) {
+        executeAction(action, { contextPayload });
+        return;
+      }
+
       const nextPrompt = action?.prompt || action?.label || '';
       if (!nextPrompt) return;
       sendCanvasMessage(nextPrompt);
