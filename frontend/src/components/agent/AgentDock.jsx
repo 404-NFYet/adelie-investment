@@ -326,7 +326,7 @@ export default function AgentDock() {
 
         {/* 볼드 입력바 */}
         <AgentControlPulse active={pulseActive}>
-          <div className="pointer-events-auto relative rounded-[20px] bg-white shadow-[0_18px_34px_rgba(255,107,0,0.34)]">
+          <div className="pointer-events-auto relative rounded-[20px] bg-white shadow-[0_2px_16px_rgba(0,0,0,0.08)]">
             {/* 상단 상태 라인 (항상 노출) */}
             <div className="flex items-center gap-2 border-b border-[#F2F4F6] px-3 py-1.5">
               <button
