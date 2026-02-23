@@ -41,7 +41,8 @@
 
   /* Agent UI tokens – Toss-tone */
   --bottom-nav-h: 68px;
-  --agent-dock-h: 104px;
+  --agent-dock-h: 88px;
+  --safe-bottom-offset: calc(var(--bottom-nav-h, 68px) + var(--agent-dock-h, 88px));
   --keyboard-offset: 0px;
   --agent-radius-sm: 14px;
   --agent-radius-md: 18px;
@@ -539,3 +540,41 @@
 }
 
 /* 다크모드 대응 (CSS 변수 기반이므로 자동 적용) */
+
+/* Agent canvas markdown rendering quality */
+.agent-markdown p {
+  margin-top: 0.45rem;
+  margin-bottom: 0.45rem;
+}
+
+.agent-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  min-width: 360px;
+}
+
+.agent-markdown thead th {
+  background: #f8fafc;
+  color: #344054;
+  font-weight: 700;
+}
+
+.agent-markdown th,
+.agent-markdown td {
+  border: 1px solid #e6eaf0;
+  padding: 0.5rem 0.6rem;
+  text-align: left;
+  vertical-align: top;
+  font-size: 0.82rem;
+}
+
+.agent-markdown ul,
+.agent-markdown ol {
+  margin-top: 0.45rem;
+  margin-bottom: 0.45rem;
+}
+
+.agent-markdown pre {
+  overflow-x: auto;
+}
