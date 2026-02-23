@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { API_BASE_URL, authFetch } from '../../api/client';
 import { useTutor } from '../../contexts';
 import AgentControlPulse from './AgentControlPulse';
+import SlashCommandMenu, { SLASH_COMMANDS } from './SlashCommandMenu';
 import useAgentPromptHints from '../../hooks/useAgentPromptHints';
 import useAgentControlOrchestrator from '../../hooks/useAgentControlOrchestrator';
 import useKeyboardInset from '../../hooks/useKeyboardInset';
@@ -44,11 +45,12 @@ export default function AgentDock() {
   const [inlineMessage, setInlineMessage] = useState(null);
   const [isRouting, setIsRouting] = useState(false);
   const [searchEnabled, setSearchEnabled] = useState(() => readSearchToggle(mode));
+  const [showSlashMenu, setShowSlashMenu] = useState(false);
+  const [slashQuery, setSlashQuery] = useState('');
   const location = useLocation();
   const navigate = useNavigate();
   const { messages, agentStatus, isStreamingActive } = useTutor();
   const { keyboardOffset, shouldHideBottomNav } = useKeyboardInset();
-
   const hasActiveSession = Array.isArray(messages) && messages.length > 0;
   const isAgentRoute = location.pathname.startsWith('/agent');
   const hideBottomNav = shouldHideBottomNav;
@@ -143,6 +145,26 @@ export default function AgentDock() {
       },
     };
   }, [actionCatalog, baseContextPayload, controlState.phase, isAgentControlling, location.pathname, location.state, mode, searchEnabled]);
+
+  const handleSlashCommand = useCallback((command) => {
+    setShowSlashMenu(false);
+    setSlashQuery('');
+
+    const action = command.action;
+    if (action.type === 'navigate') {
+      navigate(action.path);
+    } else if (action.type === 'action') {
+      const matchedAction = orchestratorActionCatalog.find((item) => item.id === action.actionId);
+      if (matchedAction) {
+        executeAction(matchedAction, { contextPayload: buildControlContextPayload('') });
+      }
+    } else if (action.type === 'param') {
+      setInput(action.prefix || '');
+      if (action.key === 'use_web_search') {
+        setSearchEnabled(true);
+      }
+    }
+  }, [navigate, orchestratorActionCatalog, executeAction, buildControlContextPayload]);
 
   const submitPromptToCanvas = useCallback((prompt) => {
     const payload = buildControlContextPayload(prompt);
@@ -339,6 +361,15 @@ export default function AgentDock() {
               </div>
             </div>
 
+            {showSlashMenu && (
+              <SlashCommandMenu
+                query={slashQuery}
+                onSelect={handleSlashCommand}
+                onClose={() => { setShowSlashMenu(false); setSlashQuery(''); }}
+                visible={showSlashMenu}
+              />
+            )}
+
             <form
               onSubmit={handleSubmit}
               className="flex h-12 items-center gap-2.5 px-3"
@@ -359,7 +390,26 @@ export default function AgentDock() {
               <input
                 type="text"
                 value={input}
-                onChange={(event) => setInput(event.target.value)}
+                onChange={(event) => {
+                  const val = event.target.value;
+                  setInput(val);
+                  if (val.startsWith('/')) {
+                    setShowSlashMenu(true);
+                    setSlashQuery(val.slice(1));
+                  } else {
+                    setShowSlashMenu(false);
+                    setSlashQuery('');
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (showSlashMenu && (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Enter')) {
+                    e.preventDefault();
+                  }
+                  if (e.key === 'Escape' && showSlashMenu) {
+                    setShowSlashMenu(false);
+                    setSlashQuery('');
+                  }
+                }}
                 placeholder={input ? placeholder : suggestedPrompt}
                 data-agent-dock-input
                 className="min-w-0 flex-1 bg-transparent text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] focus:outline-none"
