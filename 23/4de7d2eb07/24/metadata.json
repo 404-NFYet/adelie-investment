@@ -3,9 +3,9 @@
   "checkpoint_id": "234de7d2eb07",
   "session_id": "e1ef20c6-eb14-4d4f-881d-768c2d9684a8",
   "strategy": "manual-commit",
-  "created_at": "2026-02-23T07:08:19.91776057Z",
+  "created_at": "2026-02-23T07:28:39.973524027Z",
   "branch": "develop",
-  "checkpoints_count": 1,
+  "checkpoints_count": 0,
   "files_touched": [
     "chatbot/tools/visualization_tool.py",
     "database/alembic/versions/20260223_add_trade_expires_at.py",
@@ -35,22 +35,22 @@
   ],
   "agent": "Claude Code",
   "transcript_identifier_at_start": "896a896e-ff3c-4d46-82a6-f938f24fded1",
-  "checkpoint_transcript_start": 774,
-  "transcript_lines_at_start": 774,
+  "checkpoint_transcript_start": 1679,
+  "transcript_lines_at_start": 1679,
   "token_usage": {
-    "input_tokens": 93,
-    "cache_creation_tokens": 201947,
-    "cache_read_tokens": 7228325,
-    "output_tokens": 26894,
-    "api_call_count": 73
+    "input_tokens": 5917,
+    "cache_creation_tokens": 50240,
+    "cache_read_tokens": 1150866,
+    "output_tokens": 6194,
+    "api_call_count": 12
   },
   "initial_attribution": {
-    "calculated_at": "2026-02-23T07:08:19.613612799Z",
-    "agent_lines": 1082,
-    "human_added": 176,
-    "human_modified": 90,
+    "calculated_at": "2026-02-23T07:28:39.637374421Z",
+    "agent_lines": 0,
+    "human_added": 767,
+    "human_modified": 64,
     "human_removed": 0,
-    "total_committed": 1348,
-    "agent_percentage": 80.26706231454006
+    "total_committed": 767,
+    "agent_percentage": 0
   }
 }

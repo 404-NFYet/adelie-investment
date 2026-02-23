@@ -60,3 +60,11 @@ Let me chronologically analyze the conversation:
 
 2. **Phase 2 Issues (Current Se...
 
+### Prompt 8
+
+과거 브랜치에서 시각화와 관련되어 md 파일을 디테일하게 설계했던 파일이 있다. 해당 내용을 반영하여 시각화가 진행되도록 전반적으로 전체 내용을 디벨롭해라.
+
+### Prompt 9
+
+[Request interrupted by user for tool use]
+
