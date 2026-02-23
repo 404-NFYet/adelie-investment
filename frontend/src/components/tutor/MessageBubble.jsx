@@ -104,20 +104,16 @@ function extractPlotlyDataFromHtml(html) {
       /Plotly\.(?:newPlot|react)\s*\(\s*['"][^'"]*['"]\s*,\s*([\s\S]+?)\s*,\s*(\{[\s\S]+?\})\s*[,)]/
     );
     if (plotCallMatch) {
-      // eslint-disable-next-line no-new-func
-      const data = new Function(`return ${plotCallMatch[1]}`)();
-      // eslint-disable-next-line no-new-func
-      const layout = new Function(`return ${plotCallMatch[2]}`)();
+      const data = JSON.parse(plotCallMatch[1]);
+      const layout = JSON.parse(plotCallMatch[2]);
       if (Array.isArray(data)) return { data, layout: layout || {} };
     }
     // 패턴 2: var data = [...]; var layout = {...};
     const dataMatch = html.match(/(?:var|let|const)\s+data\s*=\s*([\s\S]+?);\s*(?:var|let|const)\s+layout/);
     const layoutMatch = html.match(/(?:var|let|const)\s+layout\s*=\s*([\s\S]+?);\s*(?:Plotly|<\/script)/);
     if (dataMatch && layoutMatch) {
-      // eslint-disable-next-line no-new-func
-      const data = new Function(`return ${dataMatch[1].trim()}`)();
-      // eslint-disable-next-line no-new-func
-      const layout = new Function(`return ${layoutMatch[1].trim()}`)();
+      const data = JSON.parse(dataMatch[1].trim());
+      const layout = JSON.parse(layoutMatch[1].trim());
       if (Array.isArray(data)) return { data, layout: layout || {} };
     }
   } catch (e) {
@@ -216,7 +212,18 @@ export default React.memo(function Message({ message, onActionClick }) {
         <div className={`px-4 py-3 rounded-2xl rounded-tl-md ${message.isError ? 'bg-error-light text-error border border-error/20' : 'bg-surface border border-border'}`}>
           {message.isError ? <p className="text-sm">{message.content}</p> : (
             <div className="text-sm leading-relaxed text-text-primary prose prose-sm prose-headings:text-text-primary prose-strong:text-text-primary prose-code:text-primary prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs max-w-none dark:prose-invert">
-              <ReactMarkdown remarkPlugins={[remarkMath, remarkGfm, remarkBreaks]} rehypePlugins={[rehypeRaw, rehypeKatex]}>
+              <ReactMarkdown
+                remarkPlugins={[remarkMath, remarkGfm, remarkBreaks]}
+                rehypePlugins={[rehypeRaw, rehypeKatex]}
+                components={{
+                  a: ({ href, children, ...props }) => (
+                    <a href={href} target="_blank" rel="noopener noreferrer"
+                       className="text-primary underline underline-offset-2" {...props}>
+                      {children}
+                    </a>
+                  ),
+                }}
+              >
                 {markdownContent}
               </ReactMarkdown>
             </div>
