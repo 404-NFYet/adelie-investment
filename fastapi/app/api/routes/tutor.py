@@ -155,22 +155,35 @@ def _to_float(value: object, default: float = 0.0) -> float:
         return default
 
 
+HIGH_RISK_ACTIONS = {"buy_stock", "sell_stock", "limit_buy", "limit_sell"}
+MEDIUM_RISK_ACTIONS = {"cancel_order", "modify_order"}
+
+def _get_risk_level(action_id: str) -> str:
+    if action_id in HIGH_RISK_ACTIONS:
+        return "high"
+    if action_id in MEDIUM_RISK_ACTIONS:
+        return "medium"
+    return "low"
+
 def _normalize_route_response(
     payload: dict,
     *,
     allowed_action_ids: list[str],
+    action_catalog: list[dict],
     confidence_threshold: float,
     fallback_prompt: str,
 ) -> TutorRouteResponse:
     decision = str(payload.get("decision") or "inline_reply").strip()
-    if decision not in {"inline_action", "inline_reply", "open_canvas"}:
+    if decision not in {"inline_action", "inline_reply", "open_canvas", "confirm_action"}:
         decision = "inline_reply"
 
     confidence = max(0.0, min(1.0, _to_float(payload.get("confidence"), 0.0)))
     reason = str(payload.get("reason") or "router_default").strip()
     action_id = str(payload.get("action_id") or "").strip() or None
+    action_params = payload.get("action_params") or {}
     inline_text = str(payload.get("inline_text") or "").strip() or None
     canvas_prompt = str(payload.get("canvas_prompt") or "").strip() or None
+    confirmation_message = str(payload.get("confirmation_message") or "").strip() or None
 
     if confidence < confidence_threshold:
         decision = "inline_reply"
@@ -179,12 +192,25 @@ def _normalize_route_response(
             inline_text = "요청을 짧게 처리할게요. 필요하면 캔버스로 이어서 볼 수 있어요."
         reason = reason or "low_confidence"
 
+    requires_confirmation = False
+    risk_level = "low"
+
     if decision == "inline_action":
         if not action_id or action_id not in allowed_action_ids:
             decision = "inline_reply"
             action_id = None
             inline_text = inline_text or "바로 실행 가능한 액션을 찾지 못했어요."
             reason = reason or "invalid_action_id"
+        else:
+            risk_level = _get_risk_level(action_id)
+            catalog_item = next((a for a in action_catalog if a.get("id") == action_id), None)
+            
+            if risk_level in ("high", "medium") or (catalog_item and catalog_item.get("requires_confirmation")):
+                decision = "confirm_action"
+                requires_confirmation = True
+                if not confirmation_message:
+                    action_label = catalog_item.get("label", action_id) if catalog_item else action_id
+                    confirmation_message = f"'{action_label}' 작업을 실행할까요?"
 
     if decision == "open_canvas":
         canvas_prompt = canvas_prompt or fallback_prompt
@@ -195,10 +221,14 @@ def _normalize_route_response(
     return TutorRouteResponse(
         decision=decision,  # type: ignore[arg-type]
         action_id=action_id,
+        action_params=action_params if action_params else None,
         inline_text=inline_text,
         canvas_prompt=canvas_prompt,
         confidence=confidence,
         reason=reason or "ok",
+        confirmation_required=requires_confirmation,
+        confirmation_message=confirmation_message,
+        risk_level=risk_level,  # type: ignore[arg-type]
     )
 
 
@@ -268,6 +298,7 @@ async def _route_with_llm(route_request: TutorRouteRequest) -> TutorRouteRespons
     return _normalize_route_response(
         parsed,
         allowed_action_ids=allowed_action_ids,
+        action_catalog=compact_actions,
         confidence_threshold=settings.TUTOR_ROUTE_CONFIDENCE_THRESHOLD,
         fallback_prompt=route_request.message,
     )
@@ -418,6 +449,60 @@ def _recommend_actions(
         })
 
     return actions[:3]
+
+
+def _generate_cta_buttons(
+    response_text: str,
+    context_mode: str,
+    context_envelope: Optional[dict],
+) -> list[dict[str, str]]:
+    """응답 내용과 컨텍스트 기반으로 CTA 버튼을 생성한다. 기본: 더 쉬운말로/다음"""
+    text_lower = (response_text or "").lower()
+    
+    cta_buttons = []
+    
+    if "어려" in text_lower or "복잡" in text_lower or len(response_text) > 800:
+        cta_buttons.append({
+            "label": "더 쉬운말로 설명해줘",
+            "action": "simplify",
+            "prompt": "방금 내용을 더 쉬운 말로 다시 설명해줘",
+        })
+    
+    if any(kw in text_lower for kw in ["매수", "매도", "투자", "종목"]):
+        cta_buttons.append({
+            "label": "리스크가 뭐야?",
+            "action": "ask_risk",
+            "prompt": "이 투자의 주요 리스크는 뭐야?",
+        })
+    
+    if any(kw in text_lower for kw in ["과거", "역사", "사례", "비슷"]):
+        cta_buttons.append({
+            "label": "더 자세히 알려줘",
+            "action": "detail",
+            "prompt": "이 과거 사례에 대해 더 자세히 설명해줘",
+        })
+    
+    if context_mode == "education":
+        cta_buttons.append({
+            "label": "퀴즈로 복습하기",
+            "action": "quiz",
+            "prompt": "방금 내용으로 퀴즈 내줘",
+        })
+    
+    if len(cta_buttons) < 2:
+        if not any(b["action"] == "simplify" for b in cta_buttons):
+            cta_buttons.append({
+                "label": "더 쉬운말로 설명해줘",
+                "action": "simplify",
+                "prompt": "방금 내용을 더 쉬운 말로 다시 설명해줘",
+            })
+        cta_buttons.append({
+            "label": "다음",
+            "action": "continue",
+            "prompt": "계속해줘",
+        })
+    
+    return cta_buttons[:2]
 
 
 def _extract_structured_from_markdown(markdown_text: str) -> Optional[dict[str, Any]]:
@@ -766,8 +851,11 @@ async def _build_llm_messages(
                 "- 사용자 의도를 금융/투자 학습 질문으로 바꿀 수 있는 예시 질문 1~2개를 제안하세요.\n"
             )
 
-    # 이전 대화 내역 로드 (멀티턴)
+    # 이전 대화 내역 로드 (멀티턴 + 토큰 기반 윈도우)
     prev_msgs = []
+    tutor_settings = get_settings()
+    max_context_chars = tutor_settings.TUTOR_CONTEXT_MAX_CHARS
+    
     if request.session_id:
         try:
             existing_session = await db.execute(
@@ -778,11 +866,26 @@ async def _build_llm_messages(
                 prev_result = await db.execute(
                     select(TutorMessage)
                     .where(TutorMessage.session_id == session_obj.id)
-                    .order_by(TutorMessage.created_at)
-                    .limit(20)
+                    .order_by(TutorMessage.created_at.desc())
+                    .limit(30)
                 )
-                for msg in prev_result.scalars():
-                    prev_msgs.append({"role": msg.role, "content": msg.content})
+                all_msgs = list(reversed(list(prev_result.scalars())))
+                
+                total_chars = 0
+                for msg in reversed(all_msgs):
+                    msg_len = len(msg.content or "")
+                    if total_chars + msg_len > max_context_chars:
+                        break
+                    prev_msgs.insert(0, {"role": msg.role, "content": msg.content})
+                    total_chars += msg_len
+                
+                if len(all_msgs) >= tutor_settings.TUTOR_AUTO_SUMMARIZE_TURNS and len(prev_msgs) < len(all_msgs):
+                    excluded_msgs = all_msgs[:len(all_msgs) - len(prev_msgs)]
+                    excluded_text = "\n".join([f"[{m.role}]: {(m.content or '')[:100]}" for m in excluded_msgs[:5]])
+                    summary_prompt = f"[이전 대화 요약]\n{excluded_text}\n... (총 {len(excluded_msgs)}개 메시지 생략)"
+                    if prev_msgs and prev_msgs[0]["role"] == "user":
+                        prev_msgs.insert(0, {"role": "system", "content": summary_prompt})
+                    
         except Exception as e:
             logger.warning("Failed to load previous messages: %s", e)
 
@@ -1023,7 +1126,7 @@ async def generate_tutor_response(
             completion_kwargs = {
                 "model": chat_model,
                 "messages": messages,
-                "max_tokens": 4096,
+                "max_tokens": settings.TUTOR_MAX_TOKENS,
                 "stream": True,
             }
 
@@ -1178,6 +1281,12 @@ async def generate_tutor_response(
         )
         if recommended_actions:
             done_data['actions'] = recommended_actions
+
+        cta_buttons = _generate_cta_buttons(
+            full_response, context_mode_for_actions, context_envelope
+        )
+        if cta_buttons:
+            done_data['cta_buttons'] = cta_buttons
 
         yield f"event: done\ndata: {json.dumps(done_data)}\n\n"
 

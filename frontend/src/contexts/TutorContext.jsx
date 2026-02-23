@@ -36,6 +36,12 @@ export function useTutor() {
     setAgentStatus,
     requestVisualization: requestVisualizationUI,
     DEFAULT_AGENT_STATUS,
+    pendingConfirmation,
+    requestConfirmation,
+    confirmAction,
+    rejectAction,
+    todoList,
+    updateTodoList,
   } = ui;
   const {
     sessions,
@@ -149,6 +155,14 @@ export function useTutor() {
     setCurrentTerm,
     agentStatus,
     requestVisualization,
+    // Confirmation
+    pendingConfirmation,
+    requestConfirmation,
+    confirmAction,
+    rejectAction,
+    // Todo Progress
+    todoList,
+    updateTodoList,
     // Session
     sessions,
     activeSessionId,

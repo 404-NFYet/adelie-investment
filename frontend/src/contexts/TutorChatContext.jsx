@@ -268,6 +268,7 @@ export function TutorChatProvider({ children }) {
           guardrailDecision = pendingGuardrailDecision,
           guardrailMode = pendingGuardrailMode,
           status = 'streaming',
+          ctaButtons = null,
         } = options;
 
         startTransition(() => {
@@ -286,6 +287,7 @@ export function TutorChatProvider({ children }) {
                 guardrailNotice,
                 guardrailDecision,
                 guardrailMode,
+                ctaButtons,
               };
             })
           );
@@ -303,6 +305,7 @@ export function TutorChatProvider({ children }) {
             guardrailNotice,
             guardrailDecision,
             guardrailMode,
+            ctaButtons,
           }))
         );
       };
@@ -441,12 +444,18 @@ export function TutorChatProvider({ children }) {
               pendingGuardrailMode = data.guardrail_mode;
             }
 
+            let ctaButtons = null;
+            if (Array.isArray(data.cta_buttons) && data.cta_buttons.length > 0) {
+              ctaButtons = data.cta_buttons;
+            }
+
             flushBuffer(true);
             syncAssistantState(renderedContent, {
               isStreaming: false,
               status: hasError ? 'error' : 'done',
+              ctaButtons,
             });
-            if (setAgentStatus && !hasError) setAgentStatus(DEFAULT_STATUS);
+            if (setAgentStatus && !hasError) setAgentStatus({ ...DEFAULT_STATUS, status: 'done' });
             return;
           }
 

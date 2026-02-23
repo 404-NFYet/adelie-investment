@@ -4,7 +4,8 @@ const TutorUIContext = createContext(null);
 
 const DEFAULT_AGENT_STATUS = {
   phase: 'idle',
-  text: '응답 대기 중',
+  status: 'idle',
+  text: '대기 중',
 };
 
 export function TutorUIProvider({ children }) {
@@ -12,6 +13,8 @@ export function TutorUIProvider({ children }) {
   const [contextInfo, setContextInfo] = useState(null);
   const [currentTerm, setCurrentTerm] = useState(null);
   const [agentStatus, setAgentStatus] = useState(DEFAULT_AGENT_STATUS);
+  const [pendingConfirmation, setPendingConfirmation] = useState(null);
+  const [todoList, setTodoList] = useState(null);
 
   const openTutor = useCallback((termOrContext = null, onOpen = null) => {
     setIsOpen(true);
@@ -27,10 +30,30 @@ export function TutorUIProvider({ children }) {
     setIsOpen(false);
     setCurrentTerm(null);
     setAgentStatus(DEFAULT_AGENT_STATUS);
+    setPendingConfirmation(null);
+    setTodoList(null);
   }, []);
 
   const requestVisualization = useCallback((query, sendMessage) => {
     sendMessage(`${query} (차트로 보여주세요)`, 'beginner');
+  }, []);
+
+  const requestConfirmation = useCallback((action) => {
+    setPendingConfirmation(action);
+  }, []);
+
+  const confirmAction = useCallback(() => {
+    const action = pendingConfirmation;
+    setPendingConfirmation(null);
+    return action;
+  }, [pendingConfirmation]);
+
+  const rejectAction = useCallback(() => {
+    setPendingConfirmation(null);
+  }, []);
+
+  const updateTodoList = useCallback((todos) => {
+    setTodoList(todos);
   }, []);
 
   return (
@@ -46,6 +69,12 @@ export function TutorUIProvider({ children }) {
       setAgentStatus,
       requestVisualization,
       DEFAULT_AGENT_STATUS,
+      pendingConfirmation,
+      requestConfirmation,
+      confirmAction,
+      rejectAction,
+      todoList,
+      updateTodoList,
     }}>
       {children}
     </TutorUIContext.Provider>

@@ -10,7 +10,8 @@ import { PortfolioProvider } from './contexts/PortfolioContext';
 import { TutorProvider } from './contexts/TutorContext';
 import { TermProvider } from './contexts/TermContext';
 import { ThemeProvider } from './contexts/ThemeContext';
-import { TutorModal, ErrorBoundary, ToastProvider } from './components';
+import { ErrorBoundary, ToastProvider } from './components';
+import AgentChatSheet from './components/agent/AgentChatSheet';
 import TermBottomSheet from './components/domain/TermBottomSheet';
 import BottomNav from './components/layout/BottomNav';
 import AgentDock from './components/agent/AgentDock';
@@ -114,7 +115,7 @@ export default function App() {
                     <UpdateNotice />
                     <AppRoutes />
                     <TermBottomSheet />
-                    <TutorModal />
+                    <AgentChatSheet />
                     <AgentDock />
                     <BottomNav />
                   </div>
