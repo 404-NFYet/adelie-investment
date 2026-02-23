@@ -3,7 +3,7 @@
   "checkpoint_id": "234de7d2eb07",
   "strategy": "manual-commit",
   "branch": "develop",
-  "checkpoints_count": 16,
+  "checkpoints_count": 17,
   "files_touched": [
     ".dockerignore",
     ".env.example",
@@ -13,10 +13,13 @@
     "Makefile",
     "README.md",
     "changes/dorae222.md",
+    "chatbot/services/__init__.py",
+    "chatbot/services/term_highlighter.py",
     "database/alembic/env.py",
     "database/alembic/versions/20260223_devassistant_tables.py",
     "database/alembic/versions/20260223_feedback_surveys.py",
     "database/alembic/versions/20260223_merge_agent_feedback.py",
+    "database/alembic/versions/20260223_review_card_columns.py",
     "database/scripts/sync_dev_data.sh",
     "datapipeline/config.py",
     "datapipeline/db/writer.py",
@@ -52,6 +55,7 @@
     "fastapi/app/api/routes/briefing.py",
     "fastapi/app/api/routes/cases.py",
     "fastapi/app/api/routes/feedback.py",
+    "fastapi/app/api/routes/highlight.py",
     "fastapi/app/api/routes/pipeline.py",
     "fastapi/app/api/routes/tutor.py",
     "fastapi/app/core/auth.py",
@@ -91,10 +95,13 @@
     "frontend/playwright.config.js",
     "frontend/src/api/auth.js",
     "frontend/src/api/client.js",
+    "frontend/src/components/agent/ActionConfirmDialog.jsx",
     "frontend/src/components/agent/AgentCanvasSections.jsx",
     "frontend/src/components/agent/AgentDock.jsx",
     "frontend/src/components/agent/AgentStatusDots.jsx",
+    "frontend/src/components/agent/SlashCommandMenu.jsx",
     "frontend/src/components/common/UpdateNotice.jsx",
+    "frontend/src/components/domain/ReviewCard.jsx",
     "frontend/src/components/layout/ChatFAB.jsx",
     "frontend/src/components/quiz/DailyQuizModal.jsx",
     "frontend/src/contexts/PortfolioContext.jsx",
@@ -306,13 +313,20 @@
       "context": "/23/4de7d2eb07/20/context.md",
       "content_hash": "/23/4de7d2eb07/20/content_hash.txt",
       "prompt": "/23/4de7d2eb07/20/prompt.txt"
+    },
+    {
+      "metadata": "/23/4de7d2eb07/21/metadata.json",
+      "transcript": "/23/4de7d2eb07/21/full.jsonl",
+      "context": "/23/4de7d2eb07/21/context.md",
+      "content_hash": "/23/4de7d2eb07/21/content_hash.txt",
+      "prompt": "/23/4de7d2eb07/21/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 17142,
-    "cache_creation_tokens": 3276785,
-    "cache_read_tokens": 103556703,
-    "output_tokens": 449438,
-    "api_call_count": 1328
+    "input_tokens": 17238,
+    "cache_creation_tokens": 3410970,
+    "cache_read_tokens": 111008343,
+    "output_tokens": 471444,
+    "api_call_count": 1414
   }
 }

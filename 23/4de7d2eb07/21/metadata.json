@@ -1,0 +1,36 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "234de7d2eb07",
+  "session_id": "ea2025b8-9c2a-4cf4-ab18-a7cb8dba46e7",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-23T03:28:13.266792083Z",
+  "branch": "develop",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "chatbot/services/__init__.py",
+    "chatbot/services/term_highlighter.py",
+    "database/alembic/versions/20260223_review_card_columns.py",
+    "fastapi/app/api/routes/highlight.py",
+    "fastapi/app/main.py",
+    "frontend/src/components/agent/ActionConfirmDialog.jsx",
+    "frontend/src/components/agent/SlashCommandMenu.jsx",
+    "frontend/src/components/domain/ReviewCard.jsx"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 96,
+    "cache_creation_tokens": 134185,
+    "cache_read_tokens": 7451640,
+    "output_tokens": 22006,
+    "api_call_count": 86
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-23T03:28:12.927271704Z",
+    "agent_lines": 0,
+    "human_added": 428,
+    "human_modified": 337,
+    "human_removed": 0,
+    "total_committed": 765,
+    "agent_percentage": 0
+  }
+}

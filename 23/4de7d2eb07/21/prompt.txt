@@ -1,0 +1,404 @@
+Implement the following plan:
+
+# 종합 수정 계획 v5 (최종)
+
+## Context
+
+전체 요구사항 통합: UI 버그 + 챗봇 전 기능 자동화 + 슬래시 명령어 + 페이지 전환 확인 + 복습 카드 시스템 + 가드레일 + 컨텍스트 누적 + 마크다운 렌더링 + 지정가/공매도/레버리지 + 검색 + 트래킹 + 텍스트 속도/품질 + 활동 대시보드 에러 + 용어 하이라이팅 제거 + 파이프라인.
+
+**핵심 발견**:
+- ETF/레버리지/공매도 백엔드는 이미 `develop`에 존재
+- `dev/frontend` 커밋 `081bc21`에 다수 필요 수정 포함 (cherry-pick 대상)
+- 마크다운: `remark-gfm`, `remark-breaks` 미설치 → 테이블/줄바꿈 안 됨
+- 슬래시 명령어 시스템: 미구현
+- 용어 하이라이팅: 백엔드만 구현, 프론트 미사용 → 제거 대상
+- 활동 대시보드: API 에러 핸들링 부족
+
+---
+
+# Phase 1: 기반 통합 + 버그 수정
+
+## [1A] dev/frontend 커밋 cherry-pick (`081bc21`)
+
+포함 내용: `check_stock_lookup` 액션, 매매 주문 개선, Education 에이전트 CTA, Home 핀 필터링, 동적 Dock 높이, `--safe-bottom-offset`, FeedbackWidget z-60, `remark-gfm`+`remark-breaks`, agent-markdown CSS, 전역 하단 패딩 표준화.
+
+```bash
+git cherry-pick 081bc21
+npm install  # remark-gfm, remark-breaks
+```
+
+## [1B] 마크다운 렌더링 수정 (MessageBubble)
+
+cherry-pick에 AgentCanvasSections 마크다운 개선 포함. **추가로 MessageBubble.jsx도 동일 적용**:
+
+**파일**: `frontend/src/components/tutor/MessageBubble.jsx`
+```diff
++ import remarkGfm from 'remark-gfm';
++ import remarkBreaks from 'remark-breaks';
+
+- <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeRaw, rehypeKatex]}>
++ <ReactMarkdown remarkPlugins={[remarkMath, remarkGfm, remarkBreaks]} rehypePlugins={[rehypeRaw, rehypeKatex]}>
+```
+→ 테이블, 줄바꿈, 취소선, 체크리스트 렌더링 지원.
+
+## [1C] 용어 하이라이팅 제거
+
+현재 `chatbot/services/term_highlighter.py`는 백엔드에만 존재하며 프로덕션에서 미사용. 사용자 요청에 따라 제거.
+
+**파일**:
+- `chatbot/services/term_highlighter.py` — 삭제 (또는 import 참조만 제거)
+- `fastapi/app/services/tutor_engine.py` — `term_highlighter` import/참조 제거 (있다면)
+
+## [1D] 나머지 UI 버그
+
+- **삭제 대화 홈 잔존**: `sessionCardMetaStore.js`에 `removeSessionCardMeta()` + `TutorSessionContext.jsx` deleteChat에서 호출
+- **피드백 반응 API**: `feedback.py`에 `user_id` + `get_current_user_optional`
+- **퀴즈 카드 짤림**: `DailyQuizModal.jsx` — `max-h-[80dvh]`→`max-h-[92dvh]`, OptionCard `items-start`, 콘텐츠 `pb-20`
+
+## [1E] 활동 대시보드 에러 수정
+
+**원인**: Education 페이지의 "매수+매도+오늘의 인사이트" 탭 — `useActivityFeed` 훅이 `portfolioApi.getTradeHistory()` + `learningApi.getProgress()` 호출 시 에러 핸들링 부족.
+
+**파일**: `frontend/src/hooks/useActivityFeed.js`
+- API 호출 실패 시 빈 배열 fallback + 에러 상태 표시
+- `getTradeHistory` 미인증 시 빈 배열 반환 (현재 500 에러 가능)
+
+**파일**: `frontend/src/components/calendar/ActivityDayDashboard.jsx`
+- 데이터 없을 때 빈 상태 UI ("아직 활동 기록이 없습니다")
+
+---
+
+# Phase 2: 슬래시 명령어 시스템
+
+## [2A] 입력란 "/" 감지 + 명령어 목록 팝업
+
+**파일**: `frontend/src/components/agent/AgentDock.jsx`
+
+"/" 입력 시 명령어 목록 드롭다운 표시:
+
+| 명령어 | 설명 | 동작 |
+|--------|------|------|
+| `/chart` 또는 `/시각화` | 차트 생성 요청 | 메시지에 `[시각화 요청]` 프리픽스 + `use_visualization: true` |
+| `/search` 또는 `/검색` | 웹 검색 활성화 | `use_web_search: true` 강제 |
+| `/compare` 또는 `/비교` | 종목 비교 | `response_mode: 'comparison'` |
+| `/quiz` 또는 `/퀴즈` | 퀴즈 시작 | 퀴즈 모달 열기 |
+| `/portfolio` | 포트폴리오 보기 | `nav_portfolio` 액션 |
+| `/buy` 또는 `/매수` | 매수 실행 | `buy_stock` 액션 |
+
+**구현**:
+```jsx
+// AgentDock.jsx 입력 핸들러
+const SLASH_COMMANDS = [
+  { cmd: '/chart', aliases: ['/시각화'], desc: '차트 생성', icon: '📊' },
+  { cmd: '/search', aliases: ['/검색'], desc: '웹 검색', icon: '🔍' },
+  { cmd: '/compare', aliases: ['/비교'], desc: '종목 비교', icon: '⚖️' },
+  { cmd: '/quiz', aliases: ['/퀴즈'], desc: '퀴즈 시작', icon: '❓' },
+  { cmd: '/portfolio', aliases: ['/포트폴리오'], desc: '내 자산', icon: '💼' },
+  { cmd: '/buy', aliases: ['/매수'], desc: '매수', icon: '📈' },
+];
+
+// 입력값이 "/"로 시작하면 필터링된 명령어 목록 표시
+// 선택 시 명령어 처리 후 입력란 초기화
+```
+
+**새 컴포넌트**: `frontend/src/components/agent/SlashCommandMenu.jsx`
+- 절대 위치 팝업 (입력란 위)
+- 키보드 ↑↓ 탐색 + Enter 선택
+
+## [2B] TutorModal ChatInput에도 동일 적용
+
+**파일**: `frontend/src/components/tutor/ChatInput.jsx` — 동일한 슬래시 명령어 시스템.
+
+---
+
+# Phase 3: 페이지 전환 + 자동 실행 확인
+
+## [3A] 네비게이션 액션 시 확인 모달
+
+챗봇이 페이지 전환 액션을 제안할 때, 사용자에게 확인:
+
+> "포트폴리오 페이지로 이동할까요?"
+> [이동하기] [자동 실행 모드 켜기] [취소]
+
+**"자동 실행 모드"**: 이후 네비게이션/툴 액션을 확인 없이 자동 실행.
+
+**파일**: `frontend/src/hooks/useAgentControlOrchestrator.js`
+
+```javascript
+const [autoMode, setAutoMode] = useState(false);
+
+const executeAction = async (action) => {
+  // 자동 모드 또는 low-risk 액션 → 즉시 실행
+  if (autoMode || action.risk === 'low') {
+    return await _doExecute(action);
+  }
+  // high-risk (매수/매도) 또는 navigate → 확인 요청
+  const confirmed = await showConfirmDialog(action);
+  if (confirmed === 'auto') setAutoMode(true);
+  if (confirmed) return await _doExecute(action);
+};
+```
+
+**새 컴포넌트**: `frontend/src/components/agent/ActionConfirmDialog.jsx`
+- 3버튼: 실행 / 자동 모드 / 취소
+- 자동 모드는 세션 단위 (새 세션 시 리셋)
+
+## [3B] 액션 카탈로그 확장
+
+**파일**: `frontend/src/utils/agent/buildActionCatalog.js`
+
+| action_id | type | risk |
+|-----------|------|------|
+| `nav_profile` | navigate | low |
+| `nav_search` | navigate | low |
+| `nav_feedback` | navigate | low |
+| `open_narrative` | navigate | low |
+| `start_quiz` | navigate | low |
+| `limit_buy_stock` | tool | high |
+| `short_sell_stock` | tool | high |
+
+## [3C] 백엔드 인텐트 확장
+
+**파일**: `fastapi/app/api/routes/tutor.py` — `_recommend_actions()`
+
+네비게이션/기능 키워드 감지 추가 (포트폴리오, 학습, 퀴즈, 검색, 프로필 등).
+
+---
+
+# Phase 4: 복습 카드 시스템
+
+## 설계 원칙
+
+- **저장 버튼** 누름 → 복습 카드 생성 (리치 메타데이터 + 요약)
+- **저장 안 함** → 대화 기록만 (히스토리 목록에서 클릭 시 세션 재개)
+- 교육탭: 복습 카드가 기존 기사/브리핑 카드 대체
+- 복습 카드 클릭 → 정적 카드 뷰 (요약 + 핵심 포인트 + 차트)
+- 대화 기록 클릭 → 세션 재개 (대화 계속)
+
+## [4A] 복습 카드 메타데이터 강화
+
+**저장(핀) 시 리치 메타데이터 수집**:
+
+**파일**: `fastapi/app/api/routes/tutor_sessions.py` — pin 엔드포인트 확장
+
+핀 시 LLM으로 대화 요약 + 핵심 포인트 추출:
+```python
+@router.post("/sessions/{session_id}/pin")
+async def pin_session(...):
+    # 기존 pin 로직
+    session.is_pinned = True
+    session.pinned_at = datetime.now(KST)
+
+    # 복습 카드 메타데이터 생성
+    messages = await _get_session_messages(db, session.id)
+    review_meta = await _generate_review_card_meta(messages)
+    session.review_summary = review_meta["summary"]        # 3줄 요약
+    session.review_key_points = review_meta["key_points"]  # 핵심 포인트 리스트
+    session.review_topics = review_meta["topics"]           # 다룬 주제/종목
+```
+
+**마이그레이션**: `TutorSession`에 컬럼 추가:
+- `review_summary` (Text)
+- `review_key_points` (JSON, list[str])
+- `review_topics` (JSON, list[str])
+
+## [4B] 복습 카드 컴포넌트
+
+**새 파일**: `frontend/src/components/domain/ReviewCard.jsx`
+
+```
+┌─────────────────────────────┐
+│ 📈  삼성전자 투자 분석       │  ← title + icon
+│─────────────────────────────│
+│ 핵심 요약                    │
+│ • PER 12.3배로 업종 평균 하회│  ← review_key_points
+│ • 반도체 수출 3개월 연속 증가│
+│ • 목표가 컨센서스 8만원대    │
+│─────────────────────────────│
+│ 📊 차트 미리보기             │  ← 저장된 시각화 썸네일
+│─────────────────────────────│
+│ 다룬 주제: #삼성전자 #반도체  │  ← review_topics
+│ 2026.02.23 | 12분 대화       │
+│ [다시 대화하기] [전체 보기]   │
+└─────────────────────────────┘
+```
+
+## [4C] Education 탭 복습 카드 통합
+
+**파일**: `frontend/src/pages/Education.jsx`
+
+cherry-pick(`081bc21`)에서 이미 "오늘의 교육 브리핑" 제거 + "에이전트 학습 도우미" CTA 추가.
+
+추가 변경:
+- 복습 카드 목록 = 핀된 세션 (review_summary 존재)
+- 미핀 세션 = 히스토리 목록 (간단 텍스트, 클릭 → 세션 재개)
+- 복습 카드 클릭 → 정적 카드 뷰 (ReviewCard 컴포넌트)
+- "다시 대화하기" 버튼 → 해당 세션으로 에이전트 캔버스 열기
+
+## [4D] AgentHistoryPage 구분
+
+**파일**: `frontend/src/pages/AgentHistoryPage.jsx`
+
+- 핀된 세션: "복습 카드" 배지 표시, 클릭 → ReviewCard 뷰
+- 미핀 세션: "대화 기록" 표시, 클릭 → 세션 재개 (에이전트 캔버스)
+
+---
+
+# Phase 5: 챗봇 기능 강화
+
+## [5A] 후속 액션 버튼 (MessageBubble)
+
+**파일**: `frontend/src/components/tutor/MessageBubble.jsx` — 액션 버튼 그리드 추가
+**파일**: `frontend/src/components/tutor/TutorModal.jsx` — `onActionClick` 핸들러
+
+## [5B] 종목 검색 (어디서든)
+
+cherry-pick에 `check_stock_lookup` 포함 (DB stock_listings 테이블 조회).
+추가: 투자 탭에서 검색 자동 활성화.
+
+**파일**: `frontend/src/components/agent/AgentDock.jsx` — `readSearchToggle`
+```javascript
+function readSearchToggle(mode) {
+  return mode === 'stock' || mode === 'portfolio';
+}
+```
+
+## [5C] 텍스트 생성 속도 개선
+
+**파일**: `fastapi/app/api/routes/tutor.py`
+- `max_tokens`: 1000 → 2048 (이미 cherry-pick에서 4096으로 수정됨)
+- `TUTOR_CHAT_MODEL`: `gpt-4o-mini` 유지 (현재 가장 빠른 모델)
+
+**파일**: `frontend/src/contexts/TutorChatContext.jsx`
+- `STREAM_FLUSH_INTERVAL_MS`: 180ms → 120ms (체감 속도 개선)
+
+## [5D] 텍스트 품질 개선 — 출력 형식 가이드
+
+**파일**: `fastapi/app/api/routes/tutor.py` — `_build_llm_messages()` 시스템 프롬프트
+
+```python
+system_prompt += """
+[출력 형식 규칙]
+- 수식은 반드시 LaTeX로: 인라인 $PER = \\frac{주가}{EPS}$, 블록 $$...$$
+- 일반 텍스트는 마크다운: **볼드**, *이탤릭*, 불릿/번호 필수
+- 비교 데이터는 마크다운 테이블로 출력 (| 컬럼1 | 컬럼2 |)
+- 소제목은 ## 사용, 3줄 이상 답변 시 반드시 구조화
+- 줄바꿈: 문단 구분은 빈 줄, 항목 나열은 불릿
+"""
+```
+
+---
+
+# Phase 6: 가드레일 + 지정가/공매도 + 컨텍스트
+
+## [6A] 가드레일 유연화
+
+**파일**: `fastapi/app/services/guardrail.py`
+
+1. CoT + 5개 퓨샷 프롬프트 (커밋 1661d80 기반)
+2. 키워드 사전 필터 (탈옥/욕설 즉시 MALICIOUS)
+3. 친근한 차단 메시지
+4. fail-closed
+
+**유연화**: ADVICE를 완전 차단하지 않고, 교육적 관점에서 답변하도록 시스템 프롬프트 가이드:
+- strict 모드: ADVICE 완전 차단 (규정 준수)
+- soft 모드: ADVICE 허용하되 "판단 기준 중심" 답변으로 유도 (현재 동작 유지하되 프롬프트 강화)
+- 설정: `TUTOR_GUARDRAIL_POLICY` 환경변수로 제어 (기본: soft)
+
+## [6B] 지정가/공매도/레버리지 프론트 연동
+
+**파일**: `frontend/src/hooks/useAgentControlOrchestrator.js` — `order_kind`, `target_price`, `position_side`, `leverage` 파라미터
+**파일**: `frontend/src/components/trading/TradeModal.jsx` — 지정가/공매도/레버리지 UI 토글
+
+## [6C] 대화 컨텍스트 누적
+
+- `tutor.py` `_build_llm_messages()`: 토큰 기반 윈도우 (tiktoken)
+- `TutorSession` 모델: `context_entities`, `conversation_summary` 컬럼 추가
+- 시스템 프롬프트에 누적 컨텍스트 주입
+- 10턴마다 대화 요약
+
+---
+
+# Phase 7: 세션 관리 + 트래킹 + 배포
+
+## [7A] 세션 관리
+- Redis 캐시 무효화 (메시지 저장 후)
+- 세션 유효성 검증 (localStorage 복원 시)
+
+## [7B] 로거 + 차트 안내
+- `logging.py`: `"narrative_api"` 로거 설정
+- `tutor.py`: 차트 실패 시 SSE info 이벤트
+
+## [7C] 트래킹 8종 추가
+`tutor_ask`, `tutor_session_create`, `trade_execute`, `quiz_start`, `quiz_complete`, `search_query`, `feedback_submit`, `action_button_click`
+
+## [7D] 빌드 + 배포 + 마이그레이션 + 파이프라인
+
+---
+
+# 수정 파일 요약 (우선순위순)
+
+| Phase | 파일 | 핵심 변경 |
+|-------|------|----------|
+| 1A | cherry-pick | dev/frontend 기능 통합 |
+| 1B | `MessageBubble.jsx` | remark-gfm + remark-breaks |
+| 1C | `term_highlighter.py` | 삭제/참조 제거 |
+| 1D | 4개 파일 | UI 버그 수정 |
+| 1E | `useActivityFeed.js`, `ActivityDayDashboard.jsx` | 에러 핸들링 |
+| 2A | `AgentDock.jsx` + 신규 `SlashCommandMenu.jsx` | 슬래시 명령어 |
+| 2B | `ChatInput.jsx` | TutorModal 슬래시 명령어 |
+| 3A | `useAgentControlOrchestrator.js` + 신규 `ActionConfirmDialog.jsx` | 페이지 전환 확인 + 자동 모드 |
+| 3B-C | `buildActionCatalog.js`, `tutor.py` | 액션/인텐트 확장 |
+| 4A | `tutor_sessions.py` + 마이그레이션 | 복습 메타데이터 생성 |
+| 4B | 신규 `ReviewCard.jsx` | 복습 카드 컴포넌트 |
+| 4C | `Education.jsx` | 복습 카드 목록 |
+| 4D | `AgentHistoryPage.jsx` | 핀=카드 / 미핀=세션 재개 |
+| 5A | `MessageBubble.jsx`, `TutorModal.jsx` | 액션 버튼 |
+| 5C-D | `tutor.py`, `TutorChatContext.jsx` | 속도/품질 |
+| 6A | `guardrail.py` | CoT + 유연화 |
+| 6B | `TradeModal.jsx`, 오케스트레이터 | 지정가/공매도 UI |
+| 6C | `tutor.py`, 모델, 마이그레이션 | 컨텍스트 누적 |
+| 7A-D | 다수 파일 | 세션/트래킹/배포 |
+
+---
+
+# 커밋 계획
+
+```
+feat: dev/frontend 기능 통합 + 마크다운 렌더링 개선
+fix: UI 버그 수정 (삭제 잔존, 반응 API, 퀴즈, 활동 대시보드)
+chore: 용어 하이라이팅 제거
+feat: 슬래시 명령어 시스템 (/chart, /search, /buy 등)
+feat: 페이지 전환 확인 모달 + 자동 실행 모드
+feat: 복습 카드 시스템 (저장=카드, 미저장=히스토리)
+feat: 튜터 액션 버튼 + 액션 카탈로그 확장
+feat: 지정가/공매도/레버리지 프론트 연동
+feat: 대화 컨텍스트 누적 (토큰 윈도우 + 엔티티 + 요약)
+feat: 가드레일 CoT 고도화 + 유연화
+fix: 세션 캐시 + 로거 + 차트 안내
+feat: 트래킹 이벤트 8종
+```
+
+## 검증
+
+1. "/" 입력 → 명령어 목록 팝업, 선택 시 동작
+2. "포트폴리오 보여줘" → 확인 모달 → 이동 / 자동 모드 선택
+3. 저장 버튼 → 복습 카드 생성, Education 탭에 표시
+4. 미저장 대화 클릭 → 세션 재개 (에이전트 캔버스)
+5. 마크다운 테이블/줄바꿈 정상 렌더링
+6. 퀴즈 답변 모두 표시
+7. 활동 대시보드 매수/매도/인사이트 탭 에러 없음
+8. 가드레일 유연 동작 (soft: 교육적 답변 / strict: 차단)
+9. 5턴 대화 → 이전 종목 기억
+10. 파이프라인 브리핑 데이터 존재
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+영진님 서버에 챗봇과 네비바를 적절히 UI에서 보여주고 가리는 로직이 있을 것인데, 해당 내용까지 반영하여 수정 후 배포를 진행하는건 어떤가?
+
+---
+
+[Request interrupted by user for tool use]
