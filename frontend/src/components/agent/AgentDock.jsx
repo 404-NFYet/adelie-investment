@@ -152,11 +152,13 @@ export default function AgentDock() {
 
     const action = command.action;
     if (action.type === 'navigate') {
-      navigate(action.path);
+      navigate(action.path, action.tab ? { state: { tab: action.tab } } : undefined);
     } else if (action.type === 'action') {
       const matchedAction = orchestratorActionCatalog.find((item) => item.id === action.actionId);
       if (matchedAction) {
         executeAction(matchedAction, { contextPayload: buildControlContextPayload('') });
+      } else {
+        setInlineMessage({ text: '현재 화면에서 사용할 수 없는 명령이에요.', canvasPrompt: null });
       }
     } else if (action.type === 'param') {
       setInput(action.prefix || '');
