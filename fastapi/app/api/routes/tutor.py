@@ -805,6 +805,11 @@ async def _build_llm_messages(
                 # 누적 컨텍스트 요약이 있으면 시스템 프롬프트에 추가
                 if session_obj.conversation_summary:
                     system_prompt += f"\n\n[이전 대화 요약]\n{session_obj.conversation_summary}"
+                    system_prompt += (
+                        "\n\n[대화 규칙]\n"
+                        "- 이전 대화에서 이미 설명한 내용은 반복하지 않고, 새로운 관점이나 추가 정보를 제공합니다.\n"
+                        "- 같은 주제를 다시 물으면 더 깊은 분석이나 다른 각도의 설명을 합니다."
+                    )
                 if session_obj.context_entities:
                     entities = session_obj.context_entities
                     if isinstance(entities, list) and entities:
@@ -902,8 +907,8 @@ async def _save_tutor_session(
         except Exception:
             pass  # 캐시 무효화 실패해도 DB는 이미 저장됨
 
-        # 10턴마다 대화 요약 갱신
-        if session_obj.message_count and session_obj.message_count % 10 == 0:
+        # 5턴마다 대화 요약 갱신
+        if session_obj.message_count and session_obj.message_count % 5 == 0:
             try:
                 recent_msgs = await db.execute(
                     select(TutorMessage)
