@@ -43,6 +43,7 @@ from app.services.investment_intel import (
     annotate_reachable_links,
     collect_stock_intelligence,
 )
+from app.services.query_presets import classify_intent, fetch_intent_context
 
 router = APIRouter(prefix="/tutor", tags=["AI tutor"])
 
@@ -712,6 +713,16 @@ async def _collect_context(
             extra_context += f"\n\n참고할 투자 인텔:{stock_intel_context}"
     except Exception as e:
         logger.warning("출처 수집 실패 (무시): %s", e)
+
+    # 의도 기반 DB 쿼리 사전 세팅
+    try:
+        intent = classify_intent(request.message)
+        stock_code_list = [code for code, _ in detected_stocks] if detected_stocks else None
+        intent_context = await fetch_intent_context(intent, request.message, db, stock_code_list)
+        if intent_context:
+            extra_context += intent_context
+    except Exception as e:
+        logger.warning("의도 기반 컨텍스트 실패 (무시): %s", e)
 
     return page_context, sources, detected_stocks, chart_data, extra_context
 
