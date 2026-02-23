@@ -109,9 +109,14 @@ export default function TradeModal({ isOpen, onClose, stock, tradeType, caseId }
         trade_reason: caseId ? `narrative briefing (case: ${caseId})` : null,
         case_id: caseId ? Number(caseId) : null,
       };
-      await executeTrade(orderPayload);
-      setSuccess(true);
-      setTimeout(() => { onClose(); setSuccess(null); }, 1200);
+      const result = await executeTrade(orderPayload);
+      if (result?.order_status === 'pending') {
+        setSuccess('pending');
+        setTimeout(() => { onClose(); setSuccess(null); }, 2500);
+      } else {
+        setSuccess(true);
+        setTimeout(() => { onClose(); setSuccess(null); }, 1200);
+      }
     } catch (err) {
       setError(err?.detail || err?.message || '거래 실패');
       setShowConfirm(false);
@@ -185,7 +190,10 @@ export default function TradeModal({ isOpen, onClose, stock, tradeType, caseId }
               </div>
 
               {error && <p className="text-xs text-error mb-3">{error}</p>}
-              {success && <p className="text-xs text-green-500 mb-3 font-semibold">거래 완료!</p>}
+              {success === 'pending' && (
+                <p className="text-xs text-amber-500 mb-3 font-semibold">주문 접수 완료! 24시간 내 체결되지 않으면 자동 취소됩니다.</p>
+              )}
+              {success === true && <p className="text-xs text-green-500 mb-3 font-semibold">거래 완료!</p>}
 
               <div className="flex gap-3">
                 <button
@@ -270,6 +278,9 @@ export default function TradeModal({ isOpen, onClose, stock, tradeType, caseId }
                     className="w-full text-center text-lg font-bold bg-surface border border-border rounded-xl py-2 placeholder:text-text-muted"
                     min="1"
                   />
+                  <p className="text-[11px] text-text-muted mt-1.5">
+                    체결되지 않을 수 있으며, 24시간 후 자동 취소됩니다.
+                  </p>
                 </div>
               )}
 
@@ -400,7 +411,10 @@ export default function TradeModal({ isOpen, onClose, stock, tradeType, caseId }
 
               {/* Error / Success */}
               {error && <p className="text-xs text-error mb-3">{error}</p>}
-              {success && <p className="text-xs text-green-500 mb-3 font-semibold">거래 완료!</p>}
+              {success === 'pending' && (
+                <p className="text-xs text-amber-500 mb-3 font-semibold">주문 접수! 24시간 내 미체결 시 자동 취소.</p>
+              )}
+              {success === true && <p className="text-xs text-green-500 mb-3 font-semibold">거래 완료!</p>}
 
               {/* Submit */}
               <button
