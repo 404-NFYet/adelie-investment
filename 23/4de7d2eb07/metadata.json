@@ -3,7 +3,7 @@
   "checkpoint_id": "234de7d2eb07",
   "strategy": "manual-commit",
   "branch": "develop",
-  "checkpoints_count": 15,
+  "checkpoints_count": 16,
   "files_touched": [
     ".dockerignore",
     ".env.example",
@@ -89,6 +89,8 @@
     "frontend/e2e/smoke.spec.js",
     "frontend/e2e/tutor-visualization.spec.js",
     "frontend/playwright.config.js",
+    "frontend/src/api/auth.js",
+    "frontend/src/api/client.js",
     "frontend/src/components/agent/AgentCanvasSections.jsx",
     "frontend/src/components/agent/AgentDock.jsx",
     "frontend/src/components/agent/AgentStatusDots.jsx",
@@ -297,13 +299,20 @@
       "context": "/23/4de7d2eb07/19/context.md",
       "content_hash": "/23/4de7d2eb07/19/content_hash.txt",
       "prompt": "/23/4de7d2eb07/19/prompt.txt"
+    },
+    {
+      "metadata": "/23/4de7d2eb07/20/metadata.json",
+      "transcript": "/23/4de7d2eb07/20/full.jsonl",
+      "context": "/23/4de7d2eb07/20/context.md",
+      "content_hash": "/23/4de7d2eb07/20/content_hash.txt",
+      "prompt": "/23/4de7d2eb07/20/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 12284,
-    "cache_creation_tokens": 2944937,
-    "cache_read_tokens": 94783526,
-    "output_tokens": 409009,
-    "api_call_count": 1231
+    "input_tokens": 17142,
+    "cache_creation_tokens": 3276785,
+    "cache_read_tokens": 103556703,
+    "output_tokens": 449438,
+    "api_call_count": 1328
   }
 }
