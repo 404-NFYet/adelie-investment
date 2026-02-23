@@ -50,10 +50,13 @@ export function UserProvider({ children }) {
             isAuthenticated: true,
           });
         })
-        .catch(() => {
-          // 토큰 만료 또는 유효하지 않음 → 제거
-          localStorage.removeItem('token');
-          localStorage.removeItem('refreshToken');
+        .catch((err) => {
+          // AbortError = 네트워크 타임아웃 → 토큰 유효성 불명확하므로 삭제 안 함
+          if (err?.name !== 'AbortError') {
+            // 토큰 만료 또는 유효하지 않음 → 제거
+            localStorage.removeItem('token');
+            localStorage.removeItem('refreshToken');
+          }
         })
         .finally(() => setIsLoading(false));
     } else {
