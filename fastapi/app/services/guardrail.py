@@ -1,4 +1,4 @@
-"""LangGraph 기반 가드레일 시스템."""
+"""LangGraph 기반 가드레일 시스템 (Structured Outputs)."""
 
 import json
 import logging
@@ -7,6 +7,7 @@ from typing import Optional, TypedDict, Literal
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
+from pydantic import BaseModel, Field
 
 from app.core.config import get_settings
 
@@ -85,8 +86,16 @@ User: "삼성전자 PER이 낮은데 투자 판단 기준이 뭐가 있어?"
 Reasoning: The user is asking about investment analysis criteria using PER. This is educational, not a direct recommendation.
 Classification: SAFE
 
-Return JSON: {"decision": "SAFE/ADVICE/OFF_TOPIC/MALICIOUS", "reasoning": "step by step reasoning"}
+Classify the message accordingly.
 """
+
+
+class GuardrailClassification(BaseModel):
+    """가드레일 분류 결과 (Structured Outputs)."""
+    decision: Literal["SAFE", "ADVICE", "OFF_TOPIC", "MALICIOUS"] = Field(
+        description="분류 결과: SAFE(안전), ADVICE(투자 자문), OFF_TOPIC(주제 이탈), MALICIOUS(악의적)"
+    )
+    reasoning: str = Field(description="분류 근거 (step by step)")
 
 
 async def classify_input(state: GuardrailState) -> GuardrailState:
@@ -111,34 +120,17 @@ async def classify_input(state: GuardrailState) -> GuardrailState:
         return {"message": message, "decision": "SAFE", "reasoning": "API Key missing", "is_allowed": True, "retries": retries}
 
     try:
-        # temperature=0, max_tokens=256
         llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, max_tokens=256, api_key=api_key)
-        
-        prefix = "JSON 형식 오류가 발생했습니다. 반드시 JSON만 출력하세요.\n" if retries > 0 else ""
-        
-        response = await llm.ainvoke([
-            SystemMessage(content=prefix + GUARDRAIL_SYSTEM_PROMPT),
+        structured_llm = llm.with_structured_output(GuardrailClassification)
+
+        result = await structured_llm.ainvoke([
+            SystemMessage(content=GUARDRAIL_SYSTEM_PROMPT),
             HumanMessage(content=message)
         ])
-        
-        content = str(response.content).strip()
-        
-        # ```json 등 마크다운 블록 제거
-        if content.startswith("```"):
-            lines = content.split("\n")
-            if lines[0].startswith("```"):
-                lines = lines[1:]
-            if lines and lines[-1].startswith("```"):
-                lines = lines[:-1]
-            content = "\n".join(lines).strip()
-            
-        parsed = json.loads(content)
-        decision = parsed.get("decision", "OFF_TOPIC")
-        reasoning = parsed.get("reasoning", "")
-        
-        if decision not in ["SAFE", "ADVICE", "OFF_TOPIC", "MALICIOUS"]:
-            decision = "OFF_TOPIC"
-            
+
+        decision = result.decision
+        reasoning = result.reasoning
+
         return {
             "message": message,
             "decision": decision,
@@ -146,26 +138,16 @@ async def classify_input(state: GuardrailState) -> GuardrailState:
             "is_allowed": decision == "SAFE",
             "retries": retries
         }
-    except (json.JSONDecodeError, KeyError) as e:
-        if retries < MAX_RETRIES:
-            logger.info(f"guardrail parse failed (attempt {retries + 1}), retrying...")
-            return {"message": message, "decision": "RETRY", "reasoning": str(e), "is_allowed": False, "retries": retries}
-        else:
-            logger.warning(f"guardrail parse failed after {MAX_RETRIES} retries")
-            return {
-                "message": message,
-                "decision": "PARSE_ERROR",
-                "reasoning": "JSON parsing failed",
-                "is_allowed": False,
-                "retries": retries
-            }
     except Exception as e:
-        logger.error(f"Guardrail API error: {e}")
-        # API 장애 시 SAFE 통과 + 소프트 가이드만으로 방어 (Fail-open on API Error as per plan)
+        if retries < MAX_RETRIES:
+            logger.info("guardrail structured output failed (attempt %d), retrying: %s", retries + 1, e)
+            return {"message": message, "decision": "RETRY", "reasoning": str(e), "is_allowed": False, "retries": retries}
+        logger.error("Guardrail failed after %d retries: %s", MAX_RETRIES, e)
+        # API 장애 시 SAFE 통과 (Fail-open)
         return {
             "message": message,
             "decision": "SAFE",
-            "reasoning": f"API Error: {e}",
+            "reasoning": f"Structured output error: {e}",
             "is_allowed": True,
             "retries": retries
         }
