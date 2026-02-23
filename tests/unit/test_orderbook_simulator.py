@@ -16,7 +16,7 @@ class TestTickSize:
         assert get_tick_size(1500) == 1
 
     def test_mid_price_tick(self):
-        assert get_tick_size(50000) == 50
+        assert get_tick_size(50000) == 100  # 50000 이상 → 100원 단위
 
     def test_high_price_tick(self):
         assert get_tick_size(300000) == 500
