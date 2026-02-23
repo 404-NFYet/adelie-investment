@@ -3,10 +3,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 const SLASH_COMMANDS = [
   { cmd: '/chart', aliases: ['/시각화'], desc: '차트 생성', icon: '📊', action: { type: 'param', key: 'use_visualization', value: true, prefix: '[시각화 요청] ' } },
   { cmd: '/search', aliases: ['/검색'], desc: '웹 검색', icon: '🔍', action: { type: 'param', key: 'use_web_search', value: true } },
-  { cmd: '/compare', aliases: ['/비교'], desc: '종목 비교', icon: '⚖️', action: { type: 'param', key: 'response_mode', value: 'comparison' } },
+  { cmd: '/compare', aliases: ['/비교'], desc: '종목 비교', icon: '⚖️', action: { type: 'param', key: 'response_mode', value: 'comparison', prefix: '[비교 분석] ' } },
   { cmd: '/quiz', aliases: ['/퀴즈'], desc: '퀴즈 시작', icon: '❓', action: { type: 'navigate', path: '/education', tab: 'quiz' } },
   { cmd: '/portfolio', aliases: ['/포트폴리오'], desc: '내 자산', icon: '💼', action: { type: 'action', actionId: 'nav_portfolio' } },
   { cmd: '/buy', aliases: ['/매수'], desc: '매수', icon: '📈', action: { type: 'action', actionId: 'buy_stock' } },
+  { cmd: '/sell', aliases: ['/매도'], desc: '매도', icon: '📉', action: { type: 'action', actionId: 'sell_stock' } },
+  { cmd: '/history', aliases: ['/기록'], desc: '대화 기록', icon: '🕐', action: { type: 'navigate', path: '/agent/history' } },
 ];
 
 export { SLASH_COMMANDS };

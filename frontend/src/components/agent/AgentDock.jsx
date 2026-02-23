@@ -47,6 +47,7 @@ export default function AgentDock() {
   const [searchEnabled, setSearchEnabled] = useState(() => readSearchToggle(mode));
   const [showSlashMenu, setShowSlashMenu] = useState(false);
   const [slashQuery, setSlashQuery] = useState('');
+  const [activePrefix, setActivePrefix] = useState(null);
   const location = useLocation();
   const navigate = useNavigate();
   const { messages, agentStatus, isStreamingActive } = useTutor();
@@ -161,7 +162,10 @@ export default function AgentDock() {
         setInlineMessage({ text: '현재 화면에서 사용할 수 없는 명령이에요.', canvasPrompt: null });
       }
     } else if (action.type === 'param') {
-      setInput(action.prefix || '');
+      if (action.prefix) {
+        setActivePrefix({ label: command.desc, prefix: action.prefix });
+        setInput('');
+      }
       if (action.key === 'use_web_search') {
         setSearchEnabled(true);
       }
@@ -221,7 +225,8 @@ export default function AgentDock() {
   const statusDotClass = pulseActive ? 'agent-status-dot-pulse' : '';
 
   const submitPrompt = async (prompt) => {
-    const normalized = String(prompt || '').trim();
+    const raw = String(prompt || '').trim();
+    const normalized = activePrefix ? `${activePrefix.prefix}${raw}` : raw;
     if (!normalized) return;
 
     const controlPayload = buildControlContextPayload(normalized);
@@ -263,6 +268,7 @@ export default function AgentDock() {
     }
 
     setInput('');
+    setActivePrefix(null);
   };
 
   const handleSubmit = async (event) => {
@@ -389,34 +395,52 @@ export default function AgentDock() {
                 </svg>
               </button>
 
-              <input
-                type="text"
-                value={input}
-                onChange={(event) => {
-                  const val = event.target.value;
-                  setInput(val);
-                  if (val.startsWith('/')) {
-                    setShowSlashMenu(true);
-                    setSlashQuery(val.slice(1));
-                  } else {
-                    setShowSlashMenu(false);
-                    setSlashQuery('');
-                  }
-                }}
-                onKeyDown={(e) => {
-                  if (showSlashMenu && (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Enter')) {
-                    e.preventDefault();
-                  }
-                  if (e.key === 'Escape' && showSlashMenu) {
-                    setShowSlashMenu(false);
-                    setSlashQuery('');
-                  }
-                }}
-                placeholder={input ? placeholder : suggestedPrompt}
-                data-agent-dock-input
-                className="min-w-0 flex-1 bg-transparent text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] focus:outline-none"
-                aria-label="에이전트 질문 입력"
-              />
+              <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                {activePrefix && (
+                  <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[#FF6B00]/20 bg-[#FFF2E8] px-2.5 py-1 text-[12px] font-semibold text-[#FF6B00]">
+                    {activePrefix.label}
+                    <button
+                      type="button"
+                      onClick={() => setActivePrefix(null)}
+                      className="ml-0.5 text-[#FF6B00]/60 hover:text-[#FF6B00]"
+                      aria-label="명령어 칩 제거"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                )}
+                <input
+                  type="text"
+                  value={input}
+                  onChange={(event) => {
+                    const val = event.target.value;
+                    setInput(val);
+                    if (val.startsWith('/')) {
+                      setShowSlashMenu(true);
+                      setSlashQuery(val.slice(1));
+                    } else {
+                      setShowSlashMenu(false);
+                      setSlashQuery('');
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (showSlashMenu && (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Enter')) {
+                      e.preventDefault();
+                    }
+                    if (e.key === 'Escape' && showSlashMenu) {
+                      setShowSlashMenu(false);
+                      setSlashQuery('');
+                    }
+                    if (e.key === 'Backspace' && !input && activePrefix) {
+                      setActivePrefix(null);
+                    }
+                  }}
+                  placeholder={activePrefix ? '내용을 입력하세요' : (input ? placeholder : suggestedPrompt)}
+                  data-agent-dock-input
+                  className="min-w-0 flex-1 bg-transparent text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] focus:outline-none"
+                  aria-label="에이전트 질문 입력"
+                />
+              </div>
 
               <button
                 type="submit"
