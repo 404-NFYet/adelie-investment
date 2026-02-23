@@ -1237,7 +1237,7 @@ async def generate_tutor_response(
                     yield f"event: visualization\ndata: {json.dumps({'type': 'visualization', 'format': 'json', 'chartData': chart_data})}\n\n"
             except Exception as viz_err:
                 logger.warning("시각화 생성 실패: %s", viz_err)
-                yield f"event: step\ndata: {json.dumps({'type': 'info', 'content': '차트 생성에 실패했어요. 텍스트로 설명해 드릴게요.'})}\n\n"
+                yield f"event: text_delta\ndata: {json.dumps({'type': 'text_delta', 'content': '\n\n> 차트 생성에 실패했어요. 텍스트로 설명해 드릴게요.\n'})}\n\n"
 
         structured = None
         if request.structured_extract and request.response_mode == "canvas_markdown":
