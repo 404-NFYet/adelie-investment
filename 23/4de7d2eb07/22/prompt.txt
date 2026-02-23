@@ -1,0 +1,343 @@
+Implement the following plan:
+
+# 모바일 UX 개선 계획 (2가지)
+
+## 1. 모바일 랜딩 무한 로딩 수정
+## 2. 네비바 + AgentDock 스크롤 연동 hide/show 애니메이션
+
+---
+
+## Issue 1: 모바일 랜딩 페이지 무한 로딩
+
+### 근본 원인
+
+**파일**: `frontend/src/contexts/UserContext.jsx:44`
+
+```javascript
+// L41-62: 앱 마운트 시 token 유효성 검증
+useEffect(() => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    authApi.getMe(token)           // fetch() 호출 — 타임아웃 없음
+      .catch(() => { localStorage.removeItem('token'); ... })
+      .finally(() => setIsLoading(false));  // 네트워크 hang 시 영원히 미실행
+  } else {
+    setIsLoading(false);
+  }
+}, []);
+```
+
+`authFetch()` → native `fetch()` — `AbortController` 미적용.
+모바일 4G 불안정 환경에서 요청이 hang되면 `setIsLoading(false)` 미실행 → `isLoading=true` 고정.
+
+**파급 효과** (`Landing.jsx:107`):
+```javascript
+useEffect(() => {
+  if (isLoading || isAuthenticated) return undefined;  // isLoading=true → 타이머 미설정
+  const timer = setTimeout(() => setCurrentIndex(1), 3000);
+}, [...]);
+```
+→ 슬라이드 자동 진행 차단 → hero 슬라이드에 영구 고정 → "무한 로딩"으로 인식
+
+**추가 원인**: `TutorSessionContext.jsx:23` 세션 검증 요청도 타임아웃 없음 (독립적 부작용)
+
+### 수정 대상 파일 및 변경 내용
+
+#### `frontend/src/api/client.js` (P0 — 핵심 수정)
+`authFetch()`에 `AbortController` 기반 10초 타임아웃 추가.
+모든 `fetchJson`/`postJson`/`deleteJson`이 자동으로 보호됨.
+
+```javascript
+export const authFetch = async (url, options = {}, canRetry = true) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers: mergeAuthHeaders(options.headers),
+      signal: controller.signal,
+    });
+    // ... 기존 401 retry 로직 유지
+    return response;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+```
+
+#### `frontend/src/contexts/UserContext.jsx` (P1 — 이중 보호)
+`AbortError`(타임아웃)와 실제 인증 오류를 구분하여 타임아웃 시 토큰을 삭제하지 않음.
+
+```javascript
+.catch((err) => {
+  if (err?.name !== 'AbortError') {
+    localStorage.removeItem('token');
+    localStorage.removeItem('refreshToken');
+  }
+  // AbortError → 네트워크 타임아웃. 토큰 유효성 불명확하므로 삭제 안 함
+})
+.finally(() => setIsLoading(false));  // 항상 실행됨
+```
+
+---
+
+## Issue 2: 네비바 + AgentDock 스크롤 hide/show 애니메이션
+
+### 현황 분석
+
+| 컴포넌트 | 위치 | z-index | 높이 | 현재 hide 방식 |
+|----------|------|---------|------|---------------|
+| BottomNav | `fixed bottom-0` | z-20 | `--bottom-nav-h: 68px` | 라우트/키보드 기반 `return null` |
+| AgentDock | `fixed`, bottom = navH + keyboardOffset | z-30 | `--agent-dock-h: 88px` | `shouldHide` prop → `return null` |
+
+- Framer Motion `^12.0.0` 이미 사용 중 (TutorModal, Landing 등)
+- 두 컴포넌트 합산 최대 **156px**의 영역 차지
+- 현재 스크롤 기반 hide/show 미구현
+
+### 구현 계획
+
+#### Step 1: `useScrollDirection` 훅 생성
+**파일**: `frontend/src/hooks/useScrollDirection.js` (신규)
+
+```javascript
+// 스크롤 방향 감지 훅 — 임계값 이상 스크롤 시 hide 트리거
+// 반환: { scrolledDown: boolean }
+// - scrolledDown=true: 아래로 스크롤 중 → UI 숨기기
+// - scrolledDown=false: 위로 스크롤 or 페이지 상단 → UI 표시
+```
+
+- `threshold`: 8px 이상 스크롤 시 방향 판정 (미세 진동 방지)
+- `passive: true` scroll listener
+- cleanup on unmount
+
+#### Step 2: `BottomNav.jsx` 수정
+**파일**: `frontend/src/components/layout/BottomNav.jsx`
+
+1. `useScrollDirection()` 훅 추가
+2. `return null` 패턴 → `motion.nav`로 전환 + `animate={{ y: scrolledDown ? '100%' : 0 }}`
+3. `pointer-events: none` when hidden (접근성)
+
+```jsx
+import { motion } from 'framer-motion';
+
+// 기존: if (hidden condition) return null;
+// 변경: shouldHide면 return null (라우트 기반), 그 외엔 motion.nav로 animate
+
+return (
+  <motion.nav
+    animate={{ y: scrolledDown ? '100%' : 0 }}
+    transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+    className="fixed bottom-0 left-0 right-0 z-20 mx-auto h-[var(--bottom-nav-h,68px)] ..."
+  >
+    ...
+  </motion.nav>
+);
+```
+
+#### Step 3: `AgentDock.jsx` 수정
+**파일**: `frontend/src/components/agent/AgentDock.jsx`
+
+1. `useScrollDirection()` 훅 추가
+2. 외부 wrapper `div` → `motion.div` 전환
+3. 스크롤 다운 시 네비바 높이만큼 추가 translate (두 컴포넌트가 함께 사라지는 효과)
+
+```jsx
+import { motion } from 'framer-motion';
+
+// scrolledDown 시 bottom의 navH 기여분이 없어지므로
+// AgentDock도 동일량(68px) 아래로 이동해야 화면 밖으로 사라짐
+const translateY = scrolledDown
+  ? (hideBottomNav ? 'calc(100% + 8px)' : 'calc(100% + var(--bottom-nav-h,68px) + 8px)')
+  : 0;
+
+<motion.div
+  animate={{ y: translateY }}
+  transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+  className="pointer-events-none fixed left-0 right-0 z-30 ..."
+  style={{ bottom: `calc(${hideBottomNav ? '0px' : 'var(--bottom-nav-h,68px)'} + var(--keyboard-offset,0px))` }}
+>
+```
+
+**참고**: AgentDock의 `translate` 방향은 본인 높이 + (BottomNav 미표시 시 0 or navH) 만큼 아래로 이동.
+두 컴포넌트 동시에 화면 밖으로 자연스럽게 퇴장.
+
+### 동작 UX
+
+| 상태 | BottomNav | AgentDock |
+|------|-----------|-----------|
+| 페이지 최상단 | 표시 | 표시 |
+| 아래로 스크롤 | 슬라이드 다운 (사라짐) | 슬라이드 다운 (사라짐) |
+| 위로 스크롤 | 슬라이드 업 (복귀) | 슬라이드 업 (복귀) |
+| 키보드 열림 | 기존 `shouldHideBottomNav` 로직 유지 | 기존 로직 유지 |
+| 숨겨야 할 라우트 (`/auth`, `/` 등) | `return null` 유지 | `shouldHide` 유지 |
+
+---
+
+## 수정 파일 목록
+
+| 파일 | 변경 | Issue |
+|------|------|-------|
+| `frontend/src/api/client.js` | `authFetch()` AbortController 타임아웃 추가 | #1 |
+| `frontend/src/contexts/UserContext.jsx` | AbortError 구분 catch 처리 | #1 |
+| `frontend/src/hooks/useScrollDirection.js` | 신규 훅 생성 | #2 |
+| `frontend/src/components/layout/BottomNav.jsx` | motion.nav + scroll animate | #2 |
+| `frontend/src/components/agent/AgentDock.jsx` | motion.div + scroll animate | #2 |
+
+---
+
+## 검증 방법
+
+### Issue 1 검증
+1. Chrome DevTools → Network → Throttling: Offline (또는 Slow 3G)
+2. localStorage에 fake token 삽입: `localStorage.setItem('token', 'expired_token')`
+3. 랜딩 `/` 접속
+4. **수정 전**: hero 슬라이드에서 영구 고정
+5. **수정 후**: 10초 후 AbortError → `isLoading=false` → 3초 뒤 슬라이드 자동 진행
+
+### Issue 2 검증
+1. Chrome DevTools → Device Toolbar → 모바일 뷰포트
+2. `/home` 또는 `/portfolio` 접속 (BottomNav 표시 라우트)
+3. 피드 콘텐츠 아래로 스크롤 → BottomNav + AgentDock 슬라이드 퇴장 확인
+4. 위로 스크롤 → 복귀 애니메이션 확인
+5. 키보드 탭 상태에서 BottomNav 숨김 로직 정상 작동 확인
+
+---
+
+## 담당자
+
+- Issue 1 (auth 초기화): 허진서 (jjjh02) / 정지훈 (J2hoon10) 협의
+- Issue 2 (React UI 애니메이션): 손영진 (YJ99Son)
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+git 및 도커, 배포 서버까지 모두 반영하여 업데이트해라.
+
+---
+
+Base directory for this skill: /home/hj/2026/project/adelie-investment/.claude/skills/deploy
+
+# Deploy Skill
+
+서비스를 빌드하고 deploy-test 서버에 배포합니다.
+
+## 사용법
+
+`/deploy frontend`
+
+- `/deploy frontend` — 프론트엔드만 빌드 + 푸시 + 배포
+- `/deploy api` — FastAPI 백엔드만 빌드 + 푸시 + 배포
+- `/deploy all` — 전체 서비스 빌드 + 푸시 + 배포
+- `/deploy` (인자 없음) — 변경된 서비스 자동 감지 후 배포
+
+## 서버 경로 (중요)
+
+| 환경 | 프로젝트 경로 |
+|------|--------------|
+| **deploy-test (10.10.10.20)** | `~/adelie-investment` |
+| **로컬 개발** | `/home/hj/2026/project/adelie-investment` |
+
+## Docker 이미지 태깅 규칙
+
+### 이미지 목록
+
+| 서비스 | 이미지명 | 빌드 명령 |
+|--------|---------|-----------|
+| Frontend | `dorae222/adelie-frontend` | `make build-frontend` |
+| Backend API | `dorae222/adelie-backend-api` | `make build-api` |
+| AI Pipeline | `dorae222/adelie-ai-pipeline` | `make build-ai` |
+
+### 태그 규칙
+
+| 태그 | 용도 | 예시 |
+|------|------|------|
+| `latest` | 기본값, deploy-test 배포용 | `dorae222/adelie-frontend:latest` |
+| `YYYYMMDD` | 날짜 기반 스냅샷 (릴리스 시) | `dorae222/adelie-frontend:20260214` |
+| `v{N}` | 프로덕션 릴리스 버전 | `dorae222/adelie-frontend:v1` |
+
+- 일반 배포: `make build push` (latest 태그 자동 사용)
+- 태그 지정 배포: `TAG=20260214 make build push`
+- deploy-test의 docker-compose.prod.yml은 `latest` 태그를 참조
+
+## 실행 절차
+
+### 전체 배포 (`/deploy all`)
+```bash
+# 1. 빌드
+make build-frontend
+make build-api
+
+# 2. Docker Hub 푸시
+make push
+
+# 3. deploy-test 서버 배포
+ssh deploy-test "cd ~/adelie-investment && docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d"
+
+# 4. 상태 확인
+ssh deploy-test "docker ps --format 'table {{.Names}}\t{{.Status}}'"
+```
+
+### 단일 서비스 배포 (`/deploy frontend` 또는 `/deploy api`)
+```bash
+# frontend 예시
+make build-frontend
+docker push dorae222/adelie-frontend:latest
+ssh deploy-test "cd ~/adelie-investment && docker compose -f docker-compose.prod.yml pull frontend && docker compose -f docker-compose.prod.yml up -d frontend"
+```
+
+### 원스텝 배포 (Makefile)
+```bash
+make deploy-test        # 전체: build → push → 서버 pull → up
+SVC=frontend make deploy-test-service  # 단일 서비스
+```
+
+## 서비스 의존 순서
+
+```
+postgres (healthy) → redis (healthy) → backend-api (healthy) → frontend
+                                     → minio
+```
+
+`docker compose up -d`는 healthcheck 기반으로 순서를 자동 관리한다.
+
+## 배포 후 검증
+
+```bash
+# 1. 컨테이너 상태 확인
+ssh deploy-test "docker ps --format 'table {{.Names}}\t{{.Status}}'"
+
+# 2. API 헬스체크
+ssh deploy-test "curl -sf http://localhost:8082/api/v1/health || echo FAIL"
+
+# 3. 프론트엔드 접속 확인
+ssh deploy-test "curl -sf -o /dev/null -w '%{http_code}' http://localhost:80"
+
+# 4. 최근 로그 확인
+ssh deploy-test "docker logs adelie-backend-api --tail 20"
+ssh deploy-test "docker logs adelie-frontend --tail 20"
+```
+
+## 롤백
+
+```bash
+# 이전 이미지로 롤백 (Docker Hub에 이전 태그가 있는 경우)
+ssh deploy-test "cd ~/adelie-investment && \
+  docker compose -f docker-compose.prod.yml pull && \
+  docker compose -f docker-compose.prod.yml up -d"
+
+# 특정 태그로 롤백
+TAG=20260213 ssh deploy-test "cd ~/adelie-investment && \
+  REGISTRY=dorae222 TAG=20260213 docker compose -f docker-compose.prod.yml up -d"
+
+# 긴급: 서비스만 재시작 (이미지 변경 없이)
+ssh deploy-test "docker restart adelie-backend-api"
+```
+
+## 주의사항
+
+- 배포 전 `git status`로 커밋되지 않은 변경 확인
+- TAG를 명시하지 않으면 latest 태그 사용
+- **서버 경로**: `~/adelie-investment` (절대 `~/adelie`가 아님)
+- 에러 발생 시 `ssh deploy-test "docker logs adelie-{서비스} --tail 50"` 로 로그 확인

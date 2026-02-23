@@ -3,7 +3,7 @@
   "checkpoint_id": "234de7d2eb07",
   "strategy": "manual-commit",
   "branch": "develop",
-  "checkpoints_count": 17,
+  "checkpoints_count": 18,
   "files_touched": [
     ".dockerignore",
     ".env.example",
@@ -102,6 +102,7 @@
     "frontend/src/components/agent/SlashCommandMenu.jsx",
     "frontend/src/components/common/UpdateNotice.jsx",
     "frontend/src/components/domain/ReviewCard.jsx",
+    "frontend/src/components/layout/BottomNav.jsx",
     "frontend/src/components/layout/ChatFAB.jsx",
     "frontend/src/components/quiz/DailyQuizModal.jsx",
     "frontend/src/contexts/PortfolioContext.jsx",
@@ -109,7 +110,9 @@
     "frontend/src/contexts/TutorContext.jsx",
     "frontend/src/contexts/TutorSessionContext.jsx",
     "frontend/src/contexts/TutorUIContext.jsx",
+    "frontend/src/contexts/UserContext.jsx",
     "frontend/src/contexts/index.js",
+    "frontend/src/hooks/useScrollDirection.js",
     "frontend/src/pages/AgentCanvasPage.jsx",
     "frontend/src/pages/AgentHistoryPage.jsx",
     "frontend/src/pages/FeedbackSurvey.jsx",
@@ -320,13 +323,20 @@
       "context": "/23/4de7d2eb07/21/context.md",
       "content_hash": "/23/4de7d2eb07/21/content_hash.txt",
       "prompt": "/23/4de7d2eb07/21/prompt.txt"
+    },
+    {
+      "metadata": "/23/4de7d2eb07/22/metadata.json",
+      "transcript": "/23/4de7d2eb07/22/full.jsonl",
+      "context": "/23/4de7d2eb07/22/context.md",
+      "content_hash": "/23/4de7d2eb07/22/content_hash.txt",
+      "prompt": "/23/4de7d2eb07/22/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 17238,
-    "cache_creation_tokens": 3410970,
-    "cache_read_tokens": 111008343,
-    "output_tokens": 471444,
-    "api_call_count": 1414
+    "input_tokens": 17274,
+    "cache_creation_tokens": 3466714,
+    "cache_read_tokens": 112736364,
+    "output_tokens": 475653,
+    "api_call_count": 1445
   }
 }
