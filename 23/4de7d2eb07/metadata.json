@@ -3,7 +3,7 @@
   "checkpoint_id": "234de7d2eb07",
   "strategy": "manual-commit",
   "branch": "feature/canvas-agent-v4",
-  "checkpoints_count": 34,
+  "checkpoints_count": 35,
   "files_touched": [
     ".dockerignore",
     ".env.example",
@@ -458,13 +458,20 @@
       "context": "/23/4de7d2eb07/31/context.md",
       "content_hash": "/23/4de7d2eb07/31/content_hash.txt",
       "prompt": "/23/4de7d2eb07/31/prompt.txt"
+    },
+    {
+      "metadata": "/23/4de7d2eb07/32/metadata.json",
+      "transcript": "/23/4de7d2eb07/32/full.jsonl",
+      "context": "/23/4de7d2eb07/32/context.md",
+      "content_hash": "/23/4de7d2eb07/32/content_hash.txt",
+      "prompt": "/23/4de7d2eb07/32/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 28172,
-    "cache_creation_tokens": 5444428,
-    "cache_read_tokens": 186951926,
-    "output_tokens": 686053,
-    "api_call_count": 2216
+    "input_tokens": 28297,
+    "cache_creation_tokens": 5515719,
+    "cache_read_tokens": 189052332,
+    "output_tokens": 703907,
+    "api_call_count": 2248
   }
 }
