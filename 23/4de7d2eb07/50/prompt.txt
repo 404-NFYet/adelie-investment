@@ -1,0 +1,269 @@
+Implement the following plan:
+
+# 브랜치 정리 + Docker 이미지 전략: prod-final 기반 재설정
+
+## Context
+
+**문제**: develop 기반 커밋 히스토리 발산 (104커밋), dev-final/* 각 107~118커밋 ahead, Docker `:latest` 태그 남용.
+**목표**: `v1.2.1-stable-feb20` (091a1bb) 베이스로 클린 리셋 + **최신 datapipeline 코드만 보존** + Docker 태그 정책 정비.
+
+**현재 상태 (검증 완료)**:
+- deploy-test: `release/feb20-stable` 브랜치, `TAG=feb20-stable`, 서비스 정상 (Health 200)
+- Docker images: feb20-stable 태그 실행 중, latest는 미사용 상태
+- DB 데이터: 유지 (스키마 변경 없음, alembic 조작 안 함)
+
+---
+
+## Part A: 브랜치 정리
+
+### 새 브랜치 구조
+
+```
+prod-final (091a1bb + datapipeline 패치) ← deploy-test 배포 대상
+  ├── dev-final/frontend  (prod-final HEAD) ← YJ99Son
+  ├── dev-final/backend   (prod-final HEAD) ← jjjh02
+  ├── dev-final/chatbot   (prod-final HEAD) ← J2hoon10
+  ├── dev-final/pipeline  (prod-final HEAD) ← ryejinn
+  └── dev-final/infra     (prod-final HEAD) ← dorae222
+```
+
+### Step A-1. 현재 dev-final/* HEAD 백업 태그
+
+```bash
+git tag backup/dev-final-frontend-20260224  origin/dev-final/frontend
+git tag backup/dev-final-backend-20260224   origin/dev-final/backend
+git tag backup/dev-final-chatbot-20260224   origin/dev-final/chatbot
+git tag backup/dev-final-pipeline-20260224  origin/dev-final/pipeline
+git tag backup/dev-final-infra-20260224     origin/dev-final/infra
+git push origin --tags
+```
+
+### Step A-2. prod-final 브랜치 생성 + datapipeline 패치
+
+```bash
+# 1) 091a1bb 기반 prod-final 생성
+git branch prod-final origin/release/feb20-stable
+git checkout prod-final
+
+# 2) datapipeline/ + database/alembic/env.py 변경만 패치 적용
+git diff origin/release/feb20-stable origin/develop -- datapipeline/ | git apply
+git diff origin/release/feb20-stable origin/develop -- database/alembic/env.py | git apply
+
+# 3) 커밋
+git add datapipeline/ database/alembic/env.py
+git commit -m "feat: datapipeline 최신 코드 반영 (091a1bb 베이스)"
+
+# 4) push
+git push origin prod-final
+```
+
+**패치 내용 (4개 커밋에서 datapipeline/ + alembic/env.py만 추출):**
+- `datapipeline/db/writer.py` — 커넥션 풀 1줄 수정
+- `datapipeline/prompts/__init__.py` — export 누락 4줄
+- `datapipeline/config.py`, `graph.py`, `run.py`, `requirements.txt` — Phase 0 정리
+- `datapipeline/prompts/templates/chart_generation.md` — 시각화 예시 데이터 차단
+- `database/alembic/env.py` — Docker 경로 호환 패치
+
+### Step A-3. dev-final/* 브랜치 리셋 (prod-final HEAD 기준)
+
+```bash
+for branch in frontend backend chatbot pipeline infra; do
+  git branch -f "dev-final/$branch" prod-final
+  git push origin "dev-final/$branch" --force-with-lease
+done
+```
+
+---
+
+## Part B: Docker 이미지 전략
+
+### 태그 정책 (`:latest` 중지)
+
+| 태그 패턴 | 용도 | 예시 |
+|-----------|------|------|
+| `prod-YYYYMMDD` | deploy-test 배포 이미지 | `prod-20260224` |
+| `dev-YYYYMMDD` | LXD dev 환경 (frontend-dev만) | `dev-20260224` |
+| `feb20-stable` | 레거시 참조 (삭제 안 함) | — |
+| ~~`latest`~~ | **사용 중지** | — |
+
+### Step B-1. docker-compose.prod.yml 기본 태그 변경
+
+**파일:** `docker-compose.prod.yml` (3곳)
+
+```yaml
+# 변경 전
+image: ${REGISTRY:-dorae222}/adelie-frontend:${TAG:-latest}
+image: ${REGISTRY:-dorae222}/adelie-backend-api:${TAG:-latest}
+image: ${REGISTRY:-dorae222}/adelie-ai-pipeline:${TAG:-latest}
+
+# 변경 후
+image: ${REGISTRY:-dorae222}/adelie-frontend:${TAG:-feb20-stable}
+image: ${REGISTRY:-dorae222}/adelie-backend-api:${TAG:-feb20-stable}
+image: ${REGISTRY:-dorae222}/adelie-ai-pipeline:${TAG:-feb20-stable}
+```
+
+### Step B-2. docker-compose.dev.yml 태그 정리
+
+**파일:** `docker-compose.dev.yml`
+
+```yaml
+# backend-api (line 60): latest → feb20-stable
+image: dorae222/adelie-backend-api:feb20-stable
+
+# db-migrate (line 112): latest → feb20-stable
+image: dorae222/adelie-backend-api:feb20-stable
+
+# ai-pipeline (line 94): latest → feb20-stable
+image: dorae222/adelie-ai-pipeline:feb20-stable
+```
+
+> dev 환경은 volume mount (`./datapipeline:/app/datapipeline`)로 로컬 코드 반영.
+> 이미지 태그는 Python 패키지 기준선만 결정.
+
+### Step B-3. 이미지 빌드 + push
+
+```bash
+# frontend: 코드 변경 없음 → feb20-stable 재태그
+docker pull dorae222/adelie-frontend:feb20-stable
+docker tag dorae222/adelie-frontend:feb20-stable dorae222/adelie-frontend:prod-20260224
+docker push dorae222/adelie-frontend:prod-20260224
+
+# backend-api: datapipeline 변경 → 재빌드 필수 (prod-final 브랜치에서)
+git checkout prod-final
+docker build -f fastapi/Dockerfile -t dorae222/adelie-backend-api:prod-20260224 .
+docker push dorae222/adelie-backend-api:prod-20260224
+```
+
+### Step B-4. docker-compose 변경 커밋 (prod-final에)
+
+```bash
+git checkout prod-final
+# (B-1, B-2 수정 적용 후)
+git add docker-compose.prod.yml docker-compose.dev.yml
+git commit -m "chore: Docker 이미지 태그 정책 변경 — latest 제거, 명시적 태그 고정"
+git push origin prod-final
+```
+
+---
+
+## Part C: 서버 적용
+
+### Step C-1. deploy-test 브랜치 전환 + 이미지 배포
+
+```bash
+ssh deploy-test "
+  cd ~/adelie-investment &&
+  git fetch origin &&
+  git checkout prod-final &&
+  git pull origin prod-final &&
+  docker pull dorae222/adelie-frontend:prod-20260224 &&
+  docker pull dorae222/adelie-backend-api:prod-20260224 &&
+  sed -i 's/^TAG=.*/TAG=prod-20260224/' .env &&
+  docker compose -f docker-compose.prod.yml up -d
+"
+```
+
+### Step C-2. LXD 5대 dev-final 리셋
+
+```bash
+SERVERS=(dev-yj99son dev-j2hoon10 dev-jjjh02 dev-ryejinn dev-hj)
+BRANCHES=(frontend chatbot backend pipeline infra)
+
+for i in "${!SERVERS[@]}"; do
+  srv="${SERVERS[$i]}"
+  branch="${BRANCHES[$i]}"
+  echo "=== $srv → dev-final/$branch ==="
+  lxc exec "$srv" -- bash -c "
+    cd /home/ubuntu/adelie-investment
+    git fetch origin
+    git checkout dev-final/$branch
+    git reset --hard origin/dev-final/$branch
+    docker compose -f docker-compose.dev.yml up -d --no-build
+  " && echo "✅ $srv" || echo "❌ $srv"
+done
+```
+
+> dev 환경은 volume mount 덕분에 이미지 재빌드 없이 코드 변경 즉시 반영.
+
+---
+
+## 수정 파일 요약
+
+| 파일 | 변경 |
+|------|------|
+| `docker-compose.prod.yml` | `${TAG:-latest}` → `${TAG:-feb20-stable}` (3곳) |
+| `docker-compose.dev.yml` | backend-api/db-migrate/ai-pipeline `latest` → `feb20-stable` (3곳) |
+| `datapipeline/` | develop에서 패치 적용 (6파일) |
+| `database/alembic/env.py` | Docker 경로 호환 패치 |
+
+---
+
+## 실행 순서
+
+1. **A-1** 백업 태그 → push
+2. **A-2** prod-final 생성 + datapipeline 패치 + push
+3. **B-1/B-2** docker-compose 수정 → **B-4** 커밋 + push (prod-final에)
+4. **B-3** backend-api 재빌드 + frontend 재태그 → Docker Hub push
+5. **A-3** dev-final/* 리셋 → force push
+6. **C-1** deploy-test: prod-final checkout + 이미지 배포
+7. **C-2** LXD 5대 리셋
+
+---
+
+## 검증
+
+```bash
+# 1. 원격 브랜치 확인
+for b in prod-final dev-final/frontend dev-final/backend dev-final/chatbot dev-final/pipeline dev-final/infra; do
+  echo "$b: $(git log --oneline -1 origin/$b)"
+done
+
+# 2. 백업 태그
+git tag -l 'backup/dev-final-*'
+
+# 3. datapipeline 패치 확인 (prod-final에 있는지)
+git diff origin/release/feb20-stable origin/prod-final --stat
+
+# 4. deploy-test 상태
+ssh deploy-test "
+  cd ~/adelie-investment &&
+  git branch --show-current &&
+  grep TAG .env &&
+  docker ps --format '{{.Names}} {{.Image}}' | grep adelie &&
+  curl -s -o /dev/null -w 'Health: %{http_code}\n' http://localhost/api/v1/health &&
+  curl -s -o /dev/null -w 'Frontend: %{http_code}\n' http://localhost/
+"
+
+# 5. LXD 서버 브랜치 + 커밋
+for srv in dev-yj99son dev-j2hoon10 dev-jjjh02 dev-ryejinn dev-hj; do
+  echo -n "$srv: "
+  lxc exec "$srv" -- bash -c "cd /home/ubuntu/adelie-investment && git log --oneline -1"
+done
+```
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+데이터 수집 파이프라인이 지금 코드와 같은지 점검해라. 데이터는 배포 서버에서 아마 업데이트를 하고 싱크를 해서 가져와야할건데, 배포 서버 코드도 lxd 서버들과 싱크를 맞춰야할 것 같다.
+
+---
+
+[Request interrupted by user]
+
+---
+
+내가 수동으로 파이프라인을 실행했었기 때문에 시간을 불일치할 수도 있다.
+
+---
+
+Continue from where you left off.
+
+---
+
+다시 플랜을 반환해라.
+
+---
+
+[Request interrupted by user for tool use]
