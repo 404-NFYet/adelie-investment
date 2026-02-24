@@ -1,0 +1,1364 @@
+Implement the following plan:
+
+# Agent v5 — Tutor→Agent 통합 설계 문서
+
+## Context
+
+demo(deploy-test)에는 Agent Canvas v4가 동작 중이고, test-server는 `feb20-stable`(구 Tutor 모달 기반)로 롤백된 상태.
+demo UI를 참고하되 **새로 설계**하여, Agent가 Tutor를 완전 대체하는 통합 AI 인터페이스를 만든다.
+
+### 현재 문제점 (demo 기준)
+
+| 문제 | 설명 |
+|------|------|
+| Tutor/Agent 이원화 | TutorModal과 AgentDock이 공존, 사용자 혼란 |
+| 명칭 불일치 | 프론트="Agent", 백엔드 API=`/tutor/*` |
+| 미사용 코드 | `/canvas/analyze` 엔드포인트 만들어놓고 프론트 미연결 |
+| 830줄 단일 파일 | `AgentCanvasPage.jsx`에 모드 분기+스와이프+세션+진행바 등 과도 집중 |
+| 상태 분산 | 턴 관리가 TutorContext와 로컬 state에 이중 존재 |
+| 하단 영역 경합 | TutorModal(85vh) + AgentDock + BottomNav 세 레이어 |
+
+---
+
+## 1. 정보 아키텍처
+
+### 1.1 내비게이션 (변경 최소)
+
+```
+BottomNav (3탭 유지)
+├── /portfolio  (투자)
+├── /home       (홈)
+└── /education  (교육)
+
+글로벌 레이어
+├── AgentDock        — 하단 입력바 (BottomNav 위, 항상 노출)
+├── TermBottomSheet  — 용어 탭 바텀시트 (유지)
+└── SelectionAskChip — 텍스트 선택 플로팅 칩
+
+전용 라우트
+├── /agent          — Agent Hub (분석+대화 통합)
+├── /agent/history  — 세션 히스토리
+└── /tutor          → /agent 리다이렉트 (하위 호환)
+```
+
+### 1.2 제거 대상
+
+| 항목 | 파일 | 이유 |
+|------|------|------|
+| TutorModal | `components/tutor/TutorModal.jsx` | Agent Hub로 대체 |
+| TutorChat 페이지 | `pages/TutorChat.jsx` | `/agent` 리다이렉트로 대체 |
+| TutorPanel | `components/tutor/TutorPanel.jsx` | 사용처 없음 |
+| SessionSidebar | `components/tutor/SessionSidebar.jsx` | AgentHistoryPage로 통합 |
+| ChatInput | `components/tutor/ChatInput.jsx` | AgentDock 입력 UI로 통합 |
+| MessageBubble | `components/tutor/MessageBubble.jsx` | AgentCanvasSections 마크다운으로 대체 |
+| `isOpen`/`openTutor`/`closeTutor` | TutorUIContext 내부 | 모달 없어지므로 불필요 |
+
+### 1.3 AgentDock 가시성 규칙
+
+```
+노출: 인증 사용자 + 현재 경로가 /, /landing, /auth, /onboarding, /agent/history가 아닌 경우
+숨김: 키보드 활성 시 BottomNav 숨기고 Dock만 키보드 위에 유지
+/agent 라우트: Dock은 Agent Hub 하단에 자연스럽게 위치 (현재 패턴 유지)
+```
+
+---
+
+## 2. Agent Hub 페이지 (`/agent`)
+
+### 2.1 레이아웃
+
+```
+┌──────────────────────────────────────────┐
+│ [<] 오늘 시장 흐름      [모드배지] [H]  │ ← 컴팩트 헤더
+│  (접히는 컨텍스트 요약)                  │
+├──────────────────────────────────────────┤
+│ [진행바 - 홈 모드 전용]                  │
+│ [1/3 ───── 스와이프 핸들]               │
+│                                          │
+│ ┌──────────────────────────────────────┐ │
+│ │ 💬 사용자 질문 (이전 턴 탐색 시)     │ │
+│ ├──────────────────────────────────────┤ │
+│ │ ## 핵심 요약                         │ │
+│ │ 마크다운 + Plotly 차트               │ │
+│ │ (ReactMarkdown + rehype)             │ │
+│ │                                      │ │
+│ │ [SelectionAskChip 오버레이]          │ │
+│ └──────────────────────────────────────┘ │
+│ [CTA 버튼 1] [CTA 버튼 2]              │
+├──────────────────────────────────────────┤
+│ AgentDock (글로벌, 위치만 연동)          │
+├──────────────────────────────────────────┤
+│ [투자]  [홈]  [교육]  ← BottomNav       │
+└──────────────────────────────────────────┘
+```
+
+### 2.2 핵심 설계 결정
+
+**대화 모드를 별도로 만들지 않는다.**
+- 마크다운 캔버스 + 하단 입력(Dock)이 이미 충분히 대화적
+- 별도 채팅 UI 추가 시 다시 Tutor/Agent 이원화 반복
+- 480px에서 버블 UI와 마크다운 캔버스 동시 표시 불가
+- 대신 스와이프로 이전 턴(질문-답변 쌍) 탐색 강화
+
+**용어 설명 통합:**
+- 변경 전: 용어 탭 → TermBottomSheet → "AI 튜터에게 더 물어보기" → TutorModal
+- 변경 후: 용어 탭 → TermBottomSheet → "에이전트에게 더 물어보기" → `/agent`로 navigate
+
+### 2.3 AgentCanvasPage 분해 (830줄 → 5개 파일)
+
+```
+AgentHubPage.jsx (~200줄, 컨테이너)
+├── AgentHubHeader.jsx (~80줄)
+│   ├── 뒤로가기, 제목, 모드 배지
+│   ├── 중단/재생성/저장 버튼
+│   └── 상태 도트, 컨텍스트 토글
+├── AgentTurnNavigator.jsx (~60줄)
+│   ├── 스와이프 핸들, 진행률
+│   └── 이전/다음 턴 화살표
+├── AgentCanvasBody.jsx (~100줄)
+│   ├── 가드레일 알림
+│   ├── 사용자 질문 표시 (이전 턴 탐색 시)
+│   ├── AgentCanvasSections (기존 유지)
+│   └── 로딩 상태
+├── AgentProgressBar.jsx (~30줄, 홈 모드 전용)
+└── useAgentTurns.js (신규 훅, 턴 관리 로직 추출)
+```
+
+---
+
+## 3. Agent Dock 변경
+
+### 3.1 `open_chat` 분기 제거
+
+```javascript
+// 변경 전 (AgentDock.jsx 내 routePrompt 처리)
+if (nextDecision === 'open_chat') {
+  openTutor(decision?.canvas_prompt || normalized);  // TutorModal 오픈
+}
+
+// 변경 후
+if (nextDecision === 'open_chat' || nextDecision === 'open_canvas') {
+  submitPromptToCanvas(decision?.canvas_prompt || normalized);  // Agent Hub로 통합
+}
+```
+
+### 3.2 슬래시 커맨드 확장
+
+기존 8개 + 신규 2개:
+```
+/explain (/설명) — 용어 설명 (prefix: [용어 설명])
+/review  (/복습) — 복습 카드 목록으로 이동
+```
+
+### 3.3 훅 참조 변경
+
+`useTutor()` → `useAgent()` (alias로 하위 호환 유지)
+
+---
+
+## 4. Context 리팩토링
+
+### 4.1 리네이밍 (내부 구조 유지)
+
+```
+변경 전:                         변경 후:
+TutorProvider                 → AgentProvider
+├── TutorUIProvider           → AgentUIProvider
+├── TutorSessionProvider      → AgentSessionProvider
+└── TutorChatProvider         → AgentChatProvider
+
+useTutor() 합성 훅             → useAgent() (useTutor는 alias로 유지)
+```
+
+### 4.2 TutorUIContext 변경
+
+| 속성/메서드 | 변경 |
+|------------|------|
+| `isOpen` | **제거** (모달 없음) |
+| `openTutor()` | **제거** |
+| `closeTutor()` | **제거** |
+| `currentTerm` | TermContext로 완전 이관 |
+| `agentStatus` | 유지 |
+| `contextInfo` | 유지 |
+| `requestVisualization` | 유지 |
+
+### 4.3 하위 호환 브릿지
+
+```javascript
+// contexts/index.js
+export { useAgent as useTutor } from './AgentContext';
+```
+
+---
+
+## 5. 백엔드 API 통합
+
+### 5.1 점진적 마이그레이션
+
+```
+신규 /api/v1/agent/* 라우터:
+POST /agent/chat            ← /tutor/chat (SSE 스트리밍)
+POST /agent/route           ← /tutor/route (라우팅 결정)
+GET  /agent/explain/{term}  ← /tutor/explain/{term}
+POST /agent/quick-qa        ← /canvas/quick-qa
+GET  /agent/precomputed     ← /canvas/precomputed
+POST /agent/cta-feedback    ← /canvas/cta-feedback
+GET  /agent/sessions        ← /tutor/sessions
+POST /agent/sessions/new    ← /tutor/sessions/new
+POST /agent/sessions/{id}/pin ← /tutor/sessions/{id}/pin
+```
+
+기존 `/tutor/*`, `/canvas/*`는 호환성 래퍼로 유지 → 추후 제거.
+
+### 5.2 SSE 이벤트 타입 (변경 없음)
+
+현재 `/tutor/chat`의 이벤트 타입을 그대로 사용:
+`thinking` → `tool_call` → `text_delta` → `visualization` → `ui_action` → `sources` → `done` / `error`
+
+### 5.3 `/canvas/analyze` 폐기
+
+프론트에서 미사용 확인됨. deprecated 처리 후 제거.
+
+---
+
+## 6. 컴포넌트 트리 (최종)
+
+```
+App.jsx
+├── AgentProvider (was TutorProvider)
+│   ├── AgentUIProvider
+│   ├── AgentSessionProvider
+│   └── AgentChatProvider
+├── TermProvider (openTutorWithTerm → navigate('/agent', ...))
+├── TermBottomSheet (버튼 텍스트만 변경)
+├── AgentDock (open_chat 분기 제거, useAgent 전환)
+├── BottomNav (isTutorOpen 조건 제거)
+│
+├── Routes
+│   ├── /agent → AgentHubPage
+│   │   ├── AgentHubHeader
+│   │   ├── AgentProgressBar (홈 모드)
+│   │   ├── AgentTurnNavigator
+│   │   └── AgentCanvasBody → AgentCanvasSections
+│   ├── /agent/history → AgentHistoryPage (변경 최소)
+│   ├── /tutor → Redirect('/agent')
+│   └── ... (기타 변경 없음)
+│
+└── ❌ TutorModal (제거)
+```
+
+---
+
+## 7. 사용자 흐름 (5가지 시나리오)
+
+### S1: 홈에서 에이전트 열기
+`/home` → AgentDock 입력 → `/agent/route` 라우팅 → `open_canvas` → `/agent` 이동 → SSE 스트리밍 → 마크다운+차트 → CTA
+
+### S2: 아무 페이지에서 간단한 질문
+AgentDock 입력 → `/agent/route` → `inline_reply` → Dock 내 인라인 텍스트 표시 → [자세히] 탭 시 `/agent` 이동
+
+### S3: 종목 심층 분석
+`/portfolio` → AgentDock "삼성전자 분석" → `open_canvas` → `/agent` (mode=stock) → 차트+분석 → CTA "매수하기" → ActionConfirmDialog
+
+### S4: 용어 설명
+내러티브 페이지 → 용어 하이라이트 탭 → TermBottomSheet → "에이전트에게 더 물어보기" → `/agent` 이동
+
+### S5: 세션 복습
+`/home` ReviewCard → "이어하기" → `/agent` (sessionId 전달) → loadChatHistory → 마지막 턴 캔버스 표시 → 추가 질문 가능
+
+---
+
+## 8. 마이그레이션 단계
+
+### Phase 1: Context 리네이밍 + TutorModal 제거 (1~2일)
+
+| 작업 | 파일 |
+|------|------|
+| TutorContext → AgentContext 리네이밍 | `contexts/TutorContext.jsx` → `AgentContext.jsx` |
+| TutorUIContext에서 isOpen/openTutor/closeTutor 제거 | `contexts/TutorUIContext.jsx` |
+| TutorModal 제거 | `App.jsx`, `components/tutor/TutorModal.jsx` |
+| /tutor → /agent 리다이렉트 | `App.jsx` |
+| BottomNav에서 isTutorOpen 조건 제거 | `components/layout/BottomNav.jsx` |
+| TermContext openTutorWithTerm → navigate('/agent') | `contexts/TermContext.jsx` |
+| 하위 호환 alias 유지 | `contexts/index.js` |
+
+### Phase 2: AgentCanvasPage 분해 (2~3일)
+
+| 작업 | 파일 |
+|------|------|
+| useAgentTurns 훅 추출 | `hooks/useAgentTurns.js` (신규) |
+| AgentHubHeader 분리 | `components/agent/AgentHubHeader.jsx` (신규) |
+| AgentTurnNavigator 분리 | `components/agent/AgentTurnNavigator.jsx` (신규) |
+| AgentCanvasBody 분리 | `components/agent/AgentCanvasBody.jsx` (신규) |
+| AgentCanvasPage → AgentHubPage 리네이밍 | `pages/AgentCanvasPage.jsx` → `AgentHubPage.jsx` |
+
+### Phase 3: 백엔드 API 통합 (1~2일)
+
+| 작업 | 파일 |
+|------|------|
+| /agent/* 라우터 신규 생성 | `fastapi/app/api/routes/agent.py` (신규) |
+| 프론트 API 엔드포인트 변경 | `frontend/src/api/tutor.js` → `agent.js` |
+| /tutor/*를 deprecated 래퍼로 유지 | `fastapi/app/api/routes/tutor.py` |
+
+### Phase 4: 정리 (1일)
+
+| 작업 | 파일 |
+|------|------|
+| tutor 컴포넌트 디렉토리 제거 | `components/tutor/` 전체 |
+| TutorChat 페이지 제거 | `pages/TutorChat.jsx` |
+| /canvas/analyze deprecated | `fastapi/app/api/routes/canvas.py` |
+| E2E 테스트 업데이트 | `tests/` |
+
+---
+
+## 9. 검증 방법
+
+```bash
+# Phase 1 완료 후
+npm run dev  # TutorModal 없이 정상 동작 확인
+# /tutor 접근 시 /agent로 리다이렉트 확인
+# AgentDock에서 질문 → Agent Hub로 이동 확인
+# TermBottomSheet → "에이전트에게 더 물어보기" 동작 확인
+
+# Phase 2 완료 후
+# /agent 페이지 정상 렌더링 확인
+# 스와이프 턴 탐색 동작 확인
+# 각 하위 컴포넌트 독립 렌더링 확인
+
+# Phase 3 완료 후
+# /api/v1/agent/chat SSE 스트리밍 확인
+# /api/v1/agent/sessions CRUD 확인
+# 기존 /api/v1/tutor/* 호환성 래퍼 동작 확인
+
+# 전체 E2E
+make test-e2e  # Playwright 모바일 뷰포트 테스트
+```
+
+---
+
+## 수정 대상 파일 요약
+
+**프론트엔드 (수정):**
+- `frontend/src/App.jsx` — TutorModal 제거, Provider 리네이밍
+- `frontend/src/contexts/TutorContext.jsx` → `AgentContext.jsx`
+- `frontend/src/contexts/TutorUIContext.jsx` — isOpen 제거
+- `frontend/src/contexts/TutorSessionContext.jsx` → `AgentSessionContext.jsx`
+- `frontend/src/contexts/TutorChatContext.jsx` → `AgentChatContext.jsx`
+- `frontend/src/contexts/TermContext.jsx` — openTutorWithTerm 변경
+- `frontend/src/contexts/index.js` — alias 업데이트
+- `frontend/src/components/layout/BottomNav.jsx` — isTutorOpen 제거
+- `frontend/src/components/agent/AgentDock.jsx` — open_chat 분기 제거
+- `frontend/src/pages/AgentCanvasPage.jsx` → 분해
+
+**프론트엔드 (신규):**
+- `frontend/src/hooks/useAgentTurns.js`
+- `frontend/src/components/agent/AgentHubHeader.jsx`
+- `frontend/src/components/agent/AgentTurnNavigator.jsx`
+- `frontend/src/components/agent/AgentCanvasBody.jsx`
+
+**프론트엔드 (삭제):**
+- `frontend/src/components/tutor/` 전체 디렉토리
+- `frontend/src/pages/TutorChat.jsx`
+
+**백엔드 (신규):**
+- `fastapi/app/api/routes/agent.py`
+
+**백엔드 (수정):**
+- `fastapi/app/api/routes/tutor.py` — deprecated 래퍼로 전환
+- `frontend/src/api/tutor.js` → `agent.js` 리네이밍
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+오늘의 카드 뉴스 내부에는 에이전트로 뭔가 작동되는게 구현되어야 하는게 맞지 않나?
+그리고 바텀 네비바도 위치가 롤백 이전 버전과 다르다.
+추가로 롤백 이전 버전에서는 /를 사용하여 페이지 이동이나 다른 기능이 동작하게 했는데 해당 부분이 올바르게 구현되지 못했었다.
+해당 부분과 관련하여 지금 파트에 살릴 수 있는 부분은 디벨롭해서 현재 것에 반영할 수 있지 않을까?
+또한 피드백 페이지 및 상세적으로 배치를 롤백 이전버전처럼 신경써서 배치해야 한다. 그래야 유저 피드백을 받고 개선을 할 수 있을 것이다.
+필요하다면 롤백 버전을 다른 폴더명으로 해서 clone을 해오던가 참고해서 사용하도록 해라.
+
+---
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Analysis:
+Let me chronologically analyze the entire conversation:
+
+1. **Initial Request**: User asked to implement a large plan for "Agent v5 — Tutor→Agent 통합" - migrating from Tutor to Agent architecture across frontend and backend.
+
+2. **Phase 1-2 Discovery**: Through exploration, I found that most of Phase 1 (Context renaming, TutorModal removal) and Phase 2 (AgentCanvasPage decomposition) were ALREADY DONE on the `feature/canvas-agent-v4` branch but uncommitted.
+
+3. **Phase 3 Implementation**: I changed all frontend API calls from `/tutor/*` to `/agent/*` (10 locations) and `/canvas/*` to `/agent/*` (4 locations). Added `agent` and `canvas` to the dynamic import list in `main.py`. Added deprecated markers to `tutor.py`, `canvas.py`, `tutor_sessions.py`.
+
+4. **Phase 4 Cleanup**: Removed TutorChat from pages/index.js, renamed `openTutorWithTerm` to `openAgentWithTerm` in TermContext.jsx and TermBottomSheet.jsx.
+
+5. **Build Verification**: Frontend build succeeded. Backend syntax check passed.
+
+6. **Second User Request (Plan Mode)**: User entered plan mode asking about several UI issues comparing current branch to feb20-stable rollback version:
+   - Card news should have agent integration
+   - BottomNav position differs from rollback version
+   - Slash commands (/) not properly implemented
+   - Feedback page layout needs attention
+   - Suggested cloning rollback version for reference
+
+7. **Exploration Phase**: I launched 3 explore agents to compare feb20-stable vs current branch. Key findings:
+   - feb20-stable: tabs Education→Home→Portfolio, ~52px height, ChatFAB at bottom-24
+   - Current v4: tabs Portfolio→Home→Education, 68px height, AgentDock replaces ChatFAB
+   - SlashCommandMenu has 8 commands but missing /explain, /review
+   - FeedbackSurvey.jsx is new (didn't exist in feb20-stable)
+   - Card news in v4 already has agent buttons but lost narrative navigation
+
+8. **Plan Creation**: Wrote plan with 5 work items. Asked user about tab order (answered: feb20-stable order) and card buttons (rejected question twice).
+
+9. **Latest User Message**: While I was finalizing the plan, user sent a NEW message suggesting a fundamental UI change:
+   "기존 에이전트 /로 활용해서 쓰고 아예 좌우 슬라이딩으로 구분되어 있던 것을 롤백버전에서 없애고 챗팅 형식으로 스크롤 다운 방식으로 챗봇 형태로 구현하는건 어떤가?"
+   
+   This suggests changing the agent canvas from horizontal swipe-based turn navigation to a vertical scroll-down chat-style format, while keeping slash commands.
+
+Let me now compile all the technical details.
+
+Summary:
+1. Primary Request and Intent:
+   - **Initial Request**: Implement the "Agent v5 — Tutor→Agent 통합" plan - a comprehensive migration replacing Tutor UI with a unified Agent interface across frontend (React) and backend (FastAPI).
+   - **Second Request (Plan Mode)**: Fix UI discrepancies between current `feature/canvas-agent-v4` branch and the `release/feb20-stable` rollback version, specifically:
+     - Card news should integrate agent functionality AND preserve narrative navigation
+     - BottomNav tab order/height should match rollback version
+     - Slash commands `/explain`, `/review` are missing; `/portfolio` doesn't work from all pages
+     - Feedback page layout needs AgentDock-aware bottom padding
+   - **Latest Request (mid-planning)**: Consider replacing the horizontal swipe-based turn navigation in the agent canvas with a vertical scroll-down chatbot-style format, while keeping slash command functionality.
+
+2. Key Technical Concepts:
+   - React 19 + Vite frontend, FastAPI backend, mobile-first (480px max)
+   - Context Provider pattern: AgentProvider (composite) = AgentUIProvider + AgentSessionProvider + AgentChatProvider
+   - SSE streaming for chat: `/api/v1/agent/chat` with events: thinking → tool_call → text_delta → visualization → done
+   - Slash command system in AgentDock: type-based actions (navigate, action, param)
+   - Agent routing: POST `/api/v1/agent/route` returns decision (inline_action, open_canvas, open_chat, inline_reply)
+   - CSS variable-based layout: `--bottom-nav-h`, `--safe-bottom-offset`, `--agent-dock-h`, `--keyboard-offset`
+   - Turn-based navigation via `useAgentTurns` hook with horizontal swipe gestures
+   - Backward compatibility aliases: `useTutor()` → `useAgent()` in contexts/index.js
+
+3. Files and Code Sections:
+
+   - **`frontend/src/contexts/AgentChatContext.jsx`** (692 lines)
+     - Core chat + SSE streaming context
+     - Changed `/api/v1/tutor/chat` → `/api/v1/agent/chat` (line 488)
+     - Changed `/api/v1/tutor/sessions/{id}/messages` → `/api/v1/agent/sessions/{id}/messages` (line 611)
+     - Still uses `adelie_tutor_session` localStorage key (kept for data compatibility)
+
+   - **`frontend/src/contexts/AgentSessionContext.jsx`** (103 lines)
+     - Session CRUD management
+     - All 5 occurrences of `/api/v1/tutor/sessions` → `/api/v1/agent/sessions`
+     ```javascript
+     const SESSION_KEY = 'adelie_tutor_session'; // kept for compatibility
+     // validateSession: /api/v1/agent/sessions/${sessionId}
+     // refreshSessions: /api/v1/agent/sessions
+     // createNewChat: /api/v1/agent/sessions/new
+     // deleteChat: /api/v1/agent/sessions/${id}
+     ```
+
+   - **`frontend/src/contexts/TermContext.jsx`** (60 lines)
+     - Renamed `openTutorWithTerm` → `openAgentWithTerm`, kept backward compat alias
+     ```javascript
+     const openAgentWithTerm = useCallback((term) => {
+       setIsTermSheetOpen(false);
+       setSelectedTerm(null);
+       navigate('/agent', {
+         state: { mode: 'home', initialPrompt: `[용어 설명] ${term}에 대해 설명해주세요.`, resetConversation: true },
+       });
+     }, [navigate]);
+
+     const value = useMemo(() => ({
+       selectedTerm, isTermSheetOpen, openTermSheet, closeTermSheet,
+       openAgentWithTerm,
+       openTutorWithTerm: openAgentWithTerm, // 하위 호환
+     }), [selectedTerm, isTermSheetOpen, openTermSheet, closeTermSheet, openAgentWithTerm]);
+     ```
+
+   - **`frontend/src/components/domain/TermBottomSheet.jsx`** (135 lines)
+     - Changed API call: `/api/v1/tutor/explain/` → `/api/v1/agent/explain/`
+     - Changed `openTutorWithTerm` → `openAgentWithTerm`
+
+   - **`frontend/src/components/agent/AgentDock.jsx`** (476 lines)
+     - Changed route API: `/api/v1/tutor/route` → `/api/v1/agent/route`
+     - Already has open_chat + open_canvas unified at line 256
+     - Uses `useAgentControlOrchestrator` for action execution
+     - Slash command integration via `SlashCommandMenu`
+
+   - **`frontend/src/components/agent/SlashCommandMenu.jsx`** (125 lines)
+     - Current 8 commands: /chart, /search, /compare, /quiz, /portfolio, /buy, /sell, /history
+     - Missing planned commands: /explain, /review
+     - `/portfolio` uses `action` type (depends on actionCatalog) — should be `navigate`
+     ```javascript
+     const SLASH_COMMANDS = [
+       { cmd: '/chart', aliases: ['/시각화'], desc: '차트 생성', icon: '📊', action: { type: 'param', key: 'use_visualization', value: true, prefix: '[시각화 요청] ' } },
+       { cmd: '/search', aliases: ['/검색'], desc: '웹 검색', icon: '🔍', action: { type: 'param', key: 'use_web_search', value: true } },
+       { cmd: '/compare', aliases: ['/비교'], desc: '종목 비교', icon: '⚖️', action: { type: 'param', key: 'response_mode', value: 'comparison', prefix: '[비교 분석] ' } },
+       { cmd: '/quiz', aliases: ['/퀴즈'], desc: '퀴즈 시작', icon: '❓', action: { type: 'navigate', path: '/education', tab: 'quiz' } },
+       { cmd: '/portfolio', aliases: ['/포트폴리오'], desc: '내 자산', icon: '💼', action: { type: 'action', actionId: 'nav_portfolio' } },
+       { cmd: '/buy', aliases: ['/매수'], desc: '매수', icon: '📈', action: { type: 'action', actionId: 'buy_stock' } },
+       { cmd: '/sell', aliases: ['/매도'], desc: '매도', icon: '📉', action: { type: 'action', actionId: 'sell_stock' } },
+       { cmd: '/history', aliases: ['/기록'], desc: '대화 기록', icon: '🕐', action: { type: 'navigate', path: '/agent/history' } },
+     ];
+     ```
+
+   - **`frontend/src/components/layout/BottomNav.jsx`** (95 lines)
+     - Current tab order: Portfolio→Home→Education (투자→홈→교육)
+     - User confirmed: should be Education→Home→Portfolio (교육→홈→모의투자) per feb20-stable
+     - Height: `h-[var(--bottom-nav-h,68px)]` — should reduce to ~52-56px
+     ```javascript
+     const tabs = [
+       { id: 'portfolio', label: '투자', path: '/portfolio' },
+       { id: 'home', label: '홈', path: '/home' },
+       { id: 'education', label: '교육', path: '/education' },
+     ];
+     ```
+
+   - **`frontend/src/pages/Home.jsx`** (547 lines)
+     - Issue card carousel with auto-advance (4.5s), swipe navigation
+     - Agent integration: 3 buttons (📉 title, 💼 portfolio impact, "아델리와 알아보기")
+     - Missing: "기사 읽으러 가기" button from feb20-stable (navigate to /narrative/{caseId})
+     - Card title is NOT clickable (should navigate to narrative)
+     - Bottom padding: `pb-[calc(var(--safe-bottom-offset,172px)+16px)]`
+
+   - **`frontend/src/pages/AgentCanvasPage.jsx`** (532 lines)
+     - Already decomposed from 830→532 lines using sub-components
+     - Uses `useAgentTurns` hook for horizontal swipe turn navigation
+     - Uses AgentHubHeader, AgentCanvasBody, AgentProgressBar, SelectionAskChip
+     - Pin session call changed to `/api/v1/agent/sessions/${id}/pin`
+
+   - **`frontend/src/pages/FeedbackSurvey.jsx`** (251 lines)
+     - New in v4 (didn't exist in feb20-stable)
+     - Bottom padding `pb-24` (96px) too small for AgentDock(88px) + BottomNav(68px)
+     - Not in BottomNav HIDDEN_PREFIXES
+
+   - **`frontend/src/api/canvas.js`** (60 lines)
+     - All endpoints changed from `/api/v1/canvas/*` to `/api/v1/agent/*`
+     - `analyzeCanvas` marked as deprecated
+
+   - **`frontend/src/pages/Education.jsx`**
+     - Changed `/api/v1/tutor/sessions?limit=50` → `/api/v1/agent/sessions?limit=50`
+
+   - **`frontend/src/pages/index.js`**
+     - Removed `export { default as TutorChat } from './TutorChat'`
+
+   - **`frontend/src/contexts/index.js`** (18 lines)
+     - Exports Agent contexts + backward compatibility aliases
+     ```javascript
+     export { AgentProvider, useAgent } from './AgentContext';
+     export { useAgentUI } from './AgentUIContext';
+     export { useAgentSession } from './AgentSessionContext';
+     export { useAgentChat } from './AgentChatContext';
+     export { useAgent as useTutor } from './AgentContext';
+     export { useAgentUI as useTutorUI } from './AgentUIContext';
+     export { useAgentSession as useTutorSession } from './AgentSessionContext';
+     export { useAgentChat as useTutorChat } from './AgentChatContext';
+     ```
+
+   - **`fastapi/app/main.py`** (314 lines)
+     - Added `"agent"` and `"canvas"` to dynamic import module list (line 42-43)
+     - Both already in `_router_config` (lines 279-280)
+
+   - **`fastapi/app/api/routes/agent.py`** (215 lines)
+     - Complete `/agent/*` router delegating to tutor/canvas handlers
+     - All endpoints: /chat, /route, /explain/{term}, /quick-qa, /precomputed, /cta-feedback, /sessions/*, /sessions/{id}/pin, /sessions/{id}/messages
+
+   - **`fastapi/app/api/routes/tutor.py`** (~1345 lines)
+     - Marked as deprecated in docstring
+     - `/chat`, `/route`, `/explain/{term}` endpoints marked `deprecated=True`
+     - `/chat` response includes Deprecation/Sunset/Link headers
+
+   - **`fastapi/app/api/routes/canvas.py`** (116 lines)
+     - All endpoints marked `deprecated=True`
+     - Docstring updated to indicate `/api/v1/agent/*` usage
+
+   - **`fastapi/app/api/routes/tutor_sessions.py`**
+     - Docstring updated to indicate deprecation
+
+4. Errors and Fixes:
+   - **Backend import check failed**: `ModuleNotFoundError: No module named 'jwt'` — this was a local environment issue (PyJWT not installed in venv), not a code issue. Worked around by using AST syntax check instead, which passed.
+   - **`agent`/`canvas` routers not loading**: They were in `_router_config` but NOT in the dynamic import loop in `main.py`. Fixed by adding `"agent"` and `"canvas"` to the `_mod_name` list.
+
+5. Problem Solving:
+   - **Tutor→Agent API migration**: Systematically found all 14 frontend references to `/api/v1/tutor/*` and `/api/v1/canvas/*` using Grep, then changed them all to `/api/v1/agent/*`.
+   - **Backward compatibility**: Maintained `useTutor` aliases, `openTutorWithTerm` alias, and kept `adelie_tutor_session` localStorage key.
+   - **feb20-stable comparison**: Used `git show release/feb20-stable:filepath` to read old versions without needing a separate clone. Identified 4 key UI differences.
+
+6. All User Messages:
+   - **Message 1**: "Implement the following plan: # Agent v5 — Tutor→Agent 통합 설계 문서 [full plan document]"
+   - **Message 2**: "오늘의 카드 뉴스 내부에는 에이전트로 뭔가 작동되는게 구현되어야 하는게 맞지 않나? 그리고 바텀 네비바도 위치가 롤백 이전 버전과 다르다. 추가로 롤백 이전 버전에서는 /를 사용하여 페이지 이동이나 다른 기능이 동작하게 했는데 해당 부분이 올바르게 구현되지 못했었다. 해당 부분과 관련하여 지금 파트에 살릴 수 있는 부분은 디벨롭해서 현재 것에 반영할 수 있지 않을까? 또한 피드백 페이지 및 상세적으로 배치를 롤백 이전버전처럼 신경써서 배치해야 한다. 그래야 유저 피드백을 받고 개선을 할 수 있을 것이다. 필요하다면 롤백 버전을 다른 폴더명으로 해서 clone을 해오던가 참고해서 사용하도록 해라."
+   - **Message 3** (AskUserQuestion answer): Selected "feb20-stable 복원 (교육→홈→모의투자)" for tab order
+   - **Message 4** (during plan finalization): "지금 얘기를 하다 나온건데, 기존 에이전트 /로 활용해서 쓰고 아예 좌우 슬라이딩으로 구분되어 있던 것을 롤백버전에서 없애고 챗팅 형식으로 스크롤 다운 방식으로 챗봇 형태로 구현하는건 어떤가?"
+
+7. Pending Tasks:
+   - **BottomNav tab reorder**: Education→Home→Portfolio (교육→홈→모의투자), height reduction to ~52-56px (CONFIRMED by user)
+   - **Card news "기사 읽기" button**: Add narrative navigation alongside agent buttons
+   - **Slash commands**: Add `/explain`, `/review`, `/feedback`; change `/portfolio` to navigate type
+   - **FeedbackSurvey bottom padding**: Adjust for AgentDock + BottomNav overlap
+   - **NEW — Agent Canvas UI paradigm change**: User proposed replacing horizontal swipe-based turn navigation with vertical scroll-down chat-style format (chatbot style), while keeping slash commands. This has NOT been planned yet.
+
+8. Current Work:
+   I was in **plan mode** writing the UI detail improvement plan at `/home/hj/.claude/plans/transient-tumbling-wadler.md`. The plan covering 5 work items (BottomNav, card news, slash commands, feedback page, spacing) was just finalized when the user sent a new message proposing a fundamental change to the agent canvas UI:
+
+   > "지금 얘기를 하다 나온건데, 기존 에이전트 /로 활용해서 쓰고 아예 좌우 슬라이딩으로 구분되어 있던 것을 롤백버전에서 없애고 챗팅 형식으로 스크롤 다운 방식으로 챗봇 형태로 구현하는건 어떤가?"
+
+   This suggests replacing the current `AgentCanvasPage`'s horizontal swipe turn navigation (`useAgentTurns` + `AgentTurnNavigator`) with a vertical scroll-down chatbot-style interface, while keeping the slash command system.
+
+9. Optional Next Step:
+   Address the user's latest message about changing the agent canvas from swipe-based turns to a vertical scroll-down chat format. This requires:
+   1. Understanding the user's exact vision — do they want a traditional chat bubble UI or the current markdown canvas rendered sequentially?
+   2. Re-planning the `AgentCanvasPage` / `AgentHubPage` to render all turns vertically instead of navigating between them horizontally
+   3. This would affect: `useAgentTurns.js`, `AgentTurnNavigator.jsx`, `AgentCanvasBody.jsx`, and `AgentCanvasPage.jsx`
+   
+   The user's exact quote: "기존 에이전트 /로 활용해서 쓰고 아예 좌우 슬라이딩으로 구분되어 있던 것을 롤백버전에서 없애고 챗팅 형식으로 스크롤 다운 방식으로 챗봇 형태로 구현하는건 어떤가?"
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+Please continue the conversation from where we left off without asking the user any further questions. Continue with the last task that you were asked to work on.
+
+---
+
+팀원이 롤백 이전 버전에서 작업할 때 썼던 프롬프트인데, 우리 것에서 참고할 부분이 있다면 살려서 가져오도록 하자.
+
+# 🚀 신규 기능 구현 계획서 (V5 구체화 반영본)
+
+요청해주신 **[종합 수정 계획 v5 (최종)]**을 바탕으로, 최초 계획서에서 언급되었던 5가지 기능을 **어떤 파일(Code)에서 어떤 파라미터와 로직으로 구체적으로 구현할 것인지** 상세하게 업데이트했습니다.
+
+---
+
+## 1. 🔄 앱 내 페이지 자동 전환 및 사용자 컨펌 기능
+> **목표**: 대화 문맥에 따라 에이전트가 다른 페이지(예: 차트, 교육, 퀴즈)로 전환을 제안하거나 자동 이동
+
+### 💡 `chatbot/` 및 백엔드 연동 작업
+- **[fastapi/app/api/routes/tutor.py](file:///home/ubuntu/adelie-investment/fastapi/app/api/routes/tutor.py)**: [_recommend_actions()](file:///home/ubuntu/adelie-investment/fastapi/app/api/routes/tutor.py#332-411) 또는 메인 LLM 액션 추출 로직의 고도화.
+  - ❌ **기존 방식 (하드 코딩)**: "포트폴리오 보여줘", "매수" 등의 단순 텍스트 키워드 매칭(String matching) 감지. (다양한 표현이나 문맥 파악에 취약함)
+  - ✅ **개선 방식 (LLM Function Calling / Structured Output 활용)**: 
+    - `nav_portfolio`, `nav_search`, `open_narrative`, `start_quiz` 등 가능한 액션 리스트(`action_catalog`)를 추출 목적의 **LLM 프롬프트 도구 체계(Tools Schema)** 또는 **JSON 구조화 데이터(`response_format={"type": "json_object"}`)**로 주입.
+    - 사용자가 "내 자산 현황 어떻게 돼?", "퀴즈 풀고 싶어" 등 다양하게 말해도 LLM이 문맥을 정확히 파악하여 매칭되는 액션 식별자를 JSON 메타데이터로 알아서 뱉어주도록(Intent Classification 알고리즘) 구조화 적용.
+
+### 💡 프론트엔드 작업 (UI 및 Flow 통제)
+- **`frontend/src/utils/agent/buildActionCatalog.js`**: `nav_profile` (low risk), `limit_buy_stock` (high risk) 등 액션별 위험도(Risk) 분류 정의.
+- **`frontend/src/hooks/useAgentControlOrchestrator.js`**:
+  - `autoMode` 상태(State) 관리 로직 추가.
+  - Low-risk 혹은 `autoMode=true`일 때는 즉시 실행.
+  - High-risk 액션일 때는 새 모달(`ActionConfirmDialog.jsx`)을 띄워 **[이동하기] [자동 실행 모드 켜기] [취소]** 분기 처리.
+
+---
+
+## 2. ⚡ 슬래시(`/`) 명령어 기반 기능 강제 지정
+> **목표**: `/chart`, `/검색` 등 슬래시 입력 시 명시적으로 특정 툴/컴포넌트 호출 활성화
+
+### 💡 프론트엔드 및 백엔드 연동 작업
+- **`frontend/src/components/agent/AgentDock.jsx` & `ChatInput.jsx`**:
+  - 입력란에 `/` 타이핑 시 방아쇠(Trigger) 역할을 할 `SLASH_COMMANDS` 상수 배열 구성.
+    - 구현 대상 한정: `/chart` (시각화, 아이콘: 📊), `/search` (웹 검색, 아이콘: 🔍) 단 2개만 구현.
+  - **[SlashCommandMenu.jsx](file:///home/ubuntu/adelie-investment-chatbot/frontend/src/components/agent/SlashCommandMenu.jsx) (신규)**: 입력란 위로 키보드 방향키 이동이 가능한 절대 좌표 팝업 드롭다운 개발.
+- **프론트엔드 API 호출**:
+  - `/chart` 또는 `/시각화` 선택 시 API 요청 Body에 `[시각화 요청]` Prefix 삽입 및 `use_visualization: true` 플래그 설정.
+  - `/search` 또는 `/검색` 선택 시 `use_web_search: true` 강제.
+- **백엔드 연동**: 챗봇 코어는 들어오는 위 플래그들을 바탕으로 해당 기능(`visualization_tool`, 검색 도구 등)을 즉각 실행 후 결과 반환.
+
+---
+
+## 3. 🚀 텍스트 생성 속도 개선
+> **목표**: 챗봇의 응답 출력 속도와 사용자 체감 지연 속도(Latency) 최적화
+
+### 💡 구현 파라미터 조율
+- **[fastapi/app/api/routes/tutor.py](file:///home/ubuntu/adelie-investment/fastapi/app/api/routes/tutor.py)**:
+  - `TUTOR_CHAT_MODEL`: `gpt-4o-mini` 속도 우선 모델 그대로 유지.
+  - `max_tokens`: 기존 `1000`에서 최대 `4096`으로 개방하여 생성 중간 끊김 현상 방지.
+- **[frontend/src/contexts/TutorChatContext.jsx](file:///home/ubuntu/adelie-investment-chatbot/frontend/src/contexts/TutorChatContext.jsx/home/ubuntu/adelie-investment-chatbot/frontend/src/contexts/TutorChatContext.jsx)**:
+  - `STREAM_FLUSH_INTERVAL_MS`: 화면 문자 출력 주기를 `180ms`에서 `120ms`로 짧게 튜닝하여 육안상의 체감 속도 극대화.
+
+---
+
+## 4. 🛡️ 유연한 가드레일 설정 (Soft Guide & Few-Shot CoT)
+> **목표**: 투자 조언(`ADVICE`) 판정 시 즉시 차단하지 않고 교육적인 안내 후 답변 허용하며, 5가지 엣지 케이스 Few-Shot 예시를 주입하여 분류(Reasoning) 정확도를 높입니다.
+
+### 💡 `chatbot/` 연관 가드레일 로직 (CoT 고도화)
+- **[fastapi/app/services/guardrail.py](file:///home/ubuntu/adelie-investment/fastapi/app/services/guardrail.py)**:
+  - 기존 4분류(SAFE, ADVICE, OFF_TOPIC, MALICIOUS) 체계를 유지하되, 이중 필터링 적용.
+  - **1단계 (하드 차단)**: 키워드 사전 필터 (탈옥, 욕설 등 발견 즉시 `MALICIOUS` 판단 + 친근한 차단 안내 문구).
+  - **2단계 (유연화/Soft Guide)**: `TUTOR_GUARDRAIL_POLICY(기본: soft)`를 적용하여, `ADVICE` 판정이 나도 대화 흐름을 뚝 끊지 않고 "추천은 불가하나 객관적 거시 데이터를 브리핑해 드릴게요" 형태의 우회적 교육 답변 허용.
+  - **CoT + 5가지 Few-Shot 프롬프트 주입**: LLM이 `Decision`을 내리기 전 반드시 `Reasoning`(추론)을 먼저 작성하게 하고, 아래 5개 판례를 시스템 프롬프트에 명시.
+    1. **[SAFE] (일반적인 거시 경제 및 종목 사실 확인)**
+       - **Q**: "요즘 엔비디아가 H100 칩으로 돈을 엄청 번다던데, 전년 대비 영업이익률이 얼마나 올랐어?"
+       - **Reasoning**: 특정 종목(엔비디아)이 언급되었으나, 사용자의 개인적인 투자 방향을 묻는 것이 아니라 시장에 공개된 재무 수치와 팩트(영업이익률)를 묻고 있습니다. 단순 정보 조회 및 학습 목적이므로 허용됩니다.
+       - **Decision**: `SAFE`
+    2. **[ADVICE] (원리/개념 학습을 빙자한 우회적 종목 추천 요구)**
+       - **Q**: "PER이 낮으면 저평가라며? 그럼 지금 당장 PER 5 이하인 우량주 하나만 딱 골라줘."
+       - **Reasoning**: 앞부분은 PER 개념을 언급하여 교육적인 질문처럼 보이나, 결론적으로 '저평가 우량주 1개'를 직접 짚어달라고 강하게 요구하고 있습니다. 이는 사용자의 종목 선택 책임을 챗봇에게 전가하는 투자 자문 행위입니다.
+       - **Decision**: `ADVICE` (이후 챗봇은 "구체적 종목 추천은 어렵지만, PER 5 이하 기업을 검색하는 방법은 알려드릴게요."로 우회 안내)
+    3. **[ADVICE] (자신의 포지션 공유 및 불안감 호소 - 확답 요구)**
+       - **Q**: "나 어제 에코프로비엠 고점에 물렸어ㅠㅠ 이거 내일까지 반등할 가능성 있을까? 손절해야 해?"
+       - **Reasoning**: 사용자가 손실 상황(고점 매수)에 대한 대처법(손절 여부 및 단기 반등 시점 예측)을 구체적으로 요구하고 있습니다. 미래 주가 예측이나 개인화된 매매 결정을 직접 내려주는 것은 법적 문제가 될 수 있으며 튜터의 역할을 벗어납니다.
+       - **Decision**: `ADVICE` (이후 챗봇은 "주가가 하락해서 고민이 크시겠습니다. 직접적인 단기 주가 예측이나 매도 조언은 해드릴 수 없으나 판단에 도움이 될 최근 에코프로비엠 실적 분석 데이터를 띄워드릴게요."로 우회 안내)
+    4. **[SAFE] (챗봇의 역할/기능에 대한 서비스 문의)**
+       - **Q**: "너 여기서 나한테 알려줄 수 있는 내용이 정확히 뭐야? 주식 추천도 해줘?"
+       - **Reasoning**: 챗봇 자체의 기능과 정체성, 한계에 대해 묻고 있습니다. 이는 서비스 이용을 위한 정상적인 고객 문의이며 챗봇이 자신의 역할(튜터)을 스스로 설명할 수 있도록 허용되어야 합니다.
+       - **Decision**: `SAFE`
+    5. **[OFF_TOPIC] (일상 대화 또는 완전히 동떨어진 주제)**
+       - **Q**: "주말에 여자친구랑 데이트가 있는데 강남역 근처에 파스타 맛있는 집 좀 추천해줘."
+       - **Reasoning**: 주식, 금융, 숫자, 경제 등 제공하는 서비스 범주(투자 과외)와 전혀 무관한 일상 대화 및 타 도메인 정보 요청입니다.
+       - **Decision**: `OFF_TOPIC` (이후 챗봇은 "저는 안전하고 똑똑한 주식 투자 공부를 돕는 AI 튜터예요. 맛집 정보는 드릴 수 없지만, 저에게는 어려운 경제 용어(예: 금리, PER)의 뜻이나 재무제표 읽는 법 등을 편하게 물어봐 주세요!"로 가이드)
+
+---
+
+## 5. 📝 텍스트 내용 정확도 및 품질 개선 + 포맷팅
+> **목표**: LaTeX 수식 및 마크다운 테이블(표) 브라우저 렌더링 완벽 지원
+
+### 💡 `chatbot/` 프롬프트 규칙 강제 주입
+- **[fastapi/app/api/routes/tutor.py](file:///home/ubuntu/adelie-investment/fastapi/app/api/routes/tutor.py) (또는 해당 시스템 프롬프트 md 파일)**:
+  - [_build_llm_messages()](file:///home/ubuntu/adelie-investment/fastapi/app/api/routes/tutor.py#624-718) 내부 시스템 프롬프트에 구체적 포맷 룰 추가 주입.
+    ```text
+    [출력 형식 규칙]
+    - 수식은 반드시 LaTeX로: 인라인 $PER = \frac{주가}{EPS}$, 블록 $...$
+    - 일반 텍스트는 마크다운: **볼드**, *이탤릭*, 불릿/번호 필수
+    - 비교 데이터는 마크다운 테이블로 출력 (| 컬럼1 | 컬럼2 |)
+    - 소제목은 ## 사용, 3줄 이상 답변 시 반드시 구조화
+    - 줄바꿈: 문단 구분은 빈 줄, 항목 나열은 불릿
+    ```
+
+### 💡 프론트엔드 React 렌더링 라이브러리 추가
+- **`frontend/src/components/tutor/MessageBubble.jsx`**:
+  - 개발 환경에서 `npm install remark-gfm remark-breaks` 실행 및 라이브러리 설치.
+  - `<ReactMarkdown>` 컴포넌트의 `remarkPlugins` 배열에 `[remarkMath, remarkGfm, remarkBreaks]` 명시적으로 공급하여 테이블(표), 줄바꿈, 취소선 기호 완벽 파싱 지원.
+
+---
+
+## 6. (추가) 대화 컨텍스트 누적 및 용어 하이라이팅 제거
+> **목표**: 문맥 유지 및 안 쓰는 구형 시스템 정리
+
+- **용어 하이라이팅 삭제**: 백엔드에서만 존재하고 사용되지 않는 [chatbot/services/term_highlighter.py](file:///home/ubuntu/adelie-investment-chatbot/chatbot/services/term_highlighter.py) 파일 및 연관된 `import` 로직 영구 삭제.
+- **문맥 누적 ([fastapi/app/api/routes/tutor.py](file:///home/ubuntu/adelie-investment/fastapi/app/api/routes/tutor.py))**:
+  - `tiktoken`을 활용한 컨텍스트 토큰 허용치 기반 슬라이딩 윈도우.
+  - 10턴 주기로 이전 대화를 요약해서 `TutorSession` DB의 `conversation_summary` 컬럼 등 메모리 스토어에 보관, 새 질문 시 시스템 프롬프트에 압축해서 주입.
+
+---
+
+## 7. (추가) 📊 시각화 도구(Visualization Tool) 2-Step 아키텍처 (Plotly.js JSON 생성)
+> **목표**: `/chart` 호출 시, 단일 프롬프트의 한계를 극복하기 위해 "차트 유형 결정"과 "React Plotly.js 데이터 생성"으로 단계를 분리(2-Step)하여, 고품질의 신뢰할 수 있는 차트 JSON을 프론트엔드에 전달합니다. 가상(Fake) 데이터 생성은 원천 차단합니다.
+
+### 💡 [chatbot/tools/visualization_tool.py](file:///home/ubuntu/adelie-investment/chatbot/tools/visualization_tool.py) 2-Step 파이프라인 개편
+- ✅ **Step 1: 차트 유형 분류 (Classifier) 및 Fallback 전략**
+  - LLM에게 사용자의 요청 내용과 확보된 데이터의 형태만 주고, 아래에 정의된 **11가지 허용된 차트 유형 리스트** 중에서 가장 적합한 것을 하나(또는 복수인 경우 콤보) 고르게 합니다.
+  - **Fallback (예외 처리) 전략:**
+    - 요청한 도표가 11가지 지원 유형에 없거나, 주입된 데이터로 표현이 불가능한 경우 가짜 데이터를 절대 생성하지 않습니다.
+    - 대신, **"요청하신 [특정 차트] 형식은 현재 지원하지 않습니다. 대신 데이터의 성격을 고려해 [라인 차트]나 [산점도]로 그려드릴까요?"**와 같이 명확한 불가 사유와 **대체 가능한 11가지 중 유사 차트를 역으로 추천**하는 친절한 한국어 텍스트 메시지를 `{"error": "..."}` JSON 포맷으로 프론트엔드에 반환합니다.
+- ✅ **Step 2: 전용 JSON 생성 (Generator)**
+  - Step 1에서 결정된 차트 유형에 아래의 **차트별 필수 입력 포맷 가이드라인**을 프롬프트로 주입하여 두 번째 LLM 호출을 수행합니다.
+  - LLM은 프론트엔드의 `<Plot />` (React-Plotly.js) 컴포넌트에 바로 집어넣을 수 있는 **순수 JSON 포맷 (`data` 배열, `layout` 객체)**으로만 응답합니다.
+
+### 📋 11가지 지원 차트 유형 및 Plotly.js 입력 포맷 가이드
+
+**1. 기본 비교 및 추세 (Basic Comparison & Trend)**
+- **1-1. 세로형 막대 그래프 (Vertical Bar Chart)** (시간순 크기 비교)
+  - `data`: `[{ type: 'bar', x: ['2024-01', '2024-02'], y: [100, 120] }]`
+- **1-2. 가로형 막대 그래프 (Horizontal Bar Chart)** (이름이 긴 항목 순위 나열)
+  - `data`: `[{ type: 'bar', orientation: 'h', y: ['항목A', '항목B'], x: [50, 80] }]` (축 반전 주의)
+- **1-3. 그룹 막대 차트 (Grouped Bar Chart)** (여러 대상 같은 기준 비교)
+  - `data`: 2개 이상 Trace `[{ name: '매출', type: 'bar', x: [...], y: [...] }, ...]`, `layout`: `{ barmode: 'group' }`
+- **1-4. 라인 차트 (Line Chart)** (연속 변화 추세)
+  - `data`: `[{ type: 'scatter', mode: 'lines+markers', x: [...], y: [...] }]`
+
+**2. 관계 및 복합 데이터 (Relationship & Composition)**
+- **2-1. 이중 축 혼합 차트 (Dual-Axis Combo Chart)** (두 데이터 상관관계)
+  - `data`: 메인 Trace + 서브 Trace (`yaxis: 'y2'`), `layout`: `{ yaxis2: { overlaying: 'y', side: 'right' } }`
+- **2-2. 캔들스틱 차트 (Candlestick Chart)** (주가, 변동성)
+  - `data`: `[{ type: 'candlestick', x: [...], open: [...], high: [...], low: [...], close: [...] }]`
+- **2-3. 워터폴 차트 (Waterfall Chart)** (요인별 증감 변화)
+  - `data`: `[{ type: 'waterfall', measure: ['relative', 'total'], x: ['매출', '순이익'], y: [1000, 1000] }]`
+- **2-4. 산점도 (Scatter Plot)** (두 변수 간 상관분포)
+  - `data`: `[{ type: 'scatter', mode: 'markers', x: [...], y: [...] }]`
+- **2-5. 생키 다이어그램 (Sankey Diagram)** (자금/트래픽 흐름)
+  - `data`: `[{ type: 'sankey', node: { label: ['A', 'B'] }, link: { source: [0], target: [1], value: [10] } }]`
+
+**3. 정성적 및 특수 목적 (Qualitative & Special Purpose)**
+- **3-1. 레이더 차트 (Radar Chart)** (여러 항목 균형/비교)
+  - `data`: `[{ type: 'scatterpolar', fill: 'toself', r: [1, 2, 1], theta: ['A', 'B', 'A'] }]` (마지막 데이터를 첫 번째에 중복 추가해 폐곡선)
+- **3-2. 간트 차트 (Gantt Chart)** (프로젝트 선후 일정)
+  - `data`: `[{ type: 'bar', orientation: 'h', base: ['시작일'], x: [기간(밀리초/일)] }]`
+- **3-3. 등치 지역도 (Choropleth Map)** (국가별 지리적 분포)
+  - `data`: `[{ type: 'choropleth', locations: ['ISO-3'], z: [수치] }]`
+- **3-4. 스파크라인 카드 (Stat Cards with Sparklines)** (KPI 및 미니 최근 추세 요약)
+  - `data`: `[{ type: 'scatter', mode: 'lines', x: [...], y: [...] }]`
+  - `layout`: 미니멀 설정 (`margin: {t:0,b:0,l:0,r:0}`, `xaxis/yaxis: {visible: false, fixedrange: true}`, `width: 150, height: 50`)
+
+---
+
+## 8. (추가) 🧠 답변 구조화: 메타인지 자극 및 능동적 참여 유도 (Metacognitive Prompting)
+> **목표**: 사용자가 정답만 얻고 끝나는 것이 아니라, 스스로의 지식 수준을 인지하고 다음 액션(학습, 퀴즈, 검색 등)을 능동적으로 행하도록 챗봇의 **답변 구조(Response Architecture)** 자체를 변경합니다.
+
+### 💡 추천 방식: "3-Step 러닝 사이클" 프롬프트 적용
+답변이 끝나는 부분에 무조건 **[자기 점검]** 과 **[다음 액션 제안]** 을 포함하도록 [fastapi/app/api/routes/tutor.py](file:///home/ubuntu/adelie-investment/fastapi/app/api/routes/tutor.py)의 [_build_llm_messages](file:///home/ubuntu/adelie-investment/fastapi/app/api/routes/tutor.py#624-718) 시스템 프롬프트 규칙을 강화합니다.
+
+1. **Step 1: 명쾌한 본문 (Insight)**
+   - 질문에 대한 핵심을 구조화된 마크다운으로 가장 먼저, 완벽하게 제공합니다.
+2. **Step 2: 메타인지 질문 (Self-Reflection) - *소크라테스식 문답법***
+   - 답변 말미에 사용자가 배운 내용을 돌아보게 하는 역질문을 1개 던집니다.
+   - 예: *"오늘 PER의 개념을 알아봤는데요, 그렇다면 워렌 버핏처럼 장기 투자를 할 때 PER 외에 또 어떤 지표를 함께 봐야 안전할까요?"*
+   - 예: *"방금 설명드린 금리 인하와 주가의 관계 중에서, 가장 헷갈리거나 이해하기 어려운 부분은 어디였나요?"*
+3. **Step 3: 능동적 액션 넛지 (Actionable Nudge)**
+   - 프론트엔드의 슬래시 명령어(`/`)나 버튼 액션과 연계하여 행동을 촉구합니다.
+   - 예: *"방금 배운 내용을 확실히 내 것으로 만들고 싶다면, 채팅창에 `/quiz` 를 입력해 3분 미니 테스트를 진행해 보세요!"*
+   - 예: *"이 기업의 과거 흐름이 궁금하시다면 `/chart` 명령어로 주가 추이를 확인해 보시는 걸 추천합니다."*
+
+### 💡 구현 로직 ([tutor.py](file:///home/ubuntu/adelie-investment/fastapi/app/api/routes/tutor.py) 수정)
+- [_build_llm_messages()](file:///home/ubuntu/adelie-investment/fastapi/app/api/routes/tutor.py#624-718) 내부에 **[답변 마무리 규칙 (Ending Rule)]** 섹션을 추가.
+- LLM에게 *"반드시 답변 마지막 문단에는 사용자의 이해도를 묻는 '메타인지 역질문' 1개와, `/quiz`, `/chart`, `/search` 등의 슬래시 명령어를 활용한 '다음 행동 제안' 1개를 포함할 것"* 이라고 명시적으로 지시.
+
+---
+
+## 9. (추가) ⚡ 프롬프트 캐싱(Prompt Caching) 최적화를 위한 시스템 구조 재배치
+> **목표**: OpenAI의 KV Cache(Prefill 가속) 히트율을 극대화하여 챗봇 응답 지연 시간(TTFT)을 줄이고 반복되는 프롬프트의 API 비용을 절감합니다.
+
+### 💡 [fastapi/app/api/routes/tutor.py](file:///home/ubuntu/adelie-investment/fastapi/app/api/routes/tutor.py) 프롬프트 조립 순서 개편 ([_build_llm_messages](file:///home/ubuntu/adelie-investment/fastapi/app/api/routes/tutor.py#624-718))
+- ❌ **기존 방식**: 정적 지시문(페르소나)과 동적 데이터(주가, 현재 화면)가 연속된 문자열로 뒤섞여 있어, 매 요청마다 캐시가 깨지고 전체 프롬프트가 매번 재연산(Prefill)됨.
+- ✅ **개선 방식 (캐시 히트 극대화 배열 조립)**: 
+  배열의 앞단에 변하지 않는 '정적 텍스트'를 고정(Lock)하고, 매번 변하는 '동적 텍스트'를 후방으로 밀어내는 **물리적 분리 구조** 적용.
+
+  1. **고정 시스템 역할 및 규칙 (`role: system`) - *[캐시 히트 대상]***
+     - 난이도별 페르소나 지시문 (초급/중급/고급)
+     - 마크다운 포맷팅 기반 출력 규칙 (테이블, 수식 등)
+     - 안전 가드레일 제약 지침 (Soft Guide 등)
+  2. **가변 컨텍스트 및 데이터 주입 (`role: system`) - *[동적 데이터 영역]***
+     - 현재 보고 있는 화면 내용 (`request.context_text`)
+     - 검색된 용어 사전 정의, DB 과거 사례 브리핑 내용
+     - 실시간 주식 시세 데이터 및 뉴스 요약 (`extra_context`)
+  3. **과거 대화 내역 누적 적용 (`prev_msgs`)**
+     - 이전 턴의 User - Assistant 대화 히스토리 (멀티턴 문맥 유지)
+  4. **사용자 최신 질문 (`role: user`)**
+     - 현재 턴에 방금 입력한 사용자의 질문 텍스트
+
+### 💡 프롬프트 조립 순서 재배치 근거 (캐시 히트 공식)
+프롬프트 조립 순서는 **"바뀔 확률이 가장 적은 것 ➡️ 바뀔 확률이 가장 높은 것"** 순서로 내려와야 합니다. (OpenAI의 프롬프트 캐싱은 앞에서부터 단 한 글자라도 달라지면 그 뒤쪽은 무조건 캐시가 깨지는 특성을 가집니다.)
+
+- **[① 시스템 지시문]**: 난이도별 페르소나 및 출력 규칙 (절대 안 바뀜 - 👑 **영구 캐시**)
+- **[② 가변 데이터 및 주가/화면 컨텍스트]**: 특정 페이지 또는 종목에 머무는 동안은 안 바뀜 (👍 **세션/페이지 단위 캐시 유지**)
+- **[③ 과거 대화 내역]**: 사용자가 엔터 칠 때마다 계속 길어지고 누적됨 (🔥 **매 턴마다 무조건 깨짐**)
+- **[④ 현재 방금 친 질문]**: 완전 새로운 텍스트 (🔥 **캐시 파괴**)
+
+---
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Analysis:
+Let me chronologically analyze the entire conversation:
+
+1. **Session Start**: This is a continuation of a previous conversation that ran out of context. The session summary tells us that Phase 1-4 of Tutor→Agent migration was already completed (API paths changed, contexts renamed, backward compatibility aliases added).
+
+2. **Plan Mode Active**: The conversation is in plan mode with an existing plan file at `/home/hj/.claude/plans/transient-tumbling-wadler.md`.
+
+3. **Initial Plan (from previous session)**: The plan covered 5 work items for UI detail improvements comparing current branch (`feature/canvas-agent-v4`) to `release/feb20-stable`.
+
+4. **User's First Major Feedback**: The user proposed changing the agent canvas from horizontal swipe to vertical scroll-down chatbot format. This led to exploration of the current turn navigation system and feb20-stable chat UI.
+
+5. **Plan Update #1**: Added work item 6 (canvas → chat conversion) with sub-items 6-1 through 6-6.
+
+6. **User's Second Feedback (ExitPlanMode rejected)**: 
+   - "기사 읽기는 굳이 없어도 될 것 같다" → Remove "기사 읽기" button
+   - "에이전트 캔버스를 아예 새롭게 챗봇으로 구현한다고 생각하면 된다" → Complete reimplementation as chatbot
+   - "기존 채팅 세션에서 사용하던 기능들을 많이 참고하면 도움이 될 것이다" → Reference feb20-stable TutorModal patterns
+   - "세션 관리나 새 채팅, 내용을 사전에 생성 해놓는 등" → Session management, new chat, precomputed content
+   - "에이전트 캔버스대신 에이전트 기능이 추가된 챗봇" → Agent-enhanced chatbot, not canvas
+
+7. **Exploration Phase 2**: Two explore agents investigated feb20-stable's full chat system (TutorModal, MessageBubble, ChatInput, SessionSidebar, TutorChatContext) and current agent-specific features (AgentHistoryPage, useCanvasPrecompute, QuickQAPopover, etc.).
+
+8. **Plan Update #2**: Complete rewrite of plan as "에이전트 기능이 추가된 챗봇 구현" with:
+   - Part A: UI detail fixes (4 items, removed "기사 읽기")
+   - Part B: Agent chatbot (5 items - useAutoScroll, AgentChatThread, AgentSessionPanel, AgentHubHeader modification, AgentCanvasPage rewrite)
+   - 5 file deletions
+
+9. **User's Third Feedback (ExitPlanMode rejected)**: User said they'd provide additional reference information. After some back-and-forth with AskUserQuestion, the user shared a comprehensive team member's v5 plan document covering 9 features from the rollback version.
+
+10. **Plan Update #3**: Incorporated relevant parts from the v5 document:
+   - Guardrail soft guide display
+   - 11 chart types support
+   - Metacognitive action nudge
+   - Source badges
+   - Streaming 120ms flush (already implemented)
+   - Action orchestration (already implemented)
+
+11. **User's Fourth Feedback (ExitPlanMode rejected)**: User requested:
+   - Multi-turn conversation continuity (not simple N-turn summarization, but contextual management)
+   - Leverage Agent architecture or PostgreSQL DB features
+   - Web search for best practices
+   - Source/citation display in responses
+   - Agent suggestions placed appropriately below responses
+   - Comprehensive testing of in-service actions for agent suggestions
+
+12. **Research Phase**: Two agents launched:
+   - General-purpose: Web research on multi-turn conversation memory management (hierarchical memory, PostgreSQL features, LangGraph checkpointers, prompt caching)
+   - Explore: Current backend implementation analysis (TutorSession/TutorMessage models, `_build_llm_messages()`, summarization logic, pgvector status)
+
+Key findings:
+- Current: character-based window (6000 chars), every-5-turns LLM summarization, regex entity extraction
+- Recommended: 3-tier hierarchical memory (verbatim recent + rolling summary + entity store), token-based budgeting, incremental summarization, prompt caching optimization
+- pgvector already installed (0.3.6) but only used for historical_cases, not conversations
+- `conversation_summary` and `context_entities` columns already exist on TutorSession
+- New utility needed: `ConversationMemoryManager` service
+
+The plan file needs to be updated with this backend conversation memory work before calling ExitPlanMode.
+
+Summary:
+1. Primary Request and Intent:
+   The user is implementing a complete transformation from "Agent Canvas" (horizontal swipe-based turn navigation) to an "Agent-enhanced Chatbot" (vertical scroll-down chat format) on the `feature/canvas-agent-v4` branch. The scope has expanded through multiple feedback rounds:
+   
+   - **Initial**: Fix UI discrepancies between current branch and `release/feb20-stable` (BottomNav order, slash commands, feedback page layout)
+   - **Expansion 1**: Convert agent canvas from horizontal swipe to vertical scroll chatbot format
+   - **Expansion 2**: Build a complete chatbot with session management (new chat, session list, delete, pin), precomputed content as first AI message, reference feb20-stable TutorModal/SessionSidebar patterns
+   - **Expansion 3**: Incorporate team member's v5 plan features (guardrails, source badges, metacognitive nudges, 11 chart types)
+   - **Expansion 4**: Implement smart multi-turn conversation memory (not simple N-turn summarization but contextual hierarchical memory), leverage PostgreSQL features, add source/citation display, properly position agent action suggestions below responses
+
+2. Key Technical Concepts:
+   - **React 19 + Vite frontend** with mobile-first (480px max) design
+   - **SSE streaming** for chat: events flow as thinking → tool_call → text_delta → visualization → sources → done
+   - **3-tier hierarchical conversation memory**: Tier 1 (recent verbatim, token-budgeted), Tier 2 (rolling incremental summary), Tier 3 (structured entity store in JSONB)
+   - **Token-based context windowing** via tiktoken (replacing character-based 6000 char approximation)
+   - **Incremental summarization**: `new_summary = summarize(old_summary + expired_turns)` instead of re-summarizing everything
+   - **OpenAI prompt caching optimization**: static system prompt prefix → semi-static context → dynamic conversation history → current query
+   - **PostgreSQL JSONB** for `memory_state` (on TutorSession) and `metadata` (on TutorMessage)
+   - **pgvector 0.3.6** already installed (used for historical_cases), available for future conversation embeddings
+   - **Context Provider pattern**: AgentProvider = AgentUIProvider + AgentSessionProvider + AgentChatProvider
+   - **composeCanvasState.js**: utility that post-processes assistant text into structured UI sections (title, keyPoint, bullets, actions, sources)
+   - **Slash command system**: type-based actions (navigate, action, param) in AgentDock
+   - **Agent routing**: POST `/api/v1/agent/route` returns decision (inline_action, open_canvas, open_chat, inline_reply)
+
+3. Files and Code Sections:
+
+   - **`frontend/src/pages/AgentCanvasPage.jsx`** (532 lines)
+     - Core page to be rewritten from canvas to chatbot format
+     - Currently uses `useAgentTurns` for horizontal swipe navigation
+     - Will add: AgentChatThread, AgentSessionPanel, useAutoScroll, session management, precomputed content as welcome turn
+     - Complex context-building logic (buildAgentContextEnvelope, buildContextInfoForPrompt) to be preserved
+     - Pin session, regenerate, stop generation handlers remain
+
+   - **`frontend/src/hooks/useAgentTurns.js`** (163 lines) — TO BE DELETED
+     - Manages `activeTurnIndex`, horizontal swipe gestures (86px threshold)
+     - Turn normalization logic (lines 18-31) will be inlined in AgentCanvasPage
+
+   - **`frontend/src/components/agent/AgentTurnNavigator.jsx`** (94 lines) — TO BE DELETED
+     - Swipe handle bar, turn counter, left/right arrows, progress bar
+
+   - **`frontend/src/components/agent/AgentCanvasBody.jsx`** (59 lines) — TO BE DELETED
+     - Thin wrapper: AgentTurnNavigator + AgentCanvasSections
+
+   - **`frontend/src/components/agent/AgentCanvasSections.jsx`** (124 lines) — TO BE ABSORBED into AgentChatThread
+     - Contains `ChartCodeBlock`, `CodeBlockRenderer`, `ActionButtons`, `markdownComponents`
+     - ReactMarkdown with remarkGfm, remarkBreaks, remarkMath, rehypeRaw, rehypeKatex
+     - Lazy-loaded `ResponsivePlotly` for chart rendering
+
+   - **`frontend/src/components/agent/AgentProgressBar.jsx`** (22 lines) — TO BE DELETED
+     - Only used in AgentCanvasPage, not needed in chat format
+
+   - **`frontend/src/components/agent/AgentHubHeader.jsx`** (111 lines) — TO BE MODIFIED
+     - Currently: back, title, "분석 모드" badge, stop/regenerate, pin, context toggle, history
+     - Change: remove "분석 모드" badge, add "새 대화" button, add session panel toggle
+
+   - **`frontend/src/components/agent/AgentDock.jsx`** (476 lines) — NO CHANGE
+     - Global input bar with slash commands, routing, search toggle
+     - `submitPromptToCanvas` navigates to `/agent` with state
+
+   - **`frontend/src/contexts/AgentChatContext.jsx`** (692 lines) — NO CHANGE
+     - SSE streaming into `assistantTurns` array
+     - Each turn: id, assistantText, userPrompt, status, uiActions, model, sources, guardrailNotice
+
+   - **`frontend/src/contexts/AgentContext.jsx`** (165 lines) — NO CHANGE
+     - Composite hook combining AgentUI + AgentSession + AgentChat
+
+   - **`frontend/src/contexts/AgentSessionContext.jsx`** (103 lines) — NO CHANGE
+     - Session CRUD: create, list, delete, validate, refresh
+
+   - **`frontend/src/pages/AgentHistoryPage.jsx`** (247 lines) — NO CHANGE
+     - Full session history with pinned review cards, coexists with new inline session panel
+
+   - **`frontend/src/utils/agent/composeCanvasState.js`** (220 lines) — NO CHANGE
+     - Builds structured state per turn: viewType, title, keyPoint, actions, sources, metricRows
+
+   - **`frontend/src/components/agent/SlashCommandMenu.jsx`** (125 lines) — TO BE MODIFIED
+     - Current 8 commands; adding `/explain`, `/review`, `/feedback`
+     - Changing `/portfolio` from `action` to `navigate` type
+     - Max display: 5 → 8
+
+   - **`frontend/src/components/layout/BottomNav.jsx`** — TO BE MODIFIED
+     - Tab order: Portfolio→Home→Education → Education→Home→Portfolio
+     - Height: 68px → 56px
+     - Add '/feedback-survey' to HIDDEN_PREFIXES
+
+   - **`frontend/src/contexts/TermContext.jsx`** (60 lines) — Already modified in previous session
+     - `openTutorWithTerm` → `openAgentWithTerm` (with backward compat alias)
+
+   - **`frontend/src/components/domain/TermBottomSheet.jsx`** (135 lines) — Already modified
+     - API: `/api/v1/tutor/explain/` → `/api/v1/agent/explain/`
+
+   - **`fastapi/app/models/tutor.py`** — TO BE MODIFIED (backend memory)
+     - Current: TutorSession has `conversation_summary`, `context_entities`, `summary_keywords`, `summary_snippet`
+     - Add: `memory_state` JSONB column, `metadata` JSONB + `token_count` on TutorMessage
+
+   - **`fastapi/app/api/routes/tutor.py`** (~1345 lines) — TO BE MODIFIED (backend memory)
+     - `_build_llm_messages()` (lines 769-892): character-based window (6000 chars), loads last 30 messages
+     - `_save_tutor_session()` (lines 960-999): every-5-turns LLM summarization with regex entity extraction
+     - Changes: token-based windowing, incremental summarization, prompt caching structure
+
+   - **`fastapi/app/services/conversation_memory.py`** — NEW FILE (backend)
+     - `ConversationMemoryManager` class with 3-tier memory management
+     - `load_context()`, `post_turn_update()`, `_incremental_summarize()`
+
+4. Errors and Fixes:
+   - No code execution errors in this session (plan mode only)
+   - **User rejected ExitPlanMode 3 times** with expanding requirements:
+     1. First rejection: Remove "기사 읽기", redesign as full chatbot with session management
+     2. Second rejection: Incorporate team member's v5 plan features
+     3. Third rejection: Add multi-turn conversation memory with PostgreSQL optimization, source display, agent suggestion positioning
+
+5. Problem Solving:
+   - **AskUserQuestion format issue**: First attempt with single option failed validation (minimum 2 options required). Fixed by providing 2 options.
+   - **User communication friction**: User wanted to provide additional reference but the question format wasn't matching their needs. Eventually resolved through "Other" text input option.
+   - **Scope management**: Each ExitPlanMode rejection expanded scope significantly. Each time, I researched the new requirements thoroughly (launching explore/plan/general-purpose agents) before updating the plan.
+
+6. All User Messages:
+   - (Previous session) "Implement the following plan: # Agent v5 — Tutor→Agent 통합 설계 문서"
+   - (Previous session) "오늘의 카드 뉴스 내부에는 에이전트로 뭔가 작동되는게 구현되어야 하는게 맞지 않나?..." (requesting UI fixes comparing to feb20-stable)
+   - (Previous session) Selected "feb20-stable 복원 (교육→홈→모의투자)" for tab order
+   - (Previous session) "지금 얘기를 하다 나온건데, 기존 에이전트 /로 활용해서 쓰고 아예 좌우 슬라이딩으로 구분되어 있던 것을 롤백버전에서 없애고 챗팅 형식으로 스크롤 다운 방식으로 챗봇 형태로 구현하는건 어떤가?"
+   - (ExitPlanMode rejection 1) "기사 읽기는 굳이 없어도 될 것 같다. 에이전트 캔버스를 아예 새롭게 챗봇으로 구현한다고 생각하면 된다. 이에 따라 기존 채팅 세션에서 사용하던 기능들을 많이 참고하면 도움이 될 것이다. 그리고 세션 관리나 새 채팅, 내용을 사전에 생성 해놓는 등 에이전트 캔버스대신 에이전트 기능이 추가된 챗봇이라고 생각하면 좋을 것 같다. 이를 위해 계획을 디벨롭해라."
+   - (ExitPlanMode rejection 2) "추가 참고사항을 제공해주겠다."
+   - (AskUserQuestion answer) Selected "텍스트로 직접 입력"
+   - (Large message) Shared team member's v5 plan document — "팀원이 롤백 이전 버전에서 작업할 때 썼던 프롬프트인데, 우리 것에서 참고할 부분이 있다면 살려서 가져오도록 하자." (9 feature areas: page auto-navigation, slash commands, text speed, guardrails with Few-Shot CoT, formatting, context accumulation, visualization 2-step with 11 chart types, metacognitive prompting, prompt caching)
+   - (ExitPlanMode rejection 3) "멀티턴 대화도 이어져야 하고, 단순 N회 쌓이면 요약이 아니라 맥락적으로 잘 정리하고 이와 관련하여 Agent 구성이나 PostgreDB 기능을 최대한 활용할 수 있도록 웹 서칭을 진행하고 우리 것에 맞게 최적을 설계하는게 좋을 것 같다. 그리고 답변 출처도 가능하다면 추가하고, 에이전트 제안은 챗봇 답변 아래에 출처 아래나 옆에 적절히 배치해서 넣으면 될 것 같다. 그리고 우리 서비스내에서 할 수 있는 것들은 최대한 테스트를 진행하여 다음 에이전트 제안 행동에 추가해놓는게 좋을 것 같다."
+
+7. Pending Tasks:
+   - **Update plan file** with backend conversation memory management (Part C):
+     - 3-tier hierarchical memory architecture
+     - `ConversationMemoryManager` service
+     - DB schema changes (memory_state JSONB, message metadata JSONB, token_count)
+     - Alembic migration
+     - Token-based windowing (replacing character-based)
+     - Incremental summarization (replacing fixed-interval)
+     - Prompt caching structure optimization
+   - **Update plan file** with source/citation display details in AgentChatThread
+   - **Update plan file** with agent suggestion placement (below response, near sources)
+   - **Update plan file** with comprehensive action testing for agent suggestions
+   - **Call ExitPlanMode** after plan update
+
+8. Current Work:
+   I was in **plan mode** updating the plan file at `/home/hj/.claude/plans/transient-tumbling-wadler.md`. The user's most recent feedback (3rd ExitPlanMode rejection) requested:
+   
+   1. Smart multi-turn conversation memory (not N-turn summarization)
+   2. Leverage PostgreSQL/Agent architecture
+   3. Web search for best practices (completed — hierarchical memory, pgvector, prompt caching)
+   4. Source/citation display in chatbot
+   5. Agent suggestions positioned below responses near sources
+   6. Comprehensive testing of in-service actions
+   
+   Two research agents completed successfully:
+   - **General-purpose agent**: Found 3-tier hierarchical memory architecture, PostgreSQL JSONB + pgvector patterns, token budgeting strategy, prompt caching optimization
+   - **Explore agent**: Analyzed current backend — TutorSession/TutorMessage models, `_build_llm_messages()` (char-based 6000 window), every-5-turns summarization, regex entity extraction, pgvector already installed
+   
+   The plan file currently has Part A (UI fixes, 4 items) and Part B (chatbot conversion, 5 items). It needs a new **Part C** for backend conversation memory management, plus updates to Part B for source display and agent suggestion placement.
+
+9. Optional Next Step:
+   Update the plan file (`/home/hj/.claude/plans/transient-tumbling-wadler.md`) to add:
+   - **Part C: Backend Conversation Memory** with the 3-tier hierarchical architecture, new `ConversationMemoryManager` service, DB schema changes, Alembic migration, and prompt caching optimization
+   - Updates to **작업 6 (AgentChatThread)** for source badge display and agent suggestion placement below responses
+   - Then call **ExitPlanMode** for user approval
+   
+   Direct quote from user's most recent request: "멀티턴 대화도 이어져야 하고, 단순 N회 쌓이면 요약이 아니라 맥락적으로 잘 정리하고 이와 관련하여 Agent 구성이나 PostgreDB 기능을 최대한 활용할 수 있도록 웹 서칭을 진행하고 우리 것에 맞게 최적을 설계하는게 좋을 것 같다."
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+Please continue the conversation from where we left off without asking the user any further questions. Continue with the last task that you were asked to work on.
+
+---
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Analysis:
+Let me chronologically analyze the entire conversation:
+
+1. **Session Start**: This is a continuation of a previous conversation that ran out of context. The session summary tells us Phase 1-4 of Tutor→Agent migration was already completed. We're in plan mode with an existing plan file.
+
+2. **Plan File Already Exists**: The plan at `/home/hj/.claude/plans/transient-tumbling-wadler.md` already contained Parts A and B from previous work.
+
+3. **Current Session Work**: I read the plan file and key backend files to understand the state, then needed to add Part C (Backend Conversation Memory) based on research done in the previous session.
+
+4. **Reading Backend Files**: 
+   - `tutor.py` lines 760-1001: `_build_llm_messages()` (char-based 6000 window), `_save_tutor_session()` (5-turn fixed summarization)
+   - `tutor_engine.py`: SSE streaming engine, difficulty prompts, deprecated viz imports
+   - `tutor.py` (models): TutorSession and TutorMessage schemas
+   - `AgentChatContext.jsx`: SSE event handling, sources/uiActions storage in turns
+   - `tutor_engine.py`: Source collection (glossary, case, stock, dart, news types)
+
+5. **Plan Update - Part C Added**: Added 3-tier hierarchical memory architecture (작업 10-13) to the plan covering DB schema, ConversationMemoryManager service, `_build_llm_messages` refactoring, `_save_tutor_session` refactoring.
+
+6. **First ExitPlanMode Rejection**: User said "세션 핀: 저장 버튼 → 토스트 → 복습 카드 생성도 액션 아이템에서 제안해주는건 어떤가?" → Added "대화 저장하기" action to the nudge table.
+
+7. **Second ExitPlanMode Rejection**: User said "대화가 누적됨에 따라 모바일에 부하가 걸리는 것을 적절히 처리해야되지 않을까? 그리고 더 개선할 점들은 없는지 제안해라." → Launched research on mobile chat performance (react-virtuoso, memoization, lazy rendering).
+
+8. **User Message During Research**: "Langsmith도 단위를 쪼개고 잘 묶어서 트래킹을 챗봇 세션용으로 따로 트래킹해도 좋을 것 같다." → Read `shared/langsmith_config.py` to understand current tracing, added Part E (LangSmith session tracing).
+
+9. **Plan Updated with Parts D+E**: Added Part D (mobile performance - react-virtuoso, memoization, IntersectionObserver) and Part E (LangSmith hierarchical tracing: session→turn→span).
+
+10. **Third ExitPlanMode Rejection**: User said "plotly js를 특히 신경써서 웹 검색을 진행하고 계획에 반영하고 디벨롭하면 좋을 것 같다. 그러러면 챗봇에서 이를 위한 로직이 잘 설계되어야할 것이다." → Launched two agents: one researching Plotly.js optimization, one exploring current chart rendering pipeline.
+
+11. **User Message During Research**: "검색한 내용들을 따로 개발 참고용 문서 폴더를 만들고, 문서화해서 나중에도 코드 작성시 참조용으로 사용하면 좋을 것 같다." → Added 작업 16 for creating `frontend/docs/` reference documentation.
+
+12. **Plotly Research Key Findings**:
+   - Agent charts only use scatter+bar (other types banned in tutor_chart_generator.py)
+   - `plotly.js-basic-dist-min` (362KB) already correct bundle
+   - **ECharts-first strategy**: `plotlyToEcharts.js` converter already exists for scatter+bar → Plotly never needs to load
+   - `staticPlot: true` → 15-25% mobile improvement
+   - SVG mode (scatter+bar) → no WebGL context issues
+   - Snapshot pattern for off-screen charts in long conversations
+
+13. **Plan Updated with Plotly Details**: Enhanced Part D 작업 15 with ECharts-first strategy, staticPlot config, CSS containment, IntersectionObserver gating, snapshot pattern.
+
+14. **Fourth ExitPlanMode Rejection**: User said "AgentDock(전역 하단 입력바)보다 좀 더 나은 방식은 없을까?" → Read AgentDock.jsx (476 lines), understood its global routing+input architecture.
+
+15. **AskUserQuestion - Input UI Direction**: Presented 3 options. User selected "듀얼 모드 (Recommended)" — keep AgentDock on non-agent pages, switch to inline ChatInput on /agent page with auto-grow textarea + context chips + stop/send button.
+
+16. **Plan Updated with ChatInput**: Added 작업 9 (ChatInput.jsx + AgentDock modification) to the plan.
+
+17. **Fifth ExitPlanMode Rejection**: User said "좀 더 에이전트 설계 관점에서 멀티 에이전트를 활용해본다거나 더 최신의 방법론이라던가 검색해보고 반영하면 어떨까?" → Launched two agents: multi-agent architecture research + current agent routing exploration.
+
+18. **User Message During Research**: "2026년 최신 자료까지 검색하여 계획을 디벨롭해라." → Launched additional research on 2026-specific developments.
+
+19. **Agent Architecture Research Key Findings**:
+   - System already has 4 implicit agents (router, guardrail, main, viz)
+   - Google ADK's Coordinator/Dispatcher pattern is optimal fit
+   - Specialist Routing: formalize existing structure, not add framework
+   - Model tiering: 40-60% cost reduction (beginner→gpt-4o-mini, analysis→gpt-4o)
+   - Context collection parallelization: asyncio.gather() for 500-1000ms savings
+   - Output guardrail: lightweight keyword-based post-processing
+   - Mode override: LLM intent can override UI mode
+
+20. **2026 Latest Research Key Findings**:
+   - OpenAI Agents SDK v0.9.3 (Feb 2026): handoffs, guardrails, tracing, MCP support
+   - OpenAI Server-side Compaction (Feb 2026): auto context compression for long conversations
+   - Anthropic Context Engineering: compaction + structured note-taking + multi-agent isolation
+   - OpenAI prompt caching: automatic 50-90% discount with stable prefix
+   - MCP (Model Context Protocol): 97M+ downloads, industry standard
+   - Google ADK 8 multi-agent patterns
+   - Evaluation: Anthropic's 20-50 real task pattern
+
+21. **Plan Updated with Part F**: Added Part F (에이전트 아키텍처 고도화, 작업 18-21) covering specialist function separation, context parallelization, prompt caching optimization, output guardrail + mode override.
+
+The plan file now contains Parts A through F with comprehensive coverage. The next step would be to call ExitPlanMode again, but the user may have more feedback.
+
+Summary:
+1. Primary Request and Intent:
+   The user is implementing a complete transformation from "Agent Canvas" (horizontal swipe-based turn navigation) to an "Agent-enhanced Chatbot" (vertical scroll-down chat format) on the `feature/canvas-agent-v4` branch. Through **7 rounds of feedback/rejection**, the scope expanded significantly:
+   
+   - **Initial**: Fix UI discrepancies (BottomNav, slash commands, feedback layout) between current branch and `release/feb20-stable`
+   - **Expansion 1**: Convert agent canvas from horizontal swipe to vertical scroll chatbot
+   - **Expansion 2**: Full chatbot with session management, precomputed content, reference feb20-stable patterns
+   - **Expansion 3**: Incorporate team member's v5 plan features (guardrails, source badges, metacognitive nudges)
+   - **Expansion 4**: Smart multi-turn conversation memory (3-tier hierarchical, not simple N-turn summarization)
+   - **Expansion 5**: Session pin as action nudge item
+   - **Expansion 6**: Mobile chat performance optimization (react-virtuoso, Plotly.js optimization) + LangSmith session tracing
+   - **Expansion 7**: Plotly.js deep optimization (ECharts-first strategy)
+   - **Expansion 8**: Development reference documentation (`frontend/docs/`)
+   - **Expansion 9**: Dual-mode input bar (ChatInput on /agent, AgentDock elsewhere)
+   - **Expansion 10**: Multi-agent architecture (specialist routing, model tiering, context parallelization)
+   - **Expansion 11**: 2026 latest methodologies (OpenAI Agents SDK v0.9, Compaction, Context Engineering, prompt caching)
+
+   The plan is in **plan mode** at `/home/hj/.claude/plans/transient-tumbling-wadler.md` and contains Parts A–F.
+
+2. Key Technical Concepts:
+   - **react-virtuoso**: Chat message list virtualization (15-20 DOM nodes for 500+ messages), `followOutput` for auto-scroll, `startReached` for pagination, `atBottomStateChange` for FAB
+   - **ECharts-first strategy**: `plotlyToEcharts.js` converter already handles scatter+bar → Plotly 362KB bundle never loads in agent chat
+   - **3-tier hierarchical memory**: Tier 1 (verbatim recent, 2000 token budget), Tier 2 (rolling incremental summary), Tier 3 (structured JSONB entity store: stocks, concepts, preferences, topics)
+   - **ConversationMemoryManager**: New service with `load_context()`, `post_turn_update()`, `_incremental_summarize()`, `_extract_entities()`
+   - **tiktoken cl100k_base**: Token-based windowing replacing character-based 6000 char approximation
+   - **OpenAI automatic prompt caching**: 50-90% discount when system prompt prefix ≥1024 tokens is byte-identical across requests
+   - **Specialist Routing pattern** (Google ADK Coordinator/Dispatcher): Router (gpt-4o-mini) → Stock/Education/Market/Direct specialists with model tiering
+   - **Model tiering**: beginner/elementary → gpt-4o-mini, intermediate/stock → gpt-4o (40-60% cost reduction)
+   - **Context collection parallelization**: `asyncio.gather()` for glossary, DB, stock, intel, intent (500-1000ms savings)
+   - **LangSmith hierarchical tracing**: session → turn → span (context_collection, guardrail_check, llm_call, memory_update)
+   - **Dual-mode input**: AgentDock (global, single-line) on non-agent pages; ChatInput (inline, textarea, context chips) on /agent
+   - **SSE streaming events**: thinking → tool_call → text_delta → visualization → sources → ui_action → done
+   - **`staticPlot: true`**: 15-25% Plotly mobile render improvement
+   - **CSS `contain: 'layout size'`**: Layout isolation preventing reflow propagation
+   - **Output guardrail**: Lightweight keyword-based post-processing (no LLM call, <1ms)
+   - **Mode override**: LLM intent overrides UI mode (stock page + education question → education specialist)
+   - **Anthropic Context Engineering (2025-2026)**: Compaction + structured note-taking + context rot awareness
+   - **OpenAI Server-side Compaction (Feb 2026)**: Auto context compression for multi-hour agent sessions
+   - **MCP (Model Context Protocol)**: 97M+ downloads, industry standard for tool integration (2026)
+
+3. Files and Code Sections:
+
+   - **`/home/hj/.claude/plans/transient-tumbling-wadler.md`** (Plan File — 589+ lines)
+     - The central plan document being iteratively developed
+     - Contains Parts A (UI fixes), B (chatbot conversion), C (backend memory), D (mobile performance), E (LangSmith), F (agent architecture)
+     - Multiple edits throughout session adding new parts and refining existing ones
+
+   - **`fastapi/app/api/routes/tutor.py`** (Critical backend file, ~1345 lines)
+     - `_build_llm_messages()` (lines 769-892): Current char-based 6000 window, loads last 30 messages
+       ```python
+       char_budget = 6000  # ~3000 tokens (rough 2 chars/token for Korean)
+       char_count = 0
+       for msg in reversed(all_prev):
+           msg_len = len(msg.content or "")
+           if char_count + msg_len > char_budget:
+               break
+           prev_msgs.insert(0, {"role": msg.role, "content": msg.content})
+           char_count += msg_len
+       ```
+     - `_save_tutor_session()` (lines 895-1001): 5-turn fixed summarization with regex entity extraction
+       ```python
+       # 5턴마다 대화 요약 갱신
+       if session_obj.message_count and session_obj.message_count % 5 == 0:
+           summary_resp = await client.chat.completions.create(
+               model="gpt-4o-mini", temperature=0.2, max_tokens=300,
+               messages=[{"role": "system", "content": "아래 대화를 5문장 이내로 핵심만 요약하세요..."}]
+           )
+           session_obj.conversation_summary = summary_resp.choices[0].message.content
+           new_entities = re.findall(r'[가-힣]{2,10}(?:전자|바이오|...)', summary_text)
+       ```
+     - LangSmith integration (lines 1087-1100): Single flat `tutor_chat_llm` trace
+     - `_route_with_llm()` (line 231): gpt-4o-mini JSON mode routing
+     - Will be refactored for Part C (memory) + Part E (tracing) + Part F (specialists)
+
+   - **`fastapi/app/models/tutor.py`** (100 lines)
+     - TutorSession: has `conversation_summary`, `context_entities`, `summary_keywords` etc.
+     - TutorMessage: has `content`, `role`, `message_type`, `term_asked`
+     - Plan adds: `memory_state` JSONB (session), `token_count` INT (message), `metadata` JSONB (message)
+
+   - **`fastapi/app/services/tutor_engine.py`** (SSE streaming engine)
+     - `get_difficulty_prompt()`: beginner/elementary/intermediate prompts
+     - Deprecated viz imports from `chatbot_archive`
+     - Source collection functions: `_collect_glossary_context`, `_collect_db_context`, `_collect_stock_context`
+
+   - **`shared/langsmith_config.py`** (171 lines)
+     - `trace_context()`: Context manager wrapping `langsmith.run_helpers.trace`
+     - `create_run_metadata()`: Standardized metadata (user_id, session_id, module_name)
+     - Currently flat tracing, no session/turn hierarchy
+
+   - **`frontend/src/contexts/AgentChatContext.jsx`** (692 lines)
+     - SSE event handling: sources (line 382), ui_action (387), visualization (397), done (424)
+     - Turn structure: `{ id, assistantText, userPrompt, status, sources, uiActions, model, structured, guardrailNotice }`
+     - `syncAssistantState()` updates both messages and assistantTurns arrays
+     - 120ms flush buffer for streaming
+
+   - **`frontend/src/components/agent/AgentDock.jsx`** (476 lines)
+     - Global bottom input bar with single-line input
+     - `submitPromptToCanvas()`: Navigates to `/agent` with state
+     - `routePrompt()`: POST `/api/v1/agent/route` for decision
+     - `buildControlContextPayload()`: Builds UI snapshot + action catalog + interaction state
+     - `handleSlashCommand()`: navigate/action/param type handling
+     - `useKeyboardInset`: Mobile keyboard offset handling
+     - Plan: Hide on `/agent` route, replaced by ChatInput
+
+   - **`frontend/src/components/agent/AgentCanvasSections.jsx`** (124 lines — TO BE ABSORBED)
+     - `ChartCodeBlock`: Detects `language-chart`/`language-plotly`, lazy loads ResponsivePlotly
+     - `CodeBlockRenderer`: Routes chart code blocks to ChartCodeBlock
+     - `markdownComponents`: ReactMarkdown component overrides
+     - Will be absorbed into AgentChatThread.jsx
+
+   - **`frontend/src/components/charts/ResponsivePlotly.jsx`** (existing)
+     - Lazy load: `React.lazy(() => Promise.all([import('react-plotly.js/factory'), import('plotly.js-basic-dist-min')]))`
+     - ResizeObserver-based responsive height
+     - Config: `{ displayModeBar: false, responsive: true }`
+     - Plan: Add `staticPlot: true`, `responsive: false` (useResizeHandler handles it)
+
+   - **`frontend/src/utils/charts/plotlyToEcharts.js`** (existing)
+     - Converts scatter, bar, pie Plotly specs to ECharts options
+     - Already used in `Narrative.jsx` (lines 173-207)
+     - Key to ECharts-first strategy — agent charts (scatter+bar only) can skip Plotly entirely
+
+   - **`fastapi/app/services/tutor_chart_generator.py`** (backend chart generation)
+     - Only generates scatter (lines+markers, fill) and bar (vertical, horizontal, grouped)
+     - Explicitly bans: candlestick, waterfall, sankey, scatterpolar, choropleth, pie
+     - 7-gate validation (data points, estimation markers, array lengths, banned types, date verification, range check, y-axis range)
+     - LLM: Claude 3.5 Haiku → GPT-4o-mini fallback
+
+   - **`fastapi/app/api/routes/agent.py`** (existing)
+     - `/api/v1/agent/route`: Wraps `tutor_route()` from tutor.py
+     - `/api/v1/agent/chat`: Wraps `generate_tutor_response()` — SSE streaming
+     - Agent endpoints are re-exports of tutor endpoints for namespace clarity
+
+   - **`fastapi/app/services/guardrail.py`** (existing)
+     - LangGraph StateGraph with retry logic
+     - Keyword pre-filter → LLM classification (gpt-4o-mini)
+     - Decisions: SAFE, ADVICE, OFF_TOPIC, MALICIOUS
+     - Soft mode: MALICIOUS→block, ADVICE/OFF_TOPIC→warning
+
+   - **`fastapi/app/services/query_presets.py`** (existing)
+     - Keyword-based intent scoring
+     - Intents: stock_analysis, market_overview, glossary, historical_case, comparison
+     - Context fetching: daily_briefings, glossary, historical_cases, market_daily_history
+
+   - **`frontend/src/contexts/TermContext.jsx`** (60 lines — already modified)
+     - `openAgentWithTerm`: navigates to `/agent` with term explanation prompt
+     - `openTutorWithTerm` alias for backward compatibility
+
+   - **`frontend/src/components/domain/TermBottomSheet.jsx`** (135 lines — already modified)
+     - API: `/api/v1/agent/explain/{term}`
+
+4. Errors and fixes:
+   - **No code execution errors** in this session (plan mode only, read-only actions)
+   - **ExitPlanMode rejected 7 times** with expanding requirements:
+     1. "세션 핀도 액션 아이템에서 제안" → Added 대화 저장하기 to action nudge table
+     2. "모바일 부하 처리 + 더 개선할 점" → Added Part D (react-virtuoso, memoization) + Part E (LangSmith tracing)
+     3. "Plotly JS 특히 신경써서" → Deep Plotly research, ECharts-first strategy, performance config
+     4. "검색한 내용 문서화" → Added 작업 16 (frontend/docs/ reference docs)
+     5. "AgentDock보다 나은 방식" → Added ChatInput dual-mode (AskUserQuestion → 듀얼 모드 선택)
+     6. "멀티 에이전트 + 최신 방법론" → Added Part F (specialist routing, model tiering)
+     7. "2026년 최신 자료까지" → Additional research on OpenAI Agents SDK v0.9, Compaction, Context Engineering, MCP
+
+5. Problem Solving:
+   - **Mobile performance concern**: Solved with react-virtuoso (DOM 15-20 nodes), React.memo per message, IntersectionObserver for charts, ECharts-first to eliminate Plotly bundle
+   - **Plotly.js bundle bloat**: Solved by discovering that agent charts only use scatter+bar → existing `plotlyToEcharts.js` converter handles both → Plotly 362KB never loads
+   - **Flat LangSmith tracing**: Solved by designing session→turn→span hierarchy with metadata (turn_number, mode, memory state, guardrail decision)
+   - **Character-based context window**: Solved by designing tiktoken-based 3-tier memory with token budgeting
+   - **Global input bar disconnect**: Solved by dual-mode approach — ChatInput inline on /agent, AgentDock global elsewhere
+   - **Single monolithic agent**: Solved by specialist routing pattern — formalize existing 4-agent structure + add model tiering
+
+6. All user messages:
+   - (Previous session, summarized) Multiple rounds of feedback establishing the initial plan Parts A-B
+   - (ExitPlanMode rejection 1) "세션 핀: 저장 버튼 → 토스트 → 복습 카드 생성도 액션 아이템에서 제안해주는건 어떤가?"
+   - (ExitPlanMode rejection 2) "대화가 누적됨에 따라 모바일에 부하가 걸리는 것을 적절히 처리해야되지 않을까? 그리고 더 개선할 점들은 없는지 제안해라."
+   - (During research) "Langsmith도 단위를 쪼개고 잘 묶어서 트래킹을 챗봇 세션용으로 따로 트래킹해도 좋을 것 같다."
+   - (ExitPlanMode rejection 3) "plotly js를 특히 신경써서 웹 검색을 진행하고 계획에 반영하고 디벨롭하면 좋을 것 같다. 그러러면 챗봇에서 이를 위한 로직이 잘 설계되어야할 것이다."
+   - (During research) "검색한 내용들을 따로 개발 참고용 문서 폴더를 만들고, 문서화해서 나중에도 코드 작성시 참조용으로 사용하면 좋을 것 같다."
+   - (ExitPlanMode rejection 4) "AgentDock(전역 하단 입력바)보다 좀 더 나은 방식은 없을까?"
+   - (AskUserQuestion answer) Selected "듀얼 모드 (Recommended)" for input bar design
+   - (ExitPlanMode rejection 5) "좀 더 에이전트 설계 관점에서 멀티 에이전트를 활용해본다거나 더 최신의 방법론이라던가 검색해보고 반영하면 어떨까?"
+   - (During research) "2026년 최신 자료까지 검색하여 계획을 디벨롭해라."
+
+7. Pending Tasks:
+   - **Call ExitPlanMode** for user approval of the comprehensive plan (Parts A–F)
+   - The plan file is at `/home/hj/.claude/plans/transient-tumbling-wadler.md` and is ready for review
+   - If approved, implementation order:
+     1. Reference docs (frontend/docs/)
+     2. Part A (UI fixes, 작업 1-4)
+     3. Part C (backend memory, 작업 10-13) + Part E (LangSmith, 작업 17)
+     4. npm install react-virtuoso
+     5. Part B (chatbot UI, 작업 6-10) + Part D (performance, 작업 14-15)
+     6. Part F (agent architecture, 작업 18-21)
+     7. Delete 5 canvas files
+     8. Build + manual test (29 test items)
+
+8. Current Work:
+   I was in **plan mode**, having just completed adding **Part F (에이전트 아키텍처 고도화, 작업 18-21)** to the plan file. This included:
+   - 작업 18: Specialist function separation (stock_specialist, education_specialist, market_specialist)
+   - 작업 19: Context collection full parallelization via asyncio.gather()
+   - 작업 20: Prompt caching optimization (static prefix + dynamic suffix structure)
+   - 작업 21: Output guardrail (keyword-based) + mode override (LLM intent vs UI mode)
+   
+   This was in direct response to the user's messages: "좀 더 에이전트 설계 관점에서 멀티 에이전트를 활용해본다거나 더 최신의 방법론이라던가 검색해보고 반영하면 어떨까?" and "2026년 최신 자료까지 검색하여 계획을 디벨롭해라."
+   
+   Three research agents completed: multi-agent architecture patterns, current agent routing exploration, and 2026 latest developments (OpenAI Agents SDK v0.9, Compaction, Context Engineering, MCP, prompt caching).
+
+   The plan file's "수정 파일 요약" table was updated before Part F was added but needs updating to include Part F files. The 구현 순서 and 검증 sections also need Part F items added.
+
+9. Optional Next Step:
+   - **Update the plan file's 수정 파일 요약 table and 구현 순서 to include Part F files** (specialists/, guardrail.py output check), then **add Part F test items to the 검증 section**, and finally **call ExitPlanMode** for user approval.
+   - Also should add `frontend/docs/agent-architecture.md` to the reference docs list (작업 16) since Part F references it.
+   - Direct user quote driving this: "2026년 최신 자료까지 검색하여 계획을 디벨롭해라." — the research was completed and Part F was added, but ancillary plan sections need updating before ExitPlanMode.
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+Please continue the conversation from where we left off without asking the user any further questions. Continue with the last task that you were asked to work on.
+
+---
+
+[Request interrupted by user for tool use]

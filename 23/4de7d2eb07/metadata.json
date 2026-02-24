@@ -3,7 +3,7 @@
   "checkpoint_id": "234de7d2eb07",
   "strategy": "manual-commit",
   "branch": "feature/canvas-agent-v4",
-  "checkpoints_count": 31,
+  "checkpoints_count": 33,
   "files_touched": [
     ".dockerignore",
     ".env.example",
@@ -64,6 +64,7 @@
     "fastapi/app/api/routes/highlight.py",
     "fastapi/app/api/routes/pipeline.py",
     "fastapi/app/api/routes/tutor.py",
+    "fastapi/app/api/routes/tutor_sessions.py",
     "fastapi/app/api/routes/visualization.py",
     "fastapi/app/core/auth.py",
     "fastapi/app/core/config.py",
@@ -165,6 +166,7 @@
     "frontend/src/hooks/useSelectionAskPrompt.js",
     "frontend/src/pages/AgentCanvasPage.jsx",
     "frontend/src/pages/AgentHistoryPage.jsx",
+    "frontend/src/pages/Education.jsx",
     "frontend/src/pages/FeedbackSurvey.jsx",
     "frontend/src/pages/Home.jsx",
     "frontend/src/pages/Landing.jsx",
@@ -173,6 +175,7 @@
     "frontend/src/pages/Onboarding.jsx",
     "frontend/src/pages/Profile.jsx",
     "frontend/src/pages/TutorChat.jsx",
+    "frontend/src/pages/index.js",
     "frontend/src/styles/globals.css",
     "frontend/vite.config.js",
     "infra/docker-compose.yml",
@@ -431,13 +434,20 @@
       "context": "/23/4de7d2eb07/28/context.md",
       "content_hash": "/23/4de7d2eb07/28/content_hash.txt",
       "prompt": "/23/4de7d2eb07/28/prompt.txt"
+    },
+    {
+      "metadata": "/23/4de7d2eb07/29/metadata.json",
+      "transcript": "/23/4de7d2eb07/29/full.jsonl",
+      "context": "/23/4de7d2eb07/29/context.md",
+      "content_hash": "/23/4de7d2eb07/29/content_hash.txt",
+      "prompt": "/23/4de7d2eb07/29/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 27883,
-    "cache_creation_tokens": 4633766,
-    "cache_read_tokens": 163180106,
-    "output_tokens": 598561,
-    "api_call_count": 1963
+    "input_tokens": 28062,
+    "cache_creation_tokens": 5246926,
+    "cache_read_tokens": 178564712,
+    "output_tokens": 662458,
+    "api_call_count": 2118
   }
 }
