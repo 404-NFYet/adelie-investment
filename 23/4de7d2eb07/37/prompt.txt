@@ -1,0 +1,172 @@
+Implement the following plan:
+
+# 롤백 후 보완 계획: CI/CD 자동 재배포 차단 + Makefile 롤백 타겟 추가
+
+## Context
+
+롤백(`v1.2.1-stable-feb20`)은 deploy-test 서버에 **정상 반영 완료**되었다.
+그러나 탐색 결과 **CI/CD가 롤백을 즉각 덮어쓸 수 있는 치명적 위험**이 발견됐다.
+
+### 현재 배포 서버 상태 (정상 ✅)
+
+| 항목 | 현재값 | 목표값 |
+|------|--------|--------|
+| Git 브랜치 | `release/feb20-stable` | ✅ |
+| Frontend 이미지 | `dorae222/adelie-frontend:feb20-stable` | ✅ |
+| Backend 이미지 | `dorae222/adelie-backend-api:feb20-stable` | ✅ |
+| DB 리비전 | `20260218_unique_portfolio` | ✅ |
+| API 상태 | `healthy` | ✅ |
+| 외부 접근 | `demo.adelie-invest.com` healthy | ✅ |
+
+### 발견된 미완 사항 (2건)
+
+**[Critical] CI/CD 자동 재배포 위험**
+- `.github/workflows/deploy.yml`이 `develop` 브랜치 push 시 자동 배포 트리거
+- TAG를 `latest`로 고정(`TAG: latest` 환경변수)
+- develop에 커밋이 push되면 → latest 이미지 빌드 → deploy-test에 `latest`로 배포 → **롤백 덮어쓰기**
+- `workflow_dispatch`(수동 트리거) 없음
+
+**[Optional but planned] lxd/Makefile rollback-stable 타겟 없음**
+- 원래 롤백 계획에 포함됐으나 미구현
+
+---
+
+## 수정 대상 파일
+
+| 파일 | 변경 내용 |
+|------|---------|
+| `.github/workflows/deploy.yml` | 트리거 보호 + `workflow_dispatch` 추가 |
+| `lxd/Makefile` | `rollback-stable` 타겟 추가 |
+
+---
+
+## Fix 1: deploy.yml 트리거 보호 (Critical)
+
+**파일**: `.github/workflows/deploy.yml`
+
+### 변경 내용
+
+**Before:**
+```yaml
+on:
+  push:
+    branches: [develop]
+
+env:
+  TAG: latest
+```
+
+**After:**
+```yaml
+on:
+  push:
+    branches: [main]          # develop 자동배포 제거 → main 머지 시만 자동배포
+  workflow_dispatch:           # 수동 트리거 추가
+    inputs:
+      tag:
+        description: '배포할 Docker 이미지 태그 (예: latest, feb20-stable)'
+        required: false
+        default: 'latest'
+      skip_build:
+        description: '빌드 스킵 (기존 이미지 배포 시 true)'
+        required: false
+        default: 'false'
+
+env:
+  TAG: ${{ github.event.inputs.tag || 'latest' }}
+```
+
+### 추가로 수정할 부분 (workflow body)
+
+빌드 단계에 조건 추가 — `skip_build: 'true'`이면 빌드/push를 건너뜀:
+```yaml
+- name: Build and push frontend
+  if: github.event.inputs.skip_build != 'true'
+  # ... 기존 빌드 step
+```
+
+배포 단계: TAG 환경변수를 docker compose에 전달:
+```yaml
+- name: Deploy to production
+  run: |
+    ssh ... '
+      cd ~/adelie-investment
+      git fetch origin
+      git checkout release/feb20-stable  # 또는 ${{ env.DEPLOY_BRANCH }}
+      TAG=${{ env.TAG }} docker compose -f docker-compose.prod.yml pull frontend backend-api
+      TAG=${{ env.TAG }} docker compose -f docker-compose.prod.yml up -d --no-deps frontend backend-api
+    '
+```
+
+> **실용적 접근**: 배포 브랜치를 `workflow_dispatch.inputs.branch`로도 받을 수 있지만,
+> 일단 최소 변경(develop 트리거 제거 + workflow_dispatch 추가 + TAG 파라미터화)만 적용.
+
+---
+
+## Fix 2: lxd/Makefile rollback-stable 타겟 추가 (Optional)
+
+**파일**: `lxd/Makefile`
+
+적절한 위치(기존 `deploy-test` 타겟 근처)에 추가:
+
+```makefile
+## 금요일 안정 버전(feb20-stable)으로 빠른 롤백
+rollback-stable:
+	@echo "$(CYAN)▶ 롤백: feb20-stable → deploy-test$(RESET)"
+	ssh $(DEPLOY_HOST) ' \
+	  cd ~/adelie-investment && \
+	  git fetch origin && \
+	  git checkout release/feb20-stable && \
+	  TAG=feb20-stable docker compose -f docker-compose.prod.yml pull frontend backend-api && \
+	  TAG=feb20-stable docker compose -f docker-compose.prod.yml up -d --no-deps frontend backend-api && \
+	  docker exec adelie-frontend nginx -s reload 2>/dev/null || true && \
+	  echo "✅ 롤백 완료: $$(docker ps --format \"{{.Image}}\" | grep adelie)" \
+	'
+	@echo "$(GREEN)✅ rollback-stable 완료$(RESET)"
+```
+
+`DEPLOY_HOST` 변수가 lxd/Makefile에 이미 정의되어 있으므로 그대로 활용.
+
+---
+
+## 실행 순서
+
+1. **Fix 1 먼저** (Critical): `deploy.yml` 수정 후 커밋 → **develop 브랜치에 push하지 말고 `main` 또는 별도 브랜치에 push** → 담당자: 도형준(dorae222)
+2. **Fix 2** (Optional): `lxd/Makefile` 수정 → `make -f lxd/Makefile rollback-stable` 로 검증
+
+> ⚠️ Fix 1 작업 자체를 develop에 push하면 기존 deploy.yml이 트리거됨.
+> 반드시 `feature/fix-cicd-trigger` 브랜치로 PR → main 머지 방식으로 진행.
+
+---
+
+## 검증
+
+Fix 1 완료 후:
+- develop에 빈 커밋 push → GitHub Actions UI에서 워크플로우 미트리거 확인
+- GitHub Actions → "Run workflow" 버튼 활성화 확인
+- `workflow_dispatch`로 `tag=feb20-stable, skip_build=true` 입력 → deploy-test에서 `feb20-stable` 이미지 유지 확인
+
+Fix 2 완료 후:
+- `make -f lxd/Makefile rollback-stable` 실행 → deploy-test 이미지 `feb20-stable` 확인
+
+---
+
+## 담당자
+
+| 작업 | 담당 | git config |
+|------|------|-----------|
+| Fix 1 (deploy.yml) | 도형준 (인프라) | dorae222 / dhj9842@gmail.com |
+| Fix 2 (lxd/Makefile) | 도형준 (인프라) | dorae222 / dhj9842@gmail.com |
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+현재 롤백된 버전을 팀원들의 서버에도 모두 동일하게 만들고, dev-final/파트 이렇게 branch를 만들어서 각자 작업하게 하고자 한다. 미리 git checkout으로 브랜치 전환을 최종적으로 해놔야 한다.
+그리고 DB도 현재 최신으로 수집된 데이터까지 있는 것을 확인하고, 팀원들의 각 서버에 그대로 복제 해라. 그냥 배포 서버의 도메인 연결을 안하고 기존처럼 로컬 상태로 그대로 복제하는 것이라고 이해하면 편할 것이다. 참고로 현재 데이터 파이프라인 수집은 진행중이다.
+이를 위해 현재 LXD 상황 및 각 접속 방법 세팅등 상황 및 환경을 파악해라
+
+---
+
+[Request interrupted by user for tool use]
