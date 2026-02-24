@@ -41,7 +41,8 @@
 
   /* Agent UI tokens – Toss-tone */
   --bottom-nav-h: 68px;
-  --agent-dock-h: 104px;
+  --agent-dock-h: 88px;
+  --safe-bottom-offset: calc(var(--bottom-nav-h, 68px) + var(--agent-dock-h, 88px));
   --keyboard-offset: 0px;
   --agent-radius-sm: 14px;
   --agent-radius-md: 18px;
@@ -353,6 +354,23 @@
   animation: agentControlPulse 1.6s ease-in-out infinite;
 }
 
+@keyframes agentControlPulseBlue {
+  0%, 100% {
+    box-shadow:
+      0 -12px calc(var(--agent-glow-blur) * 0.92) rgba(29, 111, 222, calc(var(--agent-glow-alpha) * 0.8)),
+      0 16px calc(var(--agent-glow-blur) * 1.05) rgba(29, 111, 222, calc(var(--agent-glow-alpha) * 0.95));
+  }
+  50% {
+    box-shadow:
+      0 -14px calc(var(--agent-glow-blur) * 1.08) rgba(29, 111, 222, calc(var(--agent-glow-alpha) * 0.95)),
+      0 20px calc(var(--agent-glow-blur) * 1.2) rgba(29, 111, 222, calc(var(--agent-glow-alpha) + var(--agent-glow-spread)));
+  }
+}
+
+.animate-agent-control-pulse-blue {
+  animation: agentControlPulseBlue 1.6s ease-in-out infinite;
+}
+
 @keyframes agentStatusDotPulse {
   0%, 100% {
     transform: scale(0.86);
@@ -539,3 +557,41 @@
 }
 
 /* 다크모드 대응 (CSS 변수 기반이므로 자동 적용) */
+
+/* Agent canvas markdown rendering quality */
+.agent-markdown p {
+  margin-top: 0.45rem;
+  margin-bottom: 0.45rem;
+}
+
+.agent-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  min-width: 360px;
+}
+
+.agent-markdown thead th {
+  background: #f8fafc;
+  color: #344054;
+  font-weight: 700;
+}
+
+.agent-markdown th,
+.agent-markdown td {
+  border: 1px solid #e6eaf0;
+  padding: 0.5rem 0.6rem;
+  text-align: left;
+  vertical-align: top;
+  font-size: 0.82rem;
+}
+
+.agent-markdown ul,
+.agent-markdown ol {
+  margin-top: 0.45rem;
+  margin-bottom: 0.45rem;
+}
+
+.agent-markdown pre {
+  overflow-x: auto;
+}
