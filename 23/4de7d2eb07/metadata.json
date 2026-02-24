@@ -2,8 +2,8 @@
   "cli_version": "0.4.2",
   "checkpoint_id": "234de7d2eb07",
   "strategy": "manual-commit",
-  "branch": "feature/canvas-agent-v4",
-  "checkpoints_count": 39,
+  "branch": "dev-final/frontend",
+  "checkpoints_count": 43,
   "files_touched": [
     ".dockerignore",
     ".env.example",
@@ -221,6 +221,7 @@
     "infra/terraform/outputs.tf",
     "infra/terraform/variables.tf",
     "lxd/Makefile",
+    "lxd/archive/test-server-staging.md",
     "lxd/inventory.md",
     "pytest.ini",
     "tests/api/__init__.py",
@@ -481,13 +482,20 @@
       "context": "/23/4de7d2eb07/34/context.md",
       "content_hash": "/23/4de7d2eb07/34/content_hash.txt",
       "prompt": "/23/4de7d2eb07/34/prompt.txt"
+    },
+    {
+      "metadata": "/23/4de7d2eb07/35/metadata.json",
+      "transcript": "/23/4de7d2eb07/35/full.jsonl",
+      "context": "/23/4de7d2eb07/35/context.md",
+      "content_hash": "/23/4de7d2eb07/35/content_hash.txt",
+      "prompt": "/23/4de7d2eb07/35/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 40633,
-    "cache_creation_tokens": 6071258,
-    "cache_read_tokens": 203140109,
-    "output_tokens": 747043,
-    "api_call_count": 2387
+    "input_tokens": 40663,
+    "cache_creation_tokens": 6124992,
+    "cache_read_tokens": 204320402,
+    "output_tokens": 750418,
+    "api_call_count": 2409
   }
 }
