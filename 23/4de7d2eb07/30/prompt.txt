@@ -1,0 +1,259 @@
+Implement the following plan:
+
+# 롤백 계획: demo.adelie-invest.com → 금요일(2026-02-21) 버전
+
+## Context
+
+현재 프로덕션(demo.adelie-invest.com)이 최신 develop 브랜치(`4298fa4`, 튜터 시각화 강화)로 운영 중이다.
+2026-02-22(토)~23(일) 사이 대규모 변경(agent_v7 trading 확장 + 튜터 시각화 리뷰)이 배포되어 문제가 발생했다.
+**금요일(2026-02-21) 기준 안정 버전(`v1.2.1-stable-feb20`)으로 롤백**하면서 수집 데이터와 모의투자 활동은 보존한다.
+
+---
+
+## 타겟 버전
+
+| 항목 | 값 |
+|------|-----|
+| Git 태그 | `v1.2.1-stable-feb20` |
+| 연결 브랜치 | `release/feb20-stable` |
+| 커밋 | `091a1bb` — "2026-02-20 마지막 안정 상태 (agent-canvas 머지 직전)" |
+| Docker 이미지 태그 | `dorae222/adelie-*:feb20-stable` (**이미 Docker Hub에 존재**, staging 서버 사용 중) |
+| DB 스키마 목표 | `20260218_unique_user_portfolio` |
+
+> **핵심**: Docker Hub에 `feb20-stable` 이미지가 이미 존재하므로 빌드 불필요 → 빠른 롤백 가능
+
+---
+
+## 롤백 접근 방식 비교
+
+| 방식 | 소요 시간 | 완전성 | 설명 |
+|------|-----------|--------|------|
+| **Git 태그 + 기존 이미지** ✅ | ~15분 | 완전 | deploy-test에서 `release/feb20-stable` checkout + Docker Hub에서 pull |
+| TAG만 변경 | ~15분 | 불완전 | 코드는 develop, 이미지만 feb20-stable → 불일치 |
+| 로컬 빌드 후 배포 | ~30분 | 완전 | 이미지 재빌드 필요 (불필요) |
+
+→ **Git 태그 + 기존 이미지 방식 채택**
+
+---
+
+## 데이터 영향 분석
+
+### ✅ 완전 보존 (행 전체 유지)
+| 테이블 | 분류 |
+|--------|------|
+| daily_briefings, briefing_stocks | 수집 데이터 |
+| historical_cases, case_matches, case_stock_relations | 수집 데이터 |
+| daily_narratives, narrative_scenarios | 수집 데이터 |
+| stock_listings | 기준 데이터 |
+| users, user_settings | 사용자 |
+| user_portfolios | 모의투자 (포트폴리오 잔액) |
+| simulation_trades | 모의투자 (핵심 거래 행 유지) |
+| portfolio_holdings | 모의투자 (핵심 보유 포지션 유지) |
+| briefing_rewards, dwell_rewards | 보상 이력 |
+| learning_progress, glossary | 학습/사전 |
+| tutor_sessions, tutor_messages | 채팅 대화 내용 |
+
+### ⚠️ 소실되는 컬럼 (행은 유지, 컬럼만 제거 — **허용**)
+
+**`20260222_agent_v7` 롤백:**
+
+| 테이블 | 제거 컬럼 |
+|--------|---------|
+| portfolio_holdings | position_side, leverage, borrow_rate_bps, last_funding_at |
+| simulation_trades | position_side, leverage, filled_quantity, slippage_bps, fee_amount, order_kind, order_status, requested_price, executed_price |
+| tutor_sessions | cover_icon_key, summary_keywords, summary_snippet, is_pinned, pinned_at |
+
+**`20260223_review_card_columns` 롤백:**
+
+| 테이블 | 제거 컬럼 |
+|--------|---------|
+| tutor_sessions | review_summary, review_key_points, review_topics, context_entities, conversation_summary |
+
+> `20260223_merge` 노드는 no-op → 영향 없음
+> 공매도/레버리지 포지션 컬럼 소실 **허용** (사용자 확인 완료)
+
+---
+
+## 실행 계획 (deploy-test 서버)
+
+**전제 조건**: `ssh deploy-test` 접속 가능, 프로젝트 경로 `~/adelie-investment`
+
+---
+
+### Step 0. CI/CD 자동 재배포 차단 (선택)
+
+develop에 새 커밋 push 시 GitHub Actions가 자동으로 latest 이미지를 재배포하는 것을 방지:
+
+```bash
+# 방법 A: GitHub Actions 임시 비활성화 (GitHub UI → Actions → disable)
+# 방법 B: deploy.yml의 트리거 브랜치를 일시적으로 변경 (코드 수정 없이 작업하는 경우 불필요)
+# → 롤백 중 develop에 새 커밋이 없다면 스킵 가능
+```
+
+---
+
+### Step 1. 현재 상태 사전 점검
+
+```bash
+ssh deploy-test '
+  cd ~/adelie-investment
+  echo "=== 현재 git 상태 ===" && git describe --tags --all && git log --oneline -3
+  echo "=== Alembic 현재 리비전 ===" && \
+    docker exec adelie-backend-api sh -c "cd /app/database && alembic current"
+  echo "=== 컨테이너 상태 ===" && \
+    docker compose -f docker-compose.prod.yml ps
+'
+```
+
+---
+
+### Step 2. DB 전체 백업 (안전망)
+
+```bash
+ssh deploy-test '
+  BACKUP_FILE="/tmp/narrative_invest_rollback_$(date +%Y%m%d_%H%M%S).dump"
+  docker exec adelie-postgres pg_dump \
+    -U narative -d narrative_invest \
+    --format=custom \
+    -f "$BACKUP_FILE"
+  echo "백업 완료: $BACKUP_FILE"
+'
+```
+
+---
+
+### Step 3. Alembic 다운그레이드
+
+다운그레이드 순서 (Alembic이 자동 계산):
+`20260223_review_card_columns` → `20260223_merge` (no-op) → `20260222_agent_v7` → **`20260218_unique_user_portfolio`**
+
+```bash
+ssh deploy-test '
+  docker exec adelie-backend-api sh -c \
+    "cd /app/database && alembic downgrade 20260218_unique_user_portfolio"
+'
+
+# 완료 확인
+ssh deploy-test '
+  docker exec adelie-backend-api sh -c "cd /app/database && alembic current"
+'
+# → "20260218_unique_user_portfolio (head)" 출력 확인
+```
+
+---
+
+### Step 4. Git 태그 체크아웃 + feb20-stable 이미지 배포
+
+```bash
+ssh deploy-test '
+  cd ~/adelie-investment
+
+  # release/feb20-stable 브랜치로 전환 (v1.2.1-stable-feb20 태그와 동일 커밋)
+  git fetch origin
+  git checkout release/feb20-stable
+
+  # Docker Hub에서 feb20-stable 이미지 pull
+  TAG=feb20-stable docker compose -f docker-compose.prod.yml pull frontend backend-api
+
+  # 컨테이너 교체 (DB/Redis/MinIO는 그대로 유지)
+  TAG=feb20-stable docker compose -f docker-compose.prod.yml up -d \
+    --no-deps frontend backend-api
+
+  # nginx 설정 리로드 (캐시 클리어)
+  docker exec adelie-frontend nginx -s reload 2>/dev/null || true
+'
+```
+
+---
+
+### Step 5. 헬스체크 및 검증
+
+```bash
+ssh deploy-test '
+  echo "=== Backend API ===" && curl -s http://localhost:8082/api/v1/health
+  echo "=== Frontend ===" && curl -sI http://localhost:80 | head -5
+  echo "=== Git 상태 ===" && cd ~/adelie-investment && git describe --tags
+  echo "=== 컨테이너 ===" && docker compose -f docker-compose.prod.yml ps
+'
+```
+
+**브라우저 검증 체크리스트**:
+- [ ] https://demo.adelie-invest.com 홈 로딩 정상
+- [ ] 키워드 카드 표시 (수집 데이터 보존 확인)
+- [ ] 로그인 후 포트폴리오 조회 가능 (사용자 데이터 보존)
+- [ ] 튜터 FAB 활성화 상태 (feb20-stable 기능)
+- [ ] 배포 시각: 금요일 버전 UI 확인
+
+---
+
+## 롤백 후 복구 시나리오
+
+### 정상 운영 복귀 시
+
+```bash
+ssh deploy-test '
+  cd ~/adelie-investment
+  git checkout develop  # 또는 git pull origin develop
+
+  # Alembic upgrade head
+  docker exec adelie-backend-api sh -c \
+    "cd /app/database && alembic upgrade head"
+
+  # 최신 이미지 배포
+  TAG=latest docker compose -f docker-compose.prod.yml up -d \
+    --no-deps frontend backend-api
+'
+```
+
+---
+
+## 향후 개선: Makefile 롤백 자동화 타겟 추가 (선택)
+
+`lxd/Makefile`에 추가하면 다음 롤백 시 한 줄로 실행 가능:
+
+```makefile
+# 금요일 안정 버전으로 빠른 롤백
+rollback-stable:
+	ssh deploy-test ' \
+	  cd ~/adelie-investment && \
+	  git fetch origin && \
+	  git checkout release/feb20-stable && \
+	  TAG=feb20-stable docker compose -f docker-compose.prod.yml pull frontend backend-api && \
+	  TAG=feb20-stable docker compose -f docker-compose.prod.yml up -d --no-deps frontend backend-api && \
+	  docker exec adelie-frontend nginx -s reload 2>/dev/null || true'
+```
+
+---
+
+## 주요 파일 경로
+
+| 용도 | 경로 |
+|------|------|
+| Docker Compose prod | `docker-compose.prod.yml` |
+| lxd/Makefile (배포 자동화) | `lxd/Makefile` |
+| Alembic 마이그레이션 | `database/alembic/versions/` |
+| CI/CD 배포 워크플로우 | `.github/workflows/deploy.yml` |
+
+---
+
+## 위험 요소 및 경감 방안
+
+| 위험 | 확률 | 경감 방안 |
+|------|------|---------|
+| Alembic 다운그레이드 실패 | 낮음 | Step 2 백업으로 `pg_restore` 복원 가능 |
+| `feb20-stable` 이미지 없음 | 매우 낮음 | staging 서버에서 이미 사용 중 확인 |
+| 롤백 중 develop 자동 재배포 | 보통 | Step 0에서 CI/CD 비활성화 또는 롤백 완료 후 develop 커밋 없으면 자동 해결 |
+| nginx 캐시로 이전 버전 표시 | 낮음 | `docker exec adelie-frontend nginx -s reload` |
+| release/feb20-stable 브랜치 없음 | 없음 | `v1.2.1-stable-feb20` 태그로 대체 (`git checkout tags/v1.2.1-stable-feb20`) |
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+배포 서버에도 올바르게 반영을 해야된다. 이를 체크해라.
+반영되지 않았다면 계획을 세워라
+
+---
+
+[Request interrupted by user for tool use]
