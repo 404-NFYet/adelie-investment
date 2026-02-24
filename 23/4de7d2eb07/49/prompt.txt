@@ -1,0 +1,148 @@
+Implement the following plan:
+
+# frontend-dev 이미지 재빌드 계획 (remark-gfm 누락 수정)
+
+## Context
+
+**문제:** `http://localhost:3001` 접속 시 Vite import 에러
+```
+Failed to resolve import "remark-gfm" from "src/components/tutor/MessageBubble.jsx"
+```
+
+**근본 원인 (타임라인):**
+| 날짜 | 이벤트 |
+|------|--------|
+| 2026-02-20 | `release/feb20-stable` 기반으로 `adelie-frontend-dev:feb20-stable` 이미지 빌드 |
+| 2026-02-23 (cdb934d) | `remark-gfm`, `remark-breaks` → `package.json` 추가, `MessageBubble.jsx` 사용 |
+| 오늘 | 이미지 태그를 `feb20-stable`로 고정했으나, 이미지의 `node_modules`에 신규 패키지 없음 |
+
+**구조:**
+- Docker 이미지 역할: `node_modules` + Vite 런타임 (`npm install` 시점 패키지 포함)
+- 소스 코드: volume mount (`./frontend/src`) → 현재 checkout 브랜치 반영
+- **이미지 `node_modules`와 소스 코드의 import가 불일치** → 에러
+
+**누락 패키지:**
+- `remark-gfm: ^4.0.1` (GFM: 테이블, 취소선, 체크박스)
+- `remark-breaks: ^4.0.0` (줄바꿈 변환)
+
+---
+
+## 해결 방법: 이미지 재빌드 (새 태그 `dev-20260224`)
+
+`feb20-stable` 이미지를 교체하지 않고 새 날짜 기반 태그를 생성.
+
+### Step 1. 호스트에서 이미지 재빌드
+
+```bash
+cd /home/hj/2026/project/adelie-investment
+docker build \
+  -f frontend/Dockerfile.dev \
+  -t dorae222/adelie-frontend-dev:dev-20260224 \
+  -t dorae222/adelie-frontend-dev:latest \
+  frontend/
+```
+
+- Dockerfile.dev가 `npm install`을 실행하므로 현재 `package.json`의 모든 패키지 포함
+- `dev-20260224`: 새 명시적 태그 (날짜 기반)
+- `latest`: 기존 latest도 동시 업데이트
+
+### Step 2. docker-compose.dev.yml 이미지 태그 변경
+
+```yaml
+# 변경 전 (현재)
+image: dorae222/adelie-frontend-dev:feb20-stable
+
+# 변경 후
+image: dorae222/adelie-frontend-dev:dev-20260224
+```
+
+**수정 파일:** `docker-compose.dev.yml` (frontend.image 태그만 변경)
+
+### Step 3. 커밋 + push
+
+```bash
+git add docker-compose.dev.yml
+git commit -m "chore: frontend-dev 이미지 dev-20260224로 갱신 (remark-gfm, remark-breaks 포함)"
+git push origin dev-final/frontend
+```
+
+### Step 4. LXD 5대에 새 이미지 전송
+
+```bash
+for srv in dev-yj99son dev-j2hoon10 dev-jjjh02 dev-ryejinn dev-hj; do
+  docker save dorae222/adelie-frontend-dev:dev-20260224 \
+    | lxc exec "$srv" -- docker load \
+    && echo "✅ $srv" || echo "❌ $srv"
+done
+```
+
+### Step 5. 각 LXD 서버 docker-compose 업데이트 + 재시작
+
+```bash
+for srv in dev-yj99son dev-j2hoon10 dev-jjjh02 dev-ryejinn dev-hj; do
+  lxc exec "$srv" -- bash -c "
+    cd /home/ubuntu/adelie-investment
+    git fetch origin dev-final/frontend
+    git checkout origin/dev-final/frontend -- docker-compose.dev.yml
+    docker compose -f docker-compose.dev.yml up -d --no-build frontend
+  " && echo "✅ $srv" || echo "❌ $srv"
+done
+```
+
+### Step 6. 검증
+
+```bash
+# 이미지 태그 확인
+for srv in dev-yj99son dev-j2hoon10 dev-jjjh02 dev-ryejinn dev-hj; do
+  echo -n "$srv: "
+  lxc exec "$srv" -- docker inspect adelie-investment-frontend-1 \
+    --format '{{.Config.Image}}'
+done
+# 기대값: dorae222/adelie-frontend-dev:dev-20260224 (전 서버 동일)
+
+# 접속 확인 (각 서버 3001 포트 응답)
+for srv in dev-yj99son dev-j2hoon10 dev-jjjh02 dev-ryejinn dev-hj; do
+  IP=$(lxc list "$srv" -f csv -c 4 | cut -d' ' -f1)
+  echo -n "$srv ($IP:3001): "
+  curl -s -o /dev/null -w "%{http_code}" "http://$IP:3001/" 2>/dev/null
+  echo
+done
+```
+
+---
+
+## 수정 파일
+
+| 파일 | 변경 내용 |
+|------|---------|
+| `docker-compose.dev.yml` | `feb20-stable` → `dev-20260224` |
+
+## 태그 정책
+
+| 태그 | 내용 | 용도 |
+|------|------|------|
+| `feb20-stable` | 2026-02-20 빌드 (remark-gfm 없음) | 레거시 참조용 유지 |
+| `dev-20260224` | 오늘 재빌드 (remark-gfm, remark-breaks 포함) | LXD dev 환경 |
+| `latest` | `dev-20260224`와 동일 | 편의 태그 |
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+<task-notification>
+<task-id>bbab7c1</task-id>
+<tool-use-id>toolu_018VUgyksS1snNXL3nWmLm2N</tool-use-id>
+<output-file>/tmp/claude-1000/-home-hj-2026-project-adelie-investment/tasks/bbab7c1.output</output-file>
+<status>completed</status>
+<summary>Background command "frontend-dev 이미지 빌드 (remark-gfm 포함)" completed (exit code 0)</summary>
+</task-notification>
+Read the output file to retrieve the result: /tmp/claude-1000/-home-hj-2026-project-adelie-investment/tasks/bbab7c1.output
+
+---
+
+develop을 배포용으로 만들자고 한 순간부터 commit 내역 차이가 많이 나고, merge를 하는 과정에서 꼬인게 많은 것 같은데 그전 세팅으로 돌아가서 브랜치를 prod-final 이런식으로 브랜치를 만드는건 어떤가? DB는 일단 그대로 두고.
+
+---
+
+[Request interrupted by user for tool use]
