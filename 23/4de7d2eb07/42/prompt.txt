@@ -1,0 +1,224 @@
+Implement the following plan:
+
+# 팀 개발환경 전체 정비 계획
+
+## Context
+
+현재 상황:
+- deploy-test: `release/feb20-stable` (091a1bb), 이미지 `:feb20-stable`, alembic `20260223_expires`
+- LXD 5대: `dev-final/*` 브랜치 체크아웃 완료 — 하지만 컨테이너·DB·git 상태가 불균일
+
+발견된 문제:
+| 서버 | 컨테이너 | alembic | git PAT | user config |
+|------|---------|---------|---------|-------------|
+| dev-yj99son | ✅ Up | `20260222_agent_v7` (구버전) | ✅ | ✅ |
+| dev-j2hoon10 | ✅ Up | FAILED (`20260223_review` 파일 없음) | ❌ URL에 미포함 | ❌ 미설정 |
+| dev-jjjh02 | ✅ Up | FAILED (`20260223_review` 파일 없음) | ✅ | ✅ |
+| dev-ryejinn | ❌ 컨테이너 없음 | 확인 불가 | ✅ | ✅ |
+| dev-hj | ✅ Up | `20260218_unique_portfolio` (구버전) | ✅ | ✅ |
+
+목표: 5대 모두 deploy-test 기준(`20260223_expires`)과 완전 호환 + git push 가능 + 워크플로우 문서화
+
+---
+
+## 수행 순서
+
+### Step 1: dev-ryejinn 컨테이너 기동
+
+```bash
+lxc exec dev-ryejinn -- bash -c "
+  cd /home/ubuntu/adelie-investment
+  docker compose -f docker-compose.dev.yml up -d
+"
+```
+
+### Step 2: dev-j2hoon10 git 복구
+
+```bash
+lxc exec dev-j2hoon10 -- bash -c "
+  cd /home/ubuntu/adelie-investment
+  git config user.name 'J2hoon10'
+  git config user.email 'myhome559755@naver.com'
+"
+```
+
+PAT 재설정은 수동 확인 필요 (PAT 값은 정지훈에게 확인):
+```bash
+# 정지훈이 직접 dev-j2hoon10 서버에서 실행
+git remote set-url origin https://<ghp_TOKEN>@github.com/404-NFYet/adelie-investment.git
+```
+
+→ PAT 확인 후 자동화 대안: `lxd/Makefile`에 `check-lxd-git` 타겟 실행으로 사후 검증
+
+### Step 3: dev-final/* 브랜치에 신규 migration 파일 추가 + 브랜치 복귀
+
+**문제**: dev-jjjh02·dev-j2hoon10의 로컬 DB에 `20260223_review`, `20260223_expires` 등이 기록돼 있지만, `dev-final/*` 브랜치 코드에 해당 migration 파일 없음 → alembic FAILED
+
+**원인**: 해당 migrations(`20260223_*`)는 `develop`에만 존재 — `dev/backend`·`dev/chatbot` 등 개별 dev/* 브랜치에는 포함 안 됨
+
+**해결**: HOST 머신에서 각 `dev-final/*` 브랜치에 develop의 migration 파일 동기화 후, 각 서버는 git pull로 수신
+
+```bash
+# HOST 머신(feature/canvas-agent-v4) 기준 실행
+CURRENT_BRANCH=$(git branch --show-current)   # feature/canvas-agent-v4 저장
+
+for branch in dev-final/frontend dev-final/chatbot dev-final/backend dev-final/pipeline dev-final/infra; do
+  git checkout $branch
+  git pull origin $branch                                      # 최신화
+  git checkout origin/develop -- database/alembic/versions/   # develop migration 파일만 가져오기
+  git add database/alembic/versions/
+  git commit -m "chore: alembic migration 파일 develop 기준 동기화 (20260223_expires)"
+  git push origin $branch
+  echo "  ✅ $branch 업데이트 완료"
+done
+
+git checkout $CURRENT_BRANCH   # ✅ feature/canvas-agent-v4 복귀
+```
+
+**각 LXD 서버 브랜치 확인** — push 후 각자 자신의 dev-final/* 브랜치에 있어야 함:
+
+| 서버 | 복귀 브랜치 |
+|------|------------|
+| dev-yj99son | `dev-final/frontend` |
+| dev-j2hoon10 | `dev-final/chatbot` |
+| dev-jjjh02 | `dev-final/backend` |
+| dev-ryejinn | `dev-final/pipeline` |
+| dev-hj | `dev-final/infra` |
+
+### Step 4: 각 LXD 서버 git pull (dev-final/* 복귀 확인) + alembic upgrade head
+
+Step 3 push 완료 후, 각 서버가 자신의 dev-final/* 브랜치에 있는지 확인하며 pull:
+
+```bash
+for srv in dev-yj99son dev-j2hoon10 dev-jjjh02 dev-ryejinn dev-hj; do
+  lxc exec $srv -- bash -c "
+    cd /home/ubuntu/adelie-investment
+    echo '  현재 브랜치: '\$(git branch --show-current)
+    git pull origin \$(git branch --show-current)          # dev-final/각자 브랜치에서 pull
+    docker compose -f docker-compose.dev.yml up -d --build backend-api
+    sleep 8
+    docker compose -f docker-compose.dev.yml run --rm backend-api \
+      sh -c 'cd /app/database && alembic upgrade head'
+    docker compose -f docker-compose.dev.yml up -d
+  " && echo "  ✅ $srv 완료" || echo "  ❌ $srv"
+done
+```
+
+### Step 5: lxd/Makefile에 `dev-local-db-setup` 타겟 추가
+
+파일: `lxd/Makefile`
+
+```makefile
+# 팀원별 개인 로컬 DB 초기화 + deploy-test 프로덕션 데이터 복제
+dev-local-db-setup:
+	@echo "=== Step 1: 로컬 postgres 기동 + alembic upgrade head ==="
+	@for srv in dev-yj99son dev-j2hoon10 dev-jjjh02 dev-ryejinn dev-hj; do \
+		echo "  → $$srv..."; \
+		lxc exec $$srv -- bash -c " \
+			cd /home/ubuntu/adelie-investment && \
+			docker compose -f docker-compose.dev.yml up -d postgres redis && sleep 6 && \
+			docker compose -f docker-compose.dev.yml run --rm backend-api \
+				sh -c 'cd /app/database && alembic upgrade head'" \
+			&& echo "  ✅ $$srv" || echo "  ❌ $$srv"; \
+	done
+	@echo ""
+	@echo "=== Step 2: deploy-test → 각 서버 로컬 DB 데이터 복제 ==="
+	@DUMP=/tmp/adelie_prod_$$(date +%Y%m%d%H%M).sql; \
+	ssh deploy-test "docker exec adelie-postgres pg_dump \
+		-U narative -d narrative_invest --data-only --disable-triggers \
+		-t stock_listings -t daily_briefings -t briefing_stocks \
+		-t historical_cases -t case_matches -t case_stock_relations \
+		-t broker_reports" > $$DUMP; \
+	for srv in dev-yj99son dev-j2hoon10 dev-jjjh02 dev-ryejinn dev-hj; do \
+		echo "  → $$srv 복제 중..."; \
+		lxc exec $$srv -- bash -c " \
+			docker exec -i adelie-investment-postgres-1 \
+				psql -U narative -d narrative_invest" < $$DUMP \
+			&& echo "  ✅ $$srv" || echo "  ❌ $$srv"; \
+	done; \
+	rm -f $$DUMP
+	@echo ""
+	@echo "=== Step 3: backend-api 재시작 ==="
+	@for srv in dev-yj99son dev-j2hoon10 dev-jjjh02 dev-ryejinn dev-hj; do \
+		lxc exec $$srv -- bash -c " \
+			cd /home/ubuntu/adelie-investment && \
+			docker compose -f docker-compose.dev.yml restart backend-api" \
+			&& echo "  ✅ $$srv" || echo "  ❌ $$srv"; \
+	done
+	@echo "✅ dev-local-db-setup 완료"
+```
+
+또한 `.PHONY`와 `help` 섹션에 `dev-local-db-setup` 추가.
+
+### Step 6: git push 검증
+
+```bash
+for srv in dev-yj99son dev-j2hoon10 dev-jjjh02 dev-ryejinn dev-hj; do
+  echo -n "### $srv push 테스트: "
+  lxc exec $srv -- bash -c "
+    cd /home/ubuntu/adelie-investment
+    git ls-remote origin HEAD 2>&1 | head -1
+  " 2>/dev/null && echo "✅" || echo "❌ PAT 없음"
+done
+```
+
+### Step 7: Git 워크플로우 문서 생성
+
+파일: `docs/reference/git-workflow.md`
+
+내용 포함:
+- **브랜치 전략**: `main ← develop ← dev-final/* ← dev/*`
+- **담당자별 작업 브랜치**: 서버↔브랜치 매핑 테이블
+- **일상 작업 흐름**: 작업 → commit → push → PR → review → merge 각 단계 명령어
+- **커밋 컨벤션**: 타입·형식·금지 사항 (Co-authored-by, AI 흔적 금지)
+- **PAT 설정 방법**: HTTPS 토큰 방식 remote URL 설정 (server별 1회 설정)
+- **PR 규칙**: target 브랜치, reviewer 지정, merge 조건
+- **동기화**: `git pull origin dev-final/{role}`, `make -f lxd/Makefile sync-lxd`
+
+---
+
+## 수정 대상 파일
+
+| 파일 | 변경 내용 |
+|------|---------|
+| `database/alembic/versions/` (dev-final/* 브랜치) | develop 기준 migration 파일 동기화 (5개 브랜치) |
+| `lxd/Makefile` | `dev-local-db-setup` 타겟 추가, `.PHONY`·`help` 업데이트 |
+| `docs/reference/git-workflow.md` | 신규 문서: 팀 Git 워크플로우 가이드 |
+
+---
+
+## 검증
+
+```bash
+# 1. 전체 헬스체크
+make -f lxd/Makefile health-lxd
+
+# 2. alembic 버전 일치 확인 (전원 20260223_expires 이어야 함)
+for srv in dev-yj99son dev-j2hoon10 dev-jjjh02 dev-ryejinn dev-hj; do
+  echo -n "$srv: "
+  lxc exec $srv -- bash -c "docker exec adelie-investment-backend-api-1 \
+    sh -c 'cd /app/database && alembic current 2>&1 | tail -1'" 2>/dev/null
+done
+
+# 3. git push 가능 여부
+make -f lxd/Makefile check-lxd-git
+
+# 4. deploy-test API 정상
+curl -s https://demo.adelie-invest.com/api/v1/health
+```
+
+---
+
+## 주의사항
+
+- **Step 3 migration cherry-pick**: `feature/canvas-agent-v4` 브랜치로 복귀 잊지 말 것
+- **dev-j2hoon10 PAT**: 정지훈이 본인 서버에서 직접 `git remote set-url` 실행 필요 (PAT 값 외부 노출 불가)
+- **dev-local-db-setup**: 기존 로컬 DB 데이터 덮어씀 주의 — 팀 공지 후 실행
+- **alembic 순서**: migration 파일 추가(Step 3) → git pull(Step 4) → upgrade head 순서 반드시 준수
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+push를 올바른 브랜치에 진행하고, 각 LXD 서버에 pull을 진행해라

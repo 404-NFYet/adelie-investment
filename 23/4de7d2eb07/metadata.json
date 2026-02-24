@@ -2,8 +2,8 @@
   "cli_version": "0.4.2",
   "checkpoint_id": "234de7d2eb07",
   "strategy": "manual-commit",
-  "branch": "dev-final/frontend",
-  "checkpoints_count": 67,
+  "branch": "feature/canvas-agent-v4",
+  "checkpoints_count": 69,
   "files_touched": [
     ".dockerignore",
     ".env.example",
@@ -59,6 +59,7 @@
     "docker-compose.staging.yml",
     "docs/README.md",
     "docs/getting-started/database-guide.md",
+    "docs/reference/git-workflow.md",
     "docs/team-guides/A_프론트엔드_손영진.md",
     "docs/team-guides/E_인프라_도형준.md",
     "fastapi/Dockerfile",
@@ -535,13 +536,20 @@
       "context": "/23/4de7d2eb07/41/context.md",
       "content_hash": "/23/4de7d2eb07/41/content_hash.txt",
       "prompt": "/23/4de7d2eb07/41/prompt.txt"
+    },
+    {
+      "metadata": "/23/4de7d2eb07/42/metadata.json",
+      "transcript": "/23/4de7d2eb07/42/full.jsonl",
+      "context": "/23/4de7d2eb07/42/context.md",
+      "content_hash": "/23/4de7d2eb07/42/content_hash.txt",
+      "prompt": "/23/4de7d2eb07/42/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 41132,
-    "cache_creation_tokens": 7107994,
-    "cache_read_tokens": 233393910,
-    "output_tokens": 836452,
-    "api_call_count": 2790
+    "input_tokens": 41189,
+    "cache_creation_tokens": 7166937,
+    "cache_read_tokens": 236412977,
+    "output_tokens": 846650,
+    "api_call_count": 2843
   }
 }
