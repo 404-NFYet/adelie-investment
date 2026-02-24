@@ -8,7 +8,7 @@ REGISTRY ?= dorae222
 TAG ?= latest
 
 .PHONY: help push push-local deploy-test deploy-test-service \
-        sync-dev-branches sync-lxd sync-all
+        sync-dev-branches sync-lxd sync-all sync-dev-data
 
 help:
 	@echo ""
@@ -25,6 +25,7 @@ help:
 	@echo "    sync-dev-branches      develop → dev/* 브랜치 병합 & push"
 	@echo "    sync-lxd               각 LXD 서버에서 git pull 실행"
 	@echo "    sync-all               위 두 작업 순차 실행"
+	@echo "    sync-dev-data          deploy-test → LXD 콘텐츠 DB 동기화 (SERVER=dev-xxx 단일 가능)"
 	@echo ""
 	@echo "  변수:"
 	@echo "    REGISTRY=$(REGISTRY)  TAG=$(TAG)"
@@ -85,3 +86,11 @@ sync-lxd:
 
 sync-all: sync-dev-branches sync-lxd
 	@echo "전체 싱크 완료 (브랜치 + LXD 서버)"
+
+# --- 데이터 동기화 (deploy-test → LXD) ---
+sync-dev-data:  ## deploy-test → LXD 콘텐츠 데이터 동기화
+ifdef SERVER
+	bash $(ROOT)/database/scripts/sync_dev_data.sh $(SERVER)
+else
+	bash $(ROOT)/database/scripts/sync_dev_data.sh
+endif
