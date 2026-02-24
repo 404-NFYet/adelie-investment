@@ -1,0 +1,427 @@
+Implement the following plan:
+
+# 브랜치 전략 + CI/CD + Makefile 전면 재설계
+
+## Context
+
+**현재 문제:**
+- `develop` push → 프로덕션 자동 배포 (staging/prod 구분 없음)
+- `dev-final/*`는 CI/CD와 완전히 단절 (수동 git pull)
+- `dev-final/*`가 `release/feb20-stable` 기반 — `develop`과 히스토리 분기
+- `dev/*` 브랜치는 `dev-final/*`와 역할 중복, 미사용
+- AWS 관련 워크플로우(`deploy-aws.yml`) 잔존
+- Makefile 타겟이 산재해 팀원이 어느 명령어를 써야 할지 불명확
+
+**목표:**
+- 명확한 3단계 브랜치 계층 + 각 단계 CI/CD 자동화
+- `dev-final/*` push → 해당 LXD 서버 자동 배포
+- `main` push → 프로덕션(deploy-test) 자동 배포
+- 팀원이 `make help` 한 번으로 모든 명령 파악 가능한 Makefile
+
+---
+
+## 1. 브랜치 전략
+
+```
+main                    ─── 소개/README용 (CI/CD 없음)
+  └── develop           ─── staging + 프로덕션 배포 (deploy-test, :latest 태그)
+        └── dev-final/* ─── LXD 개인 개발 서버 자동 배포
+              └── feature/* ─── 개인 피처 작업 (CI만)
+```
+
+**핵심 결정:** `main`은 소개용으로 유지, `develop`이 실질적인 배포 브랜치.
+현재 `deploy.yml`의 `develop → deploy-test` 흐름을 그대로 계승하되, `dev-final/*` → LXD 자동화를 추가한다.
+
+### 브랜치별 규칙
+
+| 브랜치 | merge 방법 | 리뷰 | CI | 배포 |
+|--------|-----------|------|-----|------|
+| `main` | PR from develop (선택) | — | — | ❌ (소개용) |
+| `develop` | PR from dev-final/* | 불필요 | 통과 필수 | ✅ deploy-test (:latest) + Discord |
+| `dev-final/*` | 직접 push 허용 | 없음 | 실행 (non-blocking) | ✅ 해당 LXD 서버 |
+| `feature/*` | PR to dev-final/* | 없음 | 실행 | ❌ |
+
+### 일회성 정리 작업
+- `develop` → 각 `dev-final/*` merge (히스토리 통합, LXD 변경사항 보존 확인 후)
+- `dev/*` 브랜치 전원 삭제 (dev-final/*로 대체됨)
+- `release/feb20-stable` → 태그 `v1.0-stable`로 전환 후 브랜치 삭제
+
+---
+
+## 2. GitHub Actions 재설계
+
+### 삭제
+- `.github/workflows/deploy-aws.yml` → 삭제
+
+### 수정 (기존 유지)
+**`deploy.yml`** — push to `develop` → deploy-test 배포
+- **현행 그대로 유지**: 빌드 → Docker Hub `:latest` push → SSH deploy-test → 헬스체크 → Discord
+- 변경 없음
+
+**`ci.yml`** — PR 린트/테스트
+- 트리거에 `dev-final/**` 추가 (기존: PR to develop/main)
+- 나머지 동일
+
+### 신규 생성
+**`deploy-lxd.yml`**
+- 트리거: push to `dev-final/**`
+- runner: self-hosted (deploy-test에 이미 존재, 동일 네트워크 10.10.10.0/24)
+- 흐름: 브랜치명으로 대상 LXD IP 결정 → SSH 직접 접속 → git pull + `docker compose -f docker-compose.dev.yml up -d`
+- 브랜치 → 서버 매핑:
+
+  | 브랜치 | LXD 서버 | IP |
+  |--------|---------|-----|
+  | dev-final/frontend | dev-yj99son | 10.10.10.14 |
+  | dev-final/chatbot | dev-j2hoon10 | 10.10.10.11 |
+  | dev-final/backend | dev-jjjh02 | 10.10.10.12 |
+  | dev-final/pipeline | dev-ryejinn | 10.10.10.13 |
+  | dev-final/infra | dev-hj | 10.10.10.15 |
+
+- 사전 조건 (일회성): deploy-test의 SSH 공개키를 각 LXD 서버 `~/.ssh/authorized_keys`에 등록
+
+### 유지 (변경 없음)
+- `main.yml` (전체 push Discord 알림)
+- `claude.yml` (@claude 멘션)
+- `claude-code-review.yml` (PR 자동 리뷰)
+
+---
+
+## 3. Makefile 재설계
+
+### Root `Makefile` — 팀원 공통 명령어
+
+섹션 구분:
+```
+=== 개발 환경 (팀원 공통) ===
+make dev          docker-compose.dev.yml 전체 스택 실행
+make dev-down     개발 환경 중지
+make status       컨테이너 상태 + 현재 브랜치 출력
+
+=== 테스트 ===
+make test         전체 테스트 (pytest + 빌드 확인)
+make test-unit    유닛 테스트만
+make test-e2e     Playwright E2E
+
+=== DB ===
+make migrate      alembic upgrade heads
+make db-reset     DB 초기화 (개발 환경 전용)
+
+=== 빌드/배포 (인프라 전용 — main 브랜치에서만) ===
+make build        전체 Docker 이미지 빌드
+make push         Docker Hub push (REGISTRY/TAG 변수)
+make deploy       docker-compose.prod.yml up -d (deploy-test에서)
+make rollback     :stable 이미지로 롤백
+
+=== 유틸 ===
+make clean        Docker 캐시 + __pycache__ 정리
+make logs         프로덕션 로그 tail
+```
+
+변경점:
+- AWS 관련 타겟 제거 (없음)
+- `dev-frontend-local`, `dev-api-local` 등 세분화된 타겟 유지
+- `sync-dev-data` → `db-sync` 별칭 추가
+- `make help`가 섹션별로 정렬되어 출력
+
+### `lxd/Makefile` — 인프라 전용
+
+섹션 구분:
+```
+=== LXD 서버 관리 ===
+health            5대 서버 브랜치/컨테이너 상태 한눈에 보기
+sync              각 LXD 서버 git pull + docker compose up
+db-sync           prod DB → 각 서버 로컬 dev DB 복제
+jwt-fix           JWT_SECRET 기본값 서버 자동 갱신
+git-check         git user/email/remote 설정 점검
+
+=== Docker Hub 배포 ===
+push              이미지 빌드 + Docker Hub push
+deploy            deploy-test 배포 (git pull + compose up)
+rollback          :stable 이미지로 deploy-test 롤백
+
+=== dev-final 환경 ===
+dev-final-setup   브랜치 생성 + LXD checkout + 재빌드 (전체)
+dev-final-sync    각 LXD에서 dev-final/* pull + up -d
+db-local-setup    로컬 postgres 기동 + alembic + prod 데이터 복제
+```
+
+변경점:
+- AWS 관련 타겟 전면 제거
+- `sync-lxd` → `sync`, `check-lxd-git` → `git-check` 등 간결한 이름
+- 기존 긴 이름은 alias로 유지 (하위 호환)
+
+---
+
+## 4. 필독 문서 체계
+
+팀원이 레포 최상단에서 바로 접근 가능한 필독 문서를 구성한다.
+
+### 파일 구조
+```
+adelie-investment/
+├── QUICKSTART.md           ← 신규 (최상단 필독: 환경 세팅 원스텝 가이드)
+└── docs/
+    └── reference/
+        ├── git-workflow.md     ← 기존 (수정: 새 브랜치 전략 반영)
+        └── make-commands.md    ← 신규 (전체 make 명령어 레퍼런스)
+```
+
+### `QUICKSTART.md` (프로젝트 루트) 내용 — 복붙 가능한 명령어 포함
+
+```markdown
+# Adelie Investment — 빠른 시작 가이드
+
+## 1. 내 개발 서버 접속
+
+~/.ssh/config에 아래 내용 추가 후:
+ssh dev-<내이름>     # 예: ssh dev-jjjh02
+
+## 2. 최신 코드 받기
+
+cd ~/adelie-investment
+git pull origin dev-final/<내역할>    # 예: dev-final/backend
+
+## 3. 개발 서버 실행
+
+make dev              # 전체 스택 (frontend + backend-api + postgres + redis)
+make migrate          # DB 마이그레이션 (처음 또는 migration 파일 추가 시)
+
+## 매일 쓰는 명령어
+
+| 상황 | 명령어 |
+|------|--------|
+| 서버 실행 | `make dev` |
+| 서버 중지 | `make dev-down` |
+| 상태 확인 | `make status` |
+| 테스트 실행 | `make test` |
+| DB 마이그레이션 | `make migrate` |
+| 로그 보기 | `make logs` |
+| Docker 캐시 정리 | `make clean` |
+
+## 브랜치 워크플로우 (요약)
+
+# 1. 피처 작업
+git checkout -b feature/내기능
+# ... 작업 ...
+git add <파일>
+git commit -m "feat: 기능 설명"
+git push origin feature/내기능
+
+# 2. PR 생성 → dev-final/<내역할> 타겟
+gh pr create --base dev-final/<내역할> --title "feat: 기능 설명"
+
+# 3. dev-final이 develop으로 PR → 팀장 리뷰
+# 4. develop이 main으로 PR → 프로덕션 배포
+
+## 상세 문서
+- [Git 워크플로우](docs/reference/git-workflow.md)
+- [Make 명령어 전체](docs/reference/make-commands.md)
+- [SSH 설정](docs/reference/git-workflow.md#pat-설정-방법-https-토큰-방식)
+```
+
+### `docs/reference/make-commands.md` 내용 — 복붙 가능한 명령어 포함
+
+```markdown
+# Make 명령어 레퍼런스
+
+## Root Makefile (프로젝트 루트에서)
+
+### 개발 환경
+make dev                  # 전체 스택 실행 (docker-compose.dev.yml)
+make dev-down             # 전체 스택 중지
+make dev-frontend         # 프론트엔드만 실행
+make dev-api              # 백엔드 API만 실행
+make status               # 컨테이너 상태 + 현재 브랜치
+
+### 테스트
+make test                 # 전체 테스트 (pytest + 프론트 빌드 확인)
+make test-unit            # 유닛 테스트만
+make test-e2e             # Playwright E2E 테스트
+make test-load            # Locust 부하 테스트 (40 users)
+
+### DB
+make migrate              # alembic upgrade heads
+make db-reset             # DB 초기화 (⚠️ 개발 환경 전용)
+make db-sync              # prod DB 콘텐츠 → 로컬 dev DB 복제
+
+### 유틸
+make clean                # Docker 캐시 + __pycache__ 정리
+make logs                 # 프로덕션 로그 tail
+
+### 빌드/배포 (인프라 전용)
+make build                # 전체 Docker 이미지 빌드
+make push                 # Docker Hub push (REGISTRY/TAG 변수)
+make deploy               # docker-compose.prod.yml up -d
+make rollback             # :stable 이미지로 롤백
+
+## lxd/Makefile (인프라 전용 — hj-server에서)
+
+### LXD 서버 관리
+make -f lxd/Makefile health        # 5대 서버 브랜치/컨테이너 상태
+make -f lxd/Makefile sync          # 각 서버 git pull + docker compose up
+make -f lxd/Makefile db-sync       # prod DB → 각 서버 로컬 dev DB 복제
+make -f lxd/Makefile jwt-fix       # JWT_SECRET 기본값 서버 자동 갱신
+make -f lxd/Makefile git-check     # git user/email/remote 설정 점검
+
+### 배포
+make -f lxd/Makefile push          # Docker Hub push
+make -f lxd/Makefile deploy        # deploy-test 배포
+make -f lxd/Makefile rollback      # :stable 이미지로 deploy-test 롤백
+
+### dev-final 환경
+make -f lxd/Makefile dev-final-setup    # 브랜치 생성 + checkout + 재빌드 (전체)
+make -f lxd/Makefile dev-final-sync     # 각 서버 dev-final/* pull + up -d
+make -f lxd/Makefile db-local-setup     # 로컬 postgres 기동 + alembic + prod 데이터 복제
+
+## 시나리오별 명령어
+
+### 처음 개발 환경 세팅할 때
+git pull origin dev-final/<내역할>
+make dev
+make migrate
+
+### 코드 수정 후 빠른 테스트
+make test-unit
+
+### 전체 서버 상태가 궁금할 때 (인프라)
+make -f lxd/Makefile health
+
+### DB를 새로 받고 싶을 때
+make -f lxd/Makefile db-local-setup     # ⚠️ 기존 데이터 덮어씀, 팀 공지 후
+
+### Docker 이미지가 너무 쌓였을 때
+make clean
+```
+
+---
+
+## 5. 수정 대상 파일
+
+| 파일 | 변경 |
+|------|------|
+| `.github/workflows/deploy-aws.yml` | **삭제** |
+| `.github/workflows/deploy.yml` | 수정: SSH 배포 제거, 파일명 → `deploy-develop.yml` |
+| `.github/workflows/ci.yml` | 수정: `dev-final/**` 트리거 추가 |
+| `.github/workflows/deploy-main.yml` | **신규**: main push → :stable + deploy-test |
+| `.github/workflows/deploy-lxd.yml` | **신규**: dev-final/* push → LXD 자동 배포 |
+| `Makefile` | 수정: 섹션 정리, help 개선, 별칭 추가 |
+| `lxd/Makefile` | 수정: AWS 제거, 타겟명 간소화, help 개선 |
+| `QUICKSTART.md` | **신규**: 프로젝트 루트 필독 문서 |
+| `docs/reference/make-commands.md` | **신규**: make 명령어 전체 레퍼런스 |
+| `docs/reference/git-workflow.md` | 수정: 새 브랜치 전략 반영 |
+
+---
+
+## 6. 일회성 인프라 작업 (구현 후 수동 진행)
+
+1. **deploy-test SSH 키 → LXD 서버 등록** (GitHub Actions 배포 위해)
+   ```bash
+   # deploy-test에서 키 생성 후 각 LXD에 배포
+   ssh-keygen -t ed25519 -f ~/.ssh/lxd_deploy -N ""
+   for ip in 10.10.10.14 10.10.10.11 10.10.10.12 10.10.10.13 10.10.10.15; do
+     ssh-copy-id -i ~/.ssh/lxd_deploy.pub ubuntu@$ip
+   done
+   ```
+
+2. **GitHub Branch Protection 설정** (GitHub UI)
+   - `main`: Require PR + 1 reviewer + CI pass
+   - `develop`: Require PR + CI pass
+
+3. **develop → dev-final/* 히스토리 통합** (일회성 merge)
+
+4. **dev/* 브랜치 삭제** (5개)
+
+---
+
+## 7. 실행 순서 (팀 작업 중 안전 반영)
+
+팀원들이 LXD 서버에서 작업 중인 상태에서 진행. 순서가 중요하다.
+
+### Step A. 례진님 feature/pipeline-branch-parser → dev-final/pipeline 반영 (우선 처리)
+
+```bash
+# HOST(hj-server)에서 실행
+git fetch origin
+git checkout dev-final/pipeline
+git pull origin dev-final/pipeline
+
+# feature/pipeline-branch-parser 내용 merge
+git merge origin/feature/pipeline-branch-parser --no-edit
+# 충돌 발생 시 → 례진님과 함께 해결
+
+git push origin dev-final/pipeline
+```
+
+### Step B. 팀원 공지 (Discord) 후 각 서버 stash 확인
+
+```bash
+# 각 LXD 서버에서 미커밋 변경사항 자동 stash 후 pull
+for srv in dev-yj99son dev-j2hoon10 dev-jjjh02 dev-ryejinn dev-hj; do
+  lxc exec $srv -- su - ubuntu -c "
+    cd ~/adelie-investment
+    git stash push -m 'auto-stash before branch sync $(date +%Y%m%d)' 2>/dev/null || true
+    git pull origin \$(git branch --show-current)
+    echo '✅ '\$(git branch --show-current)
+  "
+done
+```
+
+### Step C. develop → dev-final/* 히스토리 통합
+
+```bash
+# HOST에서 각 dev-final/* 브랜치에 develop merge
+for branch in dev-final/frontend dev-final/chatbot dev-final/backend dev-final/pipeline dev-final/infra; do
+  git checkout $branch
+  git merge origin/develop --no-edit 2>/dev/null || {
+    echo "⚠️  $branch 충돌 — 수동 해결 필요"
+    git merge --abort
+    continue
+  }
+  git push origin $branch
+  echo "✅ $branch"
+done
+```
+
+### Step D. 각 LXD 서버 pull + stash pop (작업 복구)
+
+```bash
+for srv in dev-yj99son dev-j2hoon10 dev-jjjh02 dev-ryejinn dev-hj; do
+  lxc exec $srv -- su - ubuntu -c "
+    cd ~/adelie-investment
+    git pull origin \$(git branch --show-current)
+    git stash pop 2>/dev/null && echo '  stash 복구 완료' || echo '  stash 없음'
+    docker compose -f docker-compose.dev.yml up -d
+  "
+done
+```
+
+### Step E. 데이터 싱크 (prod DB → 각 서버)
+
+```bash
+make -f lxd/Makefile db-sync   # 기존 sync-dev-data 타겟 (새 이름 적용 후)
+```
+
+## 8. 검증
+
+```bash
+# CI/CD 흐름 확인
+git push origin dev-final/infra           # → dev-hj LXD 자동 배포 확인
+git push origin develop                   # → :latest Docker Hub push 확인
+# main push는 팀장이 PR 통해 수행
+
+# Makefile 확인
+make help                                  # 섹션별 정렬 출력
+make -f lxd/Makefile help                  # 인프라 명령 출력
+make status                                # 컨테이너 + 브랜치 상태
+```
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+일회성 수동 작업까지 진행할 계획을 세워라.
+
+---
+
+[Request interrupted by user for tool use]

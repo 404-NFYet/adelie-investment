@@ -1,0 +1,38 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "234de7d2eb07",
+  "session_id": "ef8fb73f-e77c-4d5a-8539-cb624d518d1c",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-24T07:42:04.915128391Z",
+  "branch": "develop",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".github/workflows/ci.yml",
+    ".github/workflows/deploy-aws.yml",
+    ".github/workflows/deploy-develop.yml",
+    ".github/workflows/deploy-lxd.yml",
+    ".github/workflows/deploy.yml",
+    "Makefile",
+    "QUICKSTART.md",
+    "docs/reference/git-workflow.md",
+    "docs/reference/make-commands.md",
+    "lxd/Makefile"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 40,
+    "cache_creation_tokens": 113026,
+    "cache_read_tokens": 2537361,
+    "output_tokens": 41190,
+    "api_call_count": 30
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-24T07:42:04.843886368Z",
+    "agent_lines": 964,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 964,
+    "agent_percentage": 100
+  }
+}

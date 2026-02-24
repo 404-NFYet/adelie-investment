@@ -3,14 +3,18 @@
   "checkpoint_id": "234de7d2eb07",
   "strategy": "manual-commit",
   "branch": "develop",
-  "checkpoints_count": 69,
+  "checkpoints_count": 70,
   "files_touched": [
     ".dockerignore",
     ".env.example",
+    ".github/workflows/ci.yml",
     ".github/workflows/deploy-aws.yml",
+    ".github/workflows/deploy-develop.yml",
+    ".github/workflows/deploy-lxd.yml",
     ".github/workflows/deploy.yml",
     "CLAUDE.md",
     "Makefile",
+    "QUICKSTART.md",
     "README.md",
     "changes/dorae222.md",
     "chatbot/services/__init__.py",
@@ -63,6 +67,7 @@
     "docs/README.md",
     "docs/getting-started/database-guide.md",
     "docs/reference/git-workflow.md",
+    "docs/reference/make-commands.md",
     "docs/team-guides/A_프론트엔드_손영진.md",
     "docs/team-guides/E_인프라_도형준.md",
     "fastapi/Dockerfile",
@@ -553,13 +558,20 @@
       "context": "/23/4de7d2eb07/43/context.md",
       "content_hash": "/23/4de7d2eb07/43/content_hash.txt",
       "prompt": "/23/4de7d2eb07/43/prompt.txt"
+    },
+    {
+      "metadata": "/23/4de7d2eb07/44/metadata.json",
+      "transcript": "/23/4de7d2eb07/44/full.jsonl",
+      "context": "/23/4de7d2eb07/44/context.md",
+      "content_hash": "/23/4de7d2eb07/44/content_hash.txt",
+      "prompt": "/23/4de7d2eb07/44/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 41222,
-    "cache_creation_tokens": 7284046,
-    "cache_read_tokens": 241210742,
-    "output_tokens": 856166,
-    "api_call_count": 2865
+    "input_tokens": 41262,
+    "cache_creation_tokens": 7397072,
+    "cache_read_tokens": 243748103,
+    "output_tokens": 897356,
+    "api_call_count": 2895
   }
 }
