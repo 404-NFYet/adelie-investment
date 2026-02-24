@@ -167,6 +167,42 @@ function normalizeCautionActionPoints(content) {
   return out.join('\n');
 }
 
+function normalizeNarrativeLinebreaks(content) {
+  const text = String(content || '');
+  if (!text) return text;
+
+  const labelPattern = /([.!?。！？])\s+((?=[가-힣A-Za-z][^:\n]{0,22}:)[^:\n]{1,24}:\s*)/g;
+  const lines = text.split('\n');
+  const out = [];
+  let paragraph = [];
+
+  const flushParagraph = () => {
+    if (paragraph.length === 0) return;
+    let merged = paragraph.map((line) => line.trim()).filter(Boolean).join(' ');
+    merged = merged.replace(/([?？])\s+(?=[^\s])/g, '$1\n');
+    merged = merged.replace(labelPattern, '$1\n$2');
+    out.push(...merged.split('\n').map((line) => line.trim()).filter(Boolean));
+    paragraph = [];
+  };
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) {
+      flushParagraph();
+      if (out.length > 0 && out[out.length - 1] !== '') out.push('');
+      continue;
+    }
+    if (line.startsWith('### ') || line.startsWith('- ') || /^\d+[.)]\s+/.test(line)) {
+      flushParagraph();
+      out.push(line);
+      continue;
+    }
+    paragraph.push(line);
+  }
+  flushParagraph();
+  return out.join('\n').trim();
+}
+
 function MarkdownBody({ content, onTermClick, className = '' }) {
   if (!content) return null;
 
@@ -281,14 +317,15 @@ function NarrativeSources({ sources = [] }) {
 }
 
 function ContentTemplate({ stepConfig, stepData, stepTitle, oneLiner, onTermClick }) {
-  const contentLines = getPlainLines(stepData?.content || '');
+  const normalizedContent = normalizeNarrativeLinebreaks(stepData?.content);
+  const contentLines = getPlainLines(normalizedContent || '');
   const cautionItems = (stepData?.bullets && stepData.bullets.length > 0)
     ? stepData.bullets
     : contentLines.slice(0, 5);
-  const summaryChecklist = getChecklistItems(stepData?.content, stepData?.bullets);
+  const summaryChecklist = getChecklistItems(normalizedContent, stepData?.bullets);
   const cautionContent = stepConfig.template === 'content4'
-    ? normalizeCautionActionPoints(stepData?.content)
-    : stepData?.content;
+    ? normalizeCautionActionPoints(normalizedContent)
+    : normalizedContent;
 
   if (stepConfig.template === 'content4') {
     return (
@@ -343,7 +380,7 @@ function ContentTemplate({ stepConfig, stepData, stepTitle, oneLiner, onTermClic
           ) : null}
 
           <MarkdownBody
-            content={stepData?.content}
+            content={normalizedContent}
             onTermClick={onTermClick}
             className="mt-5"
           />
@@ -364,7 +401,7 @@ function ContentTemplate({ stepConfig, stepData, stepTitle, oneLiner, onTermClic
           </h2>
 
           <MarkdownBody
-            content={stepData?.content}
+            content={normalizedContent}
             onTermClick={onTermClick}
             className="mt-4"
           />
@@ -391,7 +428,7 @@ function ContentTemplate({ stepConfig, stepData, stepTitle, oneLiner, onTermClic
           </h2>
 
           <MarkdownBody
-            content={stepData?.content}
+            content={normalizedContent}
             onTermClick={onTermClick}
             className="mt-4"
           />
@@ -437,7 +474,7 @@ function ContentTemplate({ stepConfig, stepData, stepTitle, oneLiner, onTermClic
 
   return (
     <section className="px-2 py-3">
-      <MarkdownBody content={stepData?.content} onTermClick={onTermClick} />
+      <MarkdownBody content={normalizedContent} onTermClick={onTermClick} />
     </section>
   );
 }

@@ -35,6 +35,11 @@ _JARGON_EXPLAINERS: dict[str, str] = {
     "컨센서스": "컨센서스는 여러 증권사가 모아 본 평균 예상치예요.",
     "펀더멘털": "펀더멘털은 회사가 실제로 돈을 버는 기초 체력을 뜻해요.",
     "CAPEX": "CAPEX는 공장이나 장비에 쓰는 큰 설비투자 비용이에요.",
+    "변동성": "변동성은 가격이 위아래로 흔들리는 폭이 크다는 뜻이에요.",
+    "수급": "수급은 사고파는 힘의 균형을 말해요. 사려는 사람이 많으면 가격이 오르기 쉬워요.",
+    "선반영": "선반영은 실제 실적이 나오기 전에 기대를 먼저 가격에 반영한 상태예요.",
+    "시차": "시차는 좋은 신호가 실제 숫자로 나타나기까지 걸리는 시간 차이를 뜻해요.",
+    "가이던스": "가이던스는 회사가 앞으로의 실적 방향을 미리 알려주는 안내선이에요.",
 }
 
 _KOR_SENTENCE_ENDINGS = (
@@ -187,6 +192,10 @@ def _postprocess_content(step_key: str, content: str, bullets: list[str] | None 
     text = re.sub(r"\b(?:Trigger|Process|Outcome|Variables)\s*:\s*", "", text)
     text = re.sub(r"\[(닮은 점|다른 점|과거 사이클 흐름)\]", r"\1", text)
 
+    label_after_sentence_pattern = re.compile(
+        r"([.!?。！？])\s+((?=[가-힣A-Za-z][^:\n]{0,22}:)[^:\n]{1,24}:\s*)"
+    )
+
     def _split_sentences_keep_flow(s: str) -> list[str]:
         return [p.strip() for p in re.split(r"(?<=[.!?。！？])\s+", s) if p.strip()]
 
@@ -214,19 +223,47 @@ def _postprocess_content(step_key: str, content: str, bullets: list[str] | None 
             chunks.append(" ".join(buf).strip())
         return "\n".join(chunks)
 
-    # 본문은 흐름 덩어리 기준으로만 줄바꿈
-    lines = text.splitlines()
-    rendered: list[str] = []
-    for line in lines:
-        s = line.strip()
-        if not s:
-            rendered.append("")
-            continue
-        if s.startswith("### ") or s.startswith("- ") or re.match(r"^\d+[.)]\s+", s):
-            rendered.append(s)
-            continue
-        rendered.append(_smart_linebreak(s))
-    text = "\n".join(rendered).strip()
+    def _normalize_linebreaks(s: str) -> str:
+        """문장별 줄바꿈을 합치고, 질문/라벨 패턴에서만 줄바꿈한다."""
+        lines = str(s or "").splitlines()
+        if not lines:
+            return str(s or "").strip()
+
+        rendered: list[str] = []
+        paragraph_buf: list[str] = []
+
+        def _flush_paragraph() -> None:
+            nonlocal paragraph_buf
+            if not paragraph_buf:
+                return
+            merged = " ".join(part.strip() for part in paragraph_buf if part.strip())
+            if merged:
+                merged = _smart_linebreak(merged)
+                # 질문 뒤 설명이 이어지면 설명 앞에서만 줄바꿈
+                merged = re.sub(r"([?？])\s+(?=[^\s])", r"\1\n", merged)
+                # "문장 끝 + 라벨: 설명" 패턴에서만 줄바꿈
+                merged = label_after_sentence_pattern.sub(r"\1\n\2", merged)
+                rendered.extend([ln.strip() for ln in merged.splitlines() if ln.strip()])
+            paragraph_buf = []
+
+        for raw_line in lines:
+            line = raw_line.strip()
+            if not line:
+                _flush_paragraph()
+                if rendered and rendered[-1] != "":
+                    rendered.append("")
+                continue
+            if line.startswith("### ") or line.startswith("- ") or re.match(r"^\d+[.)]\s+", line):
+                _flush_paragraph()
+                rendered.append(line)
+                continue
+            paragraph_buf.append(line)
+
+        _flush_paragraph()
+        return "\n".join(rendered).strip()
+
+    # 본문은 문단 단위로 재조합한 뒤, 패턴 기반 줄바꿈만 적용
+    text = _normalize_linebreaks(text)
 
     # history(과거 패턴) 섹션은 미완성 종결을 최소화한다.
     if step_key == "history":
@@ -317,9 +354,9 @@ def _postprocess_content(step_key: str, content: str, bullets: list[str] | None 
     for term, explanation in _JARGON_EXPLAINERS.items():
         if term in plain_text and explanation not in plain_text:
             explain_lines.append(explanation)
-        if len(explain_lines) >= 2:
+        if len(explain_lines) >= 3:
             break
-    if explain_lines and step_key in {"concept_explain", "history", "application"}:
+    if explain_lines and step_key in {"background", "concept_explain", "history", "application", "caution"}:
         text = f"{text}\n" + "\n".join(explain_lines)
 
     return text.strip()

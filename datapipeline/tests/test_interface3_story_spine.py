@@ -110,11 +110,25 @@ def test_soften_text_keeps_term_without_parenthetical_injection() -> None:
     assert "(주가 평가 배수)" not in softened
 
 
-def test_compress_markdown_content_breaks_lines_per_sentence() -> None:
+def test_compress_markdown_content_keeps_paragraph_sentences_together() -> None:
     text = "### 닮은 점\n수급이 먼저 몰렸어요. 실적은 나중에 확인됐어요."
     compressed = _compress_markdown_content(text)
 
-    assert "수급이 먼저 몰렸어요.\n실적은 나중에 확인됐어요." in compressed
+    assert "수급이 먼저 몰렸어요. 실적은 나중에 확인됐어요." in compressed
+
+
+def test_compress_markdown_content_breaks_line_before_question_explanation() -> None:
+    text = "### 지금 무슨 일이야?\n좋은 산업이면 주가가 오르는 거 아닌가요? 그런데 이상한 일이 벌어지고 있어요."
+    compressed = _compress_markdown_content(text)
+
+    assert "거 아닌가요?\n그런데 이상한 일이 벌어지고 있어요." in compressed
+
+
+def test_compress_markdown_content_breaks_lines_for_label_explanations() -> None:
+    text = "### 왜 중요할까?\n좋은 흐름이에요. 의문점: 실적보다 기대가 앞섰어요. 핵심: 변동성이 커질 수 있어요."
+    compressed = _compress_markdown_content(text)
+
+    assert "좋은 흐름이에요.\n의문점: 실적보다 기대가 앞섰어요.\n핵심: 변동성이 커질 수 있어요." in compressed
 
 
 def test_compress_markdown_content_preserves_sentence_volume() -> None:

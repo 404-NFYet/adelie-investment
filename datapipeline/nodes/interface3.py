@@ -60,10 +60,10 @@ PLACEHOLDER_HEADING_PATTERNS: tuple[str, ...] = (
     r"^\s*###\s*(?:소제목|접두사|heading|subheading|subtitle|title|제목)(?:\s*[:\-]?\s*\d+)?\s*[:\-]?\s*$",
 )
 
-MAX_SHORT_LINE_CHARS = 110
+MAX_SHORT_LINE_CHARS = 170
 MAX_BULLETS_PER_PAGE = 5
-MAX_BULLET_CHARS = 140
-MAX_SECTION_SENTENCES = 6
+MAX_BULLET_CHARS = 220
+MAX_SECTION_SENTENCES = 8
 
 
 def _soften_text(text: str) -> str:
@@ -138,11 +138,23 @@ def _take_sentence_prefix(text: str, max_sentences: int = MAX_SECTION_SENTENCES)
     return " ".join(picked).strip()
 
 
-def _linebreak_sentences(text: str) -> str:
-    sentences = _split_sentences(text)
-    if not sentences:
-        return _soften_text(text)
-    return "\n".join(sentences)
+_LABEL_WITH_COLON_PATTERN = re.compile(
+    r"([.!?。！？])\s+((?=[가-힣A-Za-z][^:\n]{0,22}:)[^:\n]{1,24}:\s*)"
+)
+
+
+def _format_content_block(text: str) -> str:
+    """문장 단위가 아닌 문단 단위로 유지하고, 특정 패턴에서만 줄바꿈한다."""
+    softened = _soften_text(text)
+    if not softened:
+        return softened
+
+    # 질문 뒤 설명이 이어질 때만 줄바꿈
+    formatted = re.sub(r"([?？])\s+(?=[^\s])", r"\1\n", softened)
+
+    # "라벨: 설명"이 문장 경계 뒤에 이어질 때만 줄바꿈
+    formatted = _LABEL_WITH_COLON_PATTERN.sub(r"\1\n\2", formatted)
+    return formatted.strip()
 
 
 def _cleanup_label_artifacts(body_text: str, heading: str | None = None) -> str:
@@ -190,14 +202,14 @@ def _compress_markdown_content(content: str, max_sentences_per_block: int = MAX_
     _flush()
 
     if not blocks:
-        return _linebreak_sentences(text)
+        return _format_content_block(text)
 
     rendered: list[str] = []
     for heading, body_lines in blocks:
         body_text = " ".join(line for line in body_lines if line)
         body_text = re.sub(r"\b(?:Trigger|Process|Outcome|Variables)\s*:\s*", "", body_text, flags=re.IGNORECASE)
         body_text = _cleanup_label_artifacts(body_text, heading)
-        compact_body = _linebreak_sentences(body_text)
+        compact_body = _format_content_block(body_text)
         if heading:
             rendered.append(heading)
         if compact_body:
@@ -272,7 +284,7 @@ def _purpose_is_reflected(purpose: str, content: str) -> bool:
 
 def _align_content_with_purpose(purpose: str, content: str) -> str:
     text = _soften_text(content)
-    purpose_clean = _shorten_text(purpose, 90)
+    purpose_clean = _shorten_text(purpose, 140)
     if not purpose_clean or _purpose_is_reflected(purpose_clean, text):
         return text
     return f"### 이 단계의 포인트\n{purpose_clean}\n\n{text}".strip()
