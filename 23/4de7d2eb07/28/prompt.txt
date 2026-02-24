@@ -1,0 +1,282 @@
+Implement the following plan:
+
+# 포트폴리오 500 에러 + 하단 UI 겹침 수정
+
+## Context
+
+배포(`4298fa4`) 후 두 가지 이슈 발생:
+1. **포트폴리오 API 500 에러**: `expires_at` 마이그레이션(`20260223_expires`)이 deploy-test DB에 미적용. SQLAlchemy가 존재하지 않는 `simulation_trades.expires_at` 컬럼을 SELECT하여 500 발생.
+2. **하단 UI 겹침**: BottomNav(z-20)와 AgentDock(z-30)/TutorModal(z-50)의 시각적·물리적 겹침.
+
+---
+
+## Fix 1: 포트폴리오 500 — 마이그레이션 적용
+
+**원인**: deploy-test DB Alembic head = `20260223_review`, 필요 head = `20260223_expires`
+
+```bash
+ssh deploy-test "docker exec adelie-backend-api sh -c 'cd /app/database && alembic upgrade head'"
+```
+
+코드 변경 없음. 마이그레이션 실행만으로 해결.
+
+---
+
+## Fix 2: BottomNav + TutorModal 겹침
+
+**원인**: TutorModal이 열려도 BottomNav가 숨겨지지 않음. TutorModal(`z-50, bottom-0, 85vh`)이 BottomNav(`z-20, bottom-0, 68px`)를 덮지만, BottomNav가 여전히 렌더링되어 터치 이벤트 간섭 및 시각적 잔상 발생.
+
+**파일**: `frontend/src/components/layout/BottomNav.jsx`
+
+**변경**:
+```jsx
+// Before (line 1-2)
+import { useNavigate, useLocation } from 'react-router-dom';
+import useKeyboardInset from '../../hooks/useKeyboardInset';
+
+// After
+import { useNavigate, useLocation } from 'react-router-dom';
+import useKeyboardInset from '../../hooks/useKeyboardInset';
+import { useTutor } from '../../contexts';
+```
+
+```jsx
+// Before (line 58-69) — hide 로직
+export default function BottomNav() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { shouldHideBottomNav } = useKeyboardInset();
+
+  if (
+    HIDDEN_EXACT.includes(location.pathname) ||
+    HIDDEN_PREFIXES.some((prefix) => location.pathname.startsWith(prefix)) ||
+    shouldHideBottomNav
+  ) {
+    return null;
+  }
+
+// After
+export default function BottomNav() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { shouldHideBottomNav } = useKeyboardInset();
+  const { isOpen: isTutorOpen } = useTutor();
+
+  if (
+    HIDDEN_EXACT.includes(location.pathname) ||
+    HIDDEN_PREFIXES.some((prefix) => location.pathname.startsWith(prefix)) ||
+    shouldHideBottomNav ||
+    isTutorOpen
+  ) {
+    return null;
+  }
+```
+
+---
+
+## Fix 3: AgentDock + BottomNav 그림자 겹침
+
+**원인**: AgentDock 내부 카드의 shadow가 아래로 확산되어 BottomNav 영역을 침범.
+
+### 3-1. AgentControlPulse 하단 shadow 축소
+
+**파일**: `frontend/src/components/agent/AgentControlPulse.jsx`
+
+```jsx
+// Before (line 8-9) — 활성 시 shadow
+? 'rounded-[20px] shadow-[0_-14px_28px_rgba(29,111,222,0.28),0_18px_36px_rgba(29,111,222,0.34)] animate-agent-control-pulse-blue'
+: 'rounded-[20px] shadow-[0_-14px_28px_rgba(255,107,0,0.28),0_18px_36px_rgba(255,107,0,0.34)] animate-agent-control-pulse'
+
+// After — 하단 glow 축소 (18px→4px offset, 36px→16px blur)
+? 'rounded-[20px] shadow-[0_-14px_28px_rgba(29,111,222,0.28),0_4px_16px_rgba(29,111,222,0.18)] animate-agent-control-pulse-blue'
+: 'rounded-[20px] shadow-[0_-14px_28px_rgba(255,107,0,0.28),0_4px_16px_rgba(255,107,0,0.18)] animate-agent-control-pulse'
+```
+
+### 3-2. AgentDock 카드 shadow 방향 전환
+
+**파일**: `frontend/src/components/agent/AgentDock.jsx`
+
+```jsx
+// Before (line 329) — 내부 카드 shadow
+<div className="pointer-events-auto relative rounded-[20px] bg-white shadow-[0_2px_16px_rgba(0,0,0,0.08)]">
+
+// After — 위로 향하는 shadow
+<div className="pointer-events-auto relative rounded-[20px] bg-white shadow-[0_-2px_12px_rgba(0,0,0,0.06)]">
+```
+
+---
+
+## 검증
+
+### 마이그레이션 (Fix 1)
+```bash
+# 1. 마이그레이션 적용 확인
+ssh deploy-test "docker exec adelie-backend-api sh -c 'cd /app/database && alembic current'"
+# → 20260223_expires (head)
+
+# 2. 포트폴리오 API 정상 응답 확인
+ssh deploy-test "curl -sf http://localhost:8082/api/v1/portfolio -H 'Authorization: Bearer <token>'"
+```
+
+### 프론트엔드 UI (Fix 2, 3)
+- 로컬 dev 실행: `cd frontend && npm run dev`
+- TutorModal 열기 → BottomNav가 사라지는지 확인
+- TutorModal 닫기 → BottomNav가 다시 나타나는지 확인
+- AgentDock 표시 상태에서 BottomNav와 shadow 겹침 없는지 확인
+- AgentControlPulse 활성 시 glow가 위로만 퍼지는지 확인
+
+### 프론트엔드 배포
+Fix 2, 3은 프론트엔드 변경 → `make build-frontend && docker push dorae222/adelie-frontend:latest` + deploy-test 업데이트 필요
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+배포까지 진행해라
+
+---
+
+Base directory for this skill: /home/hj/2026/project/adelie-investment/.claude/skills/deploy
+
+# Deploy Skill
+
+서비스를 빌드하고 deploy-test 서버에 배포합니다.
+
+## 사용법
+
+`/deploy frontend`
+
+- `/deploy frontend` — 프론트엔드만 빌드 + 푸시 + 배포
+- `/deploy api` — FastAPI 백엔드만 빌드 + 푸시 + 배포
+- `/deploy all` — 전체 서비스 빌드 + 푸시 + 배포
+- `/deploy` (인자 없음) — 변경된 서비스 자동 감지 후 배포
+
+## 서버 경로 (중요)
+
+| 환경 | 프로젝트 경로 |
+|------|--------------|
+| **deploy-test (10.10.10.20)** | `~/adelie-investment` |
+| **로컬 개발** | `/home/hj/2026/project/adelie-investment` |
+
+## Docker 이미지 태깅 규칙
+
+### 이미지 목록
+
+| 서비스 | 이미지명 | 빌드 명령 |
+|--------|---------|-----------|
+| Frontend | `dorae222/adelie-frontend` | `make build-frontend` |
+| Backend API | `dorae222/adelie-backend-api` | `make build-api` |
+| AI Pipeline | `dorae222/adelie-ai-pipeline` | `make build-ai` |
+
+### 태그 규칙
+
+| 태그 | 용도 | 예시 |
+|------|------|------|
+| `latest` | 기본값, deploy-test 배포용 | `dorae222/adelie-frontend:latest` |
+| `YYYYMMDD` | 날짜 기반 스냅샷 (릴리스 시) | `dorae222/adelie-frontend:20260214` |
+| `v{N}` | 프로덕션 릴리스 버전 | `dorae222/adelie-frontend:v1` |
+
+- 일반 배포: `make build push` (latest 태그 자동 사용)
+- 태그 지정 배포: `TAG=20260214 make build push`
+- deploy-test의 docker-compose.prod.yml은 `latest` 태그를 참조
+
+## 실행 절차
+
+### 전체 배포 (`/deploy all`)
+```bash
+# 1. 빌드
+make build-frontend
+make build-api
+
+# 2. Docker Hub 푸시
+make push
+
+# 3. deploy-test 서버 배포
+ssh deploy-test "cd ~/adelie-investment && docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d"
+
+# 4. 상태 확인
+ssh deploy-test "docker ps --format 'table {{.Names}}\t{{.Status}}'"
+```
+
+### 단일 서비스 배포 (`/deploy frontend` 또는 `/deploy api`)
+```bash
+# frontend 예시
+make build-frontend
+docker push dorae222/adelie-frontend:latest
+ssh deploy-test "cd ~/adelie-investment && docker compose -f docker-compose.prod.yml pull frontend && docker compose -f docker-compose.prod.yml up -d frontend"
+```
+
+### 원스텝 배포 (Makefile)
+```bash
+make deploy-test        # 전체: build → push → 서버 pull → up
+SVC=frontend make deploy-test-service  # 단일 서비스
+```
+
+## 서비스 의존 순서
+
+```
+postgres (healthy) → redis (healthy) → backend-api (healthy) → frontend
+                                     → minio
+```
+
+`docker compose up -d`는 healthcheck 기반으로 순서를 자동 관리한다.
+
+## 배포 후 검증
+
+```bash
+# 1. 컨테이너 상태 확인
+ssh deploy-test "docker ps --format 'table {{.Names}}\t{{.Status}}'"
+
+# 2. API 헬스체크
+ssh deploy-test "curl -sf http://localhost:8082/api/v1/health || echo FAIL"
+
+# 3. 프론트엔드 접속 확인
+ssh deploy-test "curl -sf -o /dev/null -w '%{http_code}' http://localhost:80"
+
+# 4. 최근 로그 확인
+ssh deploy-test "docker logs adelie-backend-api --tail 20"
+ssh deploy-test "docker logs adelie-frontend --tail 20"
+```
+
+## 롤백
+
+```bash
+# 이전 이미지로 롤백 (Docker Hub에 이전 태그가 있는 경우)
+ssh deploy-test "cd ~/adelie-investment && \
+  docker compose -f docker-compose.prod.yml pull && \
+  docker compose -f docker-compose.prod.yml up -d"
+
+# 특정 태그로 롤백
+TAG=20260213 ssh deploy-test "cd ~/adelie-investment && \
+  REGISTRY=dorae222 TAG=20260213 docker compose -f docker-compose.prod.yml up -d"
+
+# 긴급: 서비스만 재시작 (이미지 변경 없이)
+ssh deploy-test "docker restart adelie-backend-api"
+```
+
+## 주의사항
+
+- 배포 전 `git status`로 커밋되지 않은 변경 확인
+- TAG를 명시하지 않으면 latest 태그 사용
+- **서버 경로**: `~/adelie-investment` (절대 `~/adelie`가 아님)
+- 에러 발생 시 `ssh deploy-test "docker logs adelie-{서비스} --tail 50"` 로 로그 확인
+
+---
+
+에이전트 선택 후, 투자 탭으로 이동을 요청했는데 이동이되지 않는다
+
+---
+
+대화 or 에이전트에서 에이전트
+챗봇, 분석 모드 등 현재 언급된 요소들에 대한 정확한 경계선을 먼저 정리할 필요성이 있어보인다.
+현재 사용에 있어 복잡도가 높다.
+
+---
+
+내가 가지고 있는 주식 1주 매도해줄래라고 하면,
+https://demo.adelie-invest.com/agent에 답변이 생성되는게 아니라 실제 액션을 진행을 해야되고, 진행 전 사용자에게 확인을 받아야 한다.
+
+---
+
+[Request interrupted by user for tool use]
