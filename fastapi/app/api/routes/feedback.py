@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import get_current_user_optional
 from app.core.database import get_db
 from app.schemas.feedback import (
     AnalyticsEventBatch,
@@ -71,17 +72,23 @@ async def submit_briefing_feedback(feedback: BriefingFeedbackCreate, db: AsyncSe
 
 
 @router.post("/reaction", status_code=201)
-async def submit_content_reaction(reaction: ContentReactionCreate, db: AsyncSession = Depends(get_db)):
+async def submit_content_reaction(
+    reaction: ContentReactionCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[dict] = Depends(get_current_user_optional),
+):
     """콘텐츠별 좋아요/싫어요 반응 (UPSERT)."""
+    user_id = current_user["id"] if current_user else None
     try:
         await db.execute(
             text("""
-                INSERT INTO content_reactions (content_type, content_id, reaction, created_at)
-                VALUES (:content_type, :content_id, :reaction, NOW())
+                INSERT INTO content_reactions (user_id, content_type, content_id, reaction, created_at)
+                VALUES (:user_id, :content_type, :content_id, :reaction, NOW())
                 ON CONFLICT (user_id, content_type, content_id)
                 DO UPDATE SET reaction = EXCLUDED.reaction, created_at = NOW()
             """),
             {
+                "user_id": user_id,
                 "content_type": reaction.content_type,
                 "content_id": reaction.content_id,
                 "reaction": reaction.reaction,

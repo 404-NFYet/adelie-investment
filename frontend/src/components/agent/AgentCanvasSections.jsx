@@ -2,6 +2,8 @@ import { lazy, Suspense, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
+import remarkBreaks from 'remark-breaks';
+import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 
 const ResponsivePlotly = lazy(() => import('../charts/ResponsivePlotly'));
@@ -102,10 +104,10 @@ export default function AgentCanvasSections({
         <div className="max-w-full overflow-x-auto">
           <div
             ref={contentRef}
-            className="prose prose-sm max-w-none touch-pan-y text-[14px] leading-[1.75] text-[#333D4B] prose-headings:text-[#191F28] prose-strong:text-[#191F28] prose-code:rounded prose-code:bg-[#F2F4F6] prose-code:px-1 prose-code:py-0.5 prose-code:text-[#374151]"
+            className="agent-markdown prose prose-sm max-w-none touch-pan-y text-[14px] leading-[1.75] text-[#333D4B] prose-headings:text-[#191F28] prose-strong:text-[#191F28] prose-code:rounded prose-code:bg-[#F2F4F6] prose-code:px-1 prose-code:py-0.5 prose-code:text-[#374151]"
           >
             <ReactMarkdown
-              remarkPlugins={[remarkMath]}
+              remarkPlugins={[remarkGfm, remarkBreaks, remarkMath]}
               rehypePlugins={[rehypeRaw, rehypeKatex]}
               components={markdownComponents}
             >

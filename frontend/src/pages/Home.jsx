@@ -87,7 +87,7 @@ export default function Home() {
   const issueCards = visibleCards;
   const activeIssueCard = issueCards[activeIssueIndex] || null;
   const conversationCards = useMemo(
-    () => (Array.isArray(sessions) ? sessions.slice(0, 2) : []).map((session) => {
+    () => ((Array.isArray(sessions) ? sessions.filter((session) => Boolean(session?.is_pinned)) : []).slice(0, 2)).map((session) => {
       const localMeta = readSessionCardMeta(session.id) || {};
       const serverMeta = {
         title: session.title || '',
@@ -212,7 +212,14 @@ export default function Home() {
       state: {
         mode: 'home',
         sessionId: session.id,
-        contextPayload: enrichedHomeContextPayload,
+        contextPayload: {
+          ...enrichedHomeContextPayload,
+          interaction_state: {
+            ...enrichedHomeContextPayload.interaction_state,
+            entry_source: 'saved_review_card',
+            selected_session_id: session.id,
+          },
+        },
         resetConversation: false,
       },
     });
@@ -271,7 +278,7 @@ export default function Home() {
   });
 
   return (
-    <div className="min-h-screen bg-[#f9fafb] pb-[calc(var(--bottom-nav-h,68px)+var(--agent-dock-h,104px)+16px)]">
+    <div className="min-h-screen bg-[#f9fafb] pb-[calc(var(--safe-bottom-offset,172px)+16px)]">
       <DashboardHeader />
 
       <main className="container space-y-5 py-4">
@@ -494,43 +501,37 @@ export default function Home() {
               전체 기록
             </button>
           </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            {(conversationCards.length ? conversationCards : [
-              { id: 'fallback-1', title: '오늘 이슈를 요약해볼까요?', last_message_at: null, message_count: 0 },
-              { id: 'fallback-2', title: '내 포트폴리오 영향 분석', last_message_at: null, message_count: 0 },
-            ]).map((item, index) => (
-              <button
-                key={`${item.id || item.title}-${index}`}
-                type="button"
-                onClick={() => {
-                  if (item?.id?.startsWith?.('fallback')) {
-                    openAgentFromHome(item.title);
-                    return;
-                  }
-                  openSessionSummaryCard(item);
-                }}
-                className="rounded-[24px] border border-[#f3f4f6] bg-white px-5 py-5 text-left shadow-[0_4px_20px_rgba(0,0,0,0.03)]"
-              >
-                <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-[18px] bg-[#f9fafb]">
-                  <img
-                    src={getHomeIconSrc(item.meta?.icon_key || DEFAULT_HOME_ICON_KEY)}
-                    alt="미션 아이콘"
-                    className="h-8 w-8 object-contain"
-                    onError={(event) => {
-                      event.currentTarget.src = getHomeIconSrc(DEFAULT_HOME_ICON_KEY);
-                    }}
-                  />
-                </div>
-                <p className="line-limit-2 text-[18px] font-extrabold leading-7 tracking-[-0.01em] text-[#101828]">
-                  {item.meta?.title || item.title}
-                </p>
-                {item.meta?.is_pinned && (
+          {conversationCards.length > 0 ? (
+            <div className="grid grid-cols-2 gap-3">
+              {conversationCards.map((item, index) => (
+                <button
+                  key={`${item.id || item.title}-${index}`}
+                  type="button"
+                  onClick={() => openSessionSummaryCard(item)}
+                  className="rounded-[24px] border border-[#f3f4f6] bg-white px-5 py-5 text-left shadow-[0_4px_20px_rgba(0,0,0,0.03)]"
+                >
+                  <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-[18px] bg-[#f9fafb]">
+                    <img
+                      src={getHomeIconSrc(item.meta?.icon_key || DEFAULT_HOME_ICON_KEY)}
+                      alt="복습 아이콘"
+                      className="h-8 w-8 object-contain"
+                      onError={(event) => {
+                        event.currentTarget.src = getHomeIconSrc(DEFAULT_HOME_ICON_KEY);
+                      }}
+                    />
+                  </div>
+                  <p className="line-limit-2 text-[18px] font-extrabold leading-7 tracking-[-0.01em] text-[#101828]">
+                    {item.meta?.title || item.title}
+                  </p>
                   <p className="mt-1 text-[10px] font-semibold text-[#FF6B00]">저장됨</p>
-                )}
-              </button>
-            ))}
-          </div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-[20px] border border-[#f3f4f6] bg-white px-5 py-6">
+              <p className="text-sm text-[#6a7282]">저장된 복습 카드가 없습니다.</p>
+            </div>
+          )}
         </section>
       </main>
 

@@ -89,30 +89,39 @@ const refreshAccessToken = async () => {
   return refreshPromise;
 };
 
-/** 인증 포함 fetch (401 시 refresh 후 원요청 1회 재시도) */
+/** 인증 포함 fetch (401 시 refresh 후 원요청 1회 재시도, 10초 타임아웃 포함) */
 export const authFetch = async (url, options = {}, canRetry = true) => {
-  const response = await fetch(url, {
-    ...options,
-    headers: mergeAuthHeaders(options.headers),
-  });
-
-  if (response.status !== 401 || !canRetry || isAuthBypassRequest(url)) {
-    return response;
-  }
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10_000);
 
   try {
-    const nextAccessToken = await refreshAccessToken();
-    const retried = await fetch(url, {
+    const response = await fetch(url, {
       ...options,
-      headers: mergeAuthHeaders(options.headers, nextAccessToken),
+      headers: mergeAuthHeaders(options.headers),
+      signal: controller.signal,
     });
-    if (retried.status === 401) {
-      handleAuthFailure();
+
+    if (response.status !== 401 || !canRetry || isAuthBypassRequest(url)) {
+      return response;
     }
-    return retried;
-  } catch (error) {
-    handleAuthFailure();
-    throw error;
+
+    try {
+      const nextAccessToken = await refreshAccessToken();
+      const retried = await fetch(url, {
+        ...options,
+        headers: mergeAuthHeaders(options.headers, nextAccessToken),
+        signal: controller.signal,
+      });
+      if (retried.status === 401) {
+        handleAuthFailure();
+      }
+      return retried;
+    } catch (error) {
+      handleAuthFailure();
+      throw error;
+    }
+  } finally {
+    clearTimeout(timeoutId);
   }
 };
 

@@ -40,6 +40,46 @@ function baseActions() {
       risk: 'low',
       params_schema: {},
     },
+    {
+      id: 'check_stock_lookup',
+      label: '종목 검색하기',
+      description: '종목명/티커를 검색해 후보 목록과 기본 정보를 조회합니다.',
+      type: 'tool',
+      risk: 'low',
+      params_schema: { query: 'string' },
+    },
+    {
+      id: 'nav_profile',
+      label: '프로필 보기',
+      description: '내 프로필 페이지로 이동합니다.',
+      type: 'navigate',
+      risk: 'low',
+      params_schema: {},
+    },
+    {
+      id: 'nav_search',
+      label: '검색하기',
+      description: '검색 화면으로 이동합니다.',
+      type: 'navigate',
+      risk: 'low',
+      params_schema: {},
+    },
+    {
+      id: 'nav_feedback',
+      label: '피드백 보내기',
+      description: '피드백 페이지로 이동합니다.',
+      type: 'navigate',
+      risk: 'low',
+      params_schema: {},
+    },
+    {
+      id: 'start_quiz',
+      label: '퀴즈 시작하기',
+      description: '오늘의 퀴즈를 시작합니다.',
+      type: 'navigate',
+      risk: 'low',
+      params_schema: {},
+    },
   ];
 }
 
@@ -100,6 +140,22 @@ export default function buildActionCatalog({
         type: 'tool',
         risk: 'low',
         params_schema: { stock_code: 'string' },
+      },
+      {
+        id: 'limit_buy_stock',
+        label: '지정가 매수',
+        description: '지정한 가격에 도달하면 매수 주문을 실행합니다.',
+        type: 'tool',
+        risk: 'high',
+        params_schema: { stock_code: 'string', target_price: 'number', quantity: 'number?' },
+      },
+      {
+        id: 'short_sell_stock',
+        label: '공매도',
+        description: '종목을 공매도합니다. 고위험 주문입니다.',
+        type: 'tool',
+        risk: 'high',
+        params_schema: { stock_code: 'string', quantity: 'number?' },
       },
     );
   }

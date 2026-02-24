@@ -3,13 +3,15 @@
  *
  * 메시지, 세션, 입력 UI는 각각 서브 컴포넌트로 분리됨.
  */
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTutor, useUser } from '../../contexts';
 import PenguinMascot from '../common/PenguinMascot';
 import Message, { TypingIndicator } from './MessageBubble';
 import SessionSidebar from './SessionSidebar';
 import ChatInput from './ChatInput';
+import { trackEvent, TRACK_EVENTS } from '../../utils/analytics';
 
 export default function TutorModal() {
   const {
@@ -18,6 +20,7 @@ export default function TutorModal() {
     createNewChat, deleteChat, loadChatHistory, refreshSessions,
   } = useTutor();
   const { settings } = useUser();
+  const navigate = useNavigate();
   const [input, setInput] = useState('');
   const [isSessionsOpen, setIsSessionsOpen] = useState(false);
   const messagesEndRef = useRef(null);
@@ -59,6 +62,22 @@ export default function TutorModal() {
     }
   };
 
+  const handleActionClick = useCallback((action) => {
+    if (action.type === 'prompt') {
+      // 추천 질문을 입력에 세팅 후 자동 전송
+      setInput(action.label);
+      setTimeout(() => {
+        handleSubmit({ preventDefault: () => {} });
+      }, 100);
+    } else if (action.type === 'navigate') {
+      // 지정된 페이지로 이동
+      navigate(action.params?.path || '/home');
+    } else if (action.type === 'tool') {
+      // 도구 액션은 프롬프트로 변환하여 입력
+      setInput(`${action.label} 실행해줘`);
+    }
+  }, [navigate, handleSubmit]);
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -76,7 +95,7 @@ export default function TutorModal() {
                 <div className="flex items-center gap-2">
                   <img src="/images/penguin-3d.png" alt="AI Tutor" className="w-8 h-8" />
                   <div>
-                    <h2 className="font-bold text-text-primary">AI 튜터</h2>
+                    <h2 className="font-bold text-text-primary">AI 튜터와 대화</h2>
                     <p className="text-xs text-text-secondary capitalize">{settings.difficulty} 모드</p>
                   </div>
                 </div>
@@ -111,7 +130,7 @@ export default function TutorModal() {
                 </div>
               ) : (
                 <>
-                  {messages.map((m) => <Message key={m.id} message={m} />)}
+                  {messages.map((m) => <Message key={m.id} message={m} onActionClick={handleActionClick} />)}
                   {isLoading && messages.length > 0 && messages[messages.length - 1]?.role === 'user' && <TypingIndicator />}
                   <div ref={messagesEndRef} />
                 </>

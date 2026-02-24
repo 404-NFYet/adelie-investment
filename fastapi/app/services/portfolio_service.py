@@ -14,6 +14,11 @@ from sqlalchemy.orm import selectinload
 from app.models.portfolio import PortfolioHolding, SimulationTrade, UserPortfolio
 from app.models.reward import BriefingReward
 from app.services.market_calendar import is_kr_market_open_today
+from app.services.orderbook_simulator import (
+    estimate_fill_probability,
+    fill_against_book,
+    generate_orderbook,
+)
 from app.services.stock_price_service import get_batch_prices, get_current_price
 
 logger = logging.getLogger(__name__)
@@ -281,15 +286,29 @@ async def execute_trade(
     change_rate = float(price_data.get("change_rate") or 0.0)
     requested_price = float(target_price if target_price is not None else current_price)
 
-    # 지정가 즉시체결 가능 여부 판정
+    # 호가창 시뮬레이션 생성
+    volatility = abs(change_rate / 100.0) if change_rate else 0.02
+    orderbook = generate_orderbook(int(current_price), max(volume, 1000), volatility)
+
+    # 지정가 즉시체결 가능 여부 판정 (호가창 기준)
     should_execute = order_kind == "market"
     if order_kind == "limit":
-        if trade_type == "buy" and requested_price >= current_price:
+        if trade_type == "buy" and requested_price >= orderbook.asks[0].price:
             should_execute = True
-        elif trade_type == "sell" and requested_price <= current_price:
+        elif trade_type == "sell" and requested_price <= orderbook.bids[0].price:
             should_execute = True
+        elif not should_execute:
+            # 즉시 체결 불가 → 확률적 체결 판정
+            fill_prob = estimate_fill_probability(
+                int(requested_price), int(current_price), volume, volatility,
+            )
+            import random as _rng
+            if _rng.random() < fill_prob:
+                should_execute = True
 
     if not should_execute:
+        from datetime import timezone
+        kst = timezone(timedelta(hours=9))
         pending_trade = SimulationTrade(
             portfolio_id=portfolio.id,
             trade_type=trade_type,
@@ -308,6 +327,7 @@ async def execute_trade(
             leverage=leverage,
             total_amount=0,
             trade_reason=trade_reason,
+            expires_at=datetime.now(kst) + timedelta(hours=24),
         )
         db.add(pending_trade)
         await db.commit()
@@ -336,19 +356,21 @@ async def execute_trade(
     if executed_qty <= 0:
         raise ValueError("현재 유동성으로는 체결 가능한 수량이 없습니다")
 
-    slippage_bps = _compute_slippage_bps(
-        participation,
-        volume,
-        change_rate,
-        is_buy_order=is_buy_order,
-    )
-    executed_price = _resolve_execution_price(
-        current_price,
-        order_kind,
-        trade_type,
-        slippage_bps,
-        target_price=requested_price if order_kind == "limit" else None,
-    )
+    # 호가창 기반 체결가 계산 (시장가: 호가 소비, 지정가: 목표가 체결)
+    if order_kind == "market":
+        book_levels = orderbook.asks if is_buy_order else orderbook.bids
+        ob_price, ob_filled = fill_against_book(book_levels, executed_qty, ascending=is_buy_order)
+        if ob_filled > 0 and ob_price > 0:
+            executed_price = ob_price
+            slippage_bps = abs(ob_price - current_price) / current_price * 10_000
+        else:
+            # 호가 잔량 부족 → 기존 슬리피지 로직 폴백
+            slippage_bps = _compute_slippage_bps(participation, volume, change_rate, is_buy_order=is_buy_order)
+            executed_price = _resolve_execution_price(current_price, order_kind, trade_type, slippage_bps)
+    else:
+        # 지정가 체결 → 목표가로 체결
+        slippage_bps = 0.0
+        executed_price = requested_price
 
     trade_notional = executed_price * executed_qty
     fee_amount = round(trade_notional * BASE_FEE_RATE, 2)
@@ -605,3 +627,21 @@ async def check_and_apply_multiplier(
     reward.applied_at = datetime.utcnow()
     await db.commit()
     return reward
+
+
+async def expire_stale_limit_orders(db: AsyncSession) -> int:
+    """24시간 경과 미체결 주문 자동 취소. 취소된 건수를 반환."""
+    from sqlalchemy import update
+    from datetime import timezone
+
+    kst = timezone(timedelta(hours=9))
+    now = datetime.now(kst)
+    result = await db.execute(
+        update(SimulationTrade)
+        .where(SimulationTrade.order_status == "pending")
+        .where(SimulationTrade.expires_at.isnot(None))
+        .where(SimulationTrade.expires_at < now)
+        .values(order_status="cancelled")
+    )
+    await db.commit()
+    return result.rowcount

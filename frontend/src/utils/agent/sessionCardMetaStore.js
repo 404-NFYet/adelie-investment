@@ -40,6 +40,17 @@ export function readSessionCardMeta(sessionId) {
   }
 }
 
+export function removeSessionCardMeta(sessionId) {
+  const key = toMetaKey(sessionId);
+  if (!key) return;
+
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // localStorage 접근 실패 무시
+  }
+}
+
 export function writeSessionCardMeta(sessionId, nextMeta) {
   const key = toMetaKey(sessionId);
   if (!key || !nextMeta || typeof nextMeta !== 'object') return null;

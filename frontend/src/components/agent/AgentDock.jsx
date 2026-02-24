@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { API_BASE_URL, authFetch } from '../../api/client';
-import { useTutor } from '../../contexts';
+import { useTutor, useTutorUI } from '../../contexts';
 import AgentControlPulse from './AgentControlPulse';
+import SlashCommandMenu, { SLASH_COMMANDS } from './SlashCommandMenu';
 import useAgentPromptHints from '../../hooks/useAgentPromptHints';
 import useAgentControlOrchestrator from '../../hooks/useAgentControlOrchestrator';
 import useKeyboardInset from '../../hooks/useKeyboardInset';
@@ -44,11 +45,15 @@ export default function AgentDock() {
   const [inlineMessage, setInlineMessage] = useState(null);
   const [isRouting, setIsRouting] = useState(false);
   const [searchEnabled, setSearchEnabled] = useState(() => readSearchToggle(mode));
+  const [showSlashMenu, setShowSlashMenu] = useState(false);
+  const [slashQuery, setSlashQuery] = useState('');
+  const [activePrefix, setActivePrefix] = useState(null);
+  const [dockMode, setDockMode] = useState(null); // null = 자동, 'chat', 'canvas'
   const location = useLocation();
   const navigate = useNavigate();
   const { messages, agentStatus, isStreamingActive } = useTutor();
+  const { openTutor } = useTutorUI();
   const { keyboardOffset, shouldHideBottomNav } = useKeyboardInset();
-
   const hasActiveSession = Array.isArray(messages) && messages.length > 0;
   const isAgentRoute = location.pathname.startsWith('/agent');
   const hideBottomNav = shouldHideBottomNav;
@@ -144,6 +149,31 @@ export default function AgentDock() {
     };
   }, [actionCatalog, baseContextPayload, controlState.phase, isAgentControlling, location.pathname, location.state, mode, searchEnabled]);
 
+  const handleSlashCommand = useCallback((command) => {
+    setShowSlashMenu(false);
+    setSlashQuery('');
+
+    const action = command.action;
+    if (action.type === 'navigate') {
+      navigate(action.path, action.tab ? { state: { tab: action.tab } } : undefined);
+    } else if (action.type === 'action') {
+      const matchedAction = orchestratorActionCatalog.find((item) => item.id === action.actionId);
+      if (matchedAction) {
+        executeAction(matchedAction, { contextPayload: buildControlContextPayload('') });
+      } else {
+        setInlineMessage({ text: '현재 화면에서 사용할 수 없는 명령이에요.', canvasPrompt: null });
+      }
+    } else if (action.type === 'param') {
+      if (action.prefix) {
+        setActivePrefix({ label: command.desc, prefix: action.prefix });
+        setInput('');
+      }
+      if (action.key === 'use_web_search') {
+        setSearchEnabled(true);
+      }
+    }
+  }, [navigate, orchestratorActionCatalog, executeAction, buildControlContextPayload]);
+
   const submitPromptToCanvas = useCallback((prompt) => {
     const payload = buildControlContextPayload(prompt);
 
@@ -179,8 +209,11 @@ export default function AgentDock() {
 
   if (shouldHide) return null;
 
+  // 모드 자동 결정: 교육 → 대화, 나머지 → 분석
+  const effectiveDockMode = dockMode || (mode === 'education' ? 'chat' : 'canvas');
+
   const phaseTextByPhase = {
-    thinking: '분석 중',
+    thinking: '에이전트 분석 중',
     tool_call: '도구 실행 중',
     answering: '답변 생성 중',
     stopped: '중단됨',
@@ -197,8 +230,17 @@ export default function AgentDock() {
   const statusDotClass = pulseActive ? 'agent-status-dot-pulse' : '';
 
   const submitPrompt = async (prompt) => {
-    const normalized = String(prompt || '').trim();
+    const raw = String(prompt || '').trim();
+    const normalized = activePrefix ? `${activePrefix.prefix}${raw}` : raw;
     if (!normalized) return;
+
+    // 대화 모드 → TutorModal 열기
+    if (effectiveDockMode === 'chat') {
+      openTutor(normalized);
+      setInput('');
+      setActivePrefix(null);
+      return;
+    }
 
     const controlPayload = buildControlContextPayload(normalized);
     setIsRouting(true);
@@ -239,6 +281,7 @@ export default function AgentDock() {
     }
 
     setInput('');
+    setActivePrefix(null);
   };
 
   const handleSubmit = async (event) => {
@@ -282,8 +325,8 @@ export default function AgentDock() {
         )}
 
         {/* 볼드 입력바 */}
-        <AgentControlPulse active={pulseActive}>
-          <div className="pointer-events-auto relative rounded-[20px] bg-white shadow-[0_18px_34px_rgba(255,107,0,0.34)]">
+        <AgentControlPulse active={pulseActive} mode={effectiveDockMode}>
+          <div className="pointer-events-auto relative rounded-[20px] bg-white shadow-[0_2px_16px_rgba(0,0,0,0.08)]">
             {/* 상단 상태 라인 (항상 노출) */}
             <div className="flex items-center gap-2 border-b border-[#F2F4F6] px-3 py-1.5">
               <button
@@ -291,7 +334,11 @@ export default function AgentDock() {
                 onClick={hasActiveSession ? handleResumeChat : undefined}
                 className={`flex min-w-0 flex-1 items-center gap-2 text-left ${hasActiveSession ? 'active:bg-[#F7F8FA]' : ''}`}
               >
-                <span className={`h-1.5 w-1.5 rounded-full ${isActivelyWorking ? 'bg-[#FF6B00]' : 'bg-[#16A34A]'} ${statusDotClass}`} />
+                <span className={`h-1.5 w-1.5 rounded-full ${
+                  isActivelyWorking
+                    ? (effectiveDockMode === 'canvas' ? 'bg-[#1D6FDE]' : 'bg-[#FF6B00]')
+                    : 'bg-[#16A34A]'
+                } ${statusDotClass}`} />
                 <div className="min-w-0">
                   <p className={`truncate text-[12px] font-medium ${isActivelyWorking ? 'text-[#4E5968]' : 'text-[#166534]'}`}>
                     {dockStatusText}
@@ -303,6 +350,32 @@ export default function AgentDock() {
                   </svg>
                 )}
               </button>
+
+              {/* 모드 토글: 대화 / 분석 */}
+              <div className="flex items-center gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => setDockMode('chat')}
+                  className={`rounded-full px-2 py-1 text-[11px] font-medium transition-colors ${
+                    effectiveDockMode === 'chat'
+                      ? 'bg-[#FF6B00]/10 text-[#FF6B00]'
+                      : 'text-[#8B95A1]'
+                  }`}
+                >
+                  대화
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDockMode('canvas')}
+                  className={`rounded-full px-2 py-1 text-[11px] font-medium transition-colors ${
+                    effectiveDockMode === 'canvas'
+                      ? 'bg-[#1D6FDE]/10 text-[#1D6FDE]'
+                      : 'text-[#8B95A1]'
+                  }`}
+                >
+                  에이전트
+                </button>
+              </div>
 
               <div className="ml-auto flex items-center gap-1">
                 <button
@@ -339,6 +412,15 @@ export default function AgentDock() {
               </div>
             </div>
 
+            {showSlashMenu && (
+              <SlashCommandMenu
+                query={slashQuery}
+                onSelect={handleSlashCommand}
+                onClose={() => { setShowSlashMenu(false); setSlashQuery(''); }}
+                visible={showSlashMenu}
+              />
+            )}
+
             <form
               onSubmit={handleSubmit}
               className="flex h-12 items-center gap-2.5 px-3"
@@ -356,15 +438,52 @@ export default function AgentDock() {
                 </svg>
               </button>
 
-              <input
-                type="text"
-                value={input}
-                onChange={(event) => setInput(event.target.value)}
-                placeholder={input ? placeholder : suggestedPrompt}
-                data-agent-dock-input
-                className="min-w-0 flex-1 bg-transparent text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] focus:outline-none"
-                aria-label="에이전트 질문 입력"
-              />
+              <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                {activePrefix && (
+                  <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[#FF6B00]/20 bg-[#FFF2E8] px-2.5 py-1 text-[12px] font-semibold text-[#FF6B00]">
+                    {activePrefix.label}
+                    <button
+                      type="button"
+                      onClick={() => setActivePrefix(null)}
+                      className="ml-0.5 text-[#FF6B00]/60 hover:text-[#FF6B00]"
+                      aria-label="명령어 칩 제거"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                )}
+                <input
+                  type="text"
+                  value={input}
+                  onChange={(event) => {
+                    const val = event.target.value;
+                    setInput(val);
+                    if (val.startsWith('/')) {
+                      setShowSlashMenu(true);
+                      setSlashQuery(val.slice(1));
+                    } else {
+                      setShowSlashMenu(false);
+                      setSlashQuery('');
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (showSlashMenu && (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Enter')) {
+                      e.preventDefault();
+                    }
+                    if (e.key === 'Escape' && showSlashMenu) {
+                      setShowSlashMenu(false);
+                      setSlashQuery('');
+                    }
+                    if (e.key === 'Backspace' && !input && activePrefix) {
+                      setActivePrefix(null);
+                    }
+                  }}
+                  placeholder={activePrefix ? '내용을 입력하세요' : (input ? placeholder : (effectiveDockMode === 'chat' ? '궁금한 것을 물어보세요' : suggestedPrompt))}
+                  data-agent-dock-input
+                  className="min-w-0 flex-1 bg-transparent text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] focus:outline-none"
+                  aria-label="에이전트 질문 입력"
+                />
+              </div>
 
               <button
                 type="submit"
