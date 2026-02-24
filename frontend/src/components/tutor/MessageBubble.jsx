@@ -2,7 +2,7 @@
  * MessageBubble - 채팅 메시지 렌더링 컴포넌트
  * Message, SourceBadge, VisualizationMessage, TypingIndicator 포함
  */
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
@@ -16,7 +16,6 @@ import ResponsivePlotly from '../charts/ResponsivePlotly';
 import { normalizeLayout } from '../../utils/plotly/normalizeLayout';
 import { normalizeTraces } from '../../utils/plotly/normalizeTraces';
 import { trackEvent } from '../../utils/analytics';
-import { saveFlashCard } from '../../api/flashcards';
 import { useToast } from '../common/Toast';
 
 // 출처 분류 체계
@@ -185,61 +184,6 @@ export function TypingIndicator() {
   );
 }
 
-/** 복습카드 여부 감지 (AI 응답에 복습카드 패턴이 있는지) */
-function isFlashCardContent(content) {
-  if (!content) return false;
-  const lower = content.toLowerCase();
-  return (
-    (lower.includes('복습카드') || lower.includes('복습 카드') || lower.includes('review card')) &&
-    (lower.includes('##') || lower.includes('**') || lower.includes('핵심') || lower.includes('개념'))
-  );
-}
-
-/** 복습카드 저장 버튼 */
-function FlashCardSaveButton({ message }) {
-  const [saved, setSaved] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const { showToast } = useToast();
-
-  const handleSave = useCallback(async () => {
-    if (saved || saving) return;
-    setSaving(true);
-    try {
-      const title = message.content
-        ?.split('\n')
-        .find((l) => l.startsWith('#'))
-        ?.replace(/^#+\s*/, '')
-        .trim() || '복습카드';
-      // 마크다운을 HTML로 변환하지 않고 원문 content 저장
-      await saveFlashCard({
-        title,
-        content_html: message.content,
-        source_session_id: message.session_id || null,
-      });
-      setSaved(true);
-      showToast('복습카드가 저장됐어요!', 'success');
-    } catch {
-      showToast('저장 중 오류가 발생했어요.', 'error');
-    } finally {
-      setSaving(false);
-    }
-  }, [message, saved, saving, showToast]);
-
-  return (
-    <button
-      type="button"
-      onClick={handleSave}
-      disabled={saved || saving}
-      className={`mt-2 flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition-all
-        ${saved
-          ? 'border-green-300 bg-green-50 text-green-600 dark:bg-green-900/20 dark:text-green-400 dark:border-green-700'
-          : 'border-primary/30 bg-primary/5 text-primary hover:bg-primary/10'
-        }`}
-    >
-      {saving ? '저장 중...' : saved ? '✓ 저장됨' : '📌 복습카드 저장'}
-    </button>
-  );
-}
 
 export default React.memo(function Message({ message }) {
   const markdownContent = useMemo(
@@ -259,8 +203,6 @@ export default React.memo(function Message({ message }) {
       </motion.div>
     );
   }
-
-  const showFlashCardSave = !message.isStreaming && !message.isError && isFlashCardContent(message.content);
 
   return (
     <motion.div className="flex justify-start mb-4" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
@@ -290,7 +232,6 @@ export default React.memo(function Message({ message }) {
           )}
           {message.isStreaming && <span className="inline-block w-1.5 h-4 bg-primary animate-pulse ml-0.5 rounded-sm" />}
         </div>
-        {showFlashCardSave && <FlashCardSaveButton message={message} />}
         {message.sources && message.sources.length > 0 && <SourceBadge sources={message.sources} />}
         {!message.isStreaming && message.id && (
           <div className="mt-1">

@@ -11,7 +11,6 @@ import { TutorProvider } from './contexts/TutorContext';
 import { TermProvider } from './contexts/TermContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { ErrorBoundary, ToastProvider } from './components';
-import AgentChatSheet from './components/agent/AgentChatSheet';
 import TermBottomSheet from './components/domain/TermBottomSheet';
 import BottomNav from './components/layout/BottomNav';
 import AgentDock from './components/agent/AgentDock';
@@ -115,7 +114,6 @@ export default function App() {
                     <UpdateNotice />
                     <AppRoutes />
                     <TermBottomSheet />
-                    <AgentChatSheet />
                     <AgentDock />
                     <BottomNav />
                   </div>

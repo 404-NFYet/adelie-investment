@@ -3,10 +3,6 @@
  */
 export { default as TutorModal } from './tutor/TutorModal';
 export { default as TutorPanel } from './tutor/TutorPanel';
-export { default as AgentChatSheet } from './agent/AgentChatSheet';
-export { default as ChatBubble } from './agent/ChatBubble';
-export { default as AgentChatInput } from './agent/AgentChatInput';
-export { default as AgentChatHeader } from './agent/AgentChatHeader';
 export { default as ConfirmationCard } from './agent/ConfirmationCard';
 export { default as TodoProgress } from './agent/TodoProgress';
 export { default as KeywordCard } from './domain/KeywordCard';
