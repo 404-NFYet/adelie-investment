@@ -109,19 +109,19 @@ sync-dev-branches:
 # git pull 후 frontend dev 이미지 빌드 및 up -d 포함
 sync-lxd:
 	@echo "LXD 서버 코드 싱크 (git pull → frontend build → up -d)..."
-	@lxc exec dev-yj99son  -- bash -c "cd /home/ubuntu/adelie-investment && git pull origin dev/frontend && \
+	@lxc exec dev-yj99son  -- bash -c "cd /home/ubuntu/adelie-investment && git pull origin dev-final/frontend && \
 		docker compose -f docker-compose.dev.yml build frontend 2>&1 | tail -3 && \
 		docker compose -f docker-compose.dev.yml up -d frontend" && echo "  ✅ dev-yj99son" || echo "  ❌ dev-yj99son"
-	@lxc exec dev-j2hoon10 -- bash -c "cd /home/ubuntu/adelie-investment && git pull origin dev/chatbot && \
+	@lxc exec dev-j2hoon10 -- bash -c "cd /home/ubuntu/adelie-investment && git pull origin dev-final/chatbot && \
 		docker compose -f docker-compose.dev.yml build frontend 2>&1 | tail -3 && \
 		docker compose -f docker-compose.dev.yml up -d frontend" && echo "  ✅ dev-j2hoon10" || echo "  ❌ dev-j2hoon10"
-	@lxc exec dev-ryejinn  -- bash -c "cd /home/ubuntu/adelie-investment && git pull origin dev/pipeline && \
+	@lxc exec dev-ryejinn  -- bash -c "cd /home/ubuntu/adelie-investment && git pull origin dev-final/pipeline && \
 		docker compose -f docker-compose.dev.yml build frontend 2>&1 | tail -3 && \
 		docker compose -f docker-compose.dev.yml up -d frontend" && echo "  ✅ dev-ryejinn" || echo "  ❌ dev-ryejinn"
-	@lxc exec dev-jjjh02   -- bash -c "cd /home/ubuntu/adelie-investment && git pull origin dev/backend && \
+	@lxc exec dev-jjjh02   -- bash -c "cd /home/ubuntu/adelie-investment && git pull origin dev-final/backend && \
 		docker compose -f docker-compose.dev.yml build frontend 2>&1 | tail -3 && \
 		docker compose -f docker-compose.dev.yml up -d frontend" && echo "  ✅ dev-jjjh02" || echo "  ❌ dev-jjjh02"
-	@lxc exec dev-hj       -- bash -c "cd /home/ubuntu/adelie-investment && git pull origin dev/infra && \
+	@lxc exec dev-hj       -- bash -c "cd /home/ubuntu/adelie-investment && git pull origin dev-final/infra && \
 		docker compose -f docker-compose.dev.yml build frontend 2>&1 | tail -3 && \
 		docker compose -f docker-compose.dev.yml up -d frontend" && echo "  ✅ dev-hj" || echo "  ❌ dev-hj"
 	@echo "완료: 모든 LXD 서버 코드 싱크"
