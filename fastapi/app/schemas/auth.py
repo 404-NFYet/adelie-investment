@@ -41,8 +41,8 @@ class AuthUserInfo(BaseModel):
 class AuthResponse(BaseModel):
     """Authentication response."""
 
-    accessToken: str
-    refreshToken: str
+    accessToken: Optional[str] = None
+    refreshToken: Optional[str] = None
     tokenType: str
     expiresIn: int
     user: AuthUserInfo
