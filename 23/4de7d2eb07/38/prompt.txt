@@ -1,0 +1,293 @@
+Implement the following plan:
+
+# deploy-test 에러 수정 + DB 적재 확인 + 팀원별 로컬 DB 구성
+
+## Context
+
+- `demo.adelie-invest.com` 프로덕션 서버에서 내부 에러 발생 중
+- 파이프라인이 데이터를 수집했으나 DB 마이그레이션 버전 불일치로 일부 API 500 에러
+- 팀원별 LXD 서버가 infra-server 공유 DB를 쓰고 있어 격리 개발 불가
+- 프로덕션 데이터(daily_briefings 3건)를 각 팀원 로컬 DB에 복제 필요
+
+---
+
+## 현재 상태 진단
+
+### 에러 원인 — 마이그레이션 버전 불일치
+
+| 항목 | 상태 |
+|------|------|
+| deploy-test git 브랜치 | `release/feb20-stable` (091a1bb) |
+| adelie-backend-api 이미지 | `dorae222/adelie-backend-api:latest` (2b3d7b9 기반) |
+| adelie-frontend 이미지 | `dorae222/adelie-frontend:feb20-stable` (091a1bb 기반) |
+| deploy-test DB 마이그레이션 | `release/feb20-stable` 수준 (feb20-era) |
+| backend 코드가 요구하는 컬럼 | `simulation_trades.filled_quantity` 외 다수 |
+
+**에러 메시지**: `column simulation_trades.filled_quantity does not exist`
+**원인**: backend 이미지는 `20260222_agent_v7_execution_and_session_meta.py` 이후 코드인데 DB 마이그레이션은 해당 마이그레이션 이전 상태
+
+### 영향 받는 API (500 에러)
+- `GET /api/v1/portfolio/trades`
+- `GET /api/v1/portfolio`
+- `GET /api/v1/portfolio/summary`
+
+### 정상 동작 중인 API
+- `GET /api/v1/health` ✅
+- `GET /api/v1/keywords/today` ✅ (briefing 3건 정상 반환)
+
+### 현재 프로덕션 DB 데이터
+| 테이블 | 건수 |
+|--------|------|
+| daily_briefings | 3건 (최신: 2026-02-24) |
+| briefing_stocks | 20건 |
+| historical_cases | 8건 |
+| case_matches | 25건 |
+| stock_listings | 2,773건 |
+
+---
+
+## 수행 순서
+
+### Step 1: deploy-test 마이그레이션 실행 (에러 즉시 수정)
+
+```bash
+ssh deploy-test "docker exec adelie-backend-api sh -c 'cd /app/database && alembic upgrade head'"
+```
+
+**검증**:
+```bash
+curl -s https://demo.adelie-invest.com/api/v1/portfolio/trades?limit=1
+```
+
+---
+
+### Step 2: deploy-test 코드 + 이미지 정합성 수정 (→ develop)
+
+현재 상태: git=feb20-stable, frontend=feb20-stable, backend=latest (불일치)
+→ git + 양쪽 이미지 모두 develop 기반 `:latest`로 통일
+
+```bash
+ssh deploy-test "
+  cd ~/adelie-investment
+  git fetch origin
+  git checkout develop && git pull origin develop
+  TAG=latest docker compose -f docker-compose.prod.yml pull frontend backend-api
+  docker compose -f docker-compose.prod.yml up -d --no-deps frontend backend-api
+  docker exec adelie-frontend nginx -s reload 2>/dev/null || true
+"
+```
+
+> `:latest` 이미지가 develop 기반인지 확인 필요.
+> 미빌드 상태면 로컬에서 `make build && make push` 후 진행.
+
+**검증**:
+```bash
+ssh deploy-test "docker ps --format '{{.Names}}\t{{.Image}}' | grep adelie"
+curl -s https://demo.adelie-invest.com/api/v1/health
+```
+
+---
+
+### Step 3: 팀원별 개인 로컬 DB 구성 + 프로덕션 데이터 복제
+
+#### 아키텍처 변경
+
+```
+기존: 모든 LXD 서버 → infra-server 공유 DB (10.10.10.10:5432) [공유 → 충돌 위험]
+
+신규:
+deploy-test prod DB
+    ↓  pg_dump + lxc exec pipe (서버별 1회 sync)
+  dev-yj99son 로컬 postgres (postgres:5432 docker network)
+  dev-j2hoon10 로컬 postgres
+  dev-jjjh02 로컬 postgres
+  dev-ryejinn 로컬 postgres
+  dev-hj 로컬 postgres
+      ↑ 각자 개인 격리 DB
+```
+
+- `docker-compose.dev.yml`의 backend-api `environment:` 섹션이 이미 `DATABASE_URL: postgres:5432` (로컬 postgres) 명시
+- `.env`의 `DATABASE_URL=10.10.10.10:5432`는 compose `environment:`에 의해 override → 코드 변경 없음
+- 팀원이 직접 데이터 망가뜨려도 다른 팀원에게 영향 없음
+
+#### 3a. 각 LXD 서버 로컬 postgres 기동 + 마이그레이션
+
+```bash
+for srv in dev-yj99son dev-j2hoon10 dev-jjjh02 dev-ryejinn dev-hj; do
+  lxc exec $srv -- bash -c "
+    cd /home/ubuntu/adelie-investment
+    # 로컬 postgres 기동
+    docker compose -f docker-compose.dev.yml up -d postgres
+    sleep 6
+    # alembic HEAD까지 마이그레이션 (backend-api 컨테이너가 postgres에 연결)
+    docker compose -f docker-compose.dev.yml run --rm backend-api \
+      sh -c 'cd /app/database && alembic upgrade head'
+    echo '  ✅ $srv 마이그레이션 완료'
+  " 2>/dev/null || echo "  ❌ $srv 실패"
+done
+```
+
+#### 3b. deploy-test → 각 LXD 로컬 postgres 데이터 복제
+
+deploy-test에서 pg_dump → lxc exec로 각 서버 로컬 postgres에 직접 pipe:
+
+```bash
+# deploy-test에서 콘텐츠 테이블 덤프 생성 (1회)
+ssh deploy-test "docker exec adelie-postgres pg_dump \
+  -U narative -d narrative_invest \
+  --data-only --disable-triggers \
+  -t stock_listings -t daily_briefings -t briefing_stocks \
+  -t historical_cases -t case_matches -t case_stock_relations \
+  -t broker_reports" > /tmp/adelie_prod_content.sql
+
+# 각 LXD 서버 로컬 postgres에 복제
+for srv in dev-yj99son dev-j2hoon10 dev-jjjh02 dev-ryejinn dev-hj; do
+  echo "  → $srv 데이터 복제 중..."
+  lxc exec $srv -- bash -c "
+    docker exec -i adelie-investment-postgres-1 \
+      psql -U narative -d narrative_invest \
+      -c 'SET session_replication_role = replica;' 2>/dev/null
+    docker exec -i adelie-investment-postgres-1 \
+      psql -U narative -d narrative_invest
+  " < /tmp/adelie_prod_content.sql \
+  && echo "  ✅ $srv 완료" || echo "  ❌ $srv 실패"
+done
+
+rm -f /tmp/adelie_prod_content.sql
+```
+
+#### 3c. backend-api 재시작 (로컬 postgres 연결 확인)
+
+```bash
+for srv in dev-yj99son dev-j2hoon10 dev-jjjh02 dev-ryejinn dev-hj; do
+  lxc exec $srv -- bash -c "
+    cd /home/ubuntu/adelie-investment
+    docker compose -f docker-compose.dev.yml restart backend-api
+  " 2>/dev/null && echo "  ✅ $srv backend-api 재시작" || echo "  ❌ $srv"
+done
+```
+
+#### 3d. lxd/Makefile에 `dev-local-db-setup` 타겟 추가
+
+```makefile
+# 팀원별 개인 로컬 DB 초기화 + deploy-test 프로덕션 데이터 복제
+dev-local-db-setup:
+	@echo "=== Step 1: 로컬 postgres 기동 + 마이그레이션 ==="
+	@for srv in dev-yj99son dev-j2hoon10 dev-jjjh02 dev-ryejinn dev-hj; do \
+		echo "  → $$srv 기동 중..."; \
+		lxc exec $$srv -- bash -c " \
+			cd /home/ubuntu/adelie-investment && \
+			docker compose -f docker-compose.dev.yml up -d postgres && sleep 6 && \
+			docker compose -f docker-compose.dev.yml run --rm backend-api \
+				sh -c 'cd /app/database && alembic upgrade head'" \
+			&& echo "  ✅ $$srv" || echo "  ❌ $$srv"; \
+	done
+	@echo ""
+	@echo "=== Step 2: deploy-test → 각 서버 로컬 DB 데이터 복제 ==="
+	@SSH_HOST=deploy-test; \
+	DUMP_FILE=/tmp/adelie_prod_content_$$(date +%Y%m%d%H%M).sql; \
+	ssh $$SSH_HOST "docker exec adelie-postgres pg_dump \
+		-U narative -d narrative_invest \
+		--data-only --disable-triggers \
+		-t stock_listings -t daily_briefings -t briefing_stocks \
+		-t historical_cases -t case_matches -t case_stock_relations \
+		-t broker_reports" > $$DUMP_FILE; \
+	for srv in dev-yj99son dev-j2hoon10 dev-jjjh02 dev-ryejinn dev-hj; do \
+		echo "  → $$srv 데이터 복제 중..."; \
+		lxc exec $$srv -- bash -c " \
+			docker exec -i adelie-investment-postgres-1 \
+				psql -U narative -d narrative_invest \
+				-c 'SET session_replication_role = replica; \
+				    TRUNCATE TABLE stock_listings, daily_briefings, briefing_stocks, \
+				    historical_cases, case_matches, case_stock_relations, broker_reports \
+				    CASCADE; \
+				    SET session_replication_role = DEFAULT;'" < /dev/null; \
+		" < $$DUMP_FILE \
+		&& echo "  ✅ $$srv" || echo "  ❌ $$srv"; \
+	done; \
+	rm -f $$DUMP_FILE
+	@echo ""
+	@echo "=== Step 3: backend-api 재시작 ==="
+	@for srv in dev-yj99son dev-j2hoon10 dev-jjjh02 dev-ryejinn dev-hj; do \
+		lxc exec $$srv -- bash -c " \
+			cd /home/ubuntu/adelie-investment && \
+			docker compose -f docker-compose.dev.yml restart backend-api" \
+			&& echo "  ✅ $$srv" || echo "  ❌ $$srv"; \
+	done
+	@echo "✅ dev-local-db-setup 완료 (각 팀원 개인 로컬 DB 활성)"
+```
+
+---
+
+## 수정 대상 파일
+
+| 파일 | 변경 내용 |
+|------|---------|
+| `lxd/Makefile` | `dev-local-db-setup` 타겟 추가 (기동+마이그레이션+데이터복제+재시작) |
+
+---
+
+## 검증 순서
+
+```bash
+# 1. deploy-test 에러 수정 확인
+curl -s https://demo.adelie-invest.com/api/v1/portfolio/trades?limit=1
+curl -s https://demo.adelie-invest.com/api/v1/keywords/today | head -c 200
+
+# 2. 마이그레이션 버전 확인
+ssh deploy-test "docker exec adelie-backend-api sh -c 'cd /app/database && alembic current'"
+
+# 3. 각 LXD 서버 로컬 DB 데이터 확인
+lxc exec dev-yj99son -- bash -c "
+  docker exec adelie-investment-postgres-1 \
+    psql -U narative -d narrative_invest \
+    -c 'SELECT count(*) FROM daily_briefings;'"
+
+# 4. 전체 헬스체크
+make -f lxd/Makefile health-lxd
+```
+
+---
+
+## 리스크 및 주의사항
+
+- **마이그레이션 실행 중 다운타임 없음**: `alembic upgrade head`는 ADD COLUMN만이므로 서비스 중단 불필요
+- **frontend/backend 이미지 태그 통일**: `feb20-stable` + `latest` 혼용 상태 해소 필요
+- **로컬 DB sync 시간**: 서버당 pg_dump/restore 포함 ~2분 예상
+- **infra-server 공유 DB 역할 종료**: 각 LXD가 개인 로컬 postgres 사용으로 전환. infra-server tmp-postgres-1은 계속 실행 중이지만 더 이상 LXD dev 환경 연결 주소로 사용 안 함
+- **docker-compose environment 우선순위**: `environment:` 섹션이 `env_file:` 보다 우선 → `.env`의 `DATABASE_URL=10.10.10.10:5432` 자동 override, 코드 변경 불필요
+- **develop 브랜치 안정성**: Step 2에서 develop으로 전환 시 최신 커밋 상태 확인 필요
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+[Request interrupted by user]
+
+---
+
+현재 우리는 dev-final/ 브랜치들 및 각 LXD 서버로 진행 중이며, 이 싱크를 맞추는 작업을 진행해야 한다.
+참조 문서들에 이에 대한 내용들을 업데이트해라.
+
+---
+
+잘못된 이미지를 가져왔다 코드를 기반으로 다시 올바르게 업데이트 하던가
+feb20-stable을 베이스로 한 것으로 다시 디벨롭해라
+
+---
+
+현재 우리가 롤백한 내용을 참조 문서에 업데이트 해야할 것 같다. 그리고 이를 기반하여 진행해라.
+
+---
+
+참조 문서를 업데이트해라.
+
+---
+
+팀원들의 컨테이너가 모두 작동해야하며, 배포 서버를 기준으로 DB와 git, docker image 등이 모두 호환되어야 한다.
+그리고 개인 pat키가 있을건데 git push도 되는지 체크하고, 현재 우리 git 전략에 따라 각자 어떻게 push하고 PR, merge, pull 하는지 등을 문서로 함께 최상단 위치에 정리해주는게 좋을 것 같다.
+
+---
+
+[Request interrupted by user for tool use]
