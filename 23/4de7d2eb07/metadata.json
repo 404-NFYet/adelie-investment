@@ -3,7 +3,7 @@
   "checkpoint_id": "234de7d2eb07",
   "strategy": "manual-commit",
   "branch": "feature/canvas-agent-v4",
-  "checkpoints_count": 36,
+  "checkpoints_count": 39,
   "files_touched": [
     ".dockerignore",
     ".env.example",
@@ -233,6 +233,7 @@
     "tests/unit/test_guardrail.py",
     "tests/unit/test_intent_classifier.py",
     "tests/unit/test_orderbook_simulator.py",
+    "tests/unit/test_tutor_response_quality.py",
     "tests/unit/test_visualization.py"
   ],
   "sessions": [
@@ -473,13 +474,20 @@
       "context": "/23/4de7d2eb07/33/context.md",
       "content_hash": "/23/4de7d2eb07/33/content_hash.txt",
       "prompt": "/23/4de7d2eb07/33/prompt.txt"
+    },
+    {
+      "metadata": "/23/4de7d2eb07/34/metadata.json",
+      "transcript": "/23/4de7d2eb07/34/full.jsonl",
+      "context": "/23/4de7d2eb07/34/context.md",
+      "content_hash": "/23/4de7d2eb07/34/content_hash.txt",
+      "prompt": "/23/4de7d2eb07/34/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 40552,
-    "cache_creation_tokens": 5624908,
-    "cache_read_tokens": 197156252,
-    "output_tokens": 712148,
-    "api_call_count": 2324
+    "input_tokens": 40633,
+    "cache_creation_tokens": 6071258,
+    "cache_read_tokens": 203140109,
+    "output_tokens": 747043,
+    "api_call_count": 2387
   }
 }
