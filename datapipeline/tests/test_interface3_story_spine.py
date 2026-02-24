@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from datapipeline.nodes.interface3 import (
+    _compress_markdown_content,
     _enforce_story_spine,
     _has_placeholder_heading,
     _inject_markdown_sections,
+    _soften_text,
 )
 
 
@@ -86,3 +88,47 @@ def test_enforce_story_spine_injects_required_anchors() -> None:
     assert "### 다른 점" in by_step[4]["content"]
     assert by_step[6]["chart"] is None
     assert by_step[6]["content"].startswith("### 투자 전에 꼭 확인할 포인트")
+
+
+def test_soften_text_removes_bracket_labels_and_dangling_stars() -> None:
+    text = "지금 로봇 테마는 2020~2021년 패턴과 많이 닮아 있어요.*\n[닮은 점] 수주가 늘었어요.\n[과거 사이클 흐름]*"
+    softened = _soften_text(text)
+
+    assert "[닮은 점]" not in softened
+    assert "[과거 사이클 흐름]" not in softened
+    assert not softened.endswith("*")
+    assert "닮은 점 수주가 늘었어요." in softened
+
+
+def test_soften_text_keeps_term_without_parenthetical_injection() -> None:
+    text = "리레이팅과 밸류에이션 멀티플이 핵심이에요."
+    softened = _soften_text(text)
+
+    assert "리레이팅" in softened
+    assert "밸류에이션 멀티플" in softened
+    assert "(재평가)" not in softened
+    assert "(주가 평가 배수)" not in softened
+
+
+def test_compress_markdown_content_breaks_lines_per_sentence() -> None:
+    text = "### 닮은 점\n수급이 먼저 몰렸어요. 실적은 나중에 확인됐어요."
+    compressed = _compress_markdown_content(text)
+
+    assert "수급이 먼저 몰렸어요.\n실적은 나중에 확인됐어요." in compressed
+
+
+def test_compress_markdown_content_preserves_sentence_volume() -> None:
+    text = "### 다른 점\n첫 번째 설명이에요. 두 번째 설명이에요. 세 번째 설명이에요."
+    compressed = _compress_markdown_content(text)
+
+    assert "첫 번째 설명이에요." in compressed
+    assert "두 번째 설명이에요." in compressed
+    assert "세 번째 설명이에요." in compressed
+
+
+def test_compress_markdown_content_removes_label_artifacts() -> None:
+    text = "### 다른 점\n닮은 점 수주·실적 확인 전 거래대금이 급증했어요.\n\n### 이번에 주는 힌트\n핵심 흐름을 봐야 해요. 과거 사이클 흐름"
+    compressed = _compress_markdown_content(text)
+
+    assert "### 다른 점\n수주·실적 확인 전 거래대금이 급증했어요." in compressed
+    assert "과거 사이클 흐름" not in compressed
