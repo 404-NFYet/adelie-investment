@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "234de7d2eb07",
+  "session_id": "6e7ae41d-f525-4eec-a058-b51b6238fd2b",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-24T05:19:22.939548514Z",
+  "branch": "dev-final/frontend",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "datapipeline/nodes/chart_agent.py",
+    "datapipeline/nodes/interface3.py",
+    "datapipeline/prompts/templates/3_tone_final.md",
+    "frontend/src/components/agent/AgentCanvasSections.jsx",
+    "frontend/src/components/tutor/ChatInput.jsx",
+    "frontend/src/components/tutor/MessageBubble.jsx",
+    "frontend/src/components/tutor/SessionSidebar.jsx",
+    "frontend/src/components/tutor/TutorModal.jsx",
+    "frontend/src/components/tutor/TutorPanel.jsx",
+    "frontend/src/contexts/TutorChatContext.jsx",
+    "frontend/src/contexts/TutorContext.jsx",
+    "frontend/src/contexts/TutorSessionContext.jsx",
+    "frontend/src/contexts/TutorUIContext.jsx",
+    "frontend/src/pages/TutorChat.jsx"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 27,
+    "cache_creation_tokens": 64750,
+    "cache_read_tokens": 892371,
+    "output_tokens": 7751,
+    "api_call_count": 19
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-24T05:19:22.891853437Z",
+    "agent_lines": 0,
+    "human_added": 9858,
+    "human_modified": 37,
+    "human_removed": 0,
+    "total_committed": 9895,
+    "agent_percentage": 0
+  }
+}

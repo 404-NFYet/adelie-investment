@@ -3,7 +3,7 @@
   "checkpoint_id": "234de7d2eb07",
   "strategy": "manual-commit",
   "branch": "dev-final/frontend",
-  "checkpoints_count": 43,
+  "checkpoints_count": 44,
   "files_touched": [
     ".dockerignore",
     ".env.example",
@@ -28,9 +28,12 @@
     "datapipeline/db/writer.py",
     "datapipeline/graph.py",
     "datapipeline/nodes/canvas_precompute.py",
+    "datapipeline/nodes/chart_agent.py",
     "datapipeline/nodes/curation.py",
     "datapipeline/nodes/interface2.py",
+    "datapipeline/nodes/interface3.py",
     "datapipeline/prompts/__init__.py",
+    "datapipeline/prompts/templates/3_tone_final.md",
     "datapipeline/prompts/templates/chart_generation.md",
     "datapipeline/requirements.txt",
     "datapipeline/run.py",
@@ -489,13 +492,20 @@
       "context": "/23/4de7d2eb07/35/context.md",
       "content_hash": "/23/4de7d2eb07/35/content_hash.txt",
       "prompt": "/23/4de7d2eb07/35/prompt.txt"
+    },
+    {
+      "metadata": "/23/4de7d2eb07/36/metadata.json",
+      "transcript": "/23/4de7d2eb07/36/full.jsonl",
+      "context": "/23/4de7d2eb07/36/context.md",
+      "content_hash": "/23/4de7d2eb07/36/content_hash.txt",
+      "prompt": "/23/4de7d2eb07/36/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 40663,
-    "cache_creation_tokens": 6124992,
-    "cache_read_tokens": 204320402,
-    "output_tokens": 750418,
-    "api_call_count": 2409
+    "input_tokens": 40690,
+    "cache_creation_tokens": 6189742,
+    "cache_read_tokens": 205212773,
+    "output_tokens": 758169,
+    "api_call_count": 2428
   }
 }
