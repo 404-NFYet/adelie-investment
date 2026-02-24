@@ -1,0 +1,638 @@
+3개를 순차적으로 실행하는 것같은데, 병렬로 수집을 진행하는 방식으로 디벨롭하는건 어떤가?
+
+---
+
+Implement the following plan:
+
+# 데이터 파이프라인 파악 + 오늘 수집 실행
+
+## Context
+
+오늘(2026-02-24, 화요일 영업일) 기준으로 키워드 카드 3개가 생성되어야 하는데,
+스케줄러(KST 09:00)가 이미 실행되었거나 데이터가 없는 경우 수동으로 파이프라인을 트리거해야 한다.
+사용자가 "3개 카드 로직이 맞는지 확인"하고 맞다면 백그라운드로 실행하도록 요청.
+
+---
+
+## 1. 3개 카드 로직 검증 결과 ✅
+
+로직은 **정상**이다. 흐름:
+
+| 단계 | 파일 | 핵심 |
+|------|------|------|
+| CLI 진입 | `datapipeline/run.py:76` | `--topic-count 3` (기본값) |
+| 루프 | `run.py` | `for idx in range(topic_count=3)` → 3번 반복 |
+| 큐레이션 프롬프트 | `datapipeline/data_collection/openai_curator.py:49` | "최소 {topic_count}개 이상 테마 생성 필수" GPT에 지시 |
+| 첫 번째 토픽 | idx=0: 뉴스 크롤링 → 스크리닝 → 큐레이션 → curated_ALL_{date}.json 저장 |
+| 2·3번째 토픽 | idx=1,2: curated_ALL 파일 재사용 → Interface 2/3만 실행 |
+| DB 저장 | `datapipeline/db/writer.py` | `daily_briefings.top_keywords` JSONB 배열에 누적 |
+
+**데이터 부재 폴백**:
+- 뉴스 없음 → 최근 3영업일 롤백 시도 (`crawlers.py:121`)
+- 뉴스 전무해도 GPT 웹서치로 테마 생성 가능
+- API 응답: 오늘 DB 없으면 최근 데이터 폴백 (`keywords.py:73-85`)
+
+---
+
+## 2. 실행 계획
+
+### 실행 위치: deploy-test 서버 (프로덕션 Docker 컨테이너)
+- 로컬에서 실행하면 로컬 DB에 저장됨 → 프로덕션 반영 안 됨
+- deploy-test의 `adelie-backend-api` 컨테이너 내부에서 실행해야 프로덕션 DB에 저장
+
+### 실행 명령
+```bash
+# 백그라운드로 deploy-test에서 파이프라인 실행
+ssh deploy-test "nohup docker exec adelie-backend-api \
+  python -m datapipeline.run --backend live --market KR --topic-count 3 \
+  > /tmp/pipeline_$(date +%Y%m%d_%H%M%S).log 2>&1 &"
+```
+
+### 진행 상황 확인
+```bash
+# 로그 tail
+ssh deploy-test "tail -f /tmp/pipeline_*.log"
+
+# Docker 컨테이너 로그
+ssh deploy-test "docker logs adelie-backend-api --tail 50 -f"
+
+# API로 결과 확인
+curl https://demo.adelie-invest.com/api/v1/keywords/today
+```
+
+---
+
+## 3. 발견된 버그 + 수정 이력
+
+### 버그: `validate_interface2` 항상 실패
+- **원인**: `hallucination_check` 프롬프트가 LLM에게 전체 내러티브(4000+ 토큰)를 응답에 재생성 요구
+- `narrative_body` 자체가 4153~4517 토큰 → max_tokens 3000/6000 모두 초과로 잘림
+- 잘린 JSON을 로컬 수리 → `validated_interface_2`가 불완전하게 파싱됨
+
+### 적용된 패치 (컨테이너에 반영 완료)
+| 파일 | 변경 내용 |
+|------|----------|
+| `hallucination_check.md` | `max_tokens: 3000 → 6000` |
+| `nodes/interface2.py` | `validated_interface_2` 불완전 시 fallback: 필수 섹션 6개(NARRATIVE_SECTION_KEYS) 모두 있어야만 사용, 아니면 원본(`fallback_validated`) 사용 |
+
+### 3차 실행 (패치2 적용 후)
+- PID 96149, 로그: `/tmp/pipeline3_20260224_*.log`
+- 패치2가 적용되면 JSON 잘림이 발생해도 fallback으로 진행됨
+
+## 검증 방법
+
+1. `tail -f /tmp/pipeline3_*.log`로 validate_interface2 WARNING 로그 확인
+   - `"validate_interface2 validated_interface_2 불완전... → fallback 사용"` 메시지가 나와야 정상
+2. 완료 후 `GET /api/v1/keywords/today` API 응답에 오늘 날짜 키워드 3개 포함 여부 확인
+3. DB 직접 확인: `SELECT briefing_date, jsonb_array_length(top_keywords->'keywords') FROM daily_briefings ORDER BY briefing_date DESC LIMIT 3;`
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+현재 진행상황을 파악해라.
+
+---
+
+hj@hj-server:~$ ssh deploy-test "docker exec adelie-backend-api bash -c 'tail -f /tmp/pipeline_20260224_020331.log'"
+2026-02-24 11:05:23,313 [INFO] datapipeline.graph - [Node] summarize_parallel (summarize_news || summarize_research)
+2026-02-24 11:05:23,314 [INFO] datapipeline.nodes.curation - [Node] summarize_news
+2026-02-24 11:05:23,314 [INFO] datapipeline.nodes.curation - [Node] summarize_research
+2026-02-24 11:05:23,315 [INFO] datapipeline.data_collection.news_summarizer - [news 요약] Map/Reduce 시작: 333건 → 6 청크
+2026-02-24 11:05:23,315 [INFO] datapipeline.data_collection.news_summarizer - [reports 요약] Map/Reduce 시작: 24건 → 1 청크
+2026-02-24 11:05:59,504 [INFO] datapipeline.data_collection.news_summarizer - [reports 요약] 완료 (성공 1/1 청크)
+2026-02-24 11:05:59,504 [INFO] datapipeline.nodes.curation -   summarize_research 완료: 881자
+2026-02-24 11:08:49,125 [INFO] datapipeline.data_collection.news_summarizer - [news 요약] 완료 (성공 6/6 청크)
+2026-02-24 11:08:49,126 [INFO] datapipeline.nodes.curation -   summarize_news 완료: 1165자
+2026-02-24 11:08:49,130 [INFO] datapipeline.nodes.curation - [Node] curate_topics
+2026-02-24 11:09:55,276 [INFO] datapipeline.data_collection.openai_curator - [큐레이션] 성공 (attempt=1, topics=4)
+2026-02-24 11:09:55,276 [INFO] datapipeline.nodes.curation -   curate_topics 완료: 4 topics
+2026-02-24 11:09:55,282 [INFO] datapipeline.nodes.curation - [Node] build_curated_context
+2026-02-24 11:09:55,282 [INFO] datapipeline.nodes.curation -   build_curated_context 완료: theme=AI 가속기 수요 → 고부가 기판/패키징 밸류체인 실적 레버리지
+2026-02-24 11:09:55,285 [INFO] datapipeline.nodes.interface2 - [Node] run_page_purpose
+2026-02-24 11:09:55,289 [INFO] datapipeline.ai.multi_provider_client - OpenAI provider initialized
+2026-02-24 11:09:55,293 [INFO] datapipeline.ai.multi_provider_client - Perplexity provider initialized
+2026-02-24 11:09:55,520 [INFO] datapipeline.ai.multi_provider_client - Anthropic provider initialized
+2026-02-24 11:09:55,520 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] start model=claude-sonnet-4-6 messages=2 thinking=False attempt=1/2
+2026-02-24 11:10:06,479 [INFO] httpx - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-02-24 11:10:06,502 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] done model=claude-sonnet-4-6 elapsed=10.98s
+2026-02-24 11:10:06,502 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=page_purpose provider=anthropic model=claude-sonnet-4-6 attempt=1 tokens={'prompt_tokens': 2091, 'completion_tokens': 484}
+2026-02-24 11:10:06,502 [INFO] datapipeline.nodes.interface2 -   page_purpose 완료: theme=AI 가속기 수요 급증이 반도체 칩 너머 기판·패키징 밸류체인으로 실적 레버리지가 전이되는
+2026-02-24 11:10:06,507 [INFO] datapipeline.nodes.interface2 - [Node] run_historical_case
+2026-02-24 11:10:06,508 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] start model=claude-sonnet-4-6 messages=2 thinking=False attempt=1/2
+2026-02-24 11:10:35,484 [INFO] httpx - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-02-24 11:10:35,485 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] done model=claude-sonnet-4-6 elapsed=28.98s
+2026-02-24 11:10:35,485 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=historical_case provider=anthropic model=claude-sonnet-4-6 attempt=1 tokens={'prompt_tokens': 3119, 'completion_tokens': 1433}
+2026-02-24 11:10:35,485 [INFO] datapipeline.nodes.interface2 -   historical_case 완료
+2026-02-24 11:10:35,491 [INFO] datapipeline.nodes.interface2 - [Node] run_narrative_body
+2026-02-24 11:10:35,491 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] start model=claude-sonnet-4-6 messages=2 thinking=False attempt=1/2
+2026-02-24 11:11:47,575 [INFO] httpx - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-02-24 11:11:47,575 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] done model=claude-sonnet-4-6 elapsed=72.08s
+2026-02-24 11:11:47,575 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=narrative_body provider=anthropic model=claude-sonnet-4-6 attempt=1 tokens={'prompt_tokens': 5274, 'completion_tokens': 4312}
+2026-02-24 11:11:47,575 [INFO] datapipeline.nodes.interface2 -   narrative_body 완료
+2026-02-24 11:11:47,580 [INFO] datapipeline.nodes.interface2 - [Node] validate_interface2
+2026-02-24 11:11:47,581 [INFO] datapipeline.nodes.interface2 -   validate_interface2 입력 축소: 8.0KB -> 7.6KB
+2026-02-24 11:11:47,581 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] start model=claude-sonnet-4-6 messages=2 thinking=False attempt=1/2
+2026-02-24 11:13:24,246 [INFO] httpx - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-02-24 11:13:24,249 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] done model=claude-sonnet-4-6 elapsed=96.67s
+2026-02-24 11:13:24,249 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=hallucination_check provider=anthropic model=claude-sonnet-4-6 attempt=1 tokens={'prompt_tokens': 8463, 'completion_tokens': 6000}
+2026-02-24 11:13:24,249 [WARNING] datapipeline.ai.llm_utils - JSON_RETRY_ATTEMPT prompt=hallucination_check provider=anthropic model=claude-sonnet-4-6 attempt=2 reason=Expecting ',' delimiter (line=1, column=7421, char=7420) snippet={"overall_risk":"medium","summary":"전반적으로 curated_context와 높은 정합성을 보이나, 일부 항목에서 근거 부재(unverified) 이슈가 확인됩니다. 이비덴·신코전기 등 특정 기업명 언급, 2020-2022년 구체적 멀티플 수치, 원익홀딩스의 AI 서버 공급망 수혜 구체성 등은 curated_context에서 직접 근거를 찾을 수 없어 unverified로 분류됩니다. 투자 권고 표현은 발견되지 않았으며, critical 이슈는 없습니다. 수정 후 ov...(truncated)
+2026-02-24 11:13:24,249 [INFO] datapipeline.ai.llm_utils - JSON_LOCAL_REPAIR_SUCCESS prompt=hallucination_check provider=anthropic model=claude-sonnet-4-6
+2026-02-24 11:13:24,249 [WARNING] datapipeline.nodes.interface2 -   validate_interface2 validated_interface_2 불완전(hallucination_check 토큰 초과 추정) → fallback 사용
+2026-02-24 11:13:24,250 [INFO] datapipeline.nodes.interface2 -   validate_interface2 완료: overall_risk=medium
+2026-02-24 11:13:24,255 [INFO] datapipeline.nodes.interface3 - [Node] run_theme
+2026-02-24 11:13:24,255 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] start model=claude-sonnet-4-6 messages=2 thinking=False attempt=1/2
+2026-02-24 11:13:28,556 [INFO] httpx - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-02-24 11:13:28,557 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] done model=claude-sonnet-4-6 elapsed=4.30s
+2026-02-24 11:13:28,557 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_theme provider=anthropic model=claude-sonnet-4-6 attempt=1 tokens={'prompt_tokens': 6776, 'completion_tokens': 182}
+2026-02-24 11:13:28,557 [INFO] datapipeline.nodes.interface3 -   run_theme done: theme=AI 기판 밸류체인 리레이팅: 칩 너머 FC-BGA 업체로 실적 레버리지가 이동하는 국면
+2026-02-24 11:13:28,562 [INFO] datapipeline.nodes.interface3 - [Node] run_pages
+2026-02-24 11:13:28,562 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] start model=claude-sonnet-4-6 messages=2 thinking=False attempt=1/2
+2026-02-24 11:14:38,973 [INFO] httpx - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-02-24 11:14:38,974 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] done model=claude-sonnet-4-6 elapsed=70.41s
+2026-02-24 11:14:38,974 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_pages provider=anthropic model=claude-sonnet-4-6 attempt=1 tokens={'prompt_tokens': 10748, 'completion_tokens': 4096}
+2026-02-24 11:14:38,975 [WARNING] datapipeline.ai.llm_utils - JSON_RETRY_ATTEMPT prompt=3_pages provider=anthropic model=claude-sonnet-4-6 attempt=2 reason=Expecting ',' delimiter (line=1, column=4107, char=4106) snippet={"pages":[{"step":1,"title":"현재 배경","purpose":"시장의 일반적 기대(칩 설계사·파운드리 집중)와 실제 실적 레버리지 발생 지점(기판·패키징) 사이의 괴리를 짚어 독자의 관심을 환기해요.","content":"AI 투자 열풍이 불면 여러분의 시선은 자연스럽게 어디로 향하나요?\n\n아마 엔비디아, TSMC, 그리고 국내 HBM 업체들이겠죠. **'칩이 많이 팔리면 칩 만드는 곳이 돈을 버는 거 아닌가?'** 라는 논리, 직관적으로 맞아 보이거든요.\n\n> \"모...(truncated)
+2026-02-24 11:14:38,975 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] start model=claude-sonnet-4-6 messages=2 thinking=False attempt=1/2
+2026-02-24 11:15:44,592 [INFO] httpx - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-02-24 11:15:44,593 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] done model=claude-sonnet-4-6 elapsed=65.62s
+2026-02-24 11:15:44,593 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_pages provider=anthropic model=claude-sonnet-4-6 attempt=2 tokens={'prompt_tokens': 4274, 'completion_tokens': 4096}
+2026-02-24 11:15:44,593 [WARNING] datapipeline.ai.llm_utils - JSON_RETRY_ATTEMPT prompt=3_pages provider=anthropic model=claude-sonnet-4-6 attempt=3 reason=Expecting ',' delimiter (line=1, column=4107, char=4106) snippet={"pages":[{"step":1,"title":"현재 배경","purpose":"시장의 일반적 기대(칩 설계사·파운드리 집중)와 실제 실적 레버리지 발생 지점(기판·패키징) 사이의 괴리를 짚어 독자의 관심을 환기해요.","content":"AI 투자 열풍이 불면 여러분의 시선은 자연스럽게 어디로 향하나요?\n\n아마 엔비디아, TSMC, 그리고 국내 HBM 업체들이겠죠. **'칩이 많이 팔리면 칩 만드는 곳이 돈을 버는 거 아닌가?'** 라는 논리, 직관적으로 맞아 보이거든요.\n\n> \"모...(truncated)
+2026-02-24 11:15:44,593 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] start model=gpt-5.2 messages=2 thinking=False attempt=1/2
+2026-02-24 11:16:12,408 [INFO] httpx - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:16:12,415 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] done model=gpt-5.2 elapsed=27.82s
+2026-02-24 11:16:12,415 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_pages provider=openai model=gpt-5.2 attempt=3 tokens={'prompt_tokens': 2664, 'completion_tokens': 2559}
+2026-02-24 11:16:12,415 [INFO] datapipeline.ai.llm_utils - JSON_FALLBACK_OPENAI_SUCCESS prompt=3_pages original_provider=anthropic original_model=claude-sonnet-4-6 fallback_model=gpt-5.2
+2026-02-24 11:16:12,415 [INFO] datapipeline.nodes.interface3 -   run_pages done: 6 pages
+2026-02-24 11:16:12,419 [INFO] datapipeline.nodes.interface3 - [Node] merge_theme_pages (lightweight, no LLM)
+2026-02-24 11:16:12,421 [INFO] datapipeline.graph - [Node] glossary_and_chart_parallel (glossary pipeline || chart_agent)
+2026-02-24 11:16:12,422 [INFO] datapipeline.nodes.interface3 - [Node] run_glossary
+2026-02-24 11:16:12,422 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] start model=claude-sonnet-4-6 messages=2 thinking=False attempt=1/2
+2026-02-24 11:16:12,422 [INFO] datapipeline.nodes.chart_agent - [Node] run_chart_agent (parallel)
+2026-02-24 11:16:12,423 [INFO] datapipeline.nodes.chart_agent -   Queuing chart for background: line — 코리아써키트 주가 추이 (최근 6개월)...
+2026-02-24 11:16:12,423 [INFO] datapipeline.nodes.chart_agent -   Queuing chart for concept_explain: bar — 단순 실적 개선 vs 리레이팅 구간 주가 상승률 비교...
+2026-02-24 11:16:12,423 [INFO] datapipeline.nodes.chart_agent -   Queuing chart for history: area — 이비덴·신코전기 등 FC-BGA 기판 업체 밸류에이션 멀티플 추이 (2020-...
+2026-02-24 11:16:12,423 [INFO] datapipeline.nodes.chart_agent -   Queuing chart for application: grouped_bar — 2020-2022년 서버 수요 급증기 vs 현재 AI 가속기 국면...
+2026-02-24 11:16:12,423 [INFO] datapipeline.nodes.chart_agent -   Skip chart for caution: viz_hint가 비어 있어요.
+2026-02-24 11:16:12,423 [INFO] datapipeline.nodes.chart_agent -   Skip chart for summary: summary 단계는 차트를 생성하지 않아요.
+2026-02-24 11:16:12,424 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] start model=gpt-4o-mini messages=2 thinking=False attempt=1/2
+2026-02-24 11:16:12,426 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] start model=gpt-4o-mini messages=2 thinking=False attempt=1/2
+2026-02-24 11:16:12,427 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] start model=gpt-4o-mini messages=2 thinking=False attempt=1/2
+2026-02-24 11:16:13,140 [WARNING] langsmith.client - Failed to send compressed multipart ingest: langsmith.utils.LangSmithError: Failed to POST https://api.smith.langchain.com/runs/multipart in LangSmith API. HTTPError('422 Client Error: unknown for url: https://api.smith.langchain.com/runs/multipart', '{"error":"Unprocessable entity: error parsing run for post.019c8d6e-c386-7720-8c62-fa7b027b2789: schema validation failed: run_type: run_type must be one of the following: \\"tool\\", \\"chain\\", \\"llm\\", \\"retriever\\", \\"embedding\\", \\"prompt\\", \\"parser\\""}\n')
+2026-02-24 11:16:15,460 [INFO] httpx - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:16:15,467 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] done model=gpt-4o-mini elapsed=3.04s
+2026-02-24 11:16:15,467 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_chart_reasoning provider=openai model=gpt-4o-mini attempt=1 tokens={'prompt_tokens': 2584, 'completion_tokens': 115}
+2026-02-24 11:16:15,467 [INFO] datapipeline.nodes.chart_agent -     [concept_explain] Reasoning: Type=1-3. 그룹 막대 차트, Tools=0
+2026-02-24 11:16:15,467 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] start model=gpt-4o-mini messages=2 thinking=False attempt=1/2
+2026-02-24 11:16:16,130 [INFO] httpx - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:16:16,134 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] done model=gpt-4o-mini elapsed=0.67s
+2026-02-24 11:16:16,134 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_chart_generation provider=openai model=gpt-4o-mini attempt=1 tokens={'prompt_tokens': 1679, 'completion_tokens': 13}
+2026-02-24 11:16:16,135 [WARNING] datapipeline.nodes.chart_agent -     [concept_explain] Chart generation returned empty
+2026-02-24 11:16:16,135 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] start model=gpt-4o-mini messages=2 thinking=False attempt=1/2
+2026-02-24 11:16:16,307 [INFO] httpx - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:16:16,313 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] done model=gpt-4o-mini elapsed=3.89s
+2026-02-24 11:16:16,313 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_chart_reasoning provider=openai model=gpt-4o-mini attempt=1 tokens={'prompt_tokens': 2574, 'completion_tokens': 158}
+2026-02-24 11:16:16,313 [INFO] datapipeline.nodes.chart_agent -     [background] Reasoning: Type=1-4. Line Chart, Tools=1
+2026-02-24 11:16:16,313 [INFO] datapipeline.nodes.chart_agent -     Executing get_corp_financials with {'corp_name': '코리아써키트', 'year': 2024}
+2026-02-24 11:16:16,313 [ERROR] datapipeline.nodes.chart_agent -     Tool get_corp_financials failed: 'StructuredTool' object is not callable
+2026-02-24 11:16:16,314 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] start model=gpt-4o-mini messages=2 thinking=False attempt=1/2
+2026-02-24 11:16:17,102 [INFO] httpx - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:16:17,108 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] done model=gpt-4o-mini elapsed=4.68s
+2026-02-24 11:16:17,108 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_chart_reasoning provider=openai model=gpt-4o-mini attempt=1 tokens={'prompt_tokens': 2710, 'completion_tokens': 197}
+2026-02-24 11:16:17,108 [INFO] datapipeline.nodes.chart_agent -     [history] Reasoning: Type=1-4. Line Chart, Tools=2
+2026-02-24 11:16:17,108 [INFO] datapipeline.nodes.chart_agent -     Executing get_corp_financials with {'corp_name': '이비덴', 'year': 2022}
+2026-02-24 11:16:17,108 [ERROR] datapipeline.nodes.chart_agent -     Tool get_corp_financials failed: 'StructuredTool' object is not callable
+2026-02-24 11:16:17,108 [INFO] datapipeline.nodes.chart_agent -     Executing get_corp_financials with {'corp_name': '신코전기', 'year': 2022}
+2026-02-24 11:16:17,108 [ERROR] datapipeline.nodes.chart_agent -     Tool get_corp_financials failed: 'StructuredTool' object is not callable
+2026-02-24 11:16:17,108 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] start model=gpt-4o-mini messages=2 thinking=False attempt=1/2
+2026-02-24 11:16:17,717 [INFO] httpx - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:16:17,722 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] done model=gpt-4o-mini elapsed=0.61s
+2026-02-24 11:16:17,722 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_chart_generation provider=openai model=gpt-4o-mini attempt=1 tokens={'prompt_tokens': 1741, 'completion_tokens': 13}
+2026-02-24 11:16:17,722 [WARNING] datapipeline.nodes.chart_agent -     [history] Chart generation returned empty
+2026-02-24 11:16:17,919 [INFO] httpx - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:16:17,926 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] done model=gpt-4o-mini elapsed=1.61s
+2026-02-24 11:16:17,926 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_chart_generation provider=openai model=gpt-4o-mini attempt=1 tokens={'prompt_tokens': 1696, 'completion_tokens': 10}
+2026-02-24 11:16:17,926 [WARNING] datapipeline.nodes.chart_agent -     [background] Chart generation returned empty
+2026-02-24 11:16:21,845 [INFO] httpx - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:16:21,851 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] done model=gpt-4o-mini elapsed=5.72s
+2026-02-24 11:16:21,851 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_chart_reasoning provider=openai model=gpt-4o-mini attempt=1 tokens={'prompt_tokens': 2653, 'completion_tokens': 220}
+2026-02-24 11:16:21,851 [INFO] datapipeline.nodes.chart_agent -     [application] Reasoning: Type=1-3. 그룹 막대 차트, Tools=2
+2026-02-24 11:16:21,851 [INFO] datapipeline.nodes.chart_agent -     Executing search_web_for_chart_data with {'query': '2020-2022 서버 수요 급증기 기판 업체 수주잔고 증가율'}
+2026-02-24 11:16:21,851 [ERROR] datapipeline.nodes.chart_agent -     Tool search_web_for_chart_data failed: 'StructuredTool' object is not callable
+2026-02-24 11:16:21,851 [INFO] datapipeline.nodes.chart_agent -     Executing search_web_for_chart_data with {'query': '현재 AI 가속기 국면 기판 업체 수주잔고 증가율'}
+2026-02-24 11:16:21,851 [ERROR] datapipeline.nodes.chart_agent -     Tool search_web_for_chart_data failed: 'StructuredTool' object is not callable
+2026-02-24 11:16:21,852 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] start model=gpt-4o-mini messages=2 thinking=False attempt=1/2
+2026-02-24 11:16:22,475 [INFO] httpx - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:16:22,480 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] done model=gpt-4o-mini elapsed=0.63s
+2026-02-24 11:16:22,480 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_chart_generation provider=openai model=gpt-4o-mini attempt=1 tokens={'prompt_tokens': 1739, 'completion_tokens': 10}
+2026-02-24 11:16:22,480 [WARNING] datapipeline.nodes.chart_agent -     [application] Chart generation returned empty
+2026-02-24 11:16:22,480 [INFO] datapipeline.nodes.chart_agent -   run_chart_agent done. Generated 0 charts.
+2026-02-24 11:16:22,483 [INFO] datapipeline.nodes.chart_agent - [Node] run_hallcheck_chart
+2026-02-24 11:16:38,912 [INFO] httpx - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-02-24 11:16:38,912 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] done model=claude-sonnet-4-6 elapsed=26.49s
+2026-02-24 11:16:38,912 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_glossary_term_extraction provider=anthropic model=claude-sonnet-4-6 attempt=1 tokens={'prompt_tokens': 5174, 'completion_tokens': 1650}
+2026-02-24 11:16:38,912 [INFO] datapipeline.nodes.interface3 -   Extracted 19 terms to search.
+2026-02-24 11:16:38,912 [INFO] datapipeline.nodes.interface3 -   Searching for: ['수주잔고', 'FC-BGA 기판', '공급 병목', '밸류체인', '리레이팅', '밸류에이션 멀티플', 'PER', '실적 가시성', '시차 구조', '가동률', '영업이익률', '재고 조정', '실적 레버리지', '수요 사이클', '파운드리', '멀티플 선반영', '고객사 집중 리스크', '멀티플 되돌림', '펀더멘털']
+2026-02-24 11:16:38,915 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 수주잔고 뜻 의미 (문맥: AI 가속기 수요가 폭발적으로 늘어날수록, 그 칩을 기판 위에 실장하는 FC-BGA(플립칩 볼그리드어레이) 기판 업체들의 수주잔고가 먼저 쌓이기 시작하거든요.)
+2026-02-24 11:16:38,915 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:16:42,447 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:16:42,447 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=3.53s
+2026-02-24 11:16:42,450 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 FC-BGA 기판 뜻 의미 (문맥: AI 가속기 수요가 폭발적으로 늘어날수록, 그 칩을 기판 위에 실장하는 FC-BGA(플립칩 볼그리드어레이) 기판 업체들의 수주잔고가 먼저 쌓이기 시작하거든요.)
+2026-02-24 11:16:42,450 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:16:49,738 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:16:49,739 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=7.29s
+2026-02-24 11:16:49,741 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 공급 병목 뜻 의미 (문맥: 공급 병목은 칩 설계사·파운드리가 아니라, 기판·패키징 밸류체인에서 먼저 나타나는 경향이 있어요.)
+2026-02-24 11:16:49,741 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:16:57,113 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:16:57,113 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=7.37s
+2026-02-24 11:16:57,116 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 밸류체인 뜻 의미 (문맥: 공급 병목은 칩 설계사·파운드리가 아니라, 기판·패키징 밸류체인에서 먼저 나타나는 경향이 있어요.)
+2026-02-24 11:16:57,116 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:17:01,693 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:17:01,694 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=4.58s
+2026-02-24 11:17:01,696 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 리레이팅 뜻 의미 (문맥: 기업의 실적 자체가 오르는 것과는 별개로, 시장이 그 기업에 적용하는 '가격 프리미엄(멀티플)'이 올라가는 현상이에요.)
+2026-02-24 11:17:01,697 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:17:08,323 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:17:08,323 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=6.63s
+2026-02-24 11:17:08,326 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 밸류에이션 멀티플 뜻 의미 (문맥: 시장이 '이 기업의 미래가 더 잘 보인다'고 판단하는 순간, PER이나 PBR 같은 밸류에이션 배수 자체가 올라가거든요.)
+2026-02-24 11:17:08,326 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:17:16,661 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:17:16,661 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=8.34s
+2026-02-24 11:17:16,664 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 PER 뜻 의미 (문맥: 시장이 '이 기업의 미래가 더 잘 보인다'고 판단하는 순간, PER이나 PBR 같은 밸류에이션 배수 자체가 올라가거든요.)
+2026-02-24 11:17:16,664 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:17:22,527 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:17:22,527 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=5.86s
+2026-02-24 11:17:22,529 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 실적 가시성 뜻 의미 (문맥: AI 서버 확대로 고부가 기판 수요의 가시성이 높아지면, 기판 업체는 단순히 매출이 느는 것을 넘어 '구조적 성장주'에 가까운 평가를 받을 수 있어요.)
+2026-02-24 11:17:22,530 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:17:28,361 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:17:28,362 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=5.83s
+2026-02-24 11:17:28,364 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 시차 구조 뜻 의미 (문맥: 여기서 핵심은 약 2~4분기의 시차(Time Lag)예요. 바로 이 시차 구간에서 이비덴·신코전기 등 일본 FC-BGA 기판 업체와 국내 고다층 PCB 업체들의 밸류에이션 멀티플이 먼저 상향 조정됐거든요.)
+2026-02-24 11:17:28,364 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:17:33,376 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:17:33,376 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=5.01s
+2026-02-24 11:17:33,379 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 가동률 뜻 의미 (문맥: 가동률 상승 · 판가 인상 → 실물 지표 동행 확인)
+2026-02-24 11:17:33,379 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:17:40,260 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:17:40,260 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=6.88s
+2026-02-24 11:17:40,263 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 영업이익률 뜻 의미 (문맥: 영업이익률 개선 → 실적 후행 확인)
+2026-02-24 11:17:40,263 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:17:44,607 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:17:44,607 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=4.34s
+2026-02-24 11:17:44,610 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 재고 조정 뜻 의미 (문맥: 수요 사이클이 꺾인 2022년 하반기 이후에는 재고 조정과 함께 멀티플이 빠르게 되돌려지는 모습도 확인됐어요.)
+2026-02-24 11:17:44,610 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:17:49,672 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:17:49,673 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=5.06s
+2026-02-24 11:17:49,675 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 실적 레버리지 뜻 의미 (문맥: AI 가속기 수요 확대 국면에서 실적 레버리지와 리레이팅 효과가 FC-BGA 기판 업체에서 먼저 나타날 수 있는지 판단하려면, 단순히 주가 움직임만 봐서는 안 돼요.)
+2026-02-24 11:17:49,675 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:17:59,071 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:17:59,071 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=9.40s
+2026-02-24 11:17:59,073 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 수요 사이클 뜻 의미 (문맥: 과거에는 수요 사이클이 비교적 빠르게 꺾였지만, AI 인프라 투자는 구조적·장기적 성격이 강해 수요 지속성이 다를 수 있어요.)
+2026-02-24 11:17:59,074 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:18:05,312 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:18:05,312 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=6.24s
+2026-02-24 11:18:05,315 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 파운드리 뜻 의미 (문맥: 공급 병목은 칩 설계사·파운드리가 아니라, 기판·패키징 밸류체인에서 먼저 나타나는 경향이 있어요.)
+2026-02-24 11:18:05,315 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:18:10,211 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:18:10,211 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=4.90s
+2026-02-24 11:18:10,214 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 멀티플 선반영 뜻 의미 (문맥: 리레이팅은 실적 확인 이전에 진행되는 경향이 있어요. 즉, 실제 실적이 기대에 못 미칠 경우 조정 폭이 예상보다 클 수 있어요.)
+2026-02-24 11:18:10,214 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:18:16,004 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:18:16,005 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=5.79s
+2026-02-24 11:18:16,007 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 고객사 집중 리스크 뜻 의미 (문맥: 브로드컴 등 특정 고객사 의존도가 높을 경우, 해당 고객사의 투자 계획 변경이나 지연이 수주잔고와 실적 가시성에 직접적인 영향을 줄 수 있어요.)
+2026-02-24 11:18:16,007 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:18:20,864 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:18:20,864 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=4.86s
+2026-02-24 11:18:20,867 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 멀티플 되돌림 뜻 의미 (문맥: AI 인프라 투자 속도가 둔화되면, 재고 조정과 함께 멀티플이 빠르게 되돌려질 수 있어요.)
+2026-02-24 11:18:20,867 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:18:25,926 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:18:25,926 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=5.06s
+2026-02-24 11:18:25,929 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 펀더멘털 뜻 의미 (문맥: 실제 펀더멘털 변화를 순서대로 추적하는 것이 핵심이에요.)
+2026-02-24 11:18:25,929 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:18:33,052 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:18:33,052 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=7.12s
+2026-02-24 11:18:33,055 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] start model=claude-sonnet-4-6 messages=2 thinking=False attempt=1/2
+2026-02-24 11:19:33,143 [INFO] httpx - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-02-24 11:19:33,145 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] done model=claude-sonnet-4-6 elapsed=60.09s
+2026-02-24 11:19:33,145 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_glossary provider=anthropic model=claude-sonnet-4-6 attempt=1 tokens={'prompt_tokens': 27665, 'completion_tokens': 3224}
+2026-02-24 11:19:33,145 [INFO] datapipeline.nodes.interface3 -   run_glossary done: 15 terms across 6 pages
+2026-02-24 11:19:33,149 [INFO] datapipeline.nodes.interface3 - [Node] run_hallcheck_glossary
+2026-02-24 11:19:33,150 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] start model=claude-sonnet-4-6 messages=2 thinking=False attempt=1/2
+2026-02-24 11:20:47,807 [INFO] httpx - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-02-24 11:20:47,807 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] done model=claude-sonnet-4-6 elapsed=74.66s
+2026-02-24 11:20:47,808 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_hallcheck_glossary provider=anthropic model=claude-sonnet-4-6 attempt=1 tokens={'prompt_tokens': 30823, 'completion_tokens': 4096}
+2026-02-24 11:20:47,808 [WARNING] datapipeline.ai.llm_utils - JSON_RETRY_ATTEMPT prompt=3_hallcheck_glossary provider=anthropic model=claude-sonnet-4-6 attempt=2 reason=Expecting ',' delimiter (line=1, column=4476, char=4475) snippet={"overall_risk":"low","summary":"전체 16개 용어 중 대부분이 Search Results 및 Validated Interface 2와 일치하며 적절한 눈높이로 작성되어 있습니다. 일부 용어에서 미세한 표현 보완이 필요하나 hallucination 수준의 오류는 없습니다. FC-BGA 기판 정의에서 '최대 20층 적층' 등 기술적 세부사항이 생략되어 있으나 눈높이 설명 목적상 허용 범위입니다. 밸류에이션 멀티플 정의에서 PBR을 '회사가 가진 재산의 몇 배'로 설명한 것은...(truncated)
+2026-02-24 11:20:47,808 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] start model=claude-sonnet-4-6 messages=2 thinking=False attempt=1/2
+2026-02-24 11:21:56,576 [INFO] httpx - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-02-24 11:21:56,577 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] done model=claude-sonnet-4-6 elapsed=68.77s
+2026-02-24 11:21:56,577 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_hallcheck_glossary provider=anthropic model=claude-sonnet-4-6 attempt=2 tokens={'prompt_tokens': 4274, 'completion_tokens': 4096}
+2026-02-24 11:21:56,577 [WARNING] datapipeline.ai.llm_utils - JSON_RETRY_ATTEMPT prompt=3_hallcheck_glossary provider=anthropic model=claude-sonnet-4-6 attempt=3 reason=Expecting ',' delimiter (line=1, column=4476, char=4475) snippet={"overall_risk":"low","summary":"전체 16개 용어 중 대부분이 Search Results 및 Validated Interface 2와 일치하며 적절한 눈높이로 작성되어 있습니다. 일부 용어에서 미세한 표현 보완이 필요하나 hallucination 수준의 오류는 없습니다. FC-BGA 기판 정의에서 '최대 20층 적층' 등 기술적 세부사항이 생략되어 있으나 눈높이 설명 목적상 허용 범위입니다. 밸류에이션 멀티플 정의에서 PBR을 '회사가 가진 재산의 몇 배'로 설명한 것은...(truncated)
+2026-02-24 11:21:56,577 [ERROR] datapipeline.nodes.interface3 -   run_hallcheck_glossary failed: 모델 응답 JSON 불량: 비핵심 프롬프트라 OpenAI 3차 폴백을 건너뛰었습니다.
+Traceback (most recent call last):
+  File "/app/datapipeline/nodes/interface3.py", line 613, in run_hallcheck_glossary_node
+    result = call_llm_with_prompt("3_hallcheck_glossary", {
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/datapipeline/ai/llm_utils.py", line 579, in call_llm_with_prompt
+    raise JSONResponseParseError(
+datapipeline.ai.llm_utils.JSONResponseParseError: 모델 응답 JSON 불량: 비핵심 프롬프트라 OpenAI 3차 폴백을 건너뛰었습니다.
+2026-02-24 11:21:56,590 [WARNING] datapipeline.nodes.db_save - full_output이 없어 DB 저장을 건너뜁니다.
+2026-02-24 11:21:56,592 [ERROR] datapipeline.run - Topic 1/3 실패: run_hallcheck_glossary failed: 모델 응답 JSON 불량: 비핵심 프롬프트라 OpenAI 3차 폴백을 건너뛰었습니다.
+2026-02-24 11:21:56,592 [INFO] datapipeline.run - === 전체 완료 ===
+2026-02-24 11:21:56,592 [INFO] datapipeline.run - 성공: 0, 실패: 1, 총 소요시간: 1104.68s
+
+---
+
+hj@hj-server:~$ ssh deploy-test "docker exec adelie-backend-api bash -c 'tail -f /tmp/pipeline_20260224_022519.log'"
+2026-02-24 11:25:19,736 [INFO] datapipeline.nodes.crawlers - [Node] crawl_research
+2026-02-24 11:25:19,796 [INFO] datapipeline.data_collection.research_crawler - [리포트 크롤러] 날짜: 2026-02-24, 병렬 4개
+2026-02-24 11:25:19,800 [INFO] datapipeline.data_collection.news_crawler - [뉴스 수집] 시장: KR, 날짜: 2026-02-24, 피드 12개
+2026-02-24 11:25:20,023 [INFO] datapipeline.data_collection.research_crawler - [리포트 크롤러] 산업 20건, 경제 4건
+2026-02-24 11:25:22,112 [INFO] datapipeline.data_collection.research_crawler - [리포트 크롤러] 완료: 24건 → /app/datapipeline/data/research/2026-02-24/all.json
+2026-02-24 11:25:22,112 [INFO] datapipeline.nodes.crawlers -   crawl_research 완료: 24건 (requested=2026-02-24, used=2026-02-24, attempts=1)
+2026-02-24 11:26:25,345 [INFO] datapipeline.data_collection.news_crawler - [뉴스 수집] 완료: 350건
+2026-02-24 11:26:25,353 [INFO] datapipeline.nodes.crawlers -   crawl_news 완료: 350건 (requested=2026-02-24, used=2026-02-24, attempts=1)
+2026-02-24 11:26:25,358 [INFO] datapipeline.nodes.screening - [Node] screen_stocks
+가격 스크리닝 (KR): 100%|██████████| 500/500 [00:41<00:00, 12.04종목/s]
+2026-02-24 11:27:13,009 [INFO] datapipeline.nodes.screening -   screen_stocks 완료: 20종목 스크리닝, 20종목 매칭
+2026-02-24 11:27:13,015 [INFO] datapipeline.graph - [Node] summarize_parallel (summarize_news || summarize_research)
+2026-02-24 11:27:13,016 [INFO] datapipeline.nodes.curation - [Node] summarize_news
+2026-02-24 11:27:13,017 [INFO] datapipeline.data_collection.news_summarizer - [news 요약] Map/Reduce 시작: 350건 → 6 청크
+2026-02-24 11:27:13,017 [INFO] datapipeline.nodes.curation - [Node] summarize_research
+2026-02-24 11:27:13,017 [INFO] datapipeline.data_collection.news_summarizer - [reports 요약] Map/Reduce 시작: 24건 → 1 청크
+2026-02-24 11:27:58,826 [INFO] datapipeline.data_collection.news_summarizer - [reports 요약] 완료 (성공 1/1 청크)
+2026-02-24 11:27:58,826 [INFO] datapipeline.nodes.curation -   summarize_research 완료: 749자
+2026-02-24 11:30:41,505 [INFO] datapipeline.data_collection.news_summarizer - [news 요약] 완료 (성공 6/6 청크)
+2026-02-24 11:30:41,505 [INFO] datapipeline.nodes.curation -   summarize_news 완료: 1125자
+2026-02-24 11:30:41,510 [INFO] datapipeline.nodes.curation - [Node] curate_topics
+2026-02-24 11:31:43,755 [INFO] datapipeline.data_collection.openai_curator - [큐레이션] 성공 (attempt=1, topics=4)
+2026-02-24 11:31:43,755 [INFO] datapipeline.nodes.curation -   curate_topics 완료: 4 topics
+2026-02-24 11:31:43,760 [INFO] datapipeline.nodes.curation - [Node] build_curated_context
+2026-02-24 11:31:43,760 [INFO] datapipeline.nodes.curation -   build_curated_context 완료: theme=인건비·인력난 → 물류/제조 자동화 CAPEX 재개, 로봇 밸류체인 동반 모멘텀
+2026-02-24 11:31:43,763 [INFO] datapipeline.nodes.interface2 - [Node] run_page_purpose
+2026-02-24 11:31:43,768 [INFO] datapipeline.ai.multi_provider_client - OpenAI provider initialized
+2026-02-24 11:31:43,771 [INFO] datapipeline.ai.multi_provider_client - Perplexity provider initialized
+2026-02-24 11:31:43,914 [INFO] datapipeline.ai.multi_provider_client - Anthropic provider initialized
+2026-02-24 11:31:43,914 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] start model=claude-sonnet-4-6 messages=2 thinking=False attempt=1/2
+2026-02-24 11:31:55,025 [INFO] httpx - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-02-24 11:31:55,048 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] done model=claude-sonnet-4-6 elapsed=11.13s
+2026-02-24 11:31:55,048 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=page_purpose provider=anthropic model=claude-sonnet-4-6 attempt=1 tokens={'prompt_tokens': 2625, 'completion_tokens': 525}
+2026-02-24 11:31:55,048 [INFO] datapipeline.nodes.interface2 -   page_purpose 완료: theme=인건비 부담이 임계점을 넘으면서 물류·제조 현장의 자동화 CAPEX가 '검토 단계'에서 '
+2026-02-24 11:31:55,054 [INFO] datapipeline.nodes.interface2 - [Node] run_historical_case
+2026-02-24 11:31:55,055 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] start model=claude-sonnet-4-6 messages=2 thinking=False attempt=1/2
+2026-02-24 11:32:26,262 [INFO] httpx - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-02-24 11:32:26,263 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] done model=claude-sonnet-4-6 elapsed=31.21s
+2026-02-24 11:32:26,263 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=historical_case provider=anthropic model=claude-sonnet-4-6 attempt=1 tokens={'prompt_tokens': 3672, 'completion_tokens': 1508}
+2026-02-24 11:32:26,263 [INFO] datapipeline.nodes.interface2 -   historical_case 완료
+2026-02-24 11:32:26,269 [INFO] datapipeline.nodes.interface2 - [Node] run_narrative_body
+2026-02-24 11:32:26,269 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] start model=claude-sonnet-4-6 messages=2 thinking=False attempt=1/2
+2026-02-24 11:33:48,825 [INFO] httpx - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-02-24 11:33:48,832 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] done model=claude-sonnet-4-6 elapsed=82.56s
+2026-02-24 11:33:48,832 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=narrative_body provider=anthropic model=claude-sonnet-4-6 attempt=1 tokens={'prompt_tokens': 5902, 'completion_tokens': 4826}
+2026-02-24 11:33:48,832 [INFO] datapipeline.nodes.interface2 -   narrative_body 완료
+2026-02-24 11:33:48,838 [INFO] datapipeline.nodes.interface2 - [Node] validate_interface2
+2026-02-24 11:33:48,838 [INFO] datapipeline.nodes.interface2 -   validate_interface2 입력 축소: 9.5KB -> 8.9KB
+2026-02-24 11:33:48,839 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] start model=claude-sonnet-4-6 messages=2 thinking=False attempt=1/2
+2026-02-24 11:35:25,989 [INFO] httpx - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-02-24 11:35:25,995 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] done model=claude-sonnet-4-6 elapsed=97.16s
+2026-02-24 11:35:25,995 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=hallucination_check provider=anthropic model=claude-sonnet-4-6 attempt=1 tokens={'prompt_tokens': 9465, 'completion_tokens': 6000}
+2026-02-24 11:35:25,995 [WARNING] datapipeline.ai.llm_utils - JSON_RETRY_ATTEMPT prompt=hallucination_check provider=anthropic model=claude-sonnet-4-6 attempt=2 reason=Expecting ',' delimiter (line=1, column=7569, char=7568) snippet={"overall_risk":"low","summary":"curated_context 기준으로 주요 수치(416억원, 22%, 계약기간 2025-04-25~2027-07-31)와 고유명사(현대무벡스, 화낙, ABB, 폭스콘)는 대체로 일치하거나 근사치 수준으로 허용 가능해요. 역사적 사례(2011~2013년 중국 인건비 급등)는 curated_context에 직접 근거가 없으나 historical_case_output 자체의 내부 일관성은 유지되며, curated_context의 개념 설명과 충...(truncated)
+2026-02-24 11:35:25,995 [INFO] datapipeline.ai.llm_utils - JSON_LOCAL_REPAIR_SUCCESS prompt=hallucination_check provider=anthropic model=claude-sonnet-4-6
+2026-02-24 11:35:25,996 [WARNING] datapipeline.nodes.interface2 -   validate_interface2 validated_interface_2 불완전(hallucination_check 토큰 초과 추정) → fallback 사용
+2026-02-24 11:35:25,996 [INFO] datapipeline.nodes.interface2 -   validate_interface2 완료: overall_risk=low
+2026-02-24 11:35:26,002 [INFO] datapipeline.nodes.interface3 - [Node] run_theme
+2026-02-24 11:35:26,002 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] start model=claude-sonnet-4-6 messages=2 thinking=False attempt=1/2
+2026-02-24 11:35:30,987 [INFO] httpx - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-02-24 11:35:30,987 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] done model=claude-sonnet-4-6 elapsed=4.99s
+2026-02-24 11:35:30,987 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_theme provider=anthropic model=claude-sonnet-4-6 attempt=1 tokens={'prompt_tokens': 7348, 'completion_tokens': 187}
+2026-02-24 11:35:30,987 [INFO] datapipeline.nodes.interface3 -   run_theme done: theme=로봇·자동화 테마: 기대에서 계약으로, 수주잔고가 쌓이기 시작한 지금의 국면
+2026-02-24 11:35:30,992 [INFO] datapipeline.nodes.interface3 - [Node] run_pages
+2026-02-24 11:35:30,992 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] start model=claude-sonnet-4-6 messages=2 thinking=False attempt=1/2
+2026-02-24 11:36:43,779 [INFO] httpx - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-02-24 11:36:43,780 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] done model=claude-sonnet-4-6 elapsed=72.79s
+2026-02-24 11:36:43,781 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_pages provider=anthropic model=claude-sonnet-4-6 attempt=1 tokens={'prompt_tokens': 11320, 'completion_tokens': 4096}
+2026-02-24 11:36:43,781 [WARNING] datapipeline.ai.llm_utils - JSON_RETRY_ATTEMPT prompt=3_pages provider=anthropic model=claude-sonnet-4-6 attempt=2 reason=Expecting ',' delimiter (line=1, column=3635, char=3634) snippet={"pages":[{"step":1,"title":"현재 배경","purpose":"로봇·자동화 테마가 '늘 기대만 있고 실적은 없다'는 시장의 고정관념과 현재 공시 현실 사이의 괴리를 짚어요.","content":"로봇·자동화 테마, 여러분도 한 번쯤 들어보셨죠?\n\n인건비가 오른다는 뉴스가 나올 때마다 관련 종목이 들썩이고, 몇 달 지나면 조용해지는 패턴이 반복돼 왔어요. 그래서 시장에는 이런 고정관념이 자리 잡았어요.\n\n> \"로봇·자동화 테마는 늘 기대만 있고, 실제 실적은 없다.\"...(truncated)
+2026-02-24 11:36:43,781 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] start model=claude-sonnet-4-6 messages=2 thinking=False attempt=1/2
+2026-02-24 11:37:49,670 [INFO] httpx - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-02-24 11:37:49,670 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] done model=claude-sonnet-4-6 elapsed=65.89s
+2026-02-24 11:37:49,670 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_pages provider=anthropic model=claude-sonnet-4-6 attempt=2 tokens={'prompt_tokens': 4274, 'completion_tokens': 4096}
+2026-02-24 11:37:49,670 [WARNING] datapipeline.ai.llm_utils - JSON_RETRY_ATTEMPT prompt=3_pages provider=anthropic model=claude-sonnet-4-6 attempt=3 reason=Expecting ',' delimiter (line=1, column=3635, char=3634) snippet={"pages":[{"step":1,"title":"현재 배경","purpose":"로봇·자동화 테마가 '늘 기대만 있고 실적은 없다'는 시장의 고정관념과 현재 공시 현실 사이의 괴리를 짚어요.","content":"로봇·자동화 테마, 여러분도 한 번쯤 들어보셨죠?\n\n인건비가 오른다는 뉴스가 나올 때마다 관련 종목이 들썩이고, 몇 달 지나면 조용해지는 패턴이 반복돼 왔어요. 그래서 시장에는 이런 고정관념이 자리 잡았어요.\n\n> \"로봇·자동화 테마는 늘 기대만 있고, 실제 실적은 없다.\"...(truncated)
+2026-02-24 11:37:49,670 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] start model=gpt-5.2 messages=2 thinking=False attempt=1/2
+2026-02-24 11:38:18,372 [INFO] httpx - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:38:18,380 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] done model=gpt-5.2 elapsed=28.71s
+2026-02-24 11:38:18,380 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_pages provider=openai model=gpt-5.2 attempt=3 tokens={'prompt_tokens': 2741, 'completion_tokens': 2754}
+2026-02-24 11:38:18,380 [INFO] datapipeline.ai.llm_utils - JSON_FALLBACK_OPENAI_SUCCESS prompt=3_pages original_provider=anthropic original_model=claude-sonnet-4-6 fallback_model=gpt-5.2
+2026-02-24 11:38:18,380 [INFO] datapipeline.nodes.interface3 -   run_pages done: 5 pages
+2026-02-24 11:38:18,384 [INFO] datapipeline.nodes.interface3 - [Node] merge_theme_pages (lightweight, no LLM)
+2026-02-24 11:38:18,385 [INFO] datapipeline.graph - [Node] glossary_and_chart_parallel (glossary pipeline || chart_agent)
+2026-02-24 11:38:18,385 [INFO] datapipeline.nodes.interface3 - [Node] run_glossary
+2026-02-24 11:38:18,386 [INFO] datapipeline.nodes.chart_agent - [Node] run_chart_agent (parallel)
+2026-02-24 11:38:18,386 [INFO] datapipeline.nodes.chart_agent -   Queuing chart for background: line — 현대무벡스 수주잔고 추이 (전년 동기 대비 증감률, 최근 4분기)...
+2026-02-24 11:38:18,386 [INFO] datapipeline.nodes.chart_agent -   Queuing chart for concept_explain: bar — 수주 기반 실적 가시성 단계별 비교 (기대 프리미엄 vs 계약 확정 vs 매출 ...
+2026-02-24 11:38:18,386 [INFO] datapipeline.nodes.chart_agent -   Queuing chart for history: area — 화낙·ABB 수주잔고 증감률 추이 (2011~2013년, 기대 발표 시점 vs...
+2026-02-24 11:38:18,386 [INFO] datapipeline.nodes.chart_agent -   Queuing chart for application: grouped_bar — 과거(2011~2013년 화낙·ABB) vs 현재(현대무벡스) 수...
+2026-02-24 11:38:18,386 [INFO] datapipeline.nodes.chart_agent -   Skip chart for caution: viz_hint가 비어 있어요.
+2026-02-24 11:38:18,386 [INFO] datapipeline.nodes.chart_agent -   Skip chart for summary: summary 단계는 차트를 생성하지 않아요.
+2026-02-24 11:38:18,386 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] start model=claude-sonnet-4-6 messages=2 thinking=False attempt=1/2
+2026-02-24 11:38:18,387 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] start model=gpt-4o-mini messages=2 thinking=False attempt=1/2
+2026-02-24 11:38:18,388 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] start model=gpt-4o-mini messages=2 thinking=False attempt=1/2
+2026-02-24 11:38:18,389 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] start model=gpt-4o-mini messages=2 thinking=False attempt=1/2
+2026-02-24 11:38:19,113 [WARNING] langsmith.client - Failed to send compressed multipart ingest: langsmith.utils.LangSmithError: Failed to POST https://api.smith.langchain.com/runs/multipart in LangSmith API. HTTPError('422 Client Error: unknown for url: https://api.smith.langchain.com/runs/multipart', '{"error":"Unprocessable entity: error parsing run for post.019c8d82-ff11-7aa3-83f9-15b5174e4a45: schema validation failed: run_type: run_type must be one of the following: \\"tool\\", \\"chain\\", \\"llm\\", \\"retriever\\", \\"embedding\\", \\"prompt\\", \\"parser\\""}\n')
+2026-02-24 11:38:21,890 [INFO] httpx - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:38:21,894 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] done model=gpt-4o-mini elapsed=3.51s
+2026-02-24 11:38:21,894 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_chart_reasoning provider=openai model=gpt-4o-mini attempt=1 tokens={'prompt_tokens': 3003, 'completion_tokens': 181}
+2026-02-24 11:38:21,894 [INFO] datapipeline.nodes.chart_agent -     [concept_explain] Reasoning: Type=1-3. Grouped Bar Chart, Tools=1
+2026-02-24 11:38:21,894 [INFO] datapipeline.nodes.chart_agent -     Executing get_corp_financials with {'corp_name': '현대무벡스', 'year': 2025}
+2026-02-24 11:38:21,894 [ERROR] datapipeline.nodes.chart_agent -     Tool get_corp_financials failed: 'StructuredTool' object is not callable
+2026-02-24 11:38:21,894 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] start model=gpt-4o-mini messages=2 thinking=False attempt=1/2
+2026-02-24 11:38:22,786 [INFO] httpx - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:38:22,790 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] done model=gpt-4o-mini elapsed=4.40s
+2026-02-24 11:38:22,791 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_chart_reasoning provider=openai model=gpt-4o-mini attempt=1 tokens={'prompt_tokens': 2975, 'completion_tokens': 189}
+2026-02-24 11:38:22,791 [INFO] datapipeline.nodes.chart_agent -     [background] Reasoning: Type=1-4. Line Chart, Tools=1
+2026-02-24 11:38:22,791 [INFO] datapipeline.nodes.chart_agent -     Executing get_corp_financials with {'corp_name': '현대무벡스', 'year': 2025}
+2026-02-24 11:38:22,791 [ERROR] datapipeline.nodes.chart_agent -     Tool get_corp_financials failed: 'StructuredTool' object is not callable
+2026-02-24 11:38:22,791 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] start model=gpt-4o-mini messages=2 thinking=False attempt=1/2
+2026-02-24 11:38:22,798 [INFO] httpx - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:38:22,803 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] done model=gpt-4o-mini elapsed=0.91s
+2026-02-24 11:38:22,803 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_chart_generation provider=openai model=gpt-4o-mini attempt=1 tokens={'prompt_tokens': 2089, 'completion_tokens': 13}
+2026-02-24 11:38:22,803 [WARNING] datapipeline.nodes.chart_agent -     [concept_explain] Chart generation returned empty
+2026-02-24 11:38:22,803 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] start model=gpt-4o-mini messages=2 thinking=False attempt=1/2
+2026-02-24 11:38:23,221 [INFO] httpx - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:38:23,225 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] done model=gpt-4o-mini elapsed=4.84s
+2026-02-24 11:38:23,225 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_chart_reasoning provider=openai model=gpt-4o-mini attempt=1 tokens={'prompt_tokens': 3192, 'completion_tokens': 176}
+2026-02-24 11:38:23,226 [INFO] datapipeline.nodes.chart_agent -     [history] Reasoning: Type=1-4. Line Chart, Tools=1
+2026-02-24 11:38:23,226 [INFO] datapipeline.nodes.chart_agent -     Executing search_web_for_chart_data with {'query': 'FANUC ABB order backlog growth rate 2011 2013'}
+2026-02-24 11:38:23,226 [ERROR] datapipeline.nodes.chart_agent -     Tool search_web_for_chart_data failed: 'StructuredTool' object is not callable
+2026-02-24 11:38:23,226 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] start model=gpt-4o-mini messages=2 thinking=False attempt=1/2
+2026-02-24 11:38:23,464 [INFO] httpx - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:38:23,470 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] done model=gpt-4o-mini elapsed=0.68s
+2026-02-24 11:38:23,470 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_chart_generation provider=openai model=gpt-4o-mini attempt=1 tokens={'prompt_tokens': 2085, 'completion_tokens': 13}
+2026-02-24 11:38:23,470 [WARNING] datapipeline.nodes.chart_agent -     [background] Chart generation returned empty
+2026-02-24 11:38:23,976 [INFO] httpx - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:38:23,981 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] done model=gpt-4o-mini elapsed=0.75s
+2026-02-24 11:38:23,981 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_chart_generation provider=openai model=gpt-4o-mini attempt=1 tokens={'prompt_tokens': 2094, 'completion_tokens': 10}
+2026-02-24 11:38:23,981 [WARNING] datapipeline.nodes.chart_agent -     [history] Chart generation returned empty
+2026-02-24 11:38:26,781 [INFO] httpx - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:38:26,787 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] done model=gpt-4o-mini elapsed=3.98s
+2026-02-24 11:38:26,787 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_chart_reasoning provider=openai model=gpt-4o-mini attempt=1 tokens={'prompt_tokens': 3094, 'completion_tokens': 200}
+2026-02-24 11:38:26,787 [INFO] datapipeline.nodes.chart_agent -     [application] Reasoning: Type=1-3. 그룹 막대 차트, Tools=2
+2026-02-24 11:38:26,787 [INFO] datapipeline.nodes.chart_agent -     Executing get_corp_financials with {'corp_name': '현대무벡스', 'year': 2025}
+2026-02-24 11:38:26,787 [ERROR] datapipeline.nodes.chart_agent -     Tool get_corp_financials failed: 'StructuredTool' object is not callable
+2026-02-24 11:38:26,787 [INFO] datapipeline.nodes.chart_agent -     Executing search_web_for_chart_data with {'query': '화낙 ABB 수주잔고 2011 2013'}
+2026-02-24 11:38:26,787 [ERROR] datapipeline.nodes.chart_agent -     Tool search_web_for_chart_data failed: 'StructuredTool' object is not callable
+2026-02-24 11:38:26,788 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] start model=gpt-4o-mini messages=2 thinking=False attempt=1/2
+2026-02-24 11:38:27,554 [INFO] httpx - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:38:27,559 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] done model=gpt-4o-mini elapsed=0.77s
+2026-02-24 11:38:27,559 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_chart_generation provider=openai model=gpt-4o-mini attempt=1 tokens={'prompt_tokens': 2119, 'completion_tokens': 13}
+2026-02-24 11:38:27,560 [WARNING] datapipeline.nodes.chart_agent -     [application] Chart generation returned empty
+2026-02-24 11:38:27,560 [INFO] datapipeline.nodes.chart_agent -   run_chart_agent done. Generated 0 charts.
+2026-02-24 11:38:27,563 [INFO] datapipeline.nodes.chart_agent - [Node] run_hallcheck_chart
+2026-02-24 11:38:43,350 [INFO] httpx - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-02-24 11:38:43,350 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] done model=claude-sonnet-4-6 elapsed=24.96s
+2026-02-24 11:38:43,350 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_glossary_term_extraction provider=anthropic model=claude-sonnet-4-6 attempt=1 tokens={'prompt_tokens': 5168, 'completion_tokens': 1510}
+2026-02-24 11:38:43,350 [INFO] datapipeline.nodes.interface3 -   Extracted 20 terms to search.
+2026-02-24 11:38:43,350 [INFO] datapipeline.nodes.interface3 -   Searching for: ['수주잔고', '공시', '테마 반짝', '주가 선행 반응', '수주 기반 실적 가시성', '매출 인식', '밸류에이션 재평가', '기대 프리미엄', 'CAPEX 예산 확정 사이클', 'EMS 업체', '밸류에이션 멀티플 재평가', '설비 납기', '업종 다변화', 'AGV', '계약→실매출 인식 시차', '수주잔고 공시 확인 단계', 'CAPEX 예산 삭감', '분기 실적', 'sell the news(뉴스에 팔아라) 현상', '기대 선반영 후 조정 구간']
+2026-02-24 11:38:43,353 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 수주잔고 뜻 의미 (문맥: 수주잔고가 전년 동기 대비 약 22% 늘어났다는 보도가 나왔거든요.)
+2026-02-24 11:38:43,353 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:38:49,883 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:38:49,884 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=6.53s
+2026-02-24 11:38:49,886 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 공시 뜻 의미 (문맥: 현대무벡스가 약 416억원 규모의 CDC 자동화 모듈·로봇 공급 계약을 공시했고.)
+2026-02-24 11:38:49,886 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:38:54,902 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:38:54,903 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=5.02s
+2026-02-24 11:38:54,905 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 테마 반짝 뜻 의미 (문맥: 이게 과거의 '테마 반짝'과 정말 다른 국면인지, 아니면 또 다른 기대 사이클의 시작인지를 구분하는 게 지금 가장 중요한 질문이에요.)
+2026-02-24 11:38:54,905 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:39:00,824 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:39:00,824 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=5.92s
+2026-02-24 11:39:00,827 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 주가 선행 반응 뜻 의미 (문맥: 로봇·자동화 테마는 인건비 이슈가 부각될 때마다 주가가 선행 반응했지만, 실제 수주잔고·공급계약 공시로 이어진 사례는 드물었어요.)
+2026-02-24 11:39:00,827 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:39:08,314 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:39:08,314 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=7.49s
+2026-02-24 11:39:08,317 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 수주 기반 실적 가시성 뜻 의미 (문맥: 수주 기반 실적 가시성이란? 기업이 고객과 맺은 계약·수주잔고가 앞으로 실제 매출과 이익으로 바뀔 가능성이 높아지는 상태를 말해요.)
+2026-02-24 11:39:08,317 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:39:16,131 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:39:16,132 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=7.82s
+2026-02-24 11:39:16,134 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 매출 인식 뜻 의미 (문맥: 이 기간 동안 약 416억원 규모의 매출이 인식될 수 있는 구조가 공시로 확인된 거예요.)
+2026-02-24 11:39:16,134 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:39:22,842 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:39:22,843 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=6.71s
+2026-02-24 11:39:22,845 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 밸류에이션 재평가 뜻 의미 (문맥: 수주 기반 실적 가시성은 '기대 프리미엄'이 아니라 '계약서로 확정된 미래 매출'을 근거로 밸류에이션을 재평가하는 개념이에요.)
+2026-02-24 11:39:22,845 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:39:28,051 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:39:28,051 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=5.21s
+2026-02-24 11:39:28,054 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 기대 프리미엄 뜻 의미 (문맥: 수주 기반 실적 가시성은 '기대 프리미엄'이 아니라 '계약서로 확정된 미래 매출'을 근거로 밸류에이션을 재평가하는 개념이에요.)
+2026-02-24 11:39:28,054 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:39:33,867 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:39:33,868 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=5.81s
+2026-02-24 11:39:33,870 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 CAPEX 예산 확정 사이클 뜻 의미 (문맥: 고객사 CAPEX 예산 확정 사이클: 통상 6~12개월 선행.)
+2026-02-24 11:39:33,870 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:39:43,058 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:39:43,059 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=9.19s
+2026-02-24 11:39:43,061 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 EMS 업체 뜻 의미 (문맥: 폭스콘 등 대형 EMS 업체들이 '100만 대 로봇 도입' 계획을 공개 발표 → 시장이 즉각 반응, 로봇 관련 주가 선행 급등.)
+2026-02-24 11:39:43,061 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:39:48,607 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:39:48,607 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=5.55s
+2026-02-24 11:39:48,609 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 밸류에이션 멀티플 재평가 뜻 의미 (문맥: 수주잔고 확대가 실적 공시로 확인된 2012년 하반기 이후, 밸류에이션 멀티플 재평가가 본격화됐어요.)
+2026-02-24 11:39:48,610 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:39:55,650 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:39:55,650 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=7.04s
+2026-02-24 11:39:55,653 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 설비 납기 뜻 의미 (문맥: 설비 납기·설치 기간: 계약 후 실매출 인식까지 6~18개월 추가 소요.)
+2026-02-24 11:39:55,653 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:40:01,973 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:40:01,974 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=6.32s
+2026-02-24 11:40:01,977 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 업종 다변화 뜻 의미 (문맥: 현재는 물류센터(CDC)·식품·유통 등 업종 다변화가 초기부터 동시에 진행되고 있어요.)
+2026-02-24 11:40:01,977 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:40:09,120 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:40:09,121 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=7.14s
+2026-02-24 11:40:09,123 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 AGV 뜻 의미 (문맥: AGV 등 물류 자동화 기술의 성숙도가 2011년 대비 높아져 납기·설치 기간이 단축될 가능성이 있어요.)
+2026-02-24 11:40:09,123 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:40:15,330 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:40:15,330 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=6.21s
+2026-02-24 11:40:15,336 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 계약→실매출 인식 시차 뜻 의미 (문맥: 과거보다 '계약→실매출 인식'까지의 시차가 줄어들 수 있는 거죠.)
+2026-02-24 11:40:15,336 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:40:23,455 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:40:23,456 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=8.12s
+2026-02-24 11:40:23,458 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 수주잔고 공시 확인 단계 뜻 의미 (문맥: 현재는 '기대 발표' 단계가 아니라 '수주잔고 공시 확인' 단계에 진입했을 가능성이 있어요.)
+2026-02-24 11:40:23,458 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:40:30,475 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:40:30,476 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=7.02s
+2026-02-24 11:40:30,478 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 CAPEX 예산 삭감 뜻 의미 (문맥: 고객사의 CAPEX 예산 삭감이나 프로젝트 지연이 발생하면 계약이 축소되거나 취소될 수 있어요.)
+2026-02-24 11:40:30,478 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:40:36,885 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:40:36,886 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=6.41s
+2026-02-24 11:40:36,888 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 분기 실적 뜻 의미 (문맥: 시장의 기대와 실제 분기 실적 사이에 간극이 생길 수 있어요.)
+2026-02-24 11:40:36,888 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:40:42,860 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:40:42,861 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=5.97s
+2026-02-24 11:40:42,863 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 sell the news(뉴스에 팔아라) 현상 뜻 의미 (문맥: 실제 실적 공시 시점에 '뉴스에 팔아라(sell the news)' 현상이 나타날 수 있어요.)
+2026-02-24 11:40:42,863 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:40:49,015 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:40:49,016 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=6.15s
+2026-02-24 11:40:49,019 [INFO] datapipeline.ai.tools - [Tool] search_web_for_chart_data: 주식 용어 기대 선반영 후 조정 구간 뜻 의미 (문맥: 2011~2013년 사례에서도 기대 선반영 후 조정 구간이 존재했거든요.)
+2026-02-24 11:40:49,019 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] start model=sonar-pro messages=2 thinking=False attempt=1/2
+2026-02-24 11:40:57,389 [INFO] httpx - HTTP Request: POST https://api.perplexity.ai/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:40:57,389 [INFO] datapipeline.ai.multi_provider_client - [PERPLEXITY] done model=sonar-pro elapsed=8.37s
+2026-02-24 11:40:57,392 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] start model=claude-sonnet-4-6 messages=2 thinking=False attempt=1/2
+2026-02-24 11:41:42,773 [INFO] httpx - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-02-24 11:41:42,773 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] done model=claude-sonnet-4-6 elapsed=45.38s
+2026-02-24 11:41:42,773 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_glossary provider=anthropic model=claude-sonnet-4-6 attempt=1 tokens={'prompt_tokens': 30237, 'completion_tokens': 2342}
+2026-02-24 11:41:42,773 [INFO] datapipeline.nodes.interface3 -   run_glossary done: 14 terms across 6 pages
+2026-02-24 11:41:42,777 [INFO] datapipeline.nodes.interface3 - [Node] run_hallcheck_glossary
+2026-02-24 11:41:42,778 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] start model=claude-sonnet-4-6 messages=2 thinking=False attempt=1/2
+2026-02-24 11:42:58,235 [INFO] httpx - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-02-24 11:42:58,237 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] done model=claude-sonnet-4-6 elapsed=75.46s
+2026-02-24 11:42:58,237 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_hallcheck_glossary provider=anthropic model=claude-sonnet-4-6 attempt=1 tokens={'prompt_tokens': 32507, 'completion_tokens': 4850}
+2026-02-24 11:42:58,237 [INFO] datapipeline.nodes.interface3 -   run_hallcheck_glossary done: risk=low
+2026-02-24 11:42:58,242 [INFO] datapipeline.nodes.interface3 - [Node] run_tone_final
+2026-02-24 11:42:58,243 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] start model=claude-sonnet-4-6 messages=2 thinking=False attempt=1/2
+2026-02-24 11:44:31,830 [INFO] httpx - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-02-24 11:44:31,832 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] done model=claude-sonnet-4-6 elapsed=93.59s
+2026-02-24 11:44:31,832 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_tone_final provider=anthropic model=claude-sonnet-4-6 attempt=1 tokens={'prompt_tokens': 8561, 'completion_tokens': 5000}
+2026-02-24 11:44:31,832 [WARNING] datapipeline.ai.llm_utils - JSON_RETRY_ATTEMPT prompt=3_tone_final provider=anthropic model=claude-sonnet-4-6 attempt=2 reason=Expecting ',' delimiter (line=1, column=4666, char=4665) snippet={"interface_3_final_briefing":{"theme":"로봇·자동화 테마: 기대에서 계약으로, 수주잔고가 쌓이기 시작한 지금의 국면","one_liner":"로봇·자동화 테마는 늘 '미래 기대'로만 소비됐는데, 왜 지금은 수주잔고와 공급계약 공시가 쏟아지고 있을까요? 인건비 부담이 임계점을 넘으면서 물류·제조 현장의 자동화 CAPEX가 드디어 계약서로 확정되기 시작했어요.","pages":[{"step":1,"title":"현재 배경","purpose":"로봇·자동화 테마가 '늘 ...(truncated)
+2026-02-24 11:44:31,833 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] start model=claude-sonnet-4-6 messages=2 thinking=False attempt=1/2
+2026-02-24 11:45:54,787 [INFO] httpx - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-02-24 11:45:54,788 [INFO] datapipeline.ai.multi_provider_client - [ANTHROPIC] done model=claude-sonnet-4-6 elapsed=82.96s
+2026-02-24 11:45:54,788 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_tone_final provider=anthropic model=claude-sonnet-4-6 attempt=2 tokens={'prompt_tokens': 5178, 'completion_tokens': 4970}
+2026-02-24 11:45:54,789 [WARNING] datapipeline.ai.llm_utils - JSON_RETRY_ATTEMPT prompt=3_tone_final provider=anthropic model=claude-sonnet-4-6 attempt=3 reason=Extra data (line=1, column=5417, char=5416) snippet={"interface_3_final_briefing":{"theme":"로봇·자동화 테마: 기대에서 계약으로, 수주잔고가 쌓이기 시작한 지금의 국면","one_liner":"로봇·자동화 테마는 늘 '미래 기대'로만 소비됐는데, 왜 지금은 수주잔고와 공급계약 공시가 쏟아지고 있을까요? 인건비 부담이 임계점을 넘으면서 물류·제조 현장의 자동화 CAPEX가 드디어 계약서로 확정되기 시작했어요.","pages":[{"step":1,"title":"현재 배경","purpose":"로봇·자동화 테마가 '늘 ...(truncated)
+2026-02-24 11:45:54,789 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] start model=gpt-5.2 messages=2 thinking=False attempt=1/2
+2026-02-24 11:46:33,189 [INFO] httpx - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:46:33,190 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] done model=gpt-5.2 elapsed=38.40s
+2026-02-24 11:46:33,190 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_tone_final provider=openai model=gpt-5.2 attempt=3 tokens={'prompt_tokens': 3272, 'completion_tokens': 3380}
+2026-02-24 11:46:33,190 [INFO] datapipeline.ai.llm_utils - JSON_FALLBACK_OPENAI_SUCCESS prompt=3_tone_final original_provider=anthropic original_model=claude-sonnet-4-6 fallback_model=gpt-5.2
+2026-02-24 11:46:33,192 [INFO] datapipeline.nodes.interface3 -   run_tone_final done: 4 pages merged
+2026-02-24 11:46:33,197 [INFO] datapipeline.nodes.interface3 - [Node] run_home_icon_map
+2026-02-24 11:46:33,198 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] start model=gpt-5-mini messages=2 thinking=False attempt=1/2
+2026-02-24 11:46:37,520 [INFO] httpx - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-24 11:46:37,521 [INFO] datapipeline.ai.multi_provider_client - [OPENAI] done model=gpt-5-mini elapsed=4.32s
+2026-02-24 11:46:37,521 [INFO] datapipeline.ai.llm_utils - LLM call done: prompt=3_home_icon_map provider=openai model=gpt-5-mini attempt=1 tokens={'prompt_tokens': 750, 'completion_tokens': 211}
+2026-02-24 11:46:37,521 [INFO] datapipeline.nodes.interface3 -   run_home_icon_map done: file-text-dynamic-color
+2026-02-24 11:46:37,526 [INFO] datapipeline.nodes.interface3 - [Node] collect_sources
+2026-02-24 11:46:37,527 [INFO] datapipeline.nodes.interface3 -   collect_sources done: 3 sources
+2026-02-24 11:46:37,529 [INFO] datapipeline.nodes.interface3 - [Node] assemble_output
+2026-02-24 11:46:37,530 [ERROR] datapipeline.nodes.interface3 -   assemble_output failed: 1 validation error for FinalBriefing
+pages.3.glossary
+  Input should be a valid list [type=list_type, input_value=None, input_type=NoneType]
+    For further information visit https://errors.pydantic.dev/2.10/v/list_type
+Traceback (most recent call last):
+  File "/app/datapipeline/nodes/interface3.py", line 947, in assemble_output_node
+    interface_3_final_briefing=FinalBriefing.model_validate(final_briefing_data),
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/pydantic/main.py", line 622, in model_validate
+    return cls.__pydantic_validator__.validate_python(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_core._pydantic_core.ValidationError: 1 validation error for FinalBriefing
+pages.3.glossary
+  Input should be a valid list [type=list_type, input_value=None, input_type=NoneType]
+    For further information visit https://errors.pydantic.dev/2.10/v/list_type
+2026-02-24 11:46:37,532 [WARNING] datapipeline.nodes.db_save - full_output이 없어 DB 저장을 건너뜁니다.
+2026-02-24 11:46:37,534 [ERROR] datapipeline.run - Topic 1/3 실패: assemble_output failed: 1 validation error for FinalBriefing
+pages.3.glossary
+  Input should be a valid list [type=list_type, input_value=None, input_type=NoneType]
+    For further information visit https://errors.pydantic.dev/2.10/v/list_type
+2026-02-24 11:46:37,534 [INFO] datapipeline.run - === 전체 완료 ===
+2026-02-24 11:46:37,534 [INFO] datapipeline.run - 성공: 0, 실패: 1, 총 소요시간: 1277.81s
+
+---
+
+현재 추가적인 수정이 필요한가?
+
+---
+
+[Request interrupted by user for tool use]

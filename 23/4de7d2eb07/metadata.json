@@ -3,7 +3,7 @@
   "checkpoint_id": "234de7d2eb07",
   "strategy": "manual-commit",
   "branch": "dev-final/frontend",
-  "checkpoints_count": 59,
+  "checkpoints_count": 64,
   "files_touched": [
     ".dockerignore",
     ".env.example",
@@ -33,6 +33,7 @@
     "datapipeline/nodes/interface2.py",
     "datapipeline/nodes/interface3.py",
     "datapipeline/prompts/__init__.py",
+    "datapipeline/prompts/templates/3_hallcheck_glossary.md",
     "datapipeline/prompts/templates/3_tone_final.md",
     "datapipeline/prompts/templates/chart_generation.md",
     "datapipeline/requirements.txt",
@@ -520,13 +521,20 @@
       "context": "/23/4de7d2eb07/39/context.md",
       "content_hash": "/23/4de7d2eb07/39/content_hash.txt",
       "prompt": "/23/4de7d2eb07/39/prompt.txt"
+    },
+    {
+      "metadata": "/23/4de7d2eb07/40/metadata.json",
+      "transcript": "/23/4de7d2eb07/40/full.jsonl",
+      "context": "/23/4de7d2eb07/40/context.md",
+      "content_hash": "/23/4de7d2eb07/40/content_hash.txt",
+      "prompt": "/23/4de7d2eb07/40/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 40916,
-    "cache_creation_tokens": 6601271,
-    "cache_read_tokens": 217433718,
-    "output_tokens": 818204,
-    "api_call_count": 2602
+    "input_tokens": 40980,
+    "cache_creation_tokens": 6774029,
+    "cache_read_tokens": 222504467,
+    "output_tokens": 825747,
+    "api_call_count": 2653
   }
 }
