@@ -6,10 +6,12 @@ import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from openai import AsyncOpenAI
 from pydantic import BaseModel
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.auth import get_current_user
 from app.models.tutor import TutorSession, TutorMessage
@@ -19,6 +21,65 @@ from app.services.chart_storage import get_chart_presigned_url
 logger = logging.getLogger("narrative_api.tutor_sessions")
 
 router = APIRouter(prefix="/tutor", tags=["tutor sessions"])
+
+
+# ---------------------------------------------------------------------------
+# 복습 카드 메타데이터 생성 헬퍼
+# ---------------------------------------------------------------------------
+
+def _extract_simple_review_meta(messages: list[TutorMessage]) -> dict:
+    """LLM 없이 간단히 메타데이터 추출."""
+    contents = [m.content for m in messages if m.role == "assistant" and m.content]
+    summary = (contents[0][:200] if contents else "")
+    return {"summary": summary, "key_points": [], "topics": []}
+
+
+async def _generate_review_card_meta(messages: list[TutorMessage]) -> dict:
+    """대화 내용에서 복습 카드 메타데이터를 LLM으로 생성한다."""
+    if not messages:
+        return {"summary": "", "key_points": [], "topics": []}
+
+    # 대화 내용을 텍스트로 변환 (최근 20개)
+    conversation_text = "\n".join(
+        f"{'사용자' if m.role == 'user' else 'AI'}: {m.content[:500]}"
+        for m in messages[-20:]
+    )
+
+    settings = get_settings()
+    api_key = settings.OPENAI_API_KEY
+    if not api_key:
+        return _extract_simple_review_meta(messages)
+
+    try:
+        client = AsyncOpenAI(api_key=api_key)
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            temperature=0.3,
+            max_tokens=500,
+            response_format={"type": "json_object"},
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "대화 내용을 분석하여 복습 카드 메타데이터를 JSON으로 생성하세요.\n"
+                        '반환 형식: {"summary": "3줄 요약", "key_points": ["핵심1", "핵심2", ...최대5개], "topics": ["주제/종목1", ...]}\n'
+                        "summary는 대화 핵심을 3문장 이내로 요약하세요.\n"
+                        "key_points는 학습/투자 관점의 핵심 포인트를 추출하세요.\n"
+                        "topics는 다룬 종목명, 개념, 키워드를 추출하세요."
+                    ),
+                },
+                {"role": "user", "content": conversation_text},
+            ],
+        )
+        result = json.loads(response.choices[0].message.content)
+        return {
+            "summary": str(result.get("summary", "")),
+            "key_points": list(result.get("key_points", []))[:5],
+            "topics": list(result.get("topics", []))[:10],
+        }
+    except Exception as e:
+        logger.warning("Review card meta generation failed: %s", e)
+        return _extract_simple_review_meta(messages)
 
 
 class SessionPinRequest(BaseModel):
@@ -72,6 +133,9 @@ async def list_sessions(
             "message_count": s.message_count,
             "last_message_at": s.last_message_at.isoformat() if s.last_message_at else None,
             "started_at": s.started_at.isoformat() if s.started_at else None,
+            "review_summary": s.review_summary,
+            "review_key_points": s.review_key_points or [],
+            "review_topics": s.review_topics or [],
         })
 
     return session_list
@@ -188,6 +252,23 @@ async def pin_session(
     should_pin = bool(payload.pinned)
     session.is_pinned = should_pin
     session.pinned_at = datetime.utcnow() if should_pin else None
+
+    # 핀 설정 시 복습 카드 메타데이터 생성
+    if should_pin and not session.review_summary:
+        msg_result = await db.execute(
+            select(TutorMessage)
+            .where(TutorMessage.session_id == session.id)
+            .order_by(TutorMessage.created_at)
+        )
+        messages = msg_result.scalars().all()
+        if messages:
+            meta = await _generate_review_card_meta(messages)
+            session.review_summary = meta.get("summary", "")
+            session.review_key_points = meta.get("key_points", [])
+            session.review_topics = meta.get("topics", [])
+
+    # 핀 해제 시 메타데이터 유지 (재핀 시 재활용)
+
     await db.commit()
 
     cache = await get_redis_cache()
@@ -197,6 +278,9 @@ async def pin_session(
         "id": str(session.session_uuid),
         "is_pinned": bool(session.is_pinned),
         "pinned_at": session.pinned_at.isoformat() if session.pinned_at else None,
+        "review_summary": session.review_summary,
+        "review_key_points": session.review_key_points,
+        "review_topics": session.review_topics,
     }
 
 

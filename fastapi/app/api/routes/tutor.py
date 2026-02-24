@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import re
 import time
 import uuid
 from datetime import datetime
@@ -22,6 +23,7 @@ from app.core.database import get_db
 from app.core.limiter import limiter
 from app.models.tutor import TutorSession, TutorMessage
 from app.models.glossary import Glossary
+from app.models.stock_listing import StockListing
 from app.schemas.tutor import (
     TutorChatRequest,
     TutorChatEvent,
@@ -41,6 +43,7 @@ from app.services.investment_intel import (
     annotate_reachable_links,
     collect_stock_intelligence,
 )
+from app.services.query_presets import classify_intent, fetch_intent_context
 
 router = APIRouter(prefix="/tutor", tags=["AI tutor"])
 
@@ -382,6 +385,14 @@ def _recommend_actions(
             "params": {"stock_code": stock_code},
         })
 
+    if not stock_code and "check_stock_lookup" in catalog_by_id and len(actions) < 3:
+        actions.append({
+            "id": "check_stock_lookup",
+            "label": "종목 검색하기",
+            "type": "tool",
+            "params": {"query": ""},
+        })
+
     if "check_portfolio" in catalog_by_id and len(actions) < 3:
         actions.append({
             "id": "check_portfolio",
@@ -389,6 +400,25 @@ def _recommend_actions(
             "type": "tool",
             "params": {},
         })
+
+    # 네비게이션 의도 감지
+    nav_keywords = {
+        'nav_portfolio': ['포트폴리오', '내 자산', '보유 종목', '자산 현황'],
+        'nav_education': ['교육', '학습', '공부', '배우기'],
+        'start_quiz': ['퀴즈', '문제', '테스트'],
+        'nav_profile': ['프로필', '내 정보', '설정'],
+        'nav_search': ['검색', '찾기', '찾아줘'],
+    }
+
+    for action_id, keywords in nav_keywords.items():
+        if action_id in catalog_by_id and len(actions) < 3:
+            if any(kw in text_lower for kw in keywords):
+                actions.append({
+                    "id": action_id,
+                    "label": catalog_by_id[action_id].get("label", action_id),
+                    "type": "navigate",
+                    "params": {},
+                })
 
     prompt_suggestions = []
     if context_mode == "stock":
@@ -506,6 +536,67 @@ def _extract_session_cover_meta(
     }
 
 
+
+
+async def _collect_stock_lookup_context(message: str, db: AsyncSession) -> tuple[str, list[dict[str, Any]]]:
+    """종목 조회성 질문에서 stock_listings 기반 후보를 수집한다 (read-only whitelist)."""
+    text_msg = str(message or "").strip()
+    if not text_msg:
+        return "", []
+
+    trigger_tokens = ["종목", "티커", "주식", "코드", "정보", "있어", "찾아", "검색"]
+    if not any(token in text_msg for token in trigger_tokens):
+        return "", []
+
+    words = re.findall(r"[A-Za-z0-9가-힣]{2,16}", text_msg)
+    stopwords = {"이종목", "종목", "주식", "정보", "알려줘", "있는지", "있어", "검색", "찾아줘", "좀", "현재", "가격"}
+    candidates = [word for word in words if word.lower() not in stopwords]
+    if not candidates:
+        return "", []
+
+    keyword = candidates[0]
+    code_match = re.search(r"\b(\d{6})\b", text_msg)
+    stock_code = code_match.group(1) if code_match else None
+
+    if stock_code:
+        rows = (
+            await db.execute(
+                select(StockListing)
+                .where(StockListing.is_active == True, StockListing.stock_code == stock_code)  # noqa: E712
+                .limit(5)
+            )
+        ).scalars().all()
+    else:
+        rows = (
+            await db.execute(
+                select(StockListing)
+                .where(StockListing.is_active == True, StockListing.stock_name.ilike(f"%{keyword}%"))  # noqa: E712
+                .limit(5)
+            )
+        ).scalars().all()
+
+    if not rows:
+        return "", []
+
+    context_lines = ["\n[내부 종목 검색 결과]"]
+    sources: list[dict[str, Any]] = []
+    for row in rows:
+        line = f"- {row.stock_name} ({row.stock_code}) · {row.market}"
+        if row.sector:
+            line += f" · 섹터: {row.sector}"
+        context_lines.append(line)
+        sources.append(
+            {
+                "type": "internal",
+                "source_kind": "internal",
+                "title": f"종목 마스터 {row.stock_name}",
+                "url": "",
+                "content": f"{row.stock_code} / {row.market} / {row.sector or '-'}",
+            }
+        )
+
+    return "\n".join(context_lines), sources
+
 @router.post("/route", response_model=TutorRouteResponse)
 @limiter.limit("30/minute")
 async def tutor_route(
@@ -599,12 +690,15 @@ async def _collect_context(
         stock_context, chart_data, stock_sources = await _collect_stock_context(
             request.message, detected_stocks, db
         )
+        stock_lookup_context, stock_lookup_sources = await _collect_stock_lookup_context(request.message, db)
         stock_intel_context, stock_intel_sources, _ = await collect_stock_intelligence(
             db,
             request.context_text,
             detected_stocks,
         )
         sources = glossary_sources + db_sources + stock_sources
+        if stock_lookup_sources:
+            sources += stock_lookup_sources
         if stock_intel_sources:
             sources += stock_intel_sources
         if glossary_context:
@@ -613,10 +707,22 @@ async def _collect_context(
             extra_context += f"\n\n참고할 내부 데이터:{db_context}"
         if stock_context:
             extra_context += f"\n\n참고할 종목 데이터:{stock_context}"
+        if stock_lookup_context:
+            extra_context += f"\n\n참고할 종목 검색:{stock_lookup_context}"
         if stock_intel_context:
             extra_context += f"\n\n참고할 투자 인텔:{stock_intel_context}"
     except Exception as e:
         logger.warning("출처 수집 실패 (무시): %s", e)
+
+    # 의도 기반 DB 쿼리 사전 세팅
+    try:
+        intent = classify_intent(request.message)
+        stock_code_list = [code for code, _ in detected_stocks] if detected_stocks else None
+        intent_context = await fetch_intent_context(intent, request.message, db, stock_code_list)
+        if intent_context:
+            extra_context += intent_context
+    except Exception as e:
+        logger.warning("의도 기반 컨텍스트 실패 (무시): %s", e)
 
     return page_context, sources, detected_stocks, chart_data, extra_context
 
@@ -646,6 +752,14 @@ async def _build_llm_messages(
         system_prompt += extra_context
     # 용어 설명은 LLM이 응답 내에서 자연스럽게 처리하도록 프롬프트에 지시
     system_prompt += "\n\n투자 용어가 나오면 괄호 안에 쉬운 설명을 덧붙여주세요. 예: PER(주가수익비율, 주가를 이익으로 나눈 값)."
+    system_prompt += """
+[출력 형식 규칙]
+- 수식은 반드시 LaTeX로: 인라인 $PER = \\frac{주가}{EPS}$, 블록 $$...$$
+- 일반 텍스트는 마크다운: **볼드**, *이탤릭*, 불릿/번호 필수
+- 비교 데이터는 마크다운 테이블로 출력 (| 컬럼1 | 컬럼2 |)
+- 소제목은 ## 사용, 3줄 이상 답변 시 반드시 구조화
+- 줄바꿈: 문단 구분은 빈 줄, 항목 나열은 불릿
+"""
     if request.response_mode == "canvas_markdown":
         system_prompt += (
             "\n\n응답 형식 규칙:\n"
@@ -654,7 +768,7 @@ async def _build_llm_messages(
             "- 첫 문단에 핵심 요약 1~2문장을 먼저 제시하세요.\n"
             "- 핵심 포인트는 불릿 목록(- )으로 정리하세요.\n"
             "- 순서가 중요한 내용은 번호 목록(1. 2. 3.)을 사용하세요.\n"
-            "- 비교 데이터가 있으면 2~3열의 간단한 마크다운 테이블을 사용해도 됩니다.\n"
+            "- 비교 데이터가 있으면 2~4열의 간단한 마크다운 테이블을 사용해도 됩니다.\n"
             "- 절대로 ASCII art, 텍스트 차트, 막대 그래프 문자열을 만들지 마세요. 시각화는 별도 시스템이 Plotly 차트로 처리합니다.\n"
             "- 숫자 데이터는 텍스트로만 서술하세요 (예: '삼성전자 매출은 전년 대비 12% 증가').\n"
             "- 필요한 경우 마지막에 '다음 액션' 섹션을 번호 목록으로 제시하세요.\n"
@@ -690,7 +804,7 @@ async def _build_llm_messages(
                 "- 사용자 의도를 금융/투자 학습 질문으로 바꿀 수 있는 예시 질문 1~2개를 제안하세요.\n"
             )
 
-    # 이전 대화 내역 로드 (멀티턴)
+    # 이전 대화 내역 로드 (토큰 기반 윈도우)
     prev_msgs = []
     if request.session_id:
         try:
@@ -699,14 +813,36 @@ async def _build_llm_messages(
             )
             session_obj = existing_session.scalar_one_or_none()
             if session_obj:
+                # 누적 컨텍스트 요약이 있으면 시스템 프롬프트에 추가
+                if session_obj.conversation_summary:
+                    system_prompt += f"\n\n[이전 대화 요약]\n{session_obj.conversation_summary}"
+                    system_prompt += (
+                        "\n\n[대화 규칙]\n"
+                        "- 이전 대화에서 이미 설명한 내용은 반복하지 않고, 새로운 관점이나 추가 정보를 제공합니다.\n"
+                        "- 같은 주제를 다시 물으면 더 깊은 분석이나 다른 각도의 설명을 합니다."
+                    )
+                if session_obj.context_entities:
+                    entities = session_obj.context_entities
+                    if isinstance(entities, list) and entities:
+                        system_prompt += f"\n\n[대화에서 다룬 주제]\n{', '.join(str(e) for e in entities[:20])}"
+
                 prev_result = await db.execute(
                     select(TutorMessage)
                     .where(TutorMessage.session_id == session_obj.id)
-                    .order_by(TutorMessage.created_at)
-                    .limit(20)
+                    .order_by(TutorMessage.created_at.desc())
+                    .limit(30)
                 )
-                for msg in prev_result.scalars():
-                    prev_msgs.append({"role": msg.role, "content": msg.content})
+                all_prev = list(reversed(prev_result.scalars().all()))
+
+                # 토큰 기반 윈도우: 최근 메시지부터 ~3000자 이내
+                char_budget = 6000  # ~3000 tokens (rough 2 chars/token for Korean)
+                char_count = 0
+                for msg in reversed(all_prev):
+                    msg_len = len(msg.content or "")
+                    if char_count + msg_len > char_budget:
+                        break
+                    prev_msgs.insert(0, {"role": msg.role, "content": msg.content})
+                    char_count += msg_len
         except Exception as e:
             logger.warning("Failed to load previous messages: %s", e)
 
@@ -773,6 +909,55 @@ async def _save_tutor_session(
         session_obj.message_count = (session_obj.message_count or 0) + 2
         session_obj.last_message_at = datetime.utcnow()
         await db.commit()
+
+        # Redis 세션 캐시 무효화
+        try:
+            cache = await get_redis_cache()
+            await cache.delete(f"tutor_session:{session_uuid_str}")
+            await cache.delete(f"tutor_sessions_list:{user_id}")
+        except Exception:
+            pass  # 캐시 무효화 실패해도 DB는 이미 저장됨
+
+        # 5턴마다 대화 요약 갱신
+        if session_obj.message_count and session_obj.message_count % 5 == 0:
+            try:
+                recent_msgs = await db.execute(
+                    select(TutorMessage)
+                    .where(TutorMessage.session_id == session_obj.id)
+                    .order_by(TutorMessage.created_at.desc())
+                    .limit(20)
+                )
+                msgs_for_summary = list(reversed(recent_msgs.scalars().all()))
+                summary_text = "\n".join(
+                    f"{'사용자' if m.role == 'user' else 'AI'}: {m.content[:300]}"
+                    for m in msgs_for_summary
+                )
+
+                settings = get_settings()
+                if settings.OPENAI_API_KEY:
+                    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+                    summary_resp = await client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        temperature=0.2,
+                        max_tokens=300,
+                        messages=[
+                            {"role": "system", "content": "아래 대화를 5문장 이내로 핵심만 요약하세요. 다룬 종목명/개념은 반드시 포함하세요."},
+                            {"role": "user", "content": summary_text},
+                        ],
+                    )
+                    session_obj.conversation_summary = summary_resp.choices[0].message.content
+
+                    # 엔티티 추출 (간단)
+                    existing_entities = session_obj.context_entities or []
+                    # 종목명/코드 패턴
+                    new_entities = re.findall(r'[가-힣]{2,10}(?:전자|바이오|제약|화학|건설|증권|은행|보험|카드|통신|에너지)', summary_text)
+                    new_entities += re.findall(r'\b\d{6}\b', summary_text)
+                    all_entities = list(dict.fromkeys(existing_entities + new_entities))[:30]
+                    session_obj.context_entities = all_entities
+
+                    await db.commit()
+            except Exception as e:
+                logger.warning("대화 요약 갱신 실패: %s", e)
     except Exception as e:
         logger.warning("Failed to save tutor session: %s", e)
 
@@ -1004,63 +1189,15 @@ async def generate_tutor_response(
 
         if should_viz and full_response:
             try:
-                import anthropic
-                import os
+                from app.services.tutor_chart_generator import generate_tutor_chart
 
-                viz_prompt = (
-                    "다음 내용을 Plotly.js 차트 JSON으로 변환하세요.\n"
-                    "반드시 아래 형식의 JSON만 반환하세요 (마크다운 코드블록 없이):\n"
-                    '{"data": [트레이스 객체들], "layout": {레이아웃 옵션}}\n\n'
-                    f"내용:\n{full_response[:2000]}"
+                viz_chart = await generate_tutor_chart(
+                    chart_data=chart_data,
+                    full_response=full_response,
+                    user_message=request.message,
                 )
-
-                claude_api_key = os.getenv("CLAUDE_API_KEY") or get_settings().ANTHROPIC_API_KEY
-                if claude_api_key:
-                    claude_client = anthropic.AsyncAnthropic(api_key=claude_api_key)
-                    viz_response = await claude_client.messages.create(
-                        model="claude-3-5-haiku-20241022",
-                        max_tokens=2000,
-                        system=(
-                            "당신은 Plotly.js 차트 전문가입니다. "
-                            "주어진 내용을 시각화하는 Plotly JSON config를 생성하세요. "
-                            '반드시 {"data": [...], "layout": {...}} 형식의 JSON만 반환하세요. '
-                            "디자인 규칙: 주요 색상 #FF6B00(주황), 보조 색상 #FF8C33, "
-                            "배경 투명(transparent), 한글 레이블 사용. "
-                            "마크다운 코드블록(```)으로 감싸지 마세요. 오직 JSON만 반환하세요."
-                        ),
-                        messages=[{"role": "user", "content": viz_prompt}],
-                    )
-                    json_content = viz_response.content[0].text.strip()
-                else:
-                    # Claude API 키 없으면 OpenAI fallback
-                    viz_response = await client.chat.completions.create(
-                        model="gpt-4o-mini",
-                        messages=[
-                            {"role": "system", "content": (
-                                "당신은 Plotly.js 차트 전문가입니다. "
-                                "주어진 내용을 시각화하는 Plotly JSON config를 생성하세요. "
-                                '반드시 {"data": [...], "layout": {...}} 형식의 JSON만 반환하세요. '
-                                "디자인 규칙: 주요 색상 #FF6B00(주황), 보조 색상 #FF8C33, "
-                                "배경 투명(transparent), 한글 레이블 사용. "
-                                "마크다운 코드블록(```)으로 감싸지 마세요. 오직 JSON만 반환하세요."
-                            )},
-                            {"role": "user", "content": viz_prompt},
-                        ],
-                        max_tokens=2000,
-                    )
-                    json_content = viz_response.choices[0].message.content.strip()
-
-                # ```json 코드 블록 제거 (LLM이 감쌀 수 있음)
-                if json_content.startswith("```"):
-                    json_content = json_content.split("```", 2)[1]
-                    if json_content.startswith("json"):
-                        json_content = json_content[4:]
-                    if "```" in json_content:
-                        json_content = json_content.rsplit("```", 1)[0]
-                    json_content = json_content.strip()
-                chart_data = json.loads(json_content)
-                if "data" in chart_data and isinstance(chart_data["data"], list):
-                    yield f"event: visualization\ndata: {json.dumps({'type': 'visualization', 'format': 'json', 'chartData': chart_data})}\n\n"
+                if viz_chart and viz_chart.get("data"):
+                    yield f"event: visualization\ndata: {json.dumps({'type': 'visualization', 'format': 'json', 'chartData': viz_chart})}\n\n"
             except Exception as viz_err:
                 logger.warning("시각화 생성 실패: %s", viz_err)
 
