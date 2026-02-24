@@ -41,10 +41,7 @@ services:
 
   # --- Frontend (Vite Dev Server — HMR 즉시 반영) ---
   frontend:
-    image: dorae222/adelie-frontend-dev:latest
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.dev
+    image: dorae222/adelie-frontend-dev:feb20-stable   # 버전 고정 — build: 제거로 실수 덮어쓰기 방지
     ports:
       - "3001:3001"
     volumes:
