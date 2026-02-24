@@ -27,6 +27,7 @@
     "datapipeline/db/writer.py",
     "datapipeline/graph.py",
     "datapipeline/nodes/canvas_precompute.py",
+    "datapipeline/nodes/curation.py",
     "datapipeline/nodes/interface2.py",
     "datapipeline/prompts/__init__.py",
     "datapipeline/prompts/templates/chart_generation.md",
@@ -82,6 +83,7 @@
     "fastapi/app/repositories/portfolio.py",
     "fastapi/app/schemas/canvas.py",
     "fastapi/app/schemas/portfolio.py",
+    "fastapi/app/schemas/tutor.py",
     "fastapi/app/services/auth_service.py",
     "fastapi/app/services/canvas/__init__.py",
     "fastapi/app/services/canvas/analyzer.py",
@@ -159,6 +161,7 @@
     "frontend/src/contexts/TutorUIContext.jsx",
     "frontend/src/contexts/UserContext.jsx",
     "frontend/src/contexts/index.js",
+    "frontend/src/hooks/useAgentControlOrchestrator.js",
     "frontend/src/hooks/useAgentTurns.js",
     "frontend/src/hooks/useCanvasPrecompute.js",
     "frontend/src/hooks/useQuickQA.js",
@@ -448,13 +451,20 @@
       "context": "/23/4de7d2eb07/30/context.md",
       "content_hash": "/23/4de7d2eb07/30/content_hash.txt",
       "prompt": "/23/4de7d2eb07/30/prompt.txt"
+    },
+    {
+      "metadata": "/23/4de7d2eb07/31/metadata.json",
+      "transcript": "/23/4de7d2eb07/31/full.jsonl",
+      "context": "/23/4de7d2eb07/31/context.md",
+      "content_hash": "/23/4de7d2eb07/31/content_hash.txt",
+      "prompt": "/23/4de7d2eb07/31/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 28104,
-    "cache_creation_tokens": 5301485,
-    "cache_read_tokens": 180287984,
-    "output_tokens": 670409,
-    "api_call_count": 2154
+    "input_tokens": 28172,
+    "cache_creation_tokens": 5444428,
+    "cache_read_tokens": 186951926,
+    "output_tokens": 686053,
+    "api_call_count": 2216
   }
 }

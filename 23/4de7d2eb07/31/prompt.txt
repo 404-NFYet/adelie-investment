@@ -1,0 +1,238 @@
+Implement the following plan:
+
+# AgentDock 통합 + 액션 수정 + LangSmith + 파이프라인 진단
+
+## Context
+
+4가지 이슈를 한 번에 해결:
+1. AgentDock "대화/에이전트" 토글 → UX 혼란. 시스템 자동 라우팅으로 통합
+2. 고위험 액션(매매) 무음 실패 → ActionConfirmDialog 연결
+3. 튜터 LLM 호출 LangSmith 미추적 → 트래킹 추가
+4. 데이터 파이프라인 부분 실패 → 진단 + 수정
+
+**실행 순서**: B(버그 수정) → A(UX 통합) → D(파이프라인) → C(LangSmith) → 배포
+
+---
+
+## Part B: 액션 실행 버그 수정 (최우선)
+
+### B-1. 저위험 내비게이션 즉시 실행
+
+**파일**: `frontend/src/hooks/useAgentControlOrchestrator.js` (line 275)
+
+```javascript
+// Before
+if (!autoMode && (isHighRisk(action) || action.type === 'navigate')) {
+// After
+if (!autoMode && isHighRisk(action)) {
+```
+
+### B-2. AgentDock에 ActionConfirmDialog 연결
+
+**파일**: `frontend/src/components/agent/AgentDock.jsx`
+
+1. import 추가: `import ActionConfirmDialog from './ActionConfirmDialog';`
+2. orchestrator에서 `pendingAction`, `confirmPendingAction` 추출
+3. return JSX 최상위 `</div>` 직전에:
+```jsx
+{pendingAction && (
+  <ActionConfirmDialog
+    action={pendingAction.action}
+    onConfirm={() => confirmPendingAction('confirm')}
+    onCancel={() => confirmPendingAction('cancel')}
+    onAutoMode={() => confirmPendingAction('auto')}
+  />
+)}
+```
+
+---
+
+## Part A: 토글 제거 + 통합 라우팅
+
+### A-1. 백엔드: `open_chat` 분기 추가
+
+**파일**: `fastapi/app/schemas/tutor.py` (line 37)
+```python
+# Before
+decision: Literal["inline_action", "inline_reply", "open_canvas"]
+# After
+decision: Literal["inline_action", "inline_reply", "open_canvas", "open_chat"]
+```
+
+**파일**: `fastapi/app/api/routes/tutor.py`
+
+`_normalize_route_response` (line 162):
+```python
+if decision not in {"inline_action", "inline_reply", "open_canvas", "open_chat"}:
+```
+
+`_route_with_llm` 시스템 프롬프트 (line 231-239)에 추가:
+```
+"decision must be one of inline_action, inline_reply, open_canvas, open_chat. "
+"Use open_chat for educational Q&A, term explanations, or multi-turn learning conversations. "
+```
+
+### A-2. 프론트엔드: AgentDock 토글 제거 + 통합 흐름
+
+**파일**: `frontend/src/components/agent/AgentDock.jsx`
+
+**삭제**:
+- line 51: `dockMode` state
+- line 213: `effectiveDockMode` 계산
+- lines 237-243: `effectiveDockMode === 'chat'` 분기
+- lines 354-378: 토글 UI 블록 (대화/에이전트 버튼)
+
+**submitPrompt 통합** — 모든 입력이 routePrompt을 통과, `open_chat` 분기 추가:
+```javascript
+} else if (nextDecision === 'open_chat') {
+  openTutor(normalized);
+}
+```
+
+**정리 대상** (`effectiveDockMode` 참조 제거):
+- line 328: `AgentControlPulse mode` prop → 제거 또는 고정
+- line 339: 상태 dot 색상 → 항상 블루(활성) or 그린(idle)
+- line 481: placeholder → `suggestedPrompt` 통일
+
+**AgentControlPulse.jsx**: `mode` prop 제거, 활성 시 항상 블루 글로우
+
+---
+
+## Part D: 파이프라인 진단 + 수정
+
+### 현황 (deploy-test DB 2/23)
+- `daily_briefings`: 키워드 **1개** (기대 3개)
+- `historical_cases`: 1개
+- `daily_narratives`: **0건** (빈 테이블)
+- `narrative_scenarios`: **0건** (빈 테이블)
+
+### D-1. 진단 (mock 모드 로컬 실행)
+
+```bash
+.venv/bin/python -m datapipeline.run --backend mock --topic-count 3 2>&1 | tee /tmp/pipeline_diag.log
+```
+
+확인할 것:
+- 뉴스/리서치/스크리닝 3개 소스 각각의 수집 결과 건수
+- `curate_topics_node`에서 3개 토픽이 생성되는지
+- `save_to_db_node`에서 `daily_narratives`/`narrative_scenarios` 저장 성공 여부
+- 에러 스택트레이스
+
+### D-2. 수집 소스별 점검
+
+**뉴스 크롤러** (`datapipeline/data_collection/news_crawler.py`):
+- RSS 피드 URL 접근성 확인 (한경/매경/아시아경제/MBN)
+- 403/429 에러 시 재시도 로직 유무
+- 빈 결과 시 fallback 동작
+
+**리서치 크롤러** (`datapipeline/data_collection/research_crawler.py`):
+- 네이버 금융 페이지 셀렉터 변경 여부 확인
+- PDF 요약 실패 시 무음 통과 문제 (line 268: `if not summarize or not api_key`)
+- OpenAI Responses API PDF 요약 실패 시 빈 summary로 진행하는 문제
+
+**주가 스크리닝** (`datapipeline/data_collection/screener.py`):
+- FinanceDataReader 정상 작동 확인
+- 신호 검출 결과 건수
+
+### D-3. 수정 (진단 결과에 따라)
+
+진단 후 구체적 수정 결정. 예상되는 주요 수정:
+- 크롤러 에러 핸들링 강화 (재시도, 타임아웃)
+- 빈 결과 시 명확한 에러 전파 (무음 통과 방지)
+- `topic-count` 미달 시 로그 경고
+
+---
+
+## Part C: LangSmith 트래킹
+
+**파일**: `fastapi/app/api/routes/tutor.py`
+
+import 추가:
+```python
+from shared.langsmith_config import trace_context, create_run_metadata
+```
+
+### C-1. 라우팅 결정
+
+`_route_with_llm` 내부 LLM 호출 래핑:
+```python
+with trace_context(name="tutor_route_decision", tags=["tutor", "routing"],
+    metadata={"mode": route_request.mode, "model": route_model}):
+    response = await client.chat.completions.create(...)
+```
+
+### C-2. 메인 챗 LLM 호출
+
+`generate_tutor_response` 내부 LLM 호출 구간 래핑 (async generator이므로 함수 전체가 아닌 LLM 호출부만):
+```python
+with trace_context(name="tutor_chat_llm", tags=["tutor", "chat"],
+    metadata=create_run_metadata(user_id=str(user_id), session_id=session_id, module_name="tutor")):
+    response = await client.chat.completions.create(...)
+```
+
+### C-3. 가드레일 + 용어 설명
+
+각각 `trace_context`로 LLM 호출부 래핑.
+
+---
+
+## 수정 파일 요약
+
+| 파일 | Part | 변경 |
+|------|------|------|
+| `frontend/src/hooks/useAgentControlOrchestrator.js` | B | navigate 블록 조건 제거 |
+| `frontend/src/components/agent/AgentDock.jsx` | A,B | 토글 제거 + submitPrompt 통합 + ActionConfirmDialog |
+| `frontend/src/components/agent/AgentControlPulse.jsx` | A | mode prop 단순화 |
+| `fastapi/app/schemas/tutor.py` | A | open_chat 추가 |
+| `fastapi/app/api/routes/tutor.py` | A,C | 라우터 프롬프트 + normalize + LangSmith |
+| `datapipeline/data_collection/*.py` | D | 진단 후 결정 |
+
+---
+
+## 검증
+
+### Part B (액션)
+- "투자 탭으로 이동해줘" → 즉시 `/portfolio` 이동
+- "삼성전자 1주 매도해줘" → 확인 대화상자 → 실행/취소
+
+### Part A (UX 통합)
+- 토글 버튼 사라졌는지 확인
+- "PER이 뭐야?" → TutorModal (open_chat)
+- "삼성전자 전망 분석해줘" → 캔버스 (open_canvas)
+- "홈으로 가줘" → 즉시 이동 (inline_action)
+
+### Part D (파이프라인)
+- `--backend mock` 로컬 실행 → 3개 토픽 생성 확인
+- `--backend live` 로컬 실행 → 3개 소스 수집 성공 확인
+- deploy-test에서 키워드 3개 + 내러티브 저장 확인
+
+### Part C (LangSmith)
+- LangSmith 대시보드에서 `tutor_route_decision`, `tutor_chat_llm` run 확인
+
+### 배포
+- `/deploy frontend` + `/deploy api`
+- deploy-test에서 파이프라인 수동 실행: `docker exec adelie-backend-api python -m datapipeline.run --backend live --market KR --topic-count 3`
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+[Request interrupted by user]
+
+---
+
+더미데이터를 사용하면 안된다. 그리고 프론트 UI도 함께 개선되어야 한다.
+데이터 수집 파이프라인의 경우, 저번주에 3개가 모였을 때의 코드를 보면 더 정확하게 수집이 될 것이다.
+
+---
+
+[Request interrupted by user for tool use]
+
+---
+
+프론트 UI 개선은 전체 화면 및 UX 경험과 함께 AgentDock 수정에 따라 개선되어야함을 얘기하는 것이었다.
+
+---
+
+[Request interrupted by user for tool use]
