@@ -2,8 +2,8 @@
   "cli_version": "0.4.2",
   "checkpoint_id": "234de7d2eb07",
   "strategy": "manual-commit",
-  "branch": "develop",
-  "checkpoints_count": 70,
+  "branch": "dev-final/frontend",
+  "checkpoints_count": 71,
   "files_touched": [
     ".dockerignore",
     ".env.example",
@@ -87,6 +87,7 @@
     "fastapi/app/core/exceptions.py",
     "fastapi/app/core/scheduler.py",
     "fastapi/app/main.py",
+    "fastapi/app/models/__init__.py",
     "fastapi/app/models/portfolio.py",
     "fastapi/app/models/tutor.py",
     "fastapi/app/repositories/__init__.py",
@@ -565,13 +566,20 @@
       "context": "/23/4de7d2eb07/44/context.md",
       "content_hash": "/23/4de7d2eb07/44/content_hash.txt",
       "prompt": "/23/4de7d2eb07/44/prompt.txt"
+    },
+    {
+      "metadata": "/23/4de7d2eb07/45/metadata.json",
+      "transcript": "/23/4de7d2eb07/45/full.jsonl",
+      "context": "/23/4de7d2eb07/45/context.md",
+      "content_hash": "/23/4de7d2eb07/45/content_hash.txt",
+      "prompt": "/23/4de7d2eb07/45/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 41262,
-    "cache_creation_tokens": 7397072,
-    "cache_read_tokens": 243748103,
-    "output_tokens": 897356,
-    "api_call_count": 2895
+    "input_tokens": 41315,
+    "cache_creation_tokens": 7454262,
+    "cache_read_tokens": 246009017,
+    "output_tokens": 905260,
+    "api_call_count": 2942
   }
 }

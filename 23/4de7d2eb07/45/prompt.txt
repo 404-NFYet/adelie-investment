@@ -1,0 +1,199 @@
+Implement the following plan:
+
+# dev-final/frontend ← develop 병합 충돌 해결 계획
+
+## Context
+
+이전 세션에서 develop → dev-final/* merge 중 `dev-final/frontend`만 충돌로 abort됐다.
+
+**결정**: AgentDock.jsx 관련 컨셉(채팅 시트 UI)은 현재 배제한다.
+- **배제 대상**: AgentDock.jsx + 딸린 채팅 컴포넌트들 (채팅 모드)
+- **유지 대상**: AgentCanvasSections.jsx 생태계 (캔버스 모드) — AgentDock과 독립적
+
+---
+
+## 파일별 분류
+
+### [A] AgentDock 관련 — 배제 (develop 버전 사용 또는 삭제)
+
+| 파일 | 상태 | 처리 |
+|------|------|------|
+| `frontend/src/components/agent/AgentDock.jsx` | **충돌** | `--theirs` (develop 버전 유지) |
+| `frontend/src/components/agent/AgentChatSheet.jsx` | dev-final 신규 | 별도 브랜치로 분리 후 제거 |
+| `frontend/src/components/agent/ChatBubble.jsx` | dev-final 신규 | 별도 브랜치로 분리 후 제거 |
+| `frontend/src/hooks/useSlashCommands.js` | dev-final 신규 | 별도 브랜치로 분리 후 제거 |
+| `frontend/src/api/flashcards.js` | dev-final 신규 | 별도 브랜치로 분리 후 제거 |
+| `fastapi/app/api/routes/flashcards.py` | dev-final 신규 | 별도 브랜치로 분리 후 제거 |
+| `fastapi/app/models/flashcard.py` | dev-final 신규 | 별도 브랜치로 분리 후 제거 |
+
+> AgentChatHeader.jsx, AgentChatInput.jsx도 AgentChatSheet 내부 파일이므로 함께 제거
+
+---
+
+### [B] Canvas 모드 — 유지 (ours 전략)
+
+| 파일 | 상태 | 처리 |
+|------|------|------|
+| `frontend/src/components/agent/AgentCanvasSections.jsx` | **충돌** | `--ours` (dev-final 유지, 테이블 렌더링 개선) |
+| `frontend/src/hooks/useAgentControlOrchestrator.js` | **충돌** | `--ours` (dev-final 유지, AgentDock 미사용) |
+| `frontend/src/utils/agent/buildActionCatalog.js` | **충돌** | `--ours` (dev-final 유지, 35개 간결한 버전) |
+| `frontend/src/pages/Education.jsx` | **충돌** | `--ours` (dev-final 유지) |
+| `frontend/src/pages/Home.jsx` | **충돌** | `--ours` (dev-final 유지) |
+| `frontend/src/styles/globals.css` | **충돌** | `--ours` (dev-final 유지) |
+| `frontend/src/components/tutor/MessageBubble.jsx` | **충돌** | `--ours` (dev-final 유지) |
+| `fastapi/app/api/routes/tutor.py` | **충돌** | `--ours` (dev-final 유지) |
+
+---
+
+## 실행 단계
+
+### Step 1. AgentDock 관련 파일을 별도 브랜치로 백업
+
+merge 전에 AgentDock 관련 신규 파일들을 `archive/agent-dock-v2` 브랜치로 보존한다.
+
+```bash
+cd ~/2026/project/adelie-investment
+git checkout dev-final/frontend
+
+# 백업용 브랜치 생성 (삭제 안 함 — 나중에 필요할 수 있음)
+git checkout -b archive/agent-dock-v2
+git push origin archive/agent-dock-v2
+
+# dev-final/frontend로 돌아와서 AgentDock 관련 파일 제거
+git checkout dev-final/frontend
+```
+
+---
+
+### Step 2. merge 실행 (ours 기본 전략)
+
+```bash
+# ours 전략: 충돌 시 dev-final/frontend 버전 우선
+git merge origin/develop -X ours --no-edit
+```
+
+---
+
+### Step 3. AgentDock.jsx만 develop 버전으로 교체
+
+```bash
+# AgentDock.jsx는 develop 버전 사용 (배제 결정)
+git checkout --theirs frontend/src/components/agent/AgentDock.jsx
+git add frontend/src/components/agent/AgentDock.jsx
+
+# merge commit 수정
+git commit --amend --no-edit
+```
+
+---
+
+### Step 4. AgentDock 관련 신규 파일 제거
+
+```bash
+# 채팅 시트 관련 파일 제거 (별도 브랜치에 백업 완료)
+git rm --ignore-unmatch \
+  frontend/src/components/agent/AgentChatSheet.jsx \
+  frontend/src/components/agent/ChatBubble.jsx \
+  frontend/src/hooks/useSlashCommands.js \
+  frontend/src/api/flashcards.js \
+  fastapi/app/api/routes/flashcards.py \
+  fastapi/app/models/flashcard.py
+
+# 남은 파일이 있으면 확인
+git status --short | grep "agent\|flash\|slash" | head -10
+
+git commit -m "chore: AgentDock 채팅 모드 파일 분리 (archive/agent-dock-v2 보관)"
+```
+
+---
+
+### Step 5. App.jsx AgentDock import 확인
+
+```bash
+# AgentDock을 참조하는 파일에서 이상 없는지 확인
+grep -rn "AgentDock\|AgentChatSheet\|useSlashCommands\|flashcard" \
+  frontend/src/pages/ \
+  frontend/src/App.jsx \
+  2>/dev/null | grep -v "\.bak"
+```
+
+AgentDock import가 남아 있으면 제거하거나 develop 버전으로 교체한다:
+```bash
+# App.jsx, BottomNav 등에서 잘못된 import 제거
+# (git checkout --theirs 후 develop 버전 유지됐으므로 대부분 자동 처리됨)
+```
+
+---
+
+### Step 6. push + LXD 서버 동기화
+
+```bash
+git push origin dev-final/frontend
+
+# dev-yj99son 서버 pull
+ssh deploy-test 'ssh -o StrictHostKeyChecking=no ubuntu@10.10.10.14 "
+  cd ~/adelie-investment
+  git pull origin dev-final/frontend 2>&1 | tail -3
+  git log --oneline -2
+  docker compose -f docker-compose.dev.yml up -d 2>&1 | tail -3
+"'
+```
+
+---
+
+### Step 7. 검증
+
+```bash
+# 1. 남아 있는 파일 구조 확인
+ssh deploy-test 'ssh ubuntu@10.10.10.14 "
+  cd ~/adelie-investment
+  ls frontend/src/components/agent/
+  # AgentDock 관련 채팅 컴포넌트 없는지 확인
+  docker compose -f docker-compose.dev.yml ps
+"'
+
+# 2. AgentDock.jsx가 develop 버전인지 확인
+git diff origin/develop -- frontend/src/components/agent/AgentDock.jsx
+# → 차이 없어야 함
+
+# 3. AgentCanvasSections.jsx가 dev-final 버전인지 확인
+git diff origin/develop -- frontend/src/components/agent/AgentCanvasSections.jsx
+# → dev-final의 테이블 렌더링 개선이 살아 있어야 함
+```
+
+---
+
+## 결과 브랜치 구조
+
+```
+dev-final/frontend   ← develop merge 완료 + AgentDock 배제
+archive/agent-dock-v2 ← AgentChatSheet/ChatBubble 등 보관 (삭제 안 함)
+```
+
+---
+
+## 실행 순서 요약
+
+| 순서 | 명령 | 시간 |
+|------|------|------|
+| 1 | `archive/agent-dock-v2` 브랜치 생성 + push | 1분 |
+| 2 | `git merge origin/develop -X ours --no-edit` | 1분 |
+| 3 | AgentDock.jsx만 `--theirs`로 교체 | 1분 |
+| 4 | AgentDock 관련 파일 `git rm` + commit | 5분 |
+| 5 | App.jsx/import 이상 확인 | 5분 |
+| 6 | push + dev-yj99son pull | 2분 |
+| 7 | 검증 | 5분 |
+
+**총 예상 시간**: 20분
+**실행 주체**: dorae222 (또는 yj99son에게 위임 가능)
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+LXD 서버들을 점검하고, git이나 도커 이미지, 코드나 화면 등이 배포 서버와 싱크가 맞는지 확인하고 데이터도 올바르게 업데이트 됐는지 확인해라
+
+---
+
+[Request interrupted by user for tool use]
