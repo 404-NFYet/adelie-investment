@@ -2,13 +2,15 @@
 
 "History Repeats Itself" - AI 기반 금융 교육 플랫폼
 
+> **필독**: [브랜치 전략 & 개발 워크플로우](getting-started/workflow.md) — 브랜치 구조, merge/pull 방향, PR 규칙, 배포 절차
+
 ## 시작하기 (Getting Started)
 
 | 문서 | 설명 |
 |------|------|
+| [**브랜치 전략 & 워크플로우**](getting-started/workflow.md) | **브랜치 구조, merge/pull 방향, PR 규칙, 배포, 커밋 컨벤션** |
 | [빠른 시작](getting-started/setup.md) | 개발 환경 설정, Docker 실행, 검증 체크리스트 |
 | [도커 가이드](getting-started/docker-guide.md) | Docker Compose 명령어, 서비스별 설명, Docker Hub 워크플로우 |
-| [워크플로우](getting-started/workflow.md) | Git 브랜치 전략, 커밋 규칙, PR 프로세스 |
 
 ## 아키텍처 (Architecture)
 
