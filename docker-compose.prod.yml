@@ -81,7 +81,7 @@ services:
   # Application Services
   # ===========================================
   frontend:
-    image: ${REGISTRY:-dorae222}/adelie-frontend:${TAG:-latest}
+    image: ${REGISTRY:-dorae222}/adelie-frontend:${TAG:-feb20-stable}
     container_name: adelie-frontend
     restart: unless-stopped
     logging:
@@ -101,7 +101,7 @@ services:
         condition: service_healthy
 
   backend-api:
-    image: ${REGISTRY:-dorae222}/adelie-backend-api:${TAG:-latest}
+    image: ${REGISTRY:-dorae222}/adelie-backend-api:${TAG:-feb20-stable}
     container_name: adelie-backend-api
     restart: unless-stopped
     logging:
@@ -139,7 +139,7 @@ services:
         condition: service_healthy
 
   ai-pipeline:
-    image: ${REGISTRY:-dorae222}/adelie-ai-pipeline:${TAG:-latest}
+    image: ${REGISTRY:-dorae222}/adelie-ai-pipeline:${TAG:-feb20-stable}
     container_name: adelie-ai-pipeline
     logging:
       driver: "json-file"

@@ -60,7 +60,7 @@ services:
 
   # --- FastAPI Backend ---
   backend-api:
-    image: dorae222/adelie-backend-api:latest
+    image: dorae222/adelie-backend-api:feb20-stable
     build:
       context: .
       dockerfile: fastapi/Dockerfile
@@ -94,7 +94,7 @@ services:
 
   # --- AI Pipeline (on-demand: docker compose --profile pipeline up ai-pipeline) ---
   ai-pipeline:
-    image: dorae222/adelie-ai-pipeline:latest
+    image: dorae222/adelie-ai-pipeline:feb20-stable
     build:
       context: .
       dockerfile: datapipeline/Dockerfile
@@ -112,7 +112,7 @@ services:
 
   # --- DB Migration (Alembic) ---
   db-migrate:
-    image: dorae222/adelie-backend-api:latest
+    image: dorae222/adelie-backend-api:feb20-stable
     build:
       context: .
       dockerfile: fastapi/Dockerfile
