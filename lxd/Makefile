@@ -294,23 +294,28 @@ dev-local-db-setup:
 			&& echo "  ✅ $$srv" || echo "  ❌ $$srv"; \
 	done
 	@echo ""
-	@echo "=== Step 2: deploy-test → 각 서버 로컬 DB 데이터 복제 ==="
-	@DUMP=/tmp/adelie_prod_$$(date +%Y%m%d%H%M).sql; \
-	echo "  prod 덤프 생성 중..."; \
+	@echo "=== Step 2: deploy-test → 각 서버 로컬 DB 전체 동기화 ==="
+	@DUMP=/tmp/adelie_dump_$$(date +%Y%m%d%H%M).sql; \
+	RESTORE=/tmp/adelie_restore_$$(date +%Y%m%d%H%M).sql; \
+	echo "  prod 전체 덤프 생성 중 (alembic_version 제외)..."; \
 	ssh deploy-test "docker exec adelie-postgres pg_dump \
 		-U narative -d narrative_invest --data-only --disable-triggers \
-		-t stock_listings -t daily_briefings -t briefing_stocks \
-		-t historical_cases -t case_matches -t case_stock_relations \
-		-t broker_reports" > $$DUMP; \
-	echo "  덤프 완료: $$DUMP ($$(wc -c < $$DUMP) bytes)"; \
+		--exclude-table=alembic_version 2>/dev/null" > $$DUMP; \
+	echo "  덤프 완료: $$(wc -c < $$DUMP) bytes"; \
+	{ \
+		printf 'SET session_replication_role = replica;\n'; \
+		printf 'TRUNCATE TABLE public.users, public.stock_listings, public.glossary, public.company_relations, public.market_daily_history, public.stock_daily_history, public.daily_briefings, public.historical_cases, public.daily_narratives, public.broker_reports, public.user_portfolios, public.user_settings, public.watchlists, public.briefing_stocks, public.case_matches, public.narrative_scenarios, public.case_stock_relations, public.portfolio_holdings, public.tutor_sessions, public.learning_progress, public.notifications, public.simulation_trades, public.limit_orders, public.usage_events, public.tutor_messages, public.briefing_feedback, public.briefing_rewards, public.dwell_rewards, public.feedback_surveys, public.content_reactions, public.user_feedback CASCADE;\n'; \
+		cat $$DUMP; \
+		printf 'SET session_replication_role = DEFAULT;\n'; \
+	} > $$RESTORE; \
 	for srv in dev-yj99son dev-j2hoon10 dev-jjjh02 dev-ryejinn dev-hj; do \
 		echo "  → $$srv 복제 중..."; \
 		lxc exec $$srv -- bash -c " \
 			docker exec -i adelie-investment-postgres-1 \
-				psql -U narative -d narrative_invest" < $$DUMP \
+				psql -U narative -d narrative_invest -q" < $$RESTORE \
 			&& echo "  ✅ $$srv" || echo "  ❌ $$srv"; \
 	done; \
-	rm -f $$DUMP
+	rm -f $$DUMP $$RESTORE
 	@echo ""
 	@echo "=== Step 3: backend-api 재시작 ==="
 	@for srv in dev-yj99son dev-j2hoon10 dev-jjjh02 dev-ryejinn dev-hj; do \
