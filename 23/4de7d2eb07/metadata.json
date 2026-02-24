@@ -3,7 +3,7 @@
   "checkpoint_id": "234de7d2eb07",
   "strategy": "manual-commit",
   "branch": "develop",
-  "checkpoints_count": 71,
+  "checkpoints_count": 73,
   "files_touched": [
     ".dockerignore",
     ".env.example",
@@ -36,6 +36,8 @@
     "datapipeline/prompts/templates/3_hallcheck_glossary.md",
     "datapipeline/prompts/templates/3_tone_final.md",
     "datapipeline/prompts/templates/chart_generation.md",
+    "datapipeline/prompts/templates/hallucination_check.md",
+    "datapipeline/prompts/templates/narrative_body.md",
     "datapipeline/requirements.txt",
     "datapipeline/run.py",
     "devassistant/Dockerfile",
@@ -56,6 +58,7 @@
     "devassistant/schemas.py",
     "devassistant/services/__init__.py",
     "devassistant/tests/__init__.py",
+    "docker-compose.prod.yml",
     "docker-compose.staging.yml",
     "docs/README.md",
     "docs/getting-started/database-guide.md",
@@ -542,13 +545,20 @@
       "context": "/23/4de7d2eb07/42/context.md",
       "content_hash": "/23/4de7d2eb07/42/content_hash.txt",
       "prompt": "/23/4de7d2eb07/42/prompt.txt"
+    },
+    {
+      "metadata": "/23/4de7d2eb07/43/metadata.json",
+      "transcript": "/23/4de7d2eb07/43/full.jsonl",
+      "context": "/23/4de7d2eb07/43/context.md",
+      "content_hash": "/23/4de7d2eb07/43/content_hash.txt",
+      "prompt": "/23/4de7d2eb07/43/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 41163,
-    "cache_creation_tokens": 7140604,
-    "cache_read_tokens": 235496523,
-    "output_tokens": 842422,
-    "api_call_count": 2813
+    "input_tokens": 41219,
+    "cache_creation_tokens": 7277206,
+    "cache_read_tokens": 240225689,
+    "output_tokens": 845198,
+    "api_call_count": 2864
   }
 }

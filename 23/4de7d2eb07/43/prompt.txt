@@ -1,0 +1,260 @@
+Implement the following plan:
+
+# 데이터 파이프라인 안정성 개선 계획
+
+## Context
+
+2026-02-24 파이프라인을 총 5회 실행했으나, **Topic 1만 DB 저장 성공** (1/9 = 11% 성공률).
+모든 실패의 공통 원인은 **LLM max_tokens 초과 → JSON 잘림 → Pydantic 검증 실패**이며,
+방어 코드가 있지만 **핵심 갭 3가지**가 존재하여 fallback 자체가 실패하는 구조.
+
+---
+
+## 현황 분석: 6회 실행 실패 패턴
+
+| 실행 | 토픽 | 실패 노드 | 직접 원인 | 근본 원인 |
+|------|------|-----------|-----------|-----------|
+| Run1 | T1 | `run_hallcheck_glossary` | JSON 잘림 (4476 char) | glossary 16개 → 토큰 초과 |
+| Run2 | T1 | `assemble_output` | `pages[3].glossary = None` | LLM이 glossary를 null로 반환 |
+| Run3 | T1 | `validate_interface2` | `narrative.summary` 필드 누락 | narrative_body 5000토큰에서 잘림 |
+| Rerun2 | T2 | `assemble_output` | `glossary[2].definition = None` | glossary 아이템 내 필드가 null |
+| Rerun2 | T3 | `validate_interface2` | `narrative.summary` 누락 | narrative_body 5000토큰에서 잘림 → fallback도 불완전 |
+| Rerun3 | - | *(실행 중, 결과 미확인)* | - | - |
+
+---
+
+## 핵심 갭 3가지
+
+### Gap 1: max_tokens 부족 (근본 원인)
+
+| 프롬프트 | 현재 max_tokens | 실패 빈도 | 증상 |
+|----------|----------------|-----------|------|
+| `narrative_body.md` | **5000** | 높음 | `summary` 섹션이 JSON 끝에 위치 → 잘림 |
+| `hallucination_check.md` | **6000** | 중간 | validated_interface_2가 불완전 → fallback 트리거 |
+| `3_tone_final.md` | **8000** | 중간 | 6페이지 전체 재작성 → Claude 2회 실패 → OpenAI fallback |
+| `3_hallcheck_glossary.md` | **6000** | 낮음 | glossary 16개 이상시 잘림 |
+
+**핵심**: `narrative_body`의 5000 토큰은 6개 섹션(background~summary) JSON 생성에 불충분.
+`summary`가 JSON 마지막이라 가장 먼저 잘림 → fallback_validated도 `summary` 없음 → Pydantic 실패.
+
+### Gap 2: fallback이 불완전한 원본을 그대로 사용
+
+```
+narrative_body (5000 토큰) → summary 잘림
+      ↓
+_build_unvalidated_interface2(narr) → 잘린 narrative 그대로 포함
+      ↓
+validate_interface2 fallback → fallback_validated에도 summary 없음
+      ↓
+방어 코드 → 누락 섹션에 {} 추가 + setdefault로 필드 채움 ← 이미 수정됨
+      ↓
+Pydantic → 빈 purpose="" 허용 → 통과
+```
+
+현재 로컬 코드에는 **누락 섹션 자동 생성** 코드가 추가되었으나 (`_REQUIRED_NARRATIVE_SECTIONS` 루프),
+**근본 원인인 max_tokens 부족은 미해결**.
+
+### Gap 3: glossary 아이템 내 null 필드 미처리
+
+```
+LLM glossary 생성 → 일부 아이템의 definition/domain = null
+      ↓
+assemble_output → glossary 리스트 자체 None→[] 처리만 있음
+      ↓
+Pydantic GlossaryItem(term: str, definition: str, domain: str) → 실패
+```
+
+현재 로컬 코드에는 **glossary 아이템 null→"" 변환** 코드가 추가되었으나 아직 배포 미완료.
+
+---
+
+## 수정 계획
+
+### A. max_tokens 상향 (근본 원인 해소)
+
+| 파일 | 변경 | 이유 |
+|------|------|------|
+| `datapipeline/prompts/templates/narrative_body.md` | `max_tokens: 5000` → `8000` | summary 잘림 방지 (6개 섹션 × ~800토큰) |
+| `datapipeline/prompts/templates/hallucination_check.md` | `max_tokens: 6000` → `10000` | validated_interface_2 완전 반환 보장 |
+| `datapipeline/prompts/templates/3_tone_final.md` | `max_tokens: 8000` → `12000` | 6페이지 전체 JSON (glossary 포함) |
+
+### B. 방어 코드 확인 (이미 로컬 수정됨, 배포 필요)
+
+| 파일 | 수정 내용 | 상태 |
+|------|-----------|------|
+| `datapipeline/nodes/interface2.py:511-527` | 누락 섹션 자동 생성 + 필드 기본값 | ✅ 로컬 완료 |
+| `datapipeline/nodes/interface3.py:943-950` | glossary 아이템 null→"" 변환 | ✅ 로컬 완료 |
+
+### C. 인프라 개선 (output 영속성)
+
+| 항목 | 변경 | 이유 |
+|------|------|------|
+| `docker-compose.prod.yml` | `backend-api`에 `./output:/app/output` 볼륨 추가 | 컨테이너 재시작 시 curated_ALL/briefing JSON 소실 방지 |
+
+---
+
+## 수정 대상 파일
+
+| 파일 | 변경 |
+|------|------|
+| `datapipeline/prompts/templates/narrative_body.md:5` | max_tokens: 5000 → 8000 |
+| `datapipeline/prompts/templates/hallucination_check.md:5` | max_tokens: 6000 → 10000 |
+| `datapipeline/prompts/templates/3_tone_final.md:5` | max_tokens: 8000 → 12000 |
+| `datapipeline/nodes/interface2.py:511-527` | 이미 수정됨 — 배포만 필요 |
+| `datapipeline/nodes/interface3.py:943-950` | 이미 수정됨 — 배포만 필요 |
+| `docker-compose.prod.yml` | backend-api volumes 추가 |
+
+## 실행 순서
+
+### Step 1: 프롬프트 max_tokens 상향 (3파일)
+### Step 2: docker-compose.prod.yml 볼륨 추가
+### Step 3: 이미지 빌드 + 푸시 + 배포
+### Step 4: 파이프라인 실행 + 결과 검증
+
+## 검증
+
+```bash
+# DB 확인
+ssh deploy-test "docker exec adelie-postgres psql -U narative -d narrative_invest \
+  -c \"SELECT briefing_date, count(*) FROM daily_briefings GROUP BY 1 ORDER BY 1 DESC LIMIT 5;\""
+
+# API 확인
+curl https://demo.adelie-invest.com/api/v1/keywords/today
+
+# output 볼륨 영속성 확인
+ssh deploy-test "ls -la ~/adelie-investment/output/"
+```
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+진행해
+
+---
+
+Base directory for this skill: /home/hj/2026/project/adelie-investment/.claude/skills/deploy
+
+# Deploy Skill
+
+서비스를 빌드하고 deploy-test 서버에 배포합니다.
+
+## 사용법
+
+`/deploy api`
+
+- `/deploy frontend` — 프론트엔드만 빌드 + 푸시 + 배포
+- `/deploy api` — FastAPI 백엔드만 빌드 + 푸시 + 배포
+- `/deploy all` — 전체 서비스 빌드 + 푸시 + 배포
+- `/deploy` (인자 없음) — 변경된 서비스 자동 감지 후 배포
+
+## 서버 경로 (중요)
+
+| 환경 | 프로젝트 경로 |
+|------|--------------|
+| **deploy-test (10.10.10.20)** | `~/adelie-investment` |
+| **로컬 개발** | `/home/hj/2026/project/adelie-investment` |
+
+## Docker 이미지 태깅 규칙
+
+### 이미지 목록
+
+| 서비스 | 이미지명 | 빌드 명령 |
+|--------|---------|-----------|
+| Frontend | `dorae222/adelie-frontend` | `make build-frontend` |
+| Backend API | `dorae222/adelie-backend-api` | `make build-api` |
+| AI Pipeline | `dorae222/adelie-ai-pipeline` | `make build-ai` |
+
+### 태그 규칙
+
+| 태그 | 용도 | 예시 |
+|------|------|------|
+| `latest` | 기본값, deploy-test 배포용 | `dorae222/adelie-frontend:latest` |
+| `YYYYMMDD` | 날짜 기반 스냅샷 (릴리스 시) | `dorae222/adelie-frontend:20260214` |
+| `v{N}` | 프로덕션 릴리스 버전 | `dorae222/adelie-frontend:v1` |
+
+- 일반 배포: `make build push` (latest 태그 자동 사용)
+- 태그 지정 배포: `TAG=20260214 make build push`
+- deploy-test의 docker-compose.prod.yml은 `latest` 태그를 참조
+
+## 실행 절차
+
+### 전체 배포 (`/deploy all`)
+```bash
+# 1. 빌드
+make build-frontend
+make build-api
+
+# 2. Docker Hub 푸시
+make push
+
+# 3. deploy-test 서버 배포
+ssh deploy-test "cd ~/adelie-investment && docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d"
+
+# 4. 상태 확인
+ssh deploy-test "docker ps --format 'table {{.Names}}\t{{.Status}}'"
+```
+
+### 단일 서비스 배포 (`/deploy frontend` 또는 `/deploy api`)
+```bash
+# frontend 예시
+make build-frontend
+docker push dorae222/adelie-frontend:latest
+ssh deploy-test "cd ~/adelie-investment && docker compose -f docker-compose.prod.yml pull frontend && docker compose -f docker-compose.prod.yml up -d frontend"
+```
+
+### 원스텝 배포 (Makefile)
+```bash
+make deploy-test        # 전체: build → push → 서버 pull → up
+SVC=frontend make deploy-test-service  # 단일 서비스
+```
+
+## 서비스 의존 순서
+
+```
+postgres (healthy) → redis (healthy) → backend-api (healthy) → frontend
+                                     → minio
+```
+
+`docker compose up -d`는 healthcheck 기반으로 순서를 자동 관리한다.
+
+## 배포 후 검증
+
+```bash
+# 1. 컨테이너 상태 확인
+ssh deploy-test "docker ps --format 'table {{.Names}}\t{{.Status}}'"
+
+# 2. API 헬스체크
+ssh deploy-test "curl -sf http://localhost:8082/api/v1/health || echo FAIL"
+
+# 3. 프론트엔드 접속 확인
+ssh deploy-test "curl -sf -o /dev/null -w '%{http_code}' http://localhost:80"
+
+# 4. 최근 로그 확인
+ssh deploy-test "docker logs adelie-backend-api --tail 20"
+ssh deploy-test "docker logs adelie-frontend --tail 20"
+```
+
+## 롤백
+
+```bash
+# 이전 이미지로 롤백 (Docker Hub에 이전 태그가 있는 경우)
+ssh deploy-test "cd ~/adelie-investment && \
+  docker compose -f docker-compose.prod.yml pull && \
+  docker compose -f docker-compose.prod.yml up -d"
+
+# 특정 태그로 롤백
+TAG=20260213 ssh deploy-test "cd ~/adelie-investment && \
+  REGISTRY=dorae222 TAG=20260213 docker compose -f docker-compose.prod.yml up -d"
+
+# 긴급: 서비스만 재시작 (이미지 변경 없이)
+ssh deploy-test "docker restart adelie-backend-api"
+```
+
+## 주의사항
+
+- 배포 전 `git status`로 커밋되지 않은 변경 확인
+- TAG를 명시하지 않으면 latest 태그 사용
+- **서버 경로**: `~/adelie-investment` (절대 `~/adelie`가 아님)
+- 에러 발생 시 `ssh deploy-test "docker logs adelie-{서비스} --tail 50"` 로 로그 확인
