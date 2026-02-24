@@ -3,7 +3,7 @@
   "checkpoint_id": "234de7d2eb07",
   "strategy": "manual-commit",
   "branch": "feature/canvas-agent-v4",
-  "checkpoints_count": 35,
+  "checkpoints_count": 36,
   "files_touched": [
     ".dockerignore",
     ".env.example",
@@ -24,6 +24,7 @@
     "database/alembic/versions/20260223_review_card_columns.py",
     "database/scripts/sync_dev_data.sh",
     "datapipeline/config.py",
+    "datapipeline/data_collection/openai_curator.py",
     "datapipeline/db/writer.py",
     "datapipeline/graph.py",
     "datapipeline/nodes/canvas_precompute.py",
@@ -465,13 +466,20 @@
       "context": "/23/4de7d2eb07/32/context.md",
       "content_hash": "/23/4de7d2eb07/32/content_hash.txt",
       "prompt": "/23/4de7d2eb07/32/prompt.txt"
+    },
+    {
+      "metadata": "/23/4de7d2eb07/33/metadata.json",
+      "transcript": "/23/4de7d2eb07/33/full.jsonl",
+      "context": "/23/4de7d2eb07/33/context.md",
+      "content_hash": "/23/4de7d2eb07/33/content_hash.txt",
+      "prompt": "/23/4de7d2eb07/33/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 28297,
-    "cache_creation_tokens": 5515719,
-    "cache_read_tokens": 189052332,
-    "output_tokens": 703907,
-    "api_call_count": 2248
+    "input_tokens": 40552,
+    "cache_creation_tokens": 5624908,
+    "cache_read_tokens": 197156252,
+    "output_tokens": 712148,
+    "api_call_count": 2324
   }
 }
