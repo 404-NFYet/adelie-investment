@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.database import get_db
 
-logger = logging.getLogger("narrative_api.auth")
+logger = logging.getLogger("narrative.auth")
 
 security = HTTPBearer(auto_error=False)
 

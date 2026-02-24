@@ -14,7 +14,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from openai import AsyncOpenAI
 
-logger = logging.getLogger("narrative_api.tutor")
+logger = logging.getLogger("narrative.tutor")
 
 from app.core.auth import get_current_user_optional
 from app.core.config import get_settings

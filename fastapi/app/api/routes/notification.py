@@ -10,7 +10,7 @@ from app.core.auth import get_current_user
 from app.core.database import get_db
 from app.models.notification import Notification
 
-logger = logging.getLogger("narrative_api.notification")
+logger = logging.getLogger("narrative.notification")
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 

@@ -30,7 +30,7 @@ from app.services.stock_resolver import (
 )
 from app.services.chart_storage import save_chart_html
 
-logger = logging.getLogger("narrative_api.tutor_engine")
+logger = logging.getLogger("narrative.tutor_engine")
 
 # 시각화 도구 임포트
 import sys as _sys

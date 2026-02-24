@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from app.core.limiter import limiter
 from app.services.code_executor import get_executor
 
-logger = logging.getLogger("narrative_api.visualization")
+logger = logging.getLogger("narrative.visualization")
 
 # 시각화 도구 임포트
 import sys as _sys

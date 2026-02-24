@@ -8,7 +8,7 @@ from pathlib import Path
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-logger = logging.getLogger("narrative_api.scheduler")
+logger = logging.getLogger("narrative.scheduler")
 
 _scheduler: AsyncIOScheduler | None = None
 

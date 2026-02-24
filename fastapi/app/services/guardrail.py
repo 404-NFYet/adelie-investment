@@ -10,7 +10,7 @@ from langgraph.graph import StateGraph, END
 
 from app.core.config import get_settings
 
-logger = logging.getLogger("narrative_api.guardrail")
+logger = logging.getLogger("narrative.guardrail")
 
 MAX_RETRIES = 2
 PARSE_ERROR_MESSAGE = "일시적인 오류가 발생했어요. 잠시 후 다시 시도해 주세요 🙏"

@@ -7,7 +7,7 @@ presigned URL로 조회할 수 있도록 한다.
 import logging
 import time
 
-logger = logging.getLogger("narrative_api.chart_storage")
+logger = logging.getLogger("narrative.chart_storage")
 
 # MinIO 서비스 lazy import
 _minio_service = None
