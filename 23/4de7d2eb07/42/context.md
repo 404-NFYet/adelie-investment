@@ -23,3 +23,20 @@ Implement the following plan:
 
 push를 올바른 브랜치에 진행하고, 각 LXD 서버에 pull을 진행해라
 
+### Prompt 3
+
+ssh 파일들을 반환해라.
+모두 proxy jump로 각자 접속해야될 것인데 그냥 반환해라
+
+### Prompt 4
+
+여기서 접속하는게 아니라 외부에서 개인 랩탑으로 접속한다.
+
+### Prompt 5
+
+각 LXD 서버에 불필요한 narrative-ai는 제거해도 되지 않나?
+
+### Prompt 6
+
+그렇게 진행하는 것이 나을 것 같다
+
