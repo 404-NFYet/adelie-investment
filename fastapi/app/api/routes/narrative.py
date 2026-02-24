@@ -21,7 +21,7 @@ from app.services.narrative_builder import (
     build_all_steps,
 )
 
-logger = logging.getLogger("narrative_api.narrative")
+logger = logging.getLogger("narrative.narrative")
 
 router = APIRouter(prefix="/narrative", tags=["narrative"])
 

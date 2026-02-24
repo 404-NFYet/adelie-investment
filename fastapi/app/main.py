@@ -57,7 +57,7 @@ setup_logging(
     level="DEBUG" if settings.DEBUG else "INFO",
     json_format=not settings.DEBUG,
 )
-logger = logging.getLogger("narrative_api")
+logger = logging.getLogger("narrative")
 
 
 @asynccontextmanager

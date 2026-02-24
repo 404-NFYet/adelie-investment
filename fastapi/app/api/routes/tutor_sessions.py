@@ -15,7 +15,7 @@ from app.models.tutor import TutorSession, TutorMessage
 from app.services import get_redis_cache
 from app.services.chart_storage import get_chart_presigned_url
 
-logger = logging.getLogger("narrative_api.tutor_sessions")
+logger = logging.getLogger("narrative.tutor_sessions")
 
 router = APIRouter(prefix="/tutor", tags=["tutor sessions"])
 

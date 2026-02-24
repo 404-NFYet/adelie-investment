@@ -9,7 +9,7 @@ import re
 import threading
 from typing import Optional
 
-logger = logging.getLogger("narrative_api.stock_resolver")
+logger = logging.getLogger("narrative.stock_resolver")
 
 # --- 외부 모듈 임포트 (선택적) ---
 import sys as _sys

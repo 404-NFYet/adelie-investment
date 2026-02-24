@@ -48,7 +48,7 @@ from app.api.routes.notification import create_notification
 from app.models.user import User
 from app.models.portfolio import UserPortfolio
 
-logger = logging.getLogger("narrative_api.portfolio")
+logger = logging.getLogger("narrative.portfolio")
 
 router = APIRouter(prefix="/portfolio", tags=["portfolio"])
 
