@@ -26,3 +26,23 @@ Implement the following plan:
 
 배포 서버의 DB 마이그레이션시 컨텐츠 뿐만 아니라 DB 자체에 있는 모든 정보를 업데이트해야 한다.
 
+### Prompt 3
+
+모든 LXD 서버에 데이터 동기화를 진행해라
+
+### Prompt 4
+
+현재 배포된 화면과 로컬 3001번으로 화면을 봤을 때, AgentDock이 있을 때의 화면이 있는데 이를 올바르게 수정하고 모든 LXD에 싱크를 맞춰야 한다.
+
+### Prompt 5
+
+[Request interrupted by user for tool use]
+
+### Prompt 6
+
+도커 이미지의 문제인지 재확인하는게 좋을 것 같다.
+
+### Prompt 7
+
+[Request interrupted by user for tool use]
+
