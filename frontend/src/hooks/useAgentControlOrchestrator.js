@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { API_BASE_URL, fetchJson, postJson } from '../api/client';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import buildActionCatalog from '../utils/agent/buildActionCatalog';
+import { trackEvent, TRACK_EVENTS } from '../utils/analytics';
 
 const RESET_DELAY_MS = 1400;
 
@@ -24,6 +25,12 @@ export default function useAgentControlOrchestrator({
     text: '대기 중',
     activeActionId: null,
   });
+
+  // 자동 실행 모드 — 켜면 고위험/네비게이션 확인 없이 바로 실행
+  const [autoMode, setAutoMode] = useState(false);
+
+  // 확인 대기 중인 액션 (ActionConfirmDialog에 표시)
+  const [pendingAction, setPendingAction] = useState(null);
 
   const actionCatalog = useMemo(
     () => buildActionCatalog({ pathname: location.pathname, mode, stockContext }),
@@ -73,20 +80,11 @@ export default function useAgentControlOrchestrator({
     };
   }, []);
 
-  const executeAction = useCallback(async (action, options = {}) => {
-    if (!action?.id) return { ok: false, reason: 'invalid_action' };
-
+  // 실제 액션 실행 로직 (확인 절차 이후 호출)
+  const _doExecuteAction = useCallback(async (action, options = {}) => {
     const previousPath = location.pathname;
     const contextPayload = options.contextPayload || null;
     const params = action.params || {};
-
-    if (isHighRisk(action)) {
-      const accepted = window.confirm(`고위험 동작입니다: ${action.label}\n계속 진행할까요?`);
-      if (!accepted) {
-        setTransientState({ phase: 'idle', text: '실행이 취소되었습니다.', activeActionId: action.id });
-        return { ok: false, reason: 'cancelled' };
-      }
-    }
 
     setControlState({ phase: 'running', text: `${action.label} 실행 중...`, activeActionId: action.id });
 
@@ -102,6 +100,18 @@ export default function useAgentControlOrchestrator({
           break;
         case 'nav_education':
           navigate('/education');
+          break;
+        case 'nav_profile':
+          navigate('/my');
+          break;
+        case 'nav_search':
+          navigate('/home', { state: { openSearch: true } });
+          break;
+        case 'nav_feedback':
+          navigate('/feedback');
+          break;
+        case 'start_quiz':
+          navigate('/education', { state: { openQuiz: true } });
           break;
         case 'open_agent_history':
           navigate('/tutor/history', { state: { mode, contextPayload } });
@@ -239,5 +249,9 @@ export default function useAgentControlOrchestrator({
     controlState,
     isAgentControlling: controlState.phase === 'running',
     executeAction,
+    autoMode,
+    setAutoMode,
+    pendingAction,
+    confirmPendingAction,
   };
 }

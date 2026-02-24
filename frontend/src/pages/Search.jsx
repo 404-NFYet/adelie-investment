@@ -8,6 +8,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { KeywordCard } from '../components';
 import AppHeader from '../components/layout/AppHeader';
 import { casesApi, keywordsApi } from '../api';
+import { trackEvent, TRACK_EVENTS } from '../utils/analytics';
 
 const SEARCH_HISTORY_KEY = 'adelie_search_history';
 const MAX_HISTORY = 10;
@@ -51,6 +52,9 @@ export default function Search() {
     setSearchLoading(true);
     setSearchError('');
     setHasSearched(true);
+
+    // 검색 트래킹
+    trackEvent(TRACK_EVENTS.SEARCH_QUERY, { query: trimmed });
 
     addSearchHistory(trimmed);
     setSearchHistory(getSearchHistory());

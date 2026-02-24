@@ -1,85 +1,81 @@
-/**
- * AgentDock - 에이전트 입력 독
- * 
- * 캔버스 대신 채팅 시트(AgentChatSheet)를 열어 대화
- */
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useTutor, useUser } from '../../contexts';
-import { useToast } from '../common/Toast';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { API_BASE_URL, authFetch } from '../../api/client';
+import { useTutor, useTutorUI } from '../../contexts';
 import AgentControlPulse from './AgentControlPulse';
+import SlashCommandMenu, { SLASH_COMMANDS } from './SlashCommandMenu';
 import useAgentPromptHints from '../../hooks/useAgentPromptHints';
+import useAgentControlOrchestrator from '../../hooks/useAgentControlOrchestrator';
 import useKeyboardInset from '../../hooks/useKeyboardInset';
-import useSlashCommands from '../../hooks/useSlashCommands';
+import buildUiSnapshot from '../../utils/agent/buildUiSnapshot';
+import buildActionCatalog from '../../utils/agent/buildActionCatalog';
+
+function readSessionJson(key) {
+  try {
+    const raw = sessionStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function getVisibleSectionsByMode(mode) {
+  if (mode === 'stock') return ['portfolio_summary', 'holdings', 'stock_detail'];
+  if (mode === 'education') return ['calendar', 'daily_briefing', 'quiz_mission'];
+  if (mode === 'my') return ['profile', 'settings'];
+  return ['asset_summary', 'learning_schedule', 'issue_card', 'conversation_cards'];
+}
+
+const SEARCH_TOGGLE_KEY = 'adelie_agent_web_search';
+
+function readSearchToggle(mode) {
+  try {
+    const value = localStorage.getItem(SEARCH_TOGGLE_KEY);
+    if (value === '1') return true;
+    if (value === '0') return false;
+    return mode === 'stock';
+  } catch {
+    return mode === 'stock';
+  }
+}
 
 export default function AgentDock() {
   const { shouldHide, mode, placeholder, suggestedPrompt } = useAgentPromptHints();
   const [input, setInput] = useState('');
-  const [slashSuggestions, setSlashSuggestions] = useState([]);
-  const {
-    messages,
-    agentStatus,
-    isStreamingActive,
-    isLoading,
-    openTutor,
-    closeTutor,
-    sendMessage,
-    createNewChat,
-    clearMessages,
-  } = useTutor();
-  const { settings } = useUser();
+  const [inlineMessage, setInlineMessage] = useState(null);
+  const [isRouting, setIsRouting] = useState(false);
+  const [searchEnabled, setSearchEnabled] = useState(() => readSearchToggle(mode));
+  const [showSlashMenu, setShowSlashMenu] = useState(false);
+  const [slashQuery, setSlashQuery] = useState('');
+  const [activePrefix, setActivePrefix] = useState(null);
+  const [dockMode, setDockMode] = useState(null); // null = 자동, 'chat', 'canvas'
+  const location = useLocation();
   const navigate = useNavigate();
-  const { showToast } = useToast();
+  const { messages, agentStatus, isStreamingActive } = useTutor();
+  const { openTutor } = useTutorUI();
   const { keyboardOffset, shouldHideBottomNav } = useKeyboardInset();
-  const dockRootRef = useRef(null);
-
-  // 탭 이동이 필요한 슬래시 명령어 매핑
-  const NAV_COMMANDS = {
-    'check_portfolio': { path: '/portfolio', label: '포트폴리오로 이동합니다' },
-    'buy_stock':       { path: '/portfolio', label: '포트폴리오 탭으로 이동합니다' },
-    'sell_stock':      { path: '/portfolio', label: '포트폴리오 탭으로 이동합니다' },
-    'get_briefing':    { path: '/home',      label: '홈으로 이동합니다' },
-  };
-
-  const { getSuggestions, isSlashCommand, executeCommand } = useSlashCommands({
-    onExecute: async (action) => {
-      // 탭 이동 명령어 처리
-      if (NAV_COMMANDS[action.id]) {
-        const { path, label } = NAV_COMMANDS[action.id];
-        showToast(label, 'info', 2000);
-        setTimeout(() => {
-          closeTutor();
-          navigate(path);
-        }, 600);
-        return;
-      }
-
-      const commandPrompts = {
-        'start_quiz': '투자 퀴즈를 시작해줘.',
-        'create_review_card': '지금까지 대화 내용을 복습 카드 형식으로 정리해줘.',
-        'fetch_dart': action.params?.stock_code
-          ? `${action.params.stock_code} 종목의 DART 공시 정보를 보여줘.`
-          : 'DART 공시를 조회할게요. 어떤 종목의 공시를 볼까요?',
-        'check_stock_price': action.params?.stock_code
-          ? `${action.params.stock_code} 종목의 현재 시세를 알려줘.`
-          : '어떤 종목의 시세를 확인할까요?',
-        'visualize': action.params?.topic
-          ? `${action.params.topic}에 대해 차트로 시각화해줘.`
-          : '어떤 데이터를 시각화할까요?',
-        'compare': action.params?.stocks
-          ? `${action.params.stocks} 종목들을 비교 분석해줘.`
-          : '어떤 종목들을 비교할까요?',
-      };
-
-      openTutor();
-      const prompt = commandPrompts[action.id] || `${action.label} 명령을 실행해줘.`;
-      sendMessage(prompt, settings?.difficulty || 'beginner');
-    },
-  });
-
   const hasActiveSession = Array.isArray(messages) && messages.length > 0;
+  const isAgentRoute = location.pathname.startsWith('/agent');
   const hideBottomNav = shouldHideBottomNav;
-  const pulseActive = isStreamingActive || isLoading;
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SEARCH_TOGGLE_KEY, searchEnabled ? '1' : '0');
+    } catch {
+      // ignore storage errors
+    }
+  }, [searchEnabled]);
+
+  useEffect(() => {
+    try {
+      const hasStoredValue = localStorage.getItem(SEARCH_TOGGLE_KEY);
+      if (hasStoredValue === null) {
+        setSearchEnabled(mode === 'stock');
+      }
+    } catch {
+      setSearchEnabled(mode === 'stock');
+    }
+  }, [mode]);
 
   useEffect(() => {
     document.documentElement.style.setProperty('--keyboard-offset', `${keyboardOffset}px`);
@@ -88,163 +84,414 @@ export default function AgentDock() {
     };
   }, [keyboardOffset]);
 
-  useEffect(() => {
-    if (input.startsWith('/')) {
-      setSlashSuggestions(getSuggestions(input));
-    } else {
-      setSlashSuggestions([]);
+  const baseContextPayload = useMemo(() => {
+    if (mode === 'stock' && location.state?.stockContext) {
+      return location.state.stockContext;
     }
-  }, [input, getSuggestions]);
 
-  useEffect(() => {
-    const target = dockRootRef.current;
-    if (!target || typeof window === 'undefined') return undefined;
+    if (mode === 'home') {
+      return readSessionJson('adelie_home_context');
+    }
 
-    const updateDockHeight = () => {
-      const nextHeight = Math.max(72, Math.ceil(target.getBoundingClientRect().height));
-      document.documentElement.style.setProperty('--agent-dock-h', `${nextHeight}px`);
-      document.documentElement.style.setProperty(
-        '--safe-bottom-offset',
-        `calc(var(--bottom-nav-h,68px) + var(--agent-dock-h,${nextHeight}px))`,
-      );
+    if (mode === 'education') {
+      return readSessionJson('adelie_education_context');
+    }
+
+    return null;
+  }, [location.state, mode]);
+
+  const {
+    controlState,
+    isAgentControlling,
+    actionCatalog: orchestratorActionCatalog,
+    executeAction,
+  } = useAgentControlOrchestrator({
+    mode,
+    stockContext: baseContextPayload,
+  });
+
+  const actionCatalog = useMemo(
+    () => buildActionCatalog({ pathname: location.pathname, mode, stockContext: baseContextPayload }),
+    [baseContextPayload, location.pathname, mode],
+  );
+
+  const buildControlContextPayload = useCallback((prompt = '') => {
+    const uiSnapshot = buildUiSnapshot({
+      pathname: location.pathname,
+      mode,
+      locationState: location.state || null,
+      visibleSections: getVisibleSectionsByMode(mode),
+      selectedEntities: {
+        stock_code: baseContextPayload?.stock_code || null,
+        stock_name: baseContextPayload?.stock_name || null,
+        date_key: baseContextPayload?.date || null,
+        case_id: baseContextPayload?.case_id || null,
+      },
+      filters: {
+        tab: location.pathname.startsWith('/portfolio') ? 'portfolio' : mode,
+      },
+      portfolioSummary: baseContextPayload?.portfolio_summary || null,
+    });
+
+    return {
+      ...(baseContextPayload || {}),
+      ui_snapshot: uiSnapshot,
+      action_catalog: actionCatalog,
+      interaction_state: {
+        source: 'agent_dock',
+        mode,
+        route: location.pathname,
+        last_prompt: prompt || null,
+        search_enabled: searchEnabled,
+        control_phase: controlState.phase,
+        control_active: isAgentControlling,
+      },
     };
+  }, [actionCatalog, baseContextPayload, controlState.phase, isAgentControlling, location.pathname, location.state, mode, searchEnabled]);
 
-    updateDockHeight();
+  const handleSlashCommand = useCallback((command) => {
+    setShowSlashMenu(false);
+    setSlashQuery('');
 
-    const observer = new ResizeObserver(updateDockHeight);
-    observer.observe(target);
-    window.addEventListener('resize', updateDockHeight);
-
-    return () => {
-      observer.disconnect();
-      window.removeEventListener('resize', updateDockHeight);
-    };
-  }, []);
-
-  const handleSubmit = useCallback(async (e) => {
-    e?.preventDefault?.();
-    const trimmed = (input || suggestedPrompt || '').trim();
-    if (!trimmed) return;
-
-    // Dock에서 입력하면 항상 새 대화 시작
-    clearMessages?.();
-    openTutor();
-    setSlashSuggestions([]);
-
-    // 약간의 딜레이 후 메시지 전송 (새 세션 준비)
-    setTimeout(async () => {
-      if (isSlashCommand(trimmed)) {
-        await executeCommand(trimmed);
+    const action = command.action;
+    if (action.type === 'navigate') {
+      navigate(action.path, action.tab ? { state: { tab: action.tab } } : undefined);
+    } else if (action.type === 'action') {
+      const matchedAction = orchestratorActionCatalog.find((item) => item.id === action.actionId);
+      if (matchedAction) {
+        executeAction(matchedAction, { contextPayload: buildControlContextPayload('') });
       } else {
-        sendMessage(trimmed, settings?.difficulty || 'beginner');
+        setInlineMessage({ text: '현재 화면에서 사용할 수 없는 명령이에요.', canvasPrompt: null });
       }
-    }, 50);
-    
-    setInput('');
-  }, [input, suggestedPrompt, clearMessages, openTutor, isSlashCommand, executeCommand, sendMessage, settings?.difficulty]);
+    } else if (action.type === 'param') {
+      if (action.prefix) {
+        setActivePrefix({ label: command.desc, prefix: action.prefix });
+        setInput('');
+      }
+      if (action.key === 'use_web_search') {
+        setSearchEnabled(true);
+      }
+    }
+  }, [navigate, orchestratorActionCatalog, executeAction, buildControlContextPayload]);
 
-  const handleSlashClick = useCallback((suggestion) => {
-    setInput(suggestion.command + ' ');
-    setSlashSuggestions([]);
-  }, []);
+  const submitPromptToCanvas = useCallback((prompt) => {
+    const payload = buildControlContextPayload(prompt);
 
-  const handleOpenChat = useCallback(() => {
-    openTutor();
-  }, [openTutor]);
+    navigate('/agent', {
+      state: {
+        mode,
+        initialPrompt: prompt.trim(),
+        contextPayload: payload,
+        useWebSearch: searchEnabled,
+        resetConversation: location.pathname !== '/agent',
+      },
+    });
+  }, [buildControlContextPayload, location.pathname, mode, navigate, searchEnabled]);
+
+  const routePrompt = useCallback(async (prompt, payload) => {
+    const response = await authFetch(`${API_BASE_URL}/api/v1/tutor/route`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: prompt,
+        mode,
+        context_text: JSON.stringify(payload),
+        ui_snapshot: payload.ui_snapshot || null,
+        action_catalog: payload.action_catalog || [],
+        interaction_state: payload.interaction_state || null,
+      }),
+    });
+    if (!response.ok) {
+      throw new Error('route_failed');
+    }
+    return response.json();
+  }, [mode]);
 
   if (shouldHide) return null;
 
-  const phaseText = {
-    thinking: '분석 중',
+  // 모드 자동 결정: 교육 → 대화, 나머지 → 분석
+  const effectiveDockMode = dockMode || (mode === 'education' ? 'chat' : 'canvas');
+
+  const phaseTextByPhase = {
+    thinking: '에이전트 분석 중',
     tool_call: '도구 실행 중',
     answering: '답변 생성 중',
-    streaming: '응답 중',
+    stopped: '중단됨',
+    notice: '답변 생성 중',
     error: '오류 발생',
     idle: '대기 중',
   };
-  const isActivelyWorking = isStreamingActive || isLoading;
-  const dockStatusText = isActivelyWorking
-    ? (phaseText[agentStatus?.phase] || '처리 중...')
-    : '무엇이든 물어보세요';
+  const isActivelyWorking = isStreamingActive || isAgentRoute;
+  const dockStatusText = isAgentRoute
+    ? (phaseTextByPhase[agentStatus?.phase] || phaseTextByPhase.idle)
+    : '질문하세요';
+  const shouldShowChevron = hasActiveSession && !isAgentRoute;
+  const pulseActive = isRouting || isAgentControlling || isStreamingActive;
+  const statusDotClass = pulseActive ? 'agent-status-dot-pulse' : '';
+
+  const submitPrompt = async (prompt) => {
+    const raw = String(prompt || '').trim();
+    const normalized = activePrefix ? `${activePrefix.prefix}${raw}` : raw;
+    if (!normalized) return;
+
+    // 대화 모드 → TutorModal 열기
+    if (effectiveDockMode === 'chat') {
+      openTutor(normalized);
+      setInput('');
+      setActivePrefix(null);
+      return;
+    }
+
+    const controlPayload = buildControlContextPayload(normalized);
+    setIsRouting(true);
+    setInlineMessage(null);
+
+    try {
+      const decision = await routePrompt(normalized, controlPayload);
+      const nextDecision = decision?.decision;
+
+      if (nextDecision === 'inline_action') {
+        const matchedAction = orchestratorActionCatalog.find((item) => item.id === decision?.action_id);
+        if (!matchedAction) {
+          setInlineMessage({
+            text: '실행 가능한 액션을 찾지 못했어요.',
+            canvasPrompt: normalized,
+          });
+        } else {
+          await executeAction(matchedAction, {
+            contextPayload: controlPayload,
+            prompt: normalized,
+          });
+        }
+      } else if (nextDecision === 'open_canvas') {
+        submitPromptToCanvas(decision?.canvas_prompt || normalized);
+      } else {
+        setInlineMessage({
+          text: decision?.inline_text || '자세히 보려면 캔버스를 열어주세요.',
+          canvasPrompt: decision?.canvas_prompt || normalized,
+        });
+      }
+    } catch {
+      setInlineMessage({
+        text: '자세한 분석은 캔버스에서 확인할 수 있어요.',
+        canvasPrompt: normalized,
+      });
+    } finally {
+      setIsRouting(false);
+    }
+
+    setInput('');
+    setActivePrefix(null);
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    await submitPrompt(input || suggestedPrompt);
+  };
+
+  const handleResumeChat = () => {
+    navigate('/agent', {
+      state: {
+        mode,
+        contextPayload: buildControlContextPayload(''),
+        useWebSearch: searchEnabled,
+      },
+    });
+  };
 
   return (
     <div
-      ref={dockRootRef}
       className="pointer-events-none fixed left-0 right-0 z-30 flex justify-center px-4 pb-2"
       style={{ bottom: `calc(${hideBottomNav ? '0px' : 'var(--bottom-nav-h,68px)'} + var(--keyboard-offset,0px))` }}
     >
       <div className="w-full max-w-mobile space-y-1.5">
-        {/* 슬래시 명령어 제안 */}
-        {slashSuggestions.length > 0 && (
-          <div className="pointer-events-auto flex flex-wrap gap-2 rounded-[14px] border border-[#E8EBED] bg-white px-3 py-2 shadow-lg">
-            {slashSuggestions.map((s) => (
+        {/* 인라인 메시지 (트레이 대체 — 필요할 때만 노출) */}
+        {inlineMessage?.text && (
+          <div className="pointer-events-auto flex items-center justify-between gap-2 rounded-[14px] border border-[var(--agent-border,#E8EBED)] bg-white px-3 py-2 shadow-[var(--agent-shadow)]">
+            <p className="min-w-0 truncate text-[12px] text-[#6B7684]">{inlineMessage.text}</p>
+            {inlineMessage.canvasPrompt && (
               <button
-                key={s.command}
                 type="button"
-                onClick={() => handleSlashClick(s)}
-                className="flex items-center gap-1.5 rounded-lg bg-[#F7F8FA] px-2.5 py-1.5 text-sm hover:bg-[#E8EBED] transition-colors"
+                onClick={() => {
+                  submitPromptToCanvas(inlineMessage.canvasPrompt);
+                  setInlineMessage(null);
+                }}
+                className="flex-shrink-0 text-[12px] font-semibold text-[#FF6B00] active:opacity-70"
               >
-                <span className="font-mono text-[#FF6B00]">{s.command}</span>
-                <span className="text-[#8B95A1]">{s.description}</span>
+                자세히
               </button>
-            ))}
+            )}
           </div>
         )}
 
-        {/* 입력바 */}
-        <AgentControlPulse active={pulseActive}>
-          <div className="pointer-events-auto relative rounded-[20px] bg-white shadow-[0_18px_34px_rgba(255,107,0,0.34)]">
-            {/* 상태 라인 */}
+        {/* 볼드 입력바 */}
+        <AgentControlPulse active={pulseActive} mode={effectiveDockMode}>
+          <div className="pointer-events-auto relative rounded-[20px] bg-white shadow-[0_2px_16px_rgba(0,0,0,0.08)]">
+            {/* 상단 상태 라인 (항상 노출) */}
             <div className="flex items-center gap-2 border-b border-[#F2F4F6] px-3 py-1.5">
               <button
                 type="button"
-                onClick={handleOpenChat}
-                className="flex min-w-0 flex-1 items-center gap-2 text-left active:bg-[#F7F8FA] rounded-lg"
+                onClick={hasActiveSession ? handleResumeChat : undefined}
+                className={`flex min-w-0 flex-1 items-center gap-2 text-left ${hasActiveSession ? 'active:bg-[#F7F8FA]' : ''}`}
               >
-                <span className={`h-1.5 w-1.5 rounded-full ${isActivelyWorking ? 'bg-[#FF6B00] animate-pulse' : 'bg-[#16A34A]'}`} />
-                <p className={`truncate text-[12px] font-medium ${isActivelyWorking ? 'text-[#4E5968]' : 'text-[#166534]'}`}>
-                  {dockStatusText}
-                </p>
-                {hasActiveSession && (
-                  <svg className="ml-auto text-[#B0B8C1]" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <span className={`h-1.5 w-1.5 rounded-full ${
+                  isActivelyWorking
+                    ? (effectiveDockMode === 'canvas' ? 'bg-[#1D6FDE]' : 'bg-[#FF6B00]')
+                    : 'bg-[#16A34A]'
+                } ${statusDotClass}`} />
+                <div className="min-w-0">
+                  <p className={`truncate text-[12px] font-medium ${isActivelyWorking ? 'text-[#4E5968]' : 'text-[#166534]'}`}>
+                    {dockStatusText}
+                  </p>
+                </div>
+                {shouldShowChevron && (
+                  <svg className="ml-auto text-[#B0B8C1]" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="m9 18 6-6-6-6" />
                   </svg>
                 )}
               </button>
+
+              {/* 모드 토글: 대화 / 분석 */}
+              <div className="flex items-center gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => setDockMode('chat')}
+                  className={`rounded-full px-2 py-1 text-[11px] font-medium transition-colors ${
+                    effectiveDockMode === 'chat'
+                      ? 'bg-[#FF6B00]/10 text-[#FF6B00]'
+                      : 'text-[#8B95A1]'
+                  }`}
+                >
+                  대화
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDockMode('canvas')}
+                  className={`rounded-full px-2 py-1 text-[11px] font-medium transition-colors ${
+                    effectiveDockMode === 'canvas'
+                      ? 'bg-[#1D6FDE]/10 text-[#1D6FDE]'
+                      : 'text-[#8B95A1]'
+                  }`}
+                >
+                  에이전트
+                </button>
+              </div>
+
+              <div className="ml-auto flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setSearchEnabled((prev) => !prev)}
+                  className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition-colors ${
+                    searchEnabled
+                      ? 'bg-[#FFF2E8] text-[#FF6B00]'
+                      : 'bg-[#F2F4F6] text-[#8B95A1]'
+                  }`}
+                  aria-label={searchEnabled ? '인터넷 검색 켜짐' : '인터넷 검색 꺼짐'}
+                  title={searchEnabled ? '인터넷 검색: 켜짐' : '인터넷 검색: 꺼짐'}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M3 12h18" />
+                    <path d="M12 3a15 15 0 0 1 0 18" />
+                    <path d="M12 3a15 15 0 0 0 0 18" />
+                  </svg>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => navigate('/agent/history', { state: { mode, contextPayload: buildControlContextPayload('') } })}
+                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[#F2F4F6] text-[#6B7684] transition-colors active:bg-[#E8EBED]"
+                  aria-label="대화 기록 보기"
+                  title="대화 기록 보기"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 8v5l3 2" />
+                    <circle cx="12" cy="12" r="9" />
+                  </svg>
+                </button>
+              </div>
             </div>
 
-            {/* 입력 폼 */}
-            <form onSubmit={handleSubmit} className="flex h-12 items-center gap-2.5 px-3">
+            {showSlashMenu && (
+              <SlashCommandMenu
+                query={slashQuery}
+                onSelect={handleSlashCommand}
+                onClose={() => { setShowSlashMenu(false); setSlashQuery(''); }}
+                visible={showSlashMenu}
+              />
+            )}
+
+            <form
+              onSubmit={handleSubmit}
+              className="flex h-12 items-center gap-2.5 px-3"
+            >
               <button
                 type="button"
-                onClick={() => {
-                  setInput('');
-                  handleSubmit();
-                }}
+                onClick={() => submitPrompt(suggestedPrompt)}
                 className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[#FF6B00] text-white shadow-sm active:scale-95"
                 aria-label="추천 질문 사용"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2 2-5z" />
+                  <path d="M19 4l.7 1.6 1.6.7-1.6.7-.7 1.6-.7-1.6-1.6-.7 1.6-.7.7-1.6z" />
+                  <path d="M5.5 15l.7 1.6 1.6.7-1.6.7-.7 1.6-.7-1.6-1.6-.7 1.6-.7.7-1.6z" />
                 </svg>
               </button>
 
-              <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder={suggestedPrompt || placeholder}
-                className="min-w-0 flex-1 bg-transparent text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] focus:outline-none"
-                aria-label="에이전트 질문 입력"
-              />
+              <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                {activePrefix && (
+                  <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[#FF6B00]/20 bg-[#FFF2E8] px-2.5 py-1 text-[12px] font-semibold text-[#FF6B00]">
+                    {activePrefix.label}
+                    <button
+                      type="button"
+                      onClick={() => setActivePrefix(null)}
+                      className="ml-0.5 text-[#FF6B00]/60 hover:text-[#FF6B00]"
+                      aria-label="명령어 칩 제거"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                )}
+                <input
+                  type="text"
+                  value={input}
+                  onChange={(event) => {
+                    const val = event.target.value;
+                    setInput(val);
+                    if (val.startsWith('/')) {
+                      setShowSlashMenu(true);
+                      setSlashQuery(val.slice(1));
+                    } else {
+                      setShowSlashMenu(false);
+                      setSlashQuery('');
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (showSlashMenu && (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Enter')) {
+                      e.preventDefault();
+                    }
+                    if (e.key === 'Escape' && showSlashMenu) {
+                      setShowSlashMenu(false);
+                      setSlashQuery('');
+                    }
+                    if (e.key === 'Backspace' && !input && activePrefix) {
+                      setActivePrefix(null);
+                    }
+                  }}
+                  placeholder={activePrefix ? '내용을 입력하세요' : (input ? placeholder : (effectiveDockMode === 'chat' ? '궁금한 것을 물어보세요' : suggestedPrompt))}
+                  data-agent-dock-input
+                  className="min-w-0 flex-1 bg-transparent text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] focus:outline-none"
+                  aria-label="에이전트 질문 입력"
+                />
+              </div>
 
               <button
                 type="submit"
-                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[#FF6B00] text-white shadow-sm active:scale-95 disabled:opacity-50"
+                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[#FF6B00] text-white shadow-sm active:scale-95"
                 aria-label="질문 전송"
-                disabled={isLoading}
+                disabled={isRouting}
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="m12 19V5" />
                   <path d="m5 12 7-7 7 7" />
                 </svg>

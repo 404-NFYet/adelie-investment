@@ -90,8 +90,10 @@ export default function ActivityDayDashboard({ dateKey, items, isLoading, error,
           <h4 className="text-sm font-bold text-[#101828]">{formatDateDisplayFromKey(dateKey)} 활동 대시보드</h4>
           <span className="text-xs font-semibold text-[#99a1af]">0건</span>
         </div>
-        <div className="rounded-xl border border-border bg-[#f9fafb] px-4 py-6 text-sm text-text-secondary">
-          선택한 날짜의 활동이 없습니다.
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-border bg-[#f9fafb] px-4 py-8 text-center">
+          <span className="text-2xl">📋</span>
+          <p className="text-sm font-medium text-text-secondary">아직 활동 기록이 없습니다</p>
+          <p className="text-xs text-[#99a1af]">브리핑 학습이나 모의투자를 시작하면 여기에 기록돼요</p>
         </div>
       </section>
     );

@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { keywordsApi, learningApi } from '../api';
+import { API_BASE_URL, fetchJson } from '../api/client';
 import { DEFAULT_HOME_ICON_KEY, getHomeIconSrc } from '../constants/homeIconCatalog';
 import ActivityDayDashboard from '../components/calendar/ActivityDayDashboard';
+import ReviewCard from '../components/domain/ReviewCard';
 import DashboardHeader from '../components/layout/DashboardHeader';
 import MonthlyActivityCalendar from '../components/calendar/MonthlyActivityCalendar';
 import DailyQuizMissionCard from '../components/quiz/DailyQuizMissionCard';
@@ -71,6 +73,10 @@ export default function Education() {
   const [isLoadingReviews, setIsLoadingReviews] = useState(false);
   const [completingReviewId, setCompletingReviewId] = useState(null);
 
+  // 핀 고정된 튜터 세션 (복습 카드용)
+  const [pinnedSessions, setPinnedSessions] = useState([]);
+  const [isLoadingPinned, setIsLoadingPinned] = useState(false);
+
   useEffect(() => {
     const fetchKeywords = async () => {
       try {
@@ -127,6 +133,25 @@ export default function Education() {
     };
 
     fetchReviewCards();
+  }, []);
+
+  // 핀 고정된 튜터 세션 조회 (복습 카드)
+  useEffect(() => {
+    const fetchPinnedSessions = async () => {
+      try {
+        setIsLoadingPinned(true);
+        const sessionList = await fetchJson(`${API_BASE_URL}/api/v1/tutor/sessions?limit=50`);
+        const pinned = (Array.isArray(sessionList) ? sessionList : [])
+          .filter((s) => s.is_pinned && s.review_summary);
+        setPinnedSessions(pinned);
+      } catch {
+        setPinnedSessions([]);
+      } finally {
+        setIsLoadingPinned(false);
+      }
+    };
+
+    fetchPinnedSessions();
   }, []);
 
   useEffect(() => {
@@ -230,6 +255,27 @@ export default function Education() {
     }
   };
 
+  // 핀 고정 세션 → 에이전트에서 다시 대화
+  const handleResumeChat = (session) => {
+    navigate('/agent', {
+      state: {
+        mode: 'education',
+        sessionId: session.id,
+        resetConversation: false,
+      },
+    });
+  };
+
+  // 핀 고정 세션 → 전체 메시지 보기
+  const handleViewFullSession = (session) => {
+    navigate('/agent/history', {
+      state: {
+        mode: 'education',
+        highlightSessionId: session.id,
+      },
+    });
+  };
+
   const openReviewCard = (card) => {
     if (card.contentType === 'case') {
       navigate(`/narrative/${card.contentId}`);
@@ -315,6 +361,36 @@ export default function Education() {
           />
         </section>
 
+        {/* 핀 고정 복습 카드 (AI 요약 포함) */}
+        {(isLoadingPinned || pinnedSessions.length > 0) && (
+          <section>
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-[20px] font-bold leading-[1.4] tracking-[-0.02em] text-[#101828]">AI 복습 카드</h2>
+              <span className="text-sm font-medium text-[#99a1af]">고정된 대화 요약</span>
+            </div>
+
+            {isLoadingPinned && (
+              <div className="rounded-[20px] border border-border bg-white px-6 py-8 shadow-card">
+                <p className="text-sm text-text-secondary">복습 카드를 불러오는 중입니다...</p>
+              </div>
+            )}
+
+            {!isLoadingPinned && pinnedSessions.length > 0 && (
+              <div className="space-y-3">
+                {pinnedSessions.map((session) => (
+                  <ReviewCard
+                    key={session.id}
+                    session={session}
+                    onResumeChat={handleResumeChat}
+                    onViewFull={handleViewFullSession}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* 학습 진행 복습 카드 */}
         <section>
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-[20px] font-bold leading-[1.4] tracking-[-0.02em] text-[#101828]">복습 카드</h2>

@@ -544,6 +544,25 @@ def _recommend_actions(
             "params": {},
         })
 
+    # 네비게이션 의도 감지
+    nav_keywords = {
+        'nav_portfolio': ['포트폴리오', '내 자산', '보유 종목', '자산 현황'],
+        'nav_education': ['교육', '학습', '공부', '배우기'],
+        'start_quiz': ['퀴즈', '문제', '테스트'],
+        'nav_profile': ['프로필', '내 정보', '설정'],
+        'nav_search': ['검색', '찾기', '찾아줘'],
+    }
+
+    for action_id, keywords in nav_keywords.items():
+        if action_id in catalog_by_id and len(actions) < 3:
+            if any(kw in text_lower for kw in keywords):
+                actions.append({
+                    "id": action_id,
+                    "label": catalog_by_id[action_id].get("label", action_id),
+                    "type": "navigate",
+                    "params": {},
+                })
+
     prompt_suggestions = []
     if context_mode == "stock":
         prompt_suggestions = ["리스크 포인트만 추려줘", "비슷한 과거 사례 있어?"]
@@ -915,6 +934,16 @@ async def _collect_context(
     except Exception as e:
         logger.warning("출처 수집 실패 (무시): %s", e)
 
+    # 의도 기반 DB 쿼리 사전 세팅
+    try:
+        intent = classify_intent(request.message)
+        stock_code_list = [code for code, _ in detected_stocks] if detected_stocks else None
+        intent_context = await fetch_intent_context(intent, request.message, db, stock_code_list)
+        if intent_context:
+            extra_context += intent_context
+    except Exception as e:
+        logger.warning("의도 기반 컨텍스트 실패 (무시): %s", e)
+
     return page_context, sources, detected_stocks, chart_data, extra_context
 
 
@@ -1065,6 +1094,19 @@ async def _build_llm_messages(
             )
             session_obj = existing_session.scalar_one_or_none()
             if session_obj:
+                # 누적 컨텍스트 요약이 있으면 시스템 프롬프트에 추가
+                if session_obj.conversation_summary:
+                    system_prompt += f"\n\n[이전 대화 요약]\n{session_obj.conversation_summary}"
+                    system_prompt += (
+                        "\n\n[대화 규칙]\n"
+                        "- 이전 대화에서 이미 설명한 내용은 반복하지 않고, 새로운 관점이나 추가 정보를 제공합니다.\n"
+                        "- 같은 주제를 다시 물으면 더 깊은 분석이나 다른 각도의 설명을 합니다."
+                    )
+                if session_obj.context_entities:
+                    entities = session_obj.context_entities
+                    if isinstance(entities, list) and entities:
+                        system_prompt += f"\n\n[대화에서 다룬 주제]\n{', '.join(str(e) for e in entities[:20])}"
+
                 prev_result = await db.execute(
                     select(TutorMessage)
                     .where(TutorMessage.session_id == session_obj.id)
@@ -1154,6 +1196,55 @@ async def _save_tutor_session(
         session_obj.message_count = (session_obj.message_count or 0) + 2
         session_obj.last_message_at = datetime.utcnow()
         await db.commit()
+
+        # Redis 세션 캐시 무효화
+        try:
+            cache = await get_redis_cache()
+            await cache.delete(f"tutor_session:{session_uuid_str}")
+            await cache.delete(f"tutor_sessions_list:{user_id}")
+        except Exception:
+            pass  # 캐시 무효화 실패해도 DB는 이미 저장됨
+
+        # 5턴마다 대화 요약 갱신
+        if session_obj.message_count and session_obj.message_count % 5 == 0:
+            try:
+                recent_msgs = await db.execute(
+                    select(TutorMessage)
+                    .where(TutorMessage.session_id == session_obj.id)
+                    .order_by(TutorMessage.created_at.desc())
+                    .limit(20)
+                )
+                msgs_for_summary = list(reversed(recent_msgs.scalars().all()))
+                summary_text = "\n".join(
+                    f"{'사용자' if m.role == 'user' else 'AI'}: {m.content[:300]}"
+                    for m in msgs_for_summary
+                )
+
+                settings = get_settings()
+                if settings.OPENAI_API_KEY:
+                    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+                    summary_resp = await client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        temperature=0.2,
+                        max_tokens=300,
+                        messages=[
+                            {"role": "system", "content": "아래 대화를 5문장 이내로 핵심만 요약하세요. 다룬 종목명/개념은 반드시 포함하세요."},
+                            {"role": "user", "content": summary_text},
+                        ],
+                    )
+                    session_obj.conversation_summary = summary_resp.choices[0].message.content
+
+                    # 엔티티 추출 (간단)
+                    existing_entities = session_obj.context_entities or []
+                    # 종목명/코드 패턴
+                    new_entities = re.findall(r'[가-힣]{2,10}(?:전자|바이오|제약|화학|건설|증권|은행|보험|카드|통신|에너지)', summary_text)
+                    new_entities += re.findall(r'\b\d{6}\b', summary_text)
+                    all_entities = list(dict.fromkeys(existing_entities + new_entities))[:30]
+                    session_obj.context_entities = all_entities
+
+                    await db.commit()
+            except Exception as e:
+                logger.warning("대화 요약 갱신 실패: %s", e)
     except Exception as e:
         logger.warning("Failed to save tutor session: %s", e)
 
@@ -1393,8 +1484,7 @@ async def generate_tutor_response(
 
         if should_viz and full_response:
             try:
-                import anthropic
-                import os
+                from app.services.tutor_chart_generator import generate_tutor_chart
 
                 # pykrx 실제 주가 데이터가 있으면 우선 사용, 없으면 full_response 기반
                 _pykrx_chart = chart_data if (chart_data and isinstance(chart_data, dict) and

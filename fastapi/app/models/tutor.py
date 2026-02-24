@@ -46,6 +46,21 @@ class TutorSession(Base):
         comment="홈 고정 여부",
     )
     pinned_at: Mapped[Optional[datetime]] = mapped_column(nullable=True, comment="고정 시각")
+    review_summary: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True, default=None, comment="복습 카드 3줄 요약"
+    )
+    review_key_points: Mapped[Optional[list]] = mapped_column(
+        JSON, nullable=True, default=None, comment="복습 핵심 포인트 (list[str], 최대 5개)"
+    )
+    review_topics: Mapped[Optional[list]] = mapped_column(
+        JSON, nullable=True, default=None, comment="복습 주제/종목 키워드 (list[str])"
+    )
+    context_entities: Mapped[Optional[list]] = mapped_column(
+        JSON, nullable=True, default=None, comment="누적 컨텍스트 엔티티 (종목, 개념 등)"
+    )
+    conversation_summary: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True, default=None, comment="대화 요약 (10턴마다 갱신)"
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, comment="활성 세션 여부")
     message_count: Mapped[int] = mapped_column(Integer, default=0, comment="메시지 수")
     last_message_at: Mapped[Optional[datetime]] = mapped_column(nullable=True, comment="마지막 메시지 시각")

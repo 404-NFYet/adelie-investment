@@ -109,6 +109,22 @@ export default function buildActionCatalog({
         risk: 'low',
         params_schema: { stock_code: 'string' },
       },
+      {
+        id: 'limit_buy_stock',
+        label: '지정가 매수',
+        description: '지정한 가격에 도달하면 매수 주문을 실행합니다.',
+        type: 'tool',
+        risk: 'high',
+        params_schema: { stock_code: 'string', target_price: 'number', quantity: 'number?' },
+      },
+      {
+        id: 'short_sell_stock',
+        label: '공매도',
+        description: '종목을 공매도합니다. 고위험 주문입니다.',
+        type: 'tool',
+        risk: 'high',
+        params_schema: { stock_code: 'string', quantity: 'number?' },
+      },
     );
   }
 

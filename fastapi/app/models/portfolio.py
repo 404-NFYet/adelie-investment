@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import String, Text, Integer, BigInteger, Numeric, ForeignKey, Index
+from sqlalchemy import DateTime, String, Text, Integer, BigInteger, Numeric, ForeignKey, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -137,6 +137,9 @@ class SimulationTrade(Base):
     )
     total_amount: Mapped[float] = mapped_column(Numeric(15, 2), nullable=False)
     trade_reason: Mapped[Optional[str]] = mapped_column(Text, comment="거래 사유 (학습 기록)")
+    expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, comment="지정가 주문 만료 시각"
+    )
     traded_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     
     # Relationships

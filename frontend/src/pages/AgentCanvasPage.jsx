@@ -474,6 +474,11 @@ export default function AgentCanvasPage() {
         return;
       }
 
+      if (action?.type === 'navigate' && action?.id) {
+        executeAction(action, { contextPayload });
+        return;
+      }
+
       const nextPrompt = action?.prompt || action?.label || '';
       if (!nextPrompt) return;
       sendCanvasMessage(nextPrompt);
@@ -645,6 +650,9 @@ export default function AgentCanvasPage() {
             <h1 className="truncate text-[14px] font-semibold text-[#191F28]">
               {canvasState.title}
             </h1>
+            <span className="shrink-0 rounded-full bg-[#1D6FDE]/10 px-2 py-0.5 text-[10px] font-semibold text-[#1D6FDE]">
+              분석 모드
+            </span>
           </div>
 
           <div className="flex flex-shrink-0 items-center gap-1 whitespace-nowrap">

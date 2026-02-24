@@ -1,11 +1,11 @@
 # ============================================================
 # lxd/Makefile — 인프라 전용 (dorae222/hj 서버에서만 실행)
-# 사용법: make -f lxd/Makefile <target>
+# 사용법: make -f lxd/Makefile help
 # ============================================================
 
-ROOT := $(realpath $(dir $(lastword $(MAKEFILE_LIST)))..)
+ROOT     := $(realpath $(dir $(lastword $(MAKEFILE_LIST)))..)
 REGISTRY ?= dorae222
-TAG ?= latest
+TAG      ?= latest
 
 .PHONY: help push push-local deploy-test deploy-test-service rollback-stable \
         sync-dev-branches sync-lxd sync-all \
@@ -13,10 +13,13 @@ TAG ?= latest
         dev-final-branches dev-final-checkout dev-final-rebuild dev-final-setup \
         dev-local-db-setup
 
+# ============================================================
+# 도움말
+# ============================================================
 help:
 	@echo ""
-	@echo "  [인프라 전용] lxd/Makefile 명령어"
-	@echo "  실행: make -f lxd/Makefile <target>"
+	@echo "  [인프라 전용] lxd/Makefile — make -f lxd/Makefile <target>"
+	@echo "  ============================================================"
 	@echo ""
 	@echo "  Docker Hub 배포:"
 	@echo "    push                   모든 이미지 Docker Hub push"
@@ -29,11 +32,10 @@ help:
 	@echo "    sync-lxd               각 LXD 서버에서 git pull 실행"
 	@echo "    sync-all               위 두 작업 순차 실행"
 	@echo ""
-	@echo "  LXD 개발 환경:"
-	@echo "    check-lxd-git          각 LXD 서버 git 설정(user/email/remote/SSH) 점검"
-	@echo "    health-lxd             5대 서버 git 브랜치/Docker 컨테이너 상태 한눈에 보기"
-	@echo "    fix-lxd-jwt            JWT_SECRET 기본값인 서버 자동 갱신 + backend-api 재시작"
-	@echo "    sync-dev-data          prod DB 콘텐츠 → 각 LXD 로컬 dev DB 동기화"
+	@echo "  [dev-final 환경]"
+	@echo "    dev-final-setup  브랜치 생성 + LXD checkout + 재빌드 (전체)"
+	@echo "    dev-final-sync   각 서버 dev-final/* pull + up -d"
+	@echo "    db-local-setup   로컬 postgres 기동 + alembic + prod 데이터 복제"
 	@echo ""
 	@echo "  dev-final 워크플로우:"
 	@echo "    dev-final-branches     release/feb20-stable + dev/* 머지 → dev-final/* 브랜치 생성 & push"
@@ -48,12 +50,9 @@ help:
 	@echo "    REGISTRY=$(REGISTRY)  TAG=$(TAG)"
 	@echo ""
 
-# --- Docker Hub Push ---
-push:
-	@echo "Docker Hub($(REGISTRY)) push..."
-	docker push $(REGISTRY)/adelie-frontend:$(TAG)
-	docker push $(REGISTRY)/adelie-backend-api:$(TAG)
-	docker push $(REGISTRY)/adelie-ai-pipeline:$(TAG)
+# ============================================================
+# LXD 서버 관리
+# ============================================================
 
 push-local:
 	@for svc in frontend backend-api ai-pipeline; do \
@@ -166,7 +165,7 @@ health-lxd:
 		echo "### $$srv ###"; \
 		lxc exec $$srv -- bash -c " \
 			cd /home/ubuntu/adelie-investment 2>/dev/null || { echo '  ❌ 프로젝트 디렉토리 없음'; exit 0; }; \
-			BRANCH=\$$(git branch --show-current 2>/dev/null || echo '❓ 미확인'); \
+			BRANCH=\$$(git branch --show-current 2>/dev/null || echo '❓'); \
 			AHEAD=\$$(git rev-list @{u}..HEAD 2>/dev/null | wc -l || echo '?'); \
 			BEHIND=\$$(git rev-list HEAD..@{u} 2>/dev/null | wc -l || echo '?'); \
 			echo \"  브랜치  : \$$BRANCH (↑\$$AHEAD ↓\$$BEHIND)\"; \
@@ -178,9 +177,26 @@ health-lxd:
 	@echo ""
 	@echo "=== 헬스체크 완료 ==="
 
-# --- JWT_SECRET 기본값 서버 자동 수정 ---
-# .env의 JWT_SECRET이 기본값이면 새 랜덤값으로 교체 후 backend-api 재시작
-fix-lxd-jwt:
+# 각 서버 git user/email/remote 설정 점검
+git-check:
+	@echo "=== LXD 서버 git 설정 점검 ==="
+	@for srv in dev-yj99son dev-j2hoon10 dev-jjjh02 dev-ryejinn dev-hj; do \
+		echo ""; \
+		echo "### $$srv ###"; \
+		lxc exec $$srv -- bash -c " \
+			cd /home/ubuntu/adelie-investment 2>/dev/null || { echo '  ❌ 프로젝트 디렉토리 없음'; exit 0; }; \
+			REMOTE=\$$(git remote get-url origin 2>/dev/null | sed 's|https://[^@]*@|https://***@|g' || echo '미설정'); \
+			NAME=\$$(git config user.name 2>/dev/null || echo '❌ 미설정'); \
+			EMAIL=\$$(git config user.email 2>/dev/null || echo '❌ 미설정'); \
+			echo \"  remote : \$$REMOTE\"; \
+			echo \"  user   : \$$NAME <\$$EMAIL>\"; \
+		" 2>/dev/null || echo "  ❌ LXC 연결 실패"; \
+	done
+	@echo ""
+	@echo "=== 점검 완료 ==="
+
+# JWT_SECRET 기본값 서버 자동 갱신
+jwt-fix:
 	@echo "=== JWT_SECRET 기본값 서버 수정 ==="
 	@DEFAULT_JWT="narrative-invest-jwt-secret-change-in-production"; \
 	for srv in dev-yj99son dev-j2hoon10 dev-jjjh02 dev-ryejinn dev-hj; do \
@@ -194,7 +210,7 @@ fix-lxd-jwt:
 			if [ \"\$$CURRENT_JWT\" = 'narrative-invest-jwt-secret-change-in-production' ]; then \
 				NEW_JWT=\$$(openssl rand -hex 32); \
 				sed -i \"s|JWT_SECRET=.*|JWT_SECRET=\$$NEW_JWT|\" \$$ENV_FILE; \
-				echo '  🔧 JWT_SECRET 갱신 완료'; \
+				echo '  JWT_SECRET 갱신 완료'; \
 				cd \$$DIR && docker compose -f docker-compose.dev.yml restart backend-api 2>&1 | tail -2; \
 				sleep 8; \
 				STATUS=\$$(docker compose -f docker-compose.dev.yml ps backend-api --format '{{.Status}}' 2>/dev/null); \

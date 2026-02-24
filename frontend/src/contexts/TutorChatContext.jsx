@@ -1,9 +1,10 @@
 import { createContext, useContext, useState, useCallback, startTransition, useRef } from 'react';
 import { API_BASE_URL, authFetch } from '../api/client';
 import { buildSessionCardMeta, writeSessionCardMeta } from '../utils/agent/sessionCardMetaStore';
+import { trackEvent, TRACK_EVENTS } from '../utils/analytics';
 
 const TutorChatContext = createContext(null);
-const STREAM_FLUSH_INTERVAL_MS = 180;
+const STREAM_FLUSH_INTERVAL_MS = 120;
 
 const parseVisualizationPayload = (content) => {
   if (!content) return null;
@@ -502,6 +503,9 @@ export function TutorChatProvider({ children }) {
           // malformed SSE chunk 무시
         }
       };
+
+      // 튜터 질문 트래킹
+      trackEvent(TRACK_EVENTS.TUTOR_ASK, { session_id: sessionId, message_length: normalizedMessage.length });
 
       try {
         const response = await authFetch(`${API_BASE_URL}/api/v1/tutor/chat`, {

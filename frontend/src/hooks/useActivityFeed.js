@@ -69,10 +69,14 @@ export default function useActivityFeed() {
     setError(null);
 
     try {
-      const [tradeRes, learningRes] = await Promise.all([
+      // 각 API 호출을 개별적으로 에러 처리하여 한쪽 실패 시에도 다른 데이터 표시
+      const [tradeResult, learningResult] = await Promise.allSettled([
         portfolioApi.getTradeHistory(100),
         learningApi.getProgress(),
       ]);
+
+      const tradeRes = tradeResult.status === 'fulfilled' ? tradeResult.value : null;
+      const learningRes = learningResult.status === 'fulfilled' ? learningResult.value : null;
 
       const tradeItems = Array.isArray(tradeRes?.trades)
         ? tradeRes.trades.map(normalizeTradeItem)
@@ -89,6 +93,11 @@ export default function useActivityFeed() {
         .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime());
 
       setActivities(merged);
+
+      // 양쪽 모두 실패한 경우에만 에러 표시
+      if (tradeResult.status === 'rejected' && learningResult.status === 'rejected') {
+        setError('활동 내역을 불러오지 못했습니다.');
+      }
     } catch (fetchError) {
       setActivities([]);
       setError(fetchError?.message || '활동 내역을 불러오지 못했습니다.');

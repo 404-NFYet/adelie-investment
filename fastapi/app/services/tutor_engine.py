@@ -32,7 +32,8 @@ from app.services.chart_storage import save_chart_html
 
 logger = logging.getLogger("narrative_api.tutor_engine")
 
-# 시각화 도구 임포트
+# [DEPRECATED] 시각화 도구 임포트 — 프로덕션은 tutor.py → tutor_chart_generator.py 사용
+# 아래 import는 _auto_generate_chart()에서만 참조 (실험용, 프로덕션 미사용)
 import sys as _sys
 from pathlib import Path as _Path
 _CHATBOT_PATH = str(_Path(__file__).resolve().parent.parent.parent.parent / "chatbot")
@@ -219,12 +220,14 @@ async def _collect_stock_context(
     return db_context, chart_data, sources
 
 
-# --- 자동 시각화 ---
+# --- 자동 시각화 [DEPRECATED] ---
+# 프로덕션은 tutor.py → app.services.tutor_chart_generator.generate_tutor_chart() 사용.
+# 이 함수는 Python 코드 생성 + subprocess 실행 방식으로 보안 위험 + 고지연.
 
 async def _auto_generate_chart(
     chart_data: dict, session_id: str, session_db_id: int, db: AsyncSession
 ) -> str | None:
-    """차트 데이터로 Plotly 시각화를 자동 생성하고 SSE 이벤트 문자열을 반환."""
+    """[DEPRECATED] 차트 데이터로 Plotly 시각화를 자동 생성하고 SSE 이벤트 문자열을 반환."""
     if not _VIZ_AVAILABLE or not chart_data:
         return None
 
