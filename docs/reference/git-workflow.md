@@ -7,33 +7,38 @@
 ## 브랜치 전략
 
 ```
-main
- └── develop
-      └── dev-final/*    ← 팀원별 통합 개발 브랜치 (dev/* + feb20-stable 머지)
-           └── dev/*     ← 역할별 피처 브랜치 (개발 작업 단위)
+main                    ← 소개/README용 (CI/CD 없음)
+  └── develop           ← 배포 브랜치 (push → deploy-test 자동 배포)
+        └── dev-final/* ← 팀원별 개발 서버 자동 배포
+              └── feature/* ← 개인 피처 작업 (CI 실행)
 ```
 
-| 브랜치 | 용도 | 베이스 |
-|--------|------|--------|
-| `main` | 프로덕션 릴리즈 | — |
-| `develop` | 통합 개발 브랜치 | main |
-| `release/feb20-stable` | 안정 롤백 기준 | develop (2026-02-20) |
-| `dev-final/*` | 팀원별 통합 환경 | release/feb20-stable + dev/* |
-| `dev/*` | 역할별 피처 브랜치 | develop |
-| `feature/*` | 단기 기능 개발 | develop |
-| `hotfix/*` | 긴급 버그 수정 | main |
+| 브랜치 | 용도 | CI | 배포 |
+|--------|------|----|------|
+| `main` | 소개/README용 | ❌ | ❌ |
+| `develop` | 통합 개발 브랜치 | ✅ PR 필수 | ✅ deploy-test (:latest) |
+| `dev-final/*` | 팀원별 개발 서버 | ✅ (non-blocking) | ✅ 해당 LXD 서버 |
+| `feature/*` | 개인 피처 작업 | ✅ | ❌ |
+| `hotfix/*` | 긴급 버그 수정 | ✅ | ❌ |
+
+### PR 규칙
+
+| 대상 브랜치 | merge 방법 | 리뷰 |
+|------------|-----------|------|
+| `develop` | PR from dev-final/* | CI 통과 필수 |
+| `dev-final/*` | 직접 push 또는 PR from feature/* | 불필요 |
 
 ---
 
 ## 담당자별 작업 브랜치
 
-| 팀원 | git user.name | LXD 서버 | 작업 브랜치 | 개발 환경 브랜치 |
-|------|--------------|----------|------------|----------------|
-| 손영진 (팀장) | YJ99Son | dev-yj99son | dev/frontend | dev-final/frontend |
-| 정지훈 (AI) | J2hoon10 | dev-j2hoon10 | dev/chatbot | dev-final/chatbot |
-| 허진서 (백엔드) | jjjh02 | dev-jjjh02 | dev/backend | dev-final/backend |
-| 안례진 (QA) | ryejinn | dev-ryejinn | dev/pipeline | dev-final/pipeline |
-| 도형준 (인프라) | dorae222 | dev-hj | dev/infra | dev-final/infra |
+| 팀원 | git user.name | LXD 서버 | 개발 브랜치 |
+|------|--------------|----------|------------|
+| 손영진 (팀장) | YJ99Son | dev-yj99son | dev-final/frontend |
+| 정지훈 (AI) | J2hoon10 | dev-j2hoon10 | dev-final/chatbot |
+| 허진서 (백엔드) | jjjh02 | dev-jjjh02 | dev-final/backend |
+| 안례진 (QA) | ryejinn | dev-ryejinn | dev-final/pipeline |
+| 도형준 (인프라) | dorae222 | dev-hj | dev-final/infra |
 
 ---
 
@@ -42,7 +47,7 @@ main
 ### 1. 작업 시작 (개인 LXD 서버에서)
 
 ```bash
-cd /home/ubuntu/adelie-investment
+cd ~/adelie-investment
 
 # 최신 코드 받기
 git pull origin dev-final/<내_역할>
@@ -74,34 +79,54 @@ git push origin feature/my-feature
 
 # 또는 dev-final/* 직접 push (소규모 수정)
 git push origin dev-final/<내_역할>
+# → 자동으로 해당 LXD 서버에 배포됨 (GitHub Actions)
 ```
 
 ### 4. PR 생성
 
 ```bash
-# GitHub CLI 사용
+# feature/* → dev-final/<내역할>
 gh pr create \
   --base dev-final/<내_역할> \
   --title "feat: 기능 요약" \
   --body "변경 내용 설명"
-
-# 또는 GitHub 웹 UI에서 PR 생성
 ```
 
-### 5. 코드 리뷰 & 머지
-
-- PR 리뷰어: 팀장(손영진) 또는 역할 담당자
-- 머지 조건: 리뷰어 승인 1명 이상
-- 머지 방법: Squash merge 또는 Merge commit
-
-### 6. develop 반영
+### 5. develop 반영
 
 ```bash
-# PR 승인 후 dev-final/* → develop PR 생성
+# dev-final/* → develop PR 생성 (팀장 또는 역할 담당자가 리뷰)
 gh pr create \
   --base develop \
   --head dev-final/<내_역할> \
   --title "chore: dev-final/<역할> → develop 동기화"
+
+# develop push 후 deploy-test 자동 배포 (GitHub Actions)
+```
+
+---
+
+## GitHub Actions CI/CD
+
+| 워크플로우 | 트리거 | 동작 |
+|-----------|--------|------|
+| `ci.yml` | PR to develop/main/dev-final/* | lint + test (non-blocking for dev-final) |
+| `deploy-develop.yml` | push to develop | 빌드 → Docker Hub :latest → deploy-test 배포 |
+| `deploy-lxd.yml` | push to dev-final/* | 해당 LXD 서버 git pull + compose up |
+| `main.yml` | push (전체) | Discord 알림 |
+| `claude.yml` | @claude 멘션 | Claude 응답 |
+| `claude-code-review.yml` | PR | 자동 코드 리뷰 |
+
+### deploy-lxd.yml 사전 조건 (일회성)
+
+deploy-test의 SSH 키를 각 LXD 서버에 등록해야 합니다:
+
+```bash
+# deploy-test에서 실행
+ssh-keygen -t ed25519 -f ~/.ssh/lxd_deploy -N ""
+for ip in 10.10.10.14 10.10.10.11 10.10.10.12 10.10.10.13 10.10.10.15; do
+  ssh-copy-id -i ~/.ssh/lxd_deploy.pub ubuntu@$ip
+done
 ```
 
 ---
@@ -144,7 +169,6 @@ git commit -m "feat: 기능" --trailer "Co-Authored-By: Claude <noreply@anthropi
 
 # ❌ AI 생성 흔적 금지 (커밋 메시지, PR 본문 모두)
 "Generated with Claude Code"
-"🤖 Generated with..."
 
 # ❌ --no-verify 금지 (사용자 명시 요청 제외)
 git commit --no-verify
@@ -155,7 +179,7 @@ git push --force origin main
 
 ---
 
-## PAT 설정 방법 (HTTPS 토큰 방식)
+## PAT 설정 방법 (HTTPS 토큰 방식) {#pat-설정-방법-https-토큰-방식}
 
 각 LXD 서버에서 1회 실행. **PAT 값은 본인만 알고 있어야 함.**
 
@@ -185,26 +209,26 @@ git ls-remote origin HEAD
 
 ```bash
 # 내 서버 코드 최신화 (각 서버에서 직접)
-cd /home/ubuntu/adelie-investment
+cd ~/adelie-investment
 git pull origin dev-final/<내_역할>
 
 # 인프라에서 전체 서버 일괄 동기화
-make -f lxd/Makefile sync-lxd
+make -f lxd/Makefile sync
 ```
 
 ### DB 동기화
 
 ```bash
 # prod 데이터를 개인 로컬 DB에 복제 (최초 세팅 또는 데이터 초기화 시)
-make -f lxd/Makefile dev-local-db-setup
+make -f lxd/Makefile db-local-setup
 
 # prod 데이터만 재동기화 (alembic은 건드리지 않음)
-make -f lxd/Makefile sync-dev-data
+make -f lxd/Makefile db-sync
 ```
 
 ### migration 추가 시 주의사항
 
-1. **#migration 슬랙 채널에 먼저 공지** (충돌 방지)
+1. **#migration 채널에 먼저 공지** (충돌 방지)
 2. 한 번에 1명만 migration 파일 작성
 3. 작성 완료 → develop에 push → 다음 사람에게 알림
 4. 각 LXD 서버에서 `git pull` 후 `alembic upgrade heads` 실행
@@ -215,13 +239,13 @@ make -f lxd/Makefile sync-dev-data
 
 ```bash
 # 전체 서버 헬스체크 (브랜치 + 컨테이너 상태)
-make -f lxd/Makefile health-lxd
+make -f lxd/Makefile health
 
 # git 설정 점검 (user, email, remote URL)
-make -f lxd/Makefile check-lxd-git
+make -f lxd/Makefile git-check
 
 # JWT_SECRET 기본값 서버 자동 갱신
-make -f lxd/Makefile fix-lxd-jwt
+make -f lxd/Makefile jwt-fix
 ```
 
 ---
