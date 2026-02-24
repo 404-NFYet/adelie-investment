@@ -1,0 +1,303 @@
+Implement the following plan:
+
+# 남은 작업: 커밋 + 전 환경 동기화 + 문서 업데이트
+
+## Context
+
+이전 세션에서 3개 파트 코드 작업 완료:
+- **Part 1**: `sync_dev_data.sh` + `lxd/Makefile` sync-dev-data 타겟 (unstaged)
+- **Part 2**: `scheduler.py` + `auth.py` 로그 네임스페이스 수정 (unstaged)
+- **Part 3**: `dev-final/pipeline`에 cherry-pick 완료 (`4fc6a05`, pushed)
+
+**남은 것**: prod-final 커밋 → 전 환경 코드 동기화 → deploy-test 배포 → 데이터 싱크 → 문서 업데이트
+
+**핵심 원칙**: 모든 환경(deploy-test + LXD 5대)은 **브랜치명만 다를 뿐 코드 동일**. 유일한 예외는 `dev-final/pipeline`의 례진 커밋(+1).
+
+---
+
+## Step 1: prod-final 커밋 (2건 분리)
+
+담당자: dorae222 — `git config user.name`/`user.email` 확인 후 진행
+
+### 커밋 1: 로그 네임스페이스 수정 (전체 11개 파일)
+```
+fix: 로그 네임스페이스 통일 (narrative_api → narrative)
+```
+- `fastapi/app/core/scheduler.py` (line 11) ← 이미 수정됨
+- `fastapi/app/core/auth.py` (line 15) ← 이미 수정됨
+- `fastapi/app/main.py` (line 60): `narrative_api` → `narrative`
+- `fastapi/app/api/routes/tutor.py` (line 17)
+- `fastapi/app/api/routes/narrative.py` (line 24)
+- `fastapi/app/api/routes/visualization.py` (line 10)
+- `fastapi/app/api/routes/tutor_sessions.py` (line 18)
+- `fastapi/app/api/routes/notification.py` (line 13)
+- `fastapi/app/api/routes/portfolio.py` (line 51)
+- `fastapi/app/services/chart_storage.py` (line 10)
+- `fastapi/app/services/tutor_engine.py` (line 33)
+- `fastapi/app/services/guardrail.py` (line 13)
+- `fastapi/app/services/stock_resolver.py` (line 12)
+
+### 커밋 2: 데이터 동기화 스크립트
+```
+feat: deploy-test → LXD 콘텐츠 데이터 동기화 스크립트 추가
+```
+- `database/scripts/sync_dev_data.sh` (신규)
+- `lxd/Makefile` (sync-dev-data 타겟)
+
+### push
+```bash
+git push origin prod-final
+```
+
+---
+
+## Step 2: lxd/Makefile sync-lxd 타겟 브랜치명 업데이트
+
+현재 `sync-lxd`가 구 `dev/*` 브랜치를 pull하고 있음 → `dev-final/*`로 변경.
+`sync-dev-branches`도 `prod-final` → `dev-final/*` 전략으로 업데이트.
+
+### 수정 파일
+- `lxd/Makefile`
+
+### 변경 내용
+
+**sync-lxd** (line 78~85):
+```makefile
+sync-lxd:
+	@echo "LXD 서버 코드 싱크..."
+	lxc exec dev-yj99son  -- bash -c "cd /home/ubuntu/adelie-investment && git pull origin dev-final/frontend"
+	lxc exec dev-j2hoon10 -- bash -c "cd /home/ubuntu/adelie-investment && git pull origin dev-final/chatbot"
+	lxc exec dev-ryejinn  -- bash -c "cd /home/ubuntu/adelie-investment && git pull origin dev-final/pipeline"
+	lxc exec dev-jjjh02   -- bash -c "cd /home/ubuntu/adelie-investment && git pull origin dev-final/backend"
+	lxc exec dev-hj       -- bash -c "cd /home/ubuntu/adelie-investment && git pull origin dev-final/infra"
+	@echo "완료: 모든 LXD 서버 코드 싱크"
+```
+
+**sync-dev-branches** (line 64~74): prod-final → dev-final/* 머지로 변경
+```makefile
+sync-dev-branches:
+	@echo "prod-final → dev-final/* 브랜치 싱크..."
+	@cd $(ROOT) && CURRENT=$$(git branch --show-current); \
+	for BRANCH in dev-final/frontend dev-final/backend dev-final/chatbot dev-final/pipeline dev-final/infra; do \
+		echo "  -> $$BRANCH"; \
+		git checkout $$BRANCH 2>/dev/null || { echo "  브랜치 없음, 건너뜀: $$BRANCH"; continue; }; \
+		git merge prod-final --no-edit 2>/dev/null || true; \
+		git push origin $$BRANCH; \
+	done; \
+	git checkout $$CURRENT
+	@echo "완료: 모든 dev-final/* 브랜치 싱크"
+```
+
+### 커밋
+```
+chore: lxd/Makefile 싱크 타겟 브랜치명 dev-final/* 전환
+```
+
+---
+
+## Step 3: dev-final/* 브랜치 코드 동기화
+
+Step 1에서 push한 prod-final의 새 커밋 2개를 모든 dev-final/* 브랜치에 merge.
+
+```bash
+make -f lxd/Makefile sync-dev-branches
+```
+
+결과: 5개 dev-final/* 브랜치 모두 prod-final HEAD + 각 브랜치 고유 커밋 포함
+- dev-final/pipeline: prod-final HEAD + 례진 커밋(4fc6a05) — 유일한 차이
+
+---
+
+## Step 4: deploy-test 배포
+
+```bash
+ssh deploy-test 'cd ~/adelie-investment && git pull origin prod-final'
+# 코드만 pull (이미지 리빌드 불필요 — 스케줄러 변경은 이미지에 포함되어야 함)
+```
+
+이미지 리빌드 + 배포:
+```bash
+# 1. 코드 pull
+ssh deploy-test 'cd ~/adelie-investment && git pull origin prod-final'
+
+# 2. 이미지 빌드 + push
+TAG=prod-20260224 make build-api
+docker push dorae222/adelie-backend-api:prod-20260224
+
+# 3. deploy-test에서 이미지 교체
+ssh deploy-test 'cd ~/adelie-investment && TAG=prod-20260224 docker compose -f docker-compose.prod.yml pull backend-api && TAG=prod-20260224 docker compose -f docker-compose.prod.yml up -d backend-api'
+```
+
+---
+
+## Step 5: LXD 서버 코드 싱크
+
+```bash
+make -f lxd/Makefile sync-lxd
+```
+
+각 LXD 서버가 해당 dev-final/* 브랜치 최신 pull.
+
+---
+
+## Step 6: 데이터 싱크 (선택)
+
+```bash
+# 단일 테스트
+make -f lxd/Makefile sync-dev-data SERVER=dev-ryejinn
+
+# 전체
+make -f lxd/Makefile sync-dev-data
+```
+
+---
+
+## Step 7: 문서 업데이트
+
+### 7-1. `infra-ops.md` — deploy-test 현재 상태 섹션 (line 185~191)
+
+변경:
+```
+### deploy-test 현재 상태 (2026-02-24)
+- git 브랜치: `prod-final`
+- 이미지: `dorae222/adelie-backend-api:prod-20260224`, `dorae222/adelie-frontend:prod-20260224`
+- alembic HEAD: `20260223_expires`
+- 개발 기준: `prod-final` → `dev-final/*` 브랜치에서 팀별 개발
+- LXD dev 환경: 각 서버 개인 로컬 postgres (docker-compose.dev.yml)
+```
+
+### 7-2. `infra-ops.md` — Docker 이미지 태깅 규칙 (line 193~203)
+
+`:latest` 사용 중지 반영:
+```
+| 이미지 | 레지스트리 | 태그 정책 |
+|--------|-----------|-----------|
+| `adelie-frontend` | `dorae222/` | `prod-YYYYMMDD` (배포), `feb20-stable` (기준선) |
+| `adelie-backend-api` | `dorae222/` | `prod-YYYYMMDD` (배포), `feb20-stable` (기준선) |
+| `adelie-ai-pipeline` | `dorae222/` | `prod-YYYYMMDD` (배포), `feb20-stable` (기준선) |
+
+- `:latest` 사용 중지 — 명시적 태그만 사용
+- 배포: `TAG=prod-20260224 make build push`
+```
+
+### 7-3. `infra-ops.md` — 데이터 동기화 섹션 (신규, 배포 명령 뒤에 추가)
+
+```markdown
+## deploy-test → LXD 콘텐츠 데이터 동기화
+
+```bash
+# 전체 5대
+make -f lxd/Makefile sync-dev-data
+
+# 단일 서버
+make -f lxd/Makefile sync-dev-data SERVER=dev-ryejinn
+```
+
+대상 테이블 (13개): stock_listings, market_daily_history, stock_daily_history, glossary, company_relations, broker_reports, daily_briefings, daily_narratives, historical_cases, briefing_stocks, narrative_scenarios, case_stock_relations, case_matches
+```
+
+### 7-4. MEMORY.md — 간결한 업데이트
+
+추가/수정할 내용:
+- 로그 네임스페이스: `narrative_api.*` → `narrative.*` 수정 (scheduler, auth 완료, 나머지 9개 미완)
+- `database/scripts/sync_dev_data.sh` 신규 경로
+- `lxd/Makefile sync-lxd` 브랜치명 `dev-final/*` 전환
+- 례진 커밋 반영 기록: `dev-final/pipeline` = prod-final + `4fc6a05`
+
+### 7-5. `changes/ryejinn.md` — Phase 5 추가
+
+```markdown
+## Phase 5: 텍스트 포맷팅 파이프라인 고도화 (02-24)
+
+### Situation
+Interface 2/3 단계에서 LLM이 생성한 텍스트에 전문 용어 과다 사용, 중복 문장, 불완전한 마크다운 포맷 등의 품질 이슈가 발생.
+
+### Task
+- Interface 2: LLM 불완전 출력 보정 fallback 추가
+- Interface 3: 텍스트 포맷팅 전면 재설계 (jargon 치환, 문장 압축, 중복 제거, 마크다운 정리)
+- 프롬프트 템플릿 5종 보강
+- 테스트 코드 추가
+
+### Action
+interface2.py에 `_normalize_validated_interface2()` fallback 함수를 추가하여 LLM 불완전 출력 시 구조를 자동 보정하도록 하였다(+70라인). interface3.py를 전면 재설계하여 jargon 치환, 문장 단위 압축, 중복 제거, 마크다운 정리 로직을 구현하였다(+232라인). 프롬프트 템플릿 5종(3_pages, 3_tone_final, _tone_guide, narrative_body, page_purpose)을 보강하고, story spine 테스트(+46라인)를 추가하였다.
+
+### Result
+- 커밋 1건, 코드 변경량 +400라인
+- LLM 출력 자동 보정으로 파이프라인 안정성 향상
+- 텍스트 품질 가이드라인 프롬프트화로 일관된 출력 확보
+```
+
+### 7-6. `changes/dorae222.md` — Phase 5 추가
+
+```markdown
+## Phase 5: 인프라 운영 자동화 — 데이터 싱크·로그·브랜치 관리 (02-24)
+
+### Situation
+prod-final 브랜치 리셋 후 코드는 전 환경 동기화 완료되었으나, DB 콘텐츠 데이터를 deploy-test에서 LXD 개발 서버로 가져오는 메커니즘이 없었다. 스케줄러/인증 로그가 네임스페이스 불일치(`narrative_api` ≠ `narrative`)로 출력되지 않아 동작 여부를 확인할 수 없었다. lxd/Makefile의 싱크 타겟이 구 브랜치(`dev/*`)를 참조하여 `dev-final/*` 전략과 불일치하였다.
+
+### Task
+- deploy-test → LXD 데이터 동기화 스크립트 개발
+- 스케줄러/인증 로그 네임스페이스 수정
+- lxd/Makefile 싱크 타겟 브랜치명 전환 (dev/* → dev-final/*)
+- 전 환경 코드·데이터 동기화 실행
+- 참조 문서 업데이트
+
+### Action
+`database/scripts/sync_dev_data.sh`(170라인)를 개발하여 deploy-test postgres에서 13개 콘텐츠 테이블을 pg_dump하고, lxc file push → psql 복원하는 3단계 자동화 스크립트를 구축하였다. FK 트리거 비활성화(`session_replication_role=replica`), 시퀀스 자동 리셋, postgres 컨테이너 자동탐지를 포함하며, 단일 서버/전체 5대 모드를 지원한다.
+
+FastAPI 전체(core 2개 + routes 6개 + services 4개, 총 13개 파일)의 로그 네임스페이스를 `narrative_api.*` → `narrative.*`로 일괄 수정하여 `setup_logging()`의 `narrative` 루트 로거와 일치시켰다. 이를 통해 스케줄러, 인증, 라우트, 서비스 전체의 로그가 정상 출력되도록 복원하였다.
+
+lxd/Makefile의 `sync-lxd`와 `sync-dev-branches` 타겟을 `dev-final/*` 브랜치로 전환하고, `sync-dev-data` 타겟을 추가하였다.
+
+### Result
+- 커밋 3건
+- LXD 데이터 동기화 자동화 (13개 테이블, 단일/전체 서버 지원)
+- 스케줄러 로그 정상 출력 복원
+- Makefile 싱크 타겟 dev-final/* 전환으로 브랜치 전략 일치
+```
+
+---
+
+## 커밋 전략 (총 3건, prod-final)
+
+| # | 메시지 | 파일 | 담당자 |
+|---|--------|------|--------|
+| 1 | `fix: 로그 네임스페이스 통일 (narrative_api → narrative)` | 11개 파일 (core 2 + routes 6 + services 4) | dorae222 |
+| 2 | `feat: deploy-test → LXD 콘텐츠 데이터 동기화 스크립트 추가` | sync_dev_data.sh, lxd/Makefile | dorae222 |
+| 3 | `chore: lxd/Makefile 싱크 타겟 브랜치명 dev-final/* 전환` | lxd/Makefile | dorae222 |
+
+커밋 후 push → sync-dev-branches → deploy-test 배포 → sync-lxd → sync-dev-data
+
+---
+
+## 검증
+
+```bash
+# 1. 브랜치 상태 확인 (전원 prod-final 커밋 포함)
+for b in dev-final/frontend dev-final/backend dev-final/chatbot dev-final/infra; do
+  echo "$b: $(git log --oneline -1 origin/$b)"
+done
+echo "dev-final/pipeline: $(git log --oneline -1 origin/dev-final/pipeline)"
+# pipeline만 +1 커밋 (4fc6a05)
+
+# 2. deploy-test 스케줄러 로그
+ssh deploy-test "docker logs adelie-backend-api 2>&1 | grep scheduler"
+
+# 3. 데이터 싱크 검증
+make -f lxd/Makefile sync-dev-data SERVER=dev-ryejinn
+```
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+각자 계정으로 git push나 pull이나 정상적으로 되는지 점검해라
+
+---
+
+어느 브랜치로 merge하고 pull하는지, PR 등 관련 문서를 최상단 위치에 작성해놔라
+
+---
+
+모든 브랜치에 반영하고 각각 push해라

@@ -3,7 +3,7 @@
   "checkpoint_id": "234de7d2eb07",
   "strategy": "manual-commit",
   "branch": "prod-final",
-  "checkpoints_count": 76,
+  "checkpoints_count": 78,
   "files_touched": [
     ".dockerignore",
     ".env.example",
@@ -17,6 +17,7 @@
     "QUICKSTART.md",
     "README.md",
     "changes/dorae222.md",
+    "changes/ryejinn.md",
     "chatbot/services/__init__.py",
     "chatbot/services/term_highlighter.py",
     "chatbot/tools/visualization_tool.py",
@@ -67,6 +68,7 @@
     "docker-compose.staging.yml",
     "docs/README.md",
     "docs/getting-started/database-guide.md",
+    "docs/getting-started/workflow.md",
     "docs/reference/git-workflow.md",
     "docs/reference/make-commands.md",
     "docs/team-guides/A_프론트엔드_손영진.md",
@@ -78,7 +80,10 @@
     "fastapi/app/api/routes/cases.py",
     "fastapi/app/api/routes/feedback.py",
     "fastapi/app/api/routes/highlight.py",
+    "fastapi/app/api/routes/narrative.py",
+    "fastapi/app/api/routes/notification.py",
     "fastapi/app/api/routes/pipeline.py",
+    "fastapi/app/api/routes/portfolio.py",
     "fastapi/app/api/routes/tutor.py",
     "fastapi/app/api/routes/tutor_sessions.py",
     "fastapi/app/api/routes/visualization.py",
@@ -107,6 +112,7 @@
     "fastapi/app/services/canvas/precompute.py",
     "fastapi/app/services/canvas/quick_qa.py",
     "fastapi/app/services/canvas/stock_enricher.py",
+    "fastapi/app/services/chart_storage.py",
     "fastapi/app/services/dev_db_sync.py",
     "fastapi/app/services/guardrail.py",
     "fastapi/app/services/market_calendar.py",
@@ -114,6 +120,7 @@
     "fastapi/app/services/portfolio_service.py",
     "fastapi/app/services/query_presets.py",
     "fastapi/app/services/stock_price_service.py",
+    "fastapi/app/services/stock_resolver.py",
     "fastapi/app/services/tutor_chart_generator.py",
     "fastapi/app/services/tutor_engine.py",
     "fastapi/requirements-dev.txt",
@@ -616,13 +623,20 @@
       "context": "/23/4de7d2eb07/51/context.md",
       "content_hash": "/23/4de7d2eb07/51/content_hash.txt",
       "prompt": "/23/4de7d2eb07/51/prompt.txt"
+    },
+    {
+      "metadata": "/23/4de7d2eb07/52/metadata.json",
+      "transcript": "/23/4de7d2eb07/52/full.jsonl",
+      "context": "/23/4de7d2eb07/52/context.md",
+      "content_hash": "/23/4de7d2eb07/52/content_hash.txt",
+      "prompt": "/23/4de7d2eb07/52/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 41650,
-    "cache_creation_tokens": 7995856,
-    "cache_read_tokens": 263220396,
-    "output_tokens": 973905,
-    "api_call_count": 3222
+    "input_tokens": 41732,
+    "cache_creation_tokens": 8101400,
+    "cache_read_tokens": 268863327,
+    "output_tokens": 982473,
+    "api_call_count": 3296
   }
 }

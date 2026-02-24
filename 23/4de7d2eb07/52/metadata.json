@@ -1,0 +1,44 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "234de7d2eb07",
+  "session_id": "9f93a57e-7d18-4ee2-bdec-490ffcf81bc8",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-24T12:00:50.650815176Z",
+  "branch": "prod-final",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "changes/dorae222.md",
+    "changes/ryejinn.md",
+    "docs/README.md",
+    "docs/getting-started/workflow.md",
+    "fastapi/app/api/routes/narrative.py",
+    "fastapi/app/api/routes/notification.py",
+    "fastapi/app/api/routes/portfolio.py",
+    "fastapi/app/api/routes/tutor.py",
+    "fastapi/app/api/routes/tutor_sessions.py",
+    "fastapi/app/api/routes/visualization.py",
+    "fastapi/app/main.py",
+    "fastapi/app/services/chart_storage.py",
+    "fastapi/app/services/guardrail.py",
+    "fastapi/app/services/stock_resolver.py",
+    "fastapi/app/services/tutor_engine.py",
+    "lxd/Makefile"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 82,
+    "cache_creation_tokens": 105544,
+    "cache_read_tokens": 5642931,
+    "output_tokens": 8568,
+    "api_call_count": 74
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-24T12:00:50.575810441Z",
+    "agent_lines": 197,
+    "human_added": 0,
+    "human_modified": 338,
+    "human_removed": 1750,
+    "total_committed": 535,
+    "agent_percentage": 36.822429906542055
+  }
+}
