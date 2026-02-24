@@ -3,7 +3,7 @@
   "checkpoint_id": "234de7d2eb07",
   "strategy": "manual-commit",
   "branch": "develop",
-  "checkpoints_count": 73,
+  "checkpoints_count": 69,
   "files_touched": [
     ".dockerignore",
     ".env.example",
@@ -62,6 +62,7 @@
     "docker-compose.staging.yml",
     "docs/README.md",
     "docs/getting-started/database-guide.md",
+    "docs/reference/git-workflow.md",
     "docs/team-guides/A_프론트엔드_손영진.md",
     "docs/team-guides/E_인프라_도형준.md",
     "fastapi/Dockerfile",
@@ -555,10 +556,10 @@
     }
   ],
   "token_usage": {
-    "input_tokens": 41219,
-    "cache_creation_tokens": 7277206,
-    "cache_read_tokens": 240225689,
-    "output_tokens": 845198,
-    "api_call_count": 2864
+    "input_tokens": 41222,
+    "cache_creation_tokens": 7284046,
+    "cache_read_tokens": 241210742,
+    "output_tokens": 856166,
+    "api_call_count": 2865
   }
 }

@@ -40,3 +40,35 @@ ssh 파일들을 반환해라.
 
 그렇게 진행하는 것이 나을 것 같다
 
+### Prompt 7
+
+ubuntu@dev-ryejinn:~/adelie-investment$ git pull origin develop
+
+remote: Enumerating objects: 7, done.
+remote: Counting objects: 100% (7/7), done.
+remote: Compressing objects: 100% (3/3), done.
+remote: Total 7 (delta 4), reused 7 (delta 4), pack-reused 0 (from 0)
+Unpacking objects: 100% (7/7), 1.06 KiB | 1.06 MiB/s, done.
+From https://github.com/404-NFYet/adelie-investment
+ * branch            develop    -> FETCH_HEAD
+   4298fa4..a68b6e2  develop    -> origin/develop
+Updating 2b3d7b9..a68b6e2
+er...
+
+### Prompt 8
+
+현재 github 브랜치 전략이 필요할 것 같다. develop을 dev-final/ 들의 상위 관리 브랜치로 만들지 새로운 브랜치를 만들지 필요할 것 같다.
+
+### Prompt 9
+
+팀원들과 같이 관리하는 것과 동시에 배포용 브랜치도 둬야 한다. 그리고 ci/cd 동작까지 연계되도록 설계해야 한다.
+
+### Prompt 10
+
+너가 적절하게 판단해주면 좋을 것 같다.
+AWS와 관련된 것은 제거할 예정이다. 그리고 make 파일들도 팀원들이 사용하기 쉽게 디벨롭해야될 것 같다.
+
+### Prompt 11
+
+[Request interrupted by user for tool use]
+

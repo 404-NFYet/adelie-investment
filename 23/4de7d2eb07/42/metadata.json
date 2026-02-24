@@ -3,41 +3,32 @@
   "checkpoint_id": "234de7d2eb07",
   "session_id": "4e879e82-9db8-46ef-bc78-947818e426de",
   "strategy": "manual-commit",
-  "created_at": "2026-02-24T06:19:39.719680191Z",
+  "created_at": "2026-02-24T07:41:48.583550401Z",
   "branch": "develop",
-  "checkpoints_count": 4,
+  "checkpoints_count": 0,
   "files_touched": [
-    "frontend/src/components/agent/AgentCanvasSections.jsx",
-    "frontend/src/components/tutor/ChatInput.jsx",
-    "frontend/src/components/tutor/MessageBubble.jsx",
-    "frontend/src/components/tutor/SessionSidebar.jsx",
-    "frontend/src/components/tutor/TutorModal.jsx",
-    "frontend/src/components/tutor/TutorPanel.jsx",
-    "frontend/src/contexts/TutorChatContext.jsx",
-    "frontend/src/contexts/TutorContext.jsx",
-    "frontend/src/contexts/TutorSessionContext.jsx",
-    "frontend/src/contexts/TutorUIContext.jsx",
-    "frontend/src/pages/TutorChat.jsx",
+    "docs/reference/git-workflow.md",
+    "lxd/Makefile",
     "lxd/inventory.md"
   ],
   "agent": "Claude Code",
   "transcript_identifier_at_start": "79860467-c910-47a8-ae14-701180480eed",
-  "checkpoint_transcript_start": 427,
-  "transcript_lines_at_start": 427,
+  "checkpoint_transcript_start": 632,
+  "transcript_lines_at_start": 632,
   "token_usage": {
-    "input_tokens": 31,
-    "cache_creation_tokens": 32610,
-    "cache_read_tokens": 2102613,
-    "output_tokens": 5970,
-    "api_call_count": 23
+    "input_tokens": 34,
+    "cache_creation_tokens": 39450,
+    "cache_read_tokens": 3087666,
+    "output_tokens": 16938,
+    "api_call_count": 24
   },
   "initial_attribution": {
-    "calculated_at": "2026-02-24T06:19:39.645923351Z",
-    "agent_lines": 0,
-    "human_added": 3371,
-    "human_modified": 2029,
+    "calculated_at": "2026-02-24T07:41:48.508202272Z",
+    "agent_lines": 252,
+    "human_added": 712,
+    "human_modified": 0,
     "human_removed": 0,
-    "total_committed": 3375,
-    "agent_percentage": 0
+    "total_committed": 964,
+    "agent_percentage": 26.141078838174277
   }
 }
