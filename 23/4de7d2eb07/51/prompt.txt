@@ -1,0 +1,192 @@
+Implement the following plan:
+
+# 데이터 싱크 + 스케줄러 로그 수정 + pipeline-branch-parser 반영
+
+## Context
+
+prod-final 브랜치 리셋 후 **datapipeline 코드는 전 환경 100% 동기화 완료**. 그러나:
+1. deploy-test → LXD 개발 서버로 **DB 콘텐츠 데이터를 가져오는 메커니즘이 없음** (sync_dev_data.sh 미구현)
+2. 스케줄러 로그가 네임스페이스 불일치로 **출력되지 않음** — 동작 여부 확인 불가
+3. 례진(ryejinn)이 `feature/pipeline-branch-parser`의 변경사항을 `dev-final/pipeline`에 반영 요청
+
+---
+
+## Part 1: deploy-test → LXD 데이터 동기화 스크립트
+
+### 수정 파일
+- `database/scripts/sync_dev_data.sh` — **신규**
+- `lxd/Makefile` — `sync-dev-data` 타겟 추가
+
+### 설계
+
+**흐름:**
+```
+호스트(dev-hj)
+ ├─ ssh deploy-test "docker exec adelie-postgres pg_dump ..."
+ │    → /tmp/adelie-content-dump-{timestamp}.sql
+ └─ for each LXD 서버:
+      lxc file push dump.sql → /tmp/
+      lxc exec → docker exec -i {pg} psql < /tmp/dump.sql
+```
+
+**콘텐츠 테이블 (13개)** — 사용자 데이터 제외:
+```
+# Tier 0: 참조
+stock_listings, market_daily_history, stock_daily_history, glossary, company_relations, broker_reports
+
+# Tier 1: 메인 콘텐츠
+daily_briefings, daily_narratives, historical_cases
+
+# Tier 2: 자식 (FK → Tier 1)
+briefing_stocks, narrative_scenarios, case_stock_relations, case_matches
+```
+
+**구현 포인트:**
+- `pg_dump --data-only --no-owner --disable-triggers --table=X` (테이블별)
+- 복원 전: `SET session_replication_role = 'replica'` → 단일 TRUNCATE (13개 한번에, CASCADE) → COPY → `SET session_replication_role = 'origin'`
+- 시퀀스 리셋: `SELECT setval(pg_get_serial_sequence(t,'id'), COALESCE(MAX(id),1))`
+- postgres 컨테이너 자동탐지: `docker ps --format '{{.Names}}' | grep postgres | head -1`
+- 파일 전송: `lxc file push` (SSH 터널 불필요)
+
+**lxd/Makefile 추가:**
+```makefile
+sync-dev-data:  ## deploy-test → LXD 콘텐츠 동기화
+ifdef SERVER
+	bash $(ROOT)/database/scripts/sync_dev_data.sh $(SERVER)
+else
+	bash $(ROOT)/database/scripts/sync_dev_data.sh
+endif
+```
+
+**사용법:**
+```bash
+make -f lxd/Makefile sync-dev-data                    # 전체 5대
+make -f lxd/Makefile sync-dev-data SERVER=dev-ryejinn  # 단일
+```
+
+---
+
+## Part 2: 스케줄러 로그 네임스페이스 수정
+
+### 수정 파일
+- `fastapi/app/core/scheduler.py` (1줄)
+
+### 문제
+- `scheduler.py`: `logging.getLogger("narrative_api.scheduler")`
+- `logging.py`: `setup_logging()`이 `"narrative"` 루트 로거에만 핸들러 등록
+- `"narrative_api"` ≠ `"narrative"` → 스케줄러 로그 출력 안 됨
+
+### 수정
+```python
+# 변경 전 (line 11)
+logger = logging.getLogger("narrative_api.scheduler")
+
+# 변경 후
+logger = logging.getLogger("narrative.scheduler")
+```
+
+이것으로 스케줄러 시작/실행/완료 로그가 정상 출력됨.
+
+---
+
+## Part 3: feature/pipeline-branch-parser → dev-final/pipeline 반영
+
+### 브랜치 분석 결과
+- `feature/pipeline-branch-parser`: 1커밋 ahead (`7dccb3d` — narrative formatting, label cleanup, line-break)
+- **핵심 변경** (datapipeline 관련만):
+  - `datapipeline/nodes/interface2.py` (+70줄): `_normalize_validated_interface2()` fallback 추가 — LLM 불완전 출력 보정
+  - `datapipeline/nodes/interface3.py` (+232줄): **텍스트 포맷팅 전면 재설계** — jargon 치환 → 문장 단위 압축/중복 제거/마크다운 정리
+  - `datapipeline/tests/test_interface3_story_spine.py` (+46줄): 신규 테스트
+  - `datapipeline/prompts/templates/` 5개 파일: 프롬프트 가이드 보강
+- **⚠️ 주의할 변경** (prod-final 패치와 충돌):
+  - `datapipeline/config.py`: Redis URL 제거 (prod-final에서 추가한 것)
+  - `datapipeline/graph.py`: Redis 체크포인터 제거 (prod-final에서 추가한 것)
+  - `datapipeline/db/writer.py`: URL 변환 로직 복원 (prod-final에서 수정한 것)
+- **범위 외 변경** (frontend, chatbot 등): 반영하지 않음
+
+### 전략: cherry-pick 후 충돌 해결
+
+`7dccb3d` 전체를 cherry-pick하되, **datapipeline 관련 파일만 반영**하고 나머지(frontend, chatbot 등)는 제외. Redis 체크포인터/config 변경은 prod-final 버전 유지.
+
+```bash
+git checkout dev-final/pipeline
+git cherry-pick 7dccb3d --no-commit
+
+# 1) datapipeline 외 변경 제거 (frontend, chatbot, fastapi 등)
+git checkout HEAD -- frontend/ chatbot/ fastapi/ docker-compose.*.yml database/
+
+# 2) datapipeline 충돌 해결: config.py, graph.py, writer.py는 prod-final 유지
+git checkout HEAD -- datapipeline/config.py datapipeline/graph.py datapipeline/db/writer.py
+
+# 3) 반영할 것: interface2, interface3, tests, prompts
+git add datapipeline/nodes/interface2.py datapipeline/nodes/interface3.py \
+        datapipeline/tests/test_interface3_story_spine.py \
+        datapipeline/prompts/templates/
+
+git commit -m "feat(pipeline): interface2/3 텍스트 포맷팅 개선 (pipeline-branch-parser 반영)"
+git push origin dev-final/pipeline
+```
+
+**반영되는 것:**
+- interface2.py: LLM 불완전 출력 보정 함수
+- interface3.py: 문장 단위 텍스트 압축, 중복 제거, 마크다운 정리
+- 프롬프트 템플릿 보강
+- 테스트 파일
+
+**반영하지 않는 것:**
+- Redis 체크포인터 제거 (prod-final 유지)
+- config.py REDIS_URL 제거 (prod-final 유지)
+- writer.py 변경 복원 (prod-final 유지)
+- frontend/chatbot/fastapi 변경 (범위 외)
+
+---
+
+## 실행 순서
+
+1. **Part 2**: scheduler.py 로그 네임스페이스 수정 (prod-final에 커밋)
+2. **Part 1**: sync_dev_data.sh + lxd/Makefile 추가 (prod-final에 커밋)
+3. **Part 3**: pipeline-branch-parser cherry-pick → dev-final/pipeline
+4. **배포**: deploy-test에 prod-final pull + 서비스 재시작
+5. **데이터 싱크**: `make -f lxd/Makefile sync-dev-data` 실행
+6. **LXD 코드 싱크**: dev-final/pipeline 변경을 ryejinn 서버에 반영
+
+---
+
+## 검증
+
+```bash
+# 1. 스케줄러 로그 출력 확인 (deploy-test 재시작 후)
+ssh deploy-test "docker logs adelie-backend-api 2>&1 | grep scheduler"
+# 기대: "스케줄러 시작: 모닝(09:00 KST) + 데일리(16:10 KST), Mon-Fri"
+
+# 2. 데이터 싱크 (단일 서버 테스트)
+make -f lxd/Makefile sync-dev-data SERVER=dev-ryejinn
+
+# 3. 싱크 결과 비교
+ssh deploy-test "docker exec adelie-postgres psql -U narative -d narrative_invest -c \
+  'SELECT briefing_date, COUNT(*) FROM daily_briefings GROUP BY briefing_date ORDER BY briefing_date DESC LIMIT 5;'"
+lxc exec dev-ryejinn -- bash -c "
+  PG=\$(docker ps --format '{{.Names}}' | grep postgres | head -1)
+  docker exec \$PG psql -U narative -d narrative_invest -c \
+    'SELECT briefing_date, COUNT(*) FROM daily_briefings GROUP BY briefing_date ORDER BY briefing_date DESC LIMIT 5;'
+"
+
+# 4. pipeline-branch-parser 반영 확인
+git log --oneline -3 origin/dev-final/pipeline
+# 기대: interface2/3 텍스트 포맷팅 커밋 포함
+
+# 5. 전체 5대 싱크
+make -f lxd/Makefile sync-dev-data
+```
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+남은 작업들을 진행하고 최종 단에 참조 문서들과 md 파일들을 모두 업데이트해야 한다.
+그리고 모든 배포서버와 LXD는 례진님 커밋 사항 빼고는 사실상 브랜치만 다를 뿐 다 같아야 한다.
+
+---
+
+[Request interrupted by user for tool use]

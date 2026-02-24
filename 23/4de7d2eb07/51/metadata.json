@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "234de7d2eb07",
+  "session_id": "234afbe8-d443-4054-8d8a-af17d58b3be5",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-24T11:18:58.590094725Z",
+  "branch": "prod-final",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "database/scripts/sync_dev_data.sh",
+    "fastapi/app/core/auth.py",
+    "fastapi/app/core/scheduler.py",
+    "lxd/Makefile"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 53,
+    "cache_creation_tokens": 65728,
+    "cache_read_tokens": 2500821,
+    "output_tokens": 11363,
+    "api_call_count": 47
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-24T11:18:58.55019806Z",
+    "agent_lines": 2,
+    "human_added": 0,
+    "human_modified": 12,
+    "human_removed": 167,
+    "total_committed": 14,
+    "agent_percentage": 14.285714285714285
+  }
+}
