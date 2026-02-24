@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { DEFAULT_HOME_ICON_KEY, getHomeIconSrc } from '../../constants/homeIconCatalog';
+import { trackEvent, TRACK_EVENTS } from '../../utils/analytics';
 
 function ProgressBar({ current, total }) {
   const ratio = total > 0 ? Math.round((current / total) * 100) : 0;
@@ -21,7 +22,7 @@ function OptionCard({ option, optionIndex, isSelected, onSelect }) {
     <button
       type="button"
       onClick={() => onSelect(optionIndex)}
-      className={`flex w-full items-center rounded-2xl p-3 text-left transition active:scale-[0.98] ${
+      className={`flex w-full items-start rounded-2xl p-3 text-left transition active:scale-[0.98] ${
         isSelected
           ? 'bg-[#fff4ed] ring-1 ring-inset ring-primary'
           : 'bg-gray-50 hover:bg-gray-100'
@@ -67,6 +68,8 @@ export default function DailyQuizModal({
     setResult(null);
     setIsSubmitting(false);
     setSubmitError('');
+    // 퀴즈 시작 트래킹
+    trackEvent(TRACK_EVENTS.QUIZ_START, { quiz_date: new Date().toISOString().slice(0, 10) });
   }, [open]);
 
   const currentQuestion = questions[step];
@@ -88,6 +91,12 @@ export default function DailyQuizModal({
       setSubmitError('');
       const submitResult = await onSubmitQuiz(answers);
       setResult(submitResult);
+      // 퀴즈 완료 트래킹
+      trackEvent(TRACK_EVENTS.QUIZ_COMPLETE, {
+        quiz_date: new Date().toISOString().slice(0, 10),
+        score: submitResult?.score ?? 0,
+        total: submitResult?.total ?? questions.length,
+      });
     } catch (error) {
       setSubmitError(error?.message || '퀴즈 제출에 실패했습니다. 잠시 후 다시 시도해주세요.');
     } finally {
@@ -110,7 +119,7 @@ export default function DailyQuizModal({
 
   return (
     <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/40 px-4 pb-0 pt-10">
-      <section className="w-full max-w-mobile rounded-t-[30px] bg-[#f9fafb] px-4 pb-6 pt-5 shadow-2xl max-h-[80dvh] overflow-y-auto">
+      <section className="w-full max-w-mobile rounded-t-[30px] bg-[#f9fafb] px-4 pb-6 pt-5 shadow-2xl max-h-[92dvh] overflow-y-auto">
         <div className="sticky top-0 z-10 bg-[#f9fafb] pb-3 mb-1 flex items-center justify-between">
           <div>
             <span className="inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary">오늘의 미션</span>
@@ -127,7 +136,7 @@ export default function DailyQuizModal({
         </div>
 
         {!result ? (
-          <div className="space-y-3">
+          <div className="space-y-3 pb-20">
             <ProgressBar current={Math.min(step + 1, questions.length)} total={questions.length} />
 
             <article className="mb-3 mt-1 px-1">

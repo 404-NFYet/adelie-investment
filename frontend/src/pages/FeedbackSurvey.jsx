@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { feedbackApi } from '../api/feedback';
 import AppHeader from '../components/layout/AppHeader';
+import { trackEvent, TRACK_EVENTS } from '../utils/analytics';
 
 const RATING_CATEGORIES = [
   { key: 'ui_rating', label: 'UI/디자인', description: '화면 구성과 디자인이 사용하기 편한가요?' },
@@ -83,6 +84,9 @@ export default function FeedbackSurvey() {
         comment: comment || null,
         screenshot_url: screenshotUrl,
       });
+
+      // 피드백 제출 트래킹
+      trackEvent(TRACK_EVENTS.FEEDBACK_SUBMIT, { content_type: 'survey' });
 
       setSubmitted(true);
       setTimeout(() => navigate('/profile'), 2000);

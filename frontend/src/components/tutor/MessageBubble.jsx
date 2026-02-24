@@ -8,12 +8,14 @@ import ReactMarkdown from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
 import remarkMath from 'remark-math';
+import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
 import PenguinLoading from '../common/PenguinLoading';
 import ReactionButtons from '../common/ReactionButtons';
 import ResponsivePlotly from '../charts/ResponsivePlotly';
 import { normalizeLayout } from '../../utils/plotly/normalizeLayout';
 import { normalizeTraces } from '../../utils/plotly/normalizeTraces';
-import { trackEvent } from '../../utils/analytics';
+import { trackEvent, TRACK_EVENTS } from '../../utils/analytics';
 
 // 출처 분류 체계
 const SOURCE_LABELS = {
@@ -102,20 +104,16 @@ function extractPlotlyDataFromHtml(html) {
       /Plotly\.(?:newPlot|react)\s*\(\s*['"][^'"]*['"]\s*,\s*([\s\S]+?)\s*,\s*(\{[\s\S]+?\})\s*[,)]/
     );
     if (plotCallMatch) {
-      // eslint-disable-next-line no-new-func
-      const data = new Function(`return ${plotCallMatch[1]}`)();
-      // eslint-disable-next-line no-new-func
-      const layout = new Function(`return ${plotCallMatch[2]}`)();
+      const data = JSON.parse(plotCallMatch[1]);
+      const layout = JSON.parse(plotCallMatch[2]);
       if (Array.isArray(data)) return { data, layout: layout || {} };
     }
     // 패턴 2: var data = [...]; var layout = {...};
     const dataMatch = html.match(/(?:var|let|const)\s+data\s*=\s*([\s\S]+?);\s*(?:var|let|const)\s+layout/);
     const layoutMatch = html.match(/(?:var|let|const)\s+layout\s*=\s*([\s\S]+?);\s*(?:Plotly|<\/script)/);
     if (dataMatch && layoutMatch) {
-      // eslint-disable-next-line no-new-func
-      const data = new Function(`return ${dataMatch[1].trim()}`)();
-      // eslint-disable-next-line no-new-func
-      const layout = new Function(`return ${layoutMatch[1].trim()}`)();
+      const data = JSON.parse(dataMatch[1].trim());
+      const layout = JSON.parse(layoutMatch[1].trim());
       if (Array.isArray(data)) return { data, layout: layout || {} };
     }
   } catch (e) {
@@ -185,7 +183,7 @@ export function TypingIndicator() {
   );
 }
 
-export default React.memo(function Message({ message }) {
+export default React.memo(function Message({ message, onActionClick }) {
   const markdownContent = useMemo(
     () => normalizeMathDelimiters(message.content),
     [message.content],
@@ -214,7 +212,18 @@ export default React.memo(function Message({ message }) {
         <div className={`px-4 py-3 rounded-2xl rounded-tl-md ${message.isError ? 'bg-error-light text-error border border-error/20' : 'bg-surface border border-border'}`}>
           {message.isError ? <p className="text-sm">{message.content}</p> : (
             <div className="text-sm leading-relaxed text-text-primary prose prose-sm prose-headings:text-text-primary prose-strong:text-text-primary prose-code:text-primary prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs max-w-none dark:prose-invert">
-              <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeRaw, rehypeKatex]}>
+              <ReactMarkdown
+                remarkPlugins={[remarkMath, remarkGfm, remarkBreaks]}
+                rehypePlugins={[rehypeRaw, rehypeKatex]}
+                components={{
+                  a: ({ href, children, ...props }) => (
+                    <a href={href} target="_blank" rel="noopener noreferrer"
+                       className="text-primary underline underline-offset-2" {...props}>
+                      {children}
+                    </a>
+                  ),
+                }}
+              >
                 {markdownContent}
               </ReactMarkdown>
             </div>
@@ -225,6 +234,29 @@ export default React.memo(function Message({ message }) {
         {!message.isStreaming && message.id && (
           <div className="mt-1">
             <ReactionButtons contentType="tutor_message" contentId={message.id} />
+          </div>
+        )}
+        {/* 후속 액션 버튼 */}
+        {!message.isStreaming && message.actions && message.actions.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {message.actions.map((action, idx) => (
+              <button
+                key={idx}
+                onClick={() => {
+                  trackEvent(TRACK_EVENTS.ACTION_BUTTON_CLICK, { action_id: action.id, action_type: action.type });
+                  onActionClick?.(action);
+                }}
+                className={`rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors active:opacity-80 ${
+                  action.type === 'tool' && action.risk === 'high'
+                    ? 'bg-[#FFF2E8] text-[#FF6B00] border border-[#FF6B00]/20'
+                    : action.type === 'prompt'
+                    ? 'bg-[#F2F4F6] text-[#4E5968]'
+                    : 'bg-[#EBF5FF] text-[#1D6FDE]'
+                }`}
+              >
+                {action.label}
+              </button>
+            ))}
           </div>
         )}
       </div>

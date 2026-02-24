@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { keywordsApi, learningApi } from '../api';
+import { API_BASE_URL, fetchJson } from '../api/client';
 import { DEFAULT_HOME_ICON_KEY, getHomeIconSrc } from '../constants/homeIconCatalog';
 import ActivityDayDashboard from '../components/calendar/ActivityDayDashboard';
+import ReviewCard from '../components/domain/ReviewCard';
 import DashboardHeader from '../components/layout/DashboardHeader';
 import MonthlyActivityCalendar from '../components/calendar/MonthlyActivityCalendar';
 import DailyQuizMissionCard from '../components/quiz/DailyQuizMissionCard';
@@ -71,6 +73,10 @@ export default function Education() {
   const [isLoadingReviews, setIsLoadingReviews] = useState(false);
   const [completingReviewId, setCompletingReviewId] = useState(null);
 
+  // 핀 고정된 튜터 세션 (복습 카드용)
+  const [pinnedSessions, setPinnedSessions] = useState([]);
+  const [isLoadingPinned, setIsLoadingPinned] = useState(false);
+
   useEffect(() => {
     const fetchKeywords = async () => {
       try {
@@ -127,6 +133,25 @@ export default function Education() {
     };
 
     fetchReviewCards();
+  }, []);
+
+  // 핀 고정된 튜터 세션 조회 (복습 카드)
+  useEffect(() => {
+    const fetchPinnedSessions = async () => {
+      try {
+        setIsLoadingPinned(true);
+        const sessionList = await fetchJson(`${API_BASE_URL}/api/v1/tutor/sessions?limit=50`);
+        const pinned = (Array.isArray(sessionList) ? sessionList : [])
+          .filter((s) => s.is_pinned && s.review_summary);
+        setPinnedSessions(pinned);
+      } catch {
+        setPinnedSessions([]);
+      } finally {
+        setIsLoadingPinned(false);
+      }
+    };
+
+    fetchPinnedSessions();
   }, []);
 
   useEffect(() => {
@@ -230,6 +255,27 @@ export default function Education() {
     }
   };
 
+  // 핀 고정 세션 → 에이전트에서 다시 대화
+  const handleResumeChat = (session) => {
+    navigate('/agent', {
+      state: {
+        mode: 'education',
+        sessionId: session.id,
+        resetConversation: false,
+      },
+    });
+  };
+
+  // 핀 고정 세션 → 전체 메시지 보기
+  const handleViewFullSession = (session) => {
+    navigate('/agent/history', {
+      state: {
+        mode: 'education',
+        highlightSessionId: session.id,
+      },
+    });
+  };
+
   const openReviewCard = (card) => {
     if (card.contentType === 'case') {
       navigate(`/narrative/${card.contentId}`);
@@ -275,7 +321,7 @@ export default function Education() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f9fafb] pb-[calc(var(--bottom-nav-h,68px)+var(--agent-dock-h,104px)+16px)]">
+    <div className="min-h-screen bg-[#f9fafb] pb-[calc(var(--safe-bottom-offset,172px)+16px)]">
       <DashboardHeader />
 
       <main className="container space-y-7 py-5">
@@ -315,6 +361,36 @@ export default function Education() {
           />
         </section>
 
+        {/* 핀 고정 복습 카드 (AI 요약 포함) */}
+        {(isLoadingPinned || pinnedSessions.length > 0) && (
+          <section>
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-[20px] font-bold leading-[1.4] tracking-[-0.02em] text-[#101828]">AI 복습 카드</h2>
+              <span className="text-sm font-medium text-[#99a1af]">고정된 대화 요약</span>
+            </div>
+
+            {isLoadingPinned && (
+              <div className="rounded-[20px] border border-border bg-white px-6 py-8 shadow-card">
+                <p className="text-sm text-text-secondary">복습 카드를 불러오는 중입니다...</p>
+              </div>
+            )}
+
+            {!isLoadingPinned && pinnedSessions.length > 0 && (
+              <div className="space-y-3">
+                {pinnedSessions.map((session) => (
+                  <ReviewCard
+                    key={session.id}
+                    session={session}
+                    onResumeChat={handleResumeChat}
+                    onViewFull={handleViewFullSession}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* 학습 진행 복습 카드 */}
         <section>
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-[20px] font-bold leading-[1.4] tracking-[-0.02em] text-[#101828]">복습 카드</h2>
@@ -355,9 +431,6 @@ export default function Education() {
                     />
                     <div className="min-w-0">
                       <p className="line-limit-1 text-[15px] font-bold text-[#101828]">{card.title}</p>
-                      <p className="mt-1 text-[12px] text-[#6a7282]">
-                        {card.snippet || `${card.progressPercent}% 진행 중`}
-                      </p>
                     </div>
                   </button>
 
@@ -382,69 +455,27 @@ export default function Education() {
             </div>
           )}
         </section>
-
-        <section>
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-[20px] font-bold leading-[1.4] tracking-[-0.02em] text-[#101828]">오늘의 교육 브리핑</h2>
+        <section className="rounded-[20px] border border-border bg-white px-6 py-5 shadow-card">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h2 className="text-[18px] font-bold leading-[1.4] tracking-[-0.02em] text-[#101828]">에이전트 학습 도우미</h2>
+              <p className="mt-1 text-sm text-[#6a7282]">저장된 복습 카드가 없다면, 오늘 학습 내용을 바로 질문해보세요.</p>
+            </div>
             <button
               type="button"
-              onClick={() => navigate('/history')}
-              className="text-sm font-medium text-[#99a1af]"
+              onClick={() => navigate('/agent', {
+                state: {
+                  mode: 'education',
+                  initialPrompt: '오늘 학습 기준으로 핵심 개념만 정리해줘',
+                  contextPayload: educationContextPayload,
+                  resetConversation: true,
+                },
+              })}
+              className="h-[36px] rounded-[10px] bg-primary px-4 text-sm font-semibold text-white"
             >
-              지난 브리핑 ›
+              아델리와 복습
             </button>
           </div>
-
-          {isLoading && (
-            <div className="rounded-[20px] border border-border bg-white px-6 py-10 shadow-card">
-              <p className="text-sm text-text-secondary">키워드를 불러오는 중입니다...</p>
-            </div>
-          )}
-
-          {!isLoading && error && (
-            <div className="rounded-[20px] border border-border bg-white px-6 py-10 shadow-card">
-              <p className="text-sm text-red-500">{error}</p>
-            </div>
-          )}
-
-          {!isLoading && !error && visibleCards.length === 0 && (
-            <div className="rounded-[20px] border border-border bg-white px-6 py-10 shadow-card">
-              <p className="text-sm text-text-secondary">표시할 교육 카드가 없습니다.</p>
-            </div>
-          )}
-
-          {!isLoading && !error && visibleCards.length > 0 && (
-            <div className="space-y-4">
-              {visibleCards.map((keyword, index) => (
-                <article
-                  key={keyword.id || index}
-                  className="flex items-center justify-between gap-4 rounded-[20px] border border-border bg-white px-6 py-5 shadow-card"
-                >
-                  <div className="min-w-0">
-                    <h3 className="line-limit-2 text-[16px] font-bold leading-[1.35] text-black break-keep">
-                      {keyword.title}
-                    </h3>
-                    <button
-                      type="button"
-                      className="mt-4 h-[35px] rounded-[10px] bg-primary px-5 text-sm font-semibold text-white disabled:opacity-40"
-                      disabled={!keyword.case_id}
-                      onClick={() => navigate(`/narrative/${keyword.case_id}`, { state: { keyword } })}
-                    >
-                      기사 읽으러 가기
-                    </button>
-                  </div>
-                  <img
-                    src={getHomeIconSrc(keyword.icon_key)}
-                    alt={`${keyword.title || '키워드'} 아이콘`}
-                    onError={(event) => {
-                      event.currentTarget.src = getHomeIconSrc(DEFAULT_HOME_ICON_KEY);
-                    }}
-                    className="h-20 w-20 flex-shrink-0 object-contain"
-                  />
-                </article>
-              ))}
-            </div>
-          )}
         </section>
       </main>
 

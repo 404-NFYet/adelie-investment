@@ -2,12 +2,15 @@
  * TradeModal.jsx - Buy/sell bottom sheet
  * 내러티브 액션 스텝에서 종목 매수/매도를 위한 바텀시트 모달
  * + 매매 전 확인 단계 + 매도 보유 수량 검증
+ * + 주문 유형(시장가/지정가), 포지션(일반/공매도), 레버리지
  */
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { portfolioApi } from '../../api';
 import { formatKRW } from '../../utils/formatNumber';
 import { usePortfolio } from '../../contexts/PortfolioContext';
+
+const LEVERAGE_OPTIONS = [1, 2, 3];
 
 export default function TradeModal({ isOpen, onClose, stock, tradeType, caseId }) {
   const { executeTrade, portfolio } = usePortfolio();
@@ -19,6 +22,14 @@ export default function TradeModal({ isOpen, onClose, stock, tradeType, caseId }
   const [marketClosed, setMarketClosed] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
+  // 주문 유형: 시장가 / 지정가
+  const [orderKind, setOrderKind] = useState('market');
+  const [targetPrice, setTargetPrice] = useState('');
+  // 포지션: 일반(long) / 공매도(short)
+  const [positionSide, setPositionSide] = useState('long');
+  // 레버리지
+  const [leverage, setLeverage] = useState(1);
+
   useEffect(() => {
     if (isOpen && stock) {
       setQuantityInput('1');
@@ -26,6 +37,10 @@ export default function TradeModal({ isOpen, onClose, stock, tradeType, caseId }
       setSuccess(null);
       setMarketClosed(false);
       setShowConfirm(false);
+      setOrderKind('market');
+      setTargetPrice('');
+      setPositionSide('long');
+      setLeverage(1);
       Promise.all([
         portfolioApi.getStockPrice(stock.stock_code).catch(() => null),
         portfolioApi.getMarketStatus().catch(() => null),
@@ -39,7 +54,9 @@ export default function TradeModal({ isOpen, onClose, stock, tradeType, caseId }
   const parsedQuantity = Number.parseInt(quantityInput, 10);
   const quantity = Number.isFinite(parsedQuantity) ? parsedQuantity : 0;
   const hasValidQuantity = quantity >= 1;
-  const totalAmount = price && hasValidQuantity ? price * quantity : 0;
+  // 지정가 시 targetPrice 사용, 시장가 시 현재가 사용
+  const effectivePrice = orderKind === 'limit' && Number(targetPrice) > 0 ? Number(targetPrice) : price;
+  const totalAmount = effectivePrice && hasValidQuantity ? effectivePrice * quantity : 0;
 
   // 보유 종목 정보
   const holding = portfolio?.holdings?.find(h => h.stock_code === stock?.stock_code);
@@ -60,8 +77,10 @@ export default function TradeModal({ isOpen, onClose, stock, tradeType, caseId }
   };
 
   const sellError = getSellError();
+  const isLimitPriceInvalid = orderKind === 'limit' && (!targetPrice || Number(targetPrice) <= 0);
   const isDisabled = isSubmitting || !price || marketClosed
     || !hasValidQuantity
+    || isLimitPriceInvalid
     || (tradeType === 'buy' && !canAffordBuy)
     || (tradeType === 'sell' && !!sellError);
 
@@ -78,16 +97,26 @@ export default function TradeModal({ isOpen, onClose, stock, tradeType, caseId }
     setIsSubmitting(true);
     setError(null);
     try {
-      await executeTrade({
+      const orderPayload = {
         stock_code: stock.stock_code,
         stock_name: stock.stock_name,
         trade_type: tradeType,
         quantity,
+        order_kind: orderKind,
+        ...(orderKind === 'limit' && { target_price: Number(targetPrice) }),
+        ...(positionSide === 'short' && { position_side: 'short' }),
+        ...(leverage > 1 && { leverage }),
         trade_reason: caseId ? `narrative briefing (case: ${caseId})` : null,
         case_id: caseId ? Number(caseId) : null,
-      });
-      setSuccess(true);
-      setTimeout(() => { onClose(); setSuccess(null); }, 1200);
+      };
+      const result = await executeTrade(orderPayload);
+      if (result?.order_status === 'pending') {
+        setSuccess('pending');
+        setTimeout(() => { onClose(); setSuccess(null); }, 2500);
+      } else {
+        setSuccess(true);
+        setTimeout(() => { onClose(); setSuccess(null); }, 1200);
+      }
     } catch (err) {
       setError(err?.detail || err?.message || '거래 실패');
       setShowConfirm(false);
@@ -131,7 +160,12 @@ export default function TradeModal({ isOpen, onClose, stock, tradeType, caseId }
                   <span className="text-text-secondary">유형</span>
                   <span className={`font-bold ${tradeType === 'buy' ? 'text-red-500' : 'text-blue-500'}`}>
                     {tradeType === 'buy' ? '매수' : '매도'}
+                    {positionSide === 'short' && <span className="ml-1 text-amber-500">(공매도)</span>}
                   </span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-text-secondary">주문 방식</span>
+                  <span className="font-medium">{orderKind === 'market' ? '시장가' : '지정가'}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-text-secondary">수량</span>
@@ -139,8 +173,16 @@ export default function TradeModal({ isOpen, onClose, stock, tradeType, caseId }
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-text-secondary">단가</span>
-                  <span className="font-medium">{formatKRW(price)}</span>
+                  <span className="font-medium">
+                    {orderKind === 'limit' ? formatKRW(Number(targetPrice)) : formatKRW(price)}
+                  </span>
                 </div>
+                {leverage > 1 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-text-secondary">레버리지</span>
+                    <span className="font-medium text-amber-500">{leverage}x</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-sm pt-2 border-t border-border">
                   <span className="text-text-secondary font-medium">총 금액</span>
                   <span className="font-bold text-base">{formatKRW(totalAmount)}</span>
@@ -148,7 +190,10 @@ export default function TradeModal({ isOpen, onClose, stock, tradeType, caseId }
               </div>
 
               {error && <p className="text-xs text-error mb-3">{error}</p>}
-              {success && <p className="text-xs text-green-500 mb-3 font-semibold">거래 완료!</p>}
+              {success === 'pending' && (
+                <p className="text-xs text-amber-500 mb-3 font-semibold">주문 접수 완료! 24시간 내 체결되지 않으면 자동 취소됩니다.</p>
+              )}
+              {success === true && <p className="text-xs text-green-500 mb-3 font-semibold">거래 완료!</p>}
 
               <div className="flex gap-3">
                 <button
@@ -187,6 +232,113 @@ export default function TradeModal({ isOpen, onClose, stock, tradeType, caseId }
                 <p className="text-xl font-bold">
                   {price ? formatKRW(price) : '로딩 중...'}
                 </p>
+              </div>
+
+              {/* 주문 방식: 시장가 / 지정가 */}
+              <div className="mb-4">
+                <label className="text-xs text-text-secondary mb-2 block">주문 방식</label>
+                <div className="flex rounded-xl overflow-hidden border border-border">
+                  <button
+                    type="button"
+                    onClick={() => { setOrderKind('market'); setTargetPrice(''); }}
+                    className={`flex-1 py-2 text-sm font-medium transition-colors ${
+                      orderKind === 'market'
+                        ? 'bg-primary text-white'
+                        : 'bg-surface text-text-secondary'
+                    }`}
+                  >
+                    시장가
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOrderKind('limit')}
+                    className={`flex-1 py-2 text-sm font-medium transition-colors ${
+                      orderKind === 'limit'
+                        ? 'bg-primary text-white'
+                        : 'bg-surface text-text-secondary'
+                    }`}
+                  >
+                    지정가
+                  </button>
+                </div>
+              </div>
+
+              {/* 지정가 입력 */}
+              {orderKind === 'limit' && (
+                <div className="mb-4">
+                  <label htmlFor="target-price" className="text-xs text-text-secondary mb-2 block">
+                    지정 가격
+                  </label>
+                  <input
+                    id="target-price"
+                    type="number"
+                    value={targetPrice}
+                    onChange={(e) => setTargetPrice(e.target.value)}
+                    placeholder="희망 가격 입력"
+                    className="w-full text-center text-lg font-bold bg-surface border border-border rounded-xl py-2 placeholder:text-text-muted"
+                    min="1"
+                  />
+                  <p className="text-[11px] text-text-muted mt-1.5">
+                    체결되지 않을 수 있으며, 24시간 후 자동 취소됩니다.
+                  </p>
+                </div>
+              )}
+
+              {/* 포지션: 일반 / 공매도 */}
+              <div className="mb-4">
+                <label className="text-xs text-text-secondary mb-2 block">포지션</label>
+                <div className="flex rounded-xl overflow-hidden border border-border">
+                  <button
+                    type="button"
+                    onClick={() => setPositionSide('long')}
+                    className={`flex-1 py-2 text-sm font-medium transition-colors ${
+                      positionSide === 'long'
+                        ? 'bg-primary text-white'
+                        : 'bg-surface text-text-secondary'
+                    }`}
+                  >
+                    일반
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPositionSide('short')}
+                    className={`flex-1 py-2 text-sm font-medium transition-colors ${
+                      positionSide === 'short'
+                        ? 'bg-amber-500 text-white'
+                        : 'bg-surface text-text-secondary'
+                    }`}
+                  >
+                    공매도
+                  </button>
+                </div>
+              </div>
+
+              {/* 레버리지 */}
+              <div className="mb-4">
+                <label className="text-xs text-text-secondary mb-2 block">레버리지</label>
+                <div className="flex gap-2">
+                  {LEVERAGE_OPTIONS.map((lev) => (
+                    <button
+                      key={lev}
+                      type="button"
+                      onClick={() => setLeverage(lev)}
+                      className={`flex-1 py-2 rounded-xl text-sm font-bold transition-colors border ${
+                        leverage === lev
+                          ? lev === 1
+                            ? 'bg-primary text-white border-primary'
+                            : 'bg-amber-500 text-white border-amber-500'
+                          : 'bg-surface text-text-secondary border-border'
+                      }`}
+                    >
+                      {lev}x
+                    </button>
+                  ))}
+                </div>
+                {leverage > 1 && (
+                  <p className="text-xs text-amber-500 mt-1">
+                    레버리지 {leverage}x 적용 시 손익이 {leverage}배 확대됩니다.
+                  </p>
+                )}
               </div>
 
               {/* Quantity input */}
@@ -259,7 +411,10 @@ export default function TradeModal({ isOpen, onClose, stock, tradeType, caseId }
 
               {/* Error / Success */}
               {error && <p className="text-xs text-error mb-3">{error}</p>}
-              {success && <p className="text-xs text-green-500 mb-3 font-semibold">거래 완료!</p>}
+              {success === 'pending' && (
+                <p className="text-xs text-amber-500 mb-3 font-semibold">주문 접수! 24시간 내 미체결 시 자동 취소.</p>
+              )}
+              {success === true && <p className="text-xs text-green-500 mb-3 font-semibold">거래 완료!</p>}
 
               {/* Submit */}
               <button

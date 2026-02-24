@@ -3,6 +3,18 @@
  * 데모 기간 중 UX 개선 데이터 확보
  */
 
+// 이벤트 타입 상수
+export const TRACK_EVENTS = {
+  TUTOR_ASK: 'tutor_ask',
+  TUTOR_SESSION_CREATE: 'tutor_session_create',
+  TRADE_EXECUTE: 'trade_execute',
+  QUIZ_START: 'quiz_start',
+  QUIZ_COMPLETE: 'quiz_complete',
+  SEARCH_QUERY: 'search_query',
+  FEEDBACK_SUBMIT: 'feedback_submit',
+  ACTION_BUTTON_CLICK: 'action_button_click',
+};
+
 let eventQueue = [];
 let flushTimer = null;
 const BATCH_SIZE = 10;

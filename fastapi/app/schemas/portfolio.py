@@ -101,6 +101,7 @@ class TradeResponse(BaseModel):
     total_amount: float
     remaining_quantity: int = 0
     trade_reason: Optional[str] = None
+    expires_at: Optional[datetime] = None
     traded_at: datetime
     remaining_cash: int
 
