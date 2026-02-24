@@ -11,7 +11,11 @@ from alembic import context
 
 # Add the fastapi directory to Python path
 _project_root = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(_project_root / "fastapi"))
+_fastapi_dir = _project_root / "fastapi"
+if _fastapi_dir.exists():
+    sys.path.insert(0, str(_fastapi_dir))        # 로컬: /project/fastapi
+else:
+    sys.path.insert(0, str(_project_root))        # Docker: /app (app/ 모듈 직접 접근)
 
 # Load environment variables
 from dotenv import load_dotenv

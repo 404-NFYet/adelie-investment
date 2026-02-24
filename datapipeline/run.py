@@ -30,6 +30,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from .ai.llm_observability import reset_llm_stats, snapshot_llm_stats
+from .config import kst_today
 
 logging.basicConfig(
     level=logging.INFO,
@@ -276,7 +277,9 @@ async def async_main() -> int:
         )
 
         started = time.time()
-        final_state = await graph.ainvoke(initial_state)
+        thread_id = f"pipeline-{kst_today()}-file-{args.topic_index}"
+        run_config = {"configurable": {"thread_id": thread_id}}
+        final_state = await graph.ainvoke(initial_state, config=run_config)
         elapsed = time.time() - started
 
         if final_state.get("error"):
@@ -309,7 +312,9 @@ async def async_main() -> int:
             )
 
             started = time.time()
-            final_state = await graph.ainvoke(initial_state)
+            thread_id = f"pipeline-{kst_today()}-0"
+            run_config = {"configurable": {"thread_id": thread_id}}
+            final_state = await graph.ainvoke(initial_state, config=run_config)
             elapsed = time.time() - started
 
             if final_state.get("error"):
@@ -347,7 +352,9 @@ async def async_main() -> int:
             started = time.time()
             try:
                 reset_llm_stats()
-                final_state = await graph.ainvoke(initial_state)
+                thread_id = f"pipeline-{kst_today()}-{idx}"
+                run_config = {"configurable": {"thread_id": thread_id}}
+                final_state = await graph.ainvoke(initial_state, config=run_config)
                 elapsed = time.time() - started
 
                 if final_state.get("error"):
