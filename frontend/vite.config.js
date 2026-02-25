@@ -52,11 +52,27 @@ export default defineConfig({
             purpose: 'maskable',
           },
         ],
+        screenshots: [
+          {
+            src: '/images/screenshot-home.png',
+            sizes: '430x932',
+            type: 'image/png',
+            form_factor: 'narrow',
+            label: '홈 화면',
+          },
+          {
+            src: '/images/screenshot-narrative.png',
+            sizes: '430x932',
+            type: 'image/png',
+            form_factor: 'narrow',
+            label: '내러티브',
+          },
+        ],
       },
       workbox: {
         cleanupOutdatedCaches: true,
         clientsClaim: true,
-        globPatterns: ['**/*.html'],
+        globPatterns: ['**/*.html', '**/*.css', 'assets/index-*.js'],
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
