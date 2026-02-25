@@ -8,6 +8,8 @@ import { AnimatePresence, motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
+import remarkBreaks from 'remark-breaks';
+import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import { learningApi, narrativeApi } from '../api';
 import { usePortfolio } from '../contexts/PortfolioContext';
@@ -135,7 +137,7 @@ function MarkdownBody({ content, onTermClick, className = '' }) {
   return (
     <div className={`${className} select-text`} style={{ userSelect: 'text', WebkitUserSelect: 'text' }}>
       <ReactMarkdown
-        remarkPlugins={[remarkMath]}
+        remarkPlugins={[remarkMath, remarkGfm, remarkBreaks]}
         rehypePlugins={[rehypeRaw, rehypeKatex]}
         components={{
           mark: ({ node, ...props }) => (
@@ -155,6 +157,18 @@ function MarkdownBody({ content, onTermClick, className = '' }) {
           ul: ({ node, ...props }) => <ul className="mb-3 list-disc space-y-1 pl-5 text-sm text-text-secondary" {...props} />,
           ol: ({ node, ...props }) => <ol className="mb-3 list-decimal space-y-1 pl-5 text-sm text-text-secondary" {...props} />,
           li: ({ node, ...props }) => <li className="leading-relaxed" {...props} />,
+          blockquote: ({ node, ...props }) => (
+            <blockquote className="my-3 border-l-[3px] border-primary/40 bg-[#fff8f3] py-2 pl-4 pr-3 text-[13px] leading-relaxed text-text-secondary" {...props} />
+          ),
+          strong: ({ node, ...props }) => (
+            <strong className="font-bold text-text-primary" {...props} />
+          ),
+          table: ({ node, ...props }) => (
+            <div className="my-3 overflow-x-auto"><table className="w-full text-xs" {...props} /></div>
+          ),
+          thead: ({ node, ...props }) => <thead className="border-b border-border bg-gray-50" {...props} />,
+          td: ({ node, ...props }) => <td className="px-2 py-1.5 text-text-secondary" {...props} />,
+          th: ({ node, ...props }) => <th className="px-2 py-1.5 text-left font-semibold text-text-primary" {...props} />,
         }}
       >
         {content}
@@ -242,7 +256,7 @@ function NarrativeSources({ sources = [] }) {
   );
 }
 
-function ContentTemplate({ stepConfig, stepData, stepTitle, oneLiner, onTermClick }) {
+function ContentTemplate({ stepConfig, stepData, stepTitle, oneLiner, data, onTermClick }) {
   const contentLines = getPlainLines(stepData?.content || '');
   const cautionItems = (stepData?.bullets && stepData.bullets.length > 0)
     ? stepData.bullets
@@ -270,12 +284,6 @@ function ContentTemplate({ stepConfig, stepData, stepTitle, oneLiner, onTermClic
               </li>
             ))}
           </ul>
-
-          <MarkdownBody
-            content={stepData?.content}
-            onTermClick={onTermClick}
-            className="mt-4 border-t border-border pt-4"
-          />
         </div>
       </section>
     );
@@ -294,6 +302,18 @@ function ContentTemplate({ stepConfig, stepData, stepTitle, oneLiner, onTermClic
           {oneLiner ? (
             <p className="mt-3 text-sm leading-relaxed text-text-secondary">{oneLiner}</p>
           ) : null}
+
+          {data?.related_companies?.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {data.related_companies.slice(0, 5).map((c, i) => (
+                <span key={c.stock_code || i}
+                  className="inline-flex items-center gap-1 rounded-full border border-[#e5e7eb] bg-white px-2.5 py-1 text-[11px] font-medium text-[#374151]">
+                  <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                  {c.stock_name}
+                </span>
+              ))}
+            </div>
+          )}
 
           {stepConfig.showChart ? (
             <div className="mt-5">
@@ -322,6 +342,19 @@ function ContentTemplate({ stepConfig, stepData, stepTitle, oneLiner, onTermClic
             {stepTitle}
           </h2>
 
+          {data?.concept?.name && (
+            <div className="mt-4 rounded-2xl border border-[#dbeafe] bg-[#eff6ff] p-4">
+              <p className="text-[11px] font-semibold tracking-wide text-[#1e40af]">핵심 개념</p>
+              <p className="mt-1 text-sm font-bold text-[#1e3a5f]">{data.concept.name}</p>
+              <p className="mt-2 text-[13px] leading-relaxed text-[#374151]">{data.concept.definition}</p>
+              {data.concept.relevance && (
+                <p className="mt-2 text-[12px] leading-relaxed text-[#6b7280]">
+                  <span className="font-semibold text-[#1e40af]">왜 중요한가: </span>{data.concept.relevance}
+                </p>
+              )}
+            </div>
+          )}
+
           <MarkdownBody
             content={stepData?.content}
             onTermClick={onTermClick}
@@ -348,6 +381,25 @@ function ContentTemplate({ stepConfig, stepData, stepTitle, oneLiner, onTermClic
           <h2 className="line-limit-2 mt-3 text-[clamp(1.5rem,5.9vw,2.05rem)] font-extrabold leading-[1.2] text-black">
             {stepTitle}
           </h2>
+
+          {stepConfig.key === 'history' && data?.historical_case?.title && (
+            <div className="mt-4 rounded-2xl border border-[#d1fae5] bg-[#ecfdf5] p-4">
+              <p className="text-[11px] font-semibold tracking-wide text-[#065f46]">과거 유사 사례</p>
+              {data.historical_case.period && (
+                <p className="mt-1.5 text-[11px] font-medium text-[#047857]">{data.historical_case.period}</p>
+              )}
+              <p className="mt-1 text-sm font-bold text-[#064e3b]">{data.historical_case.title}</p>
+              {data.historical_case.summary && (
+                <p className="mt-2 text-[13px] leading-relaxed text-[#374151]">{data.historical_case.summary}</p>
+              )}
+              {data.historical_case.outcome && (
+                <div className="mt-2 rounded-xl bg-white/60 px-3 py-2">
+                  <p className="text-[11px] font-semibold text-[#065f46]">결과</p>
+                  <p className="mt-0.5 text-[12px] leading-relaxed text-[#374151]">{data.historical_case.outcome}</p>
+                </div>
+              )}
+            </div>
+          )}
 
           <MarkdownBody
             content={stepData?.content}
@@ -390,11 +442,15 @@ function ContentTemplate({ stepConfig, stepData, stepTitle, oneLiner, onTermClic
             </ul>
           ) : null}
 
-          <MarkdownBody
-            content={stepData?.content}
-            onTermClick={onTermClick}
-            className="mt-4 border-t border-border pt-4"
-          />
+          {data?.historical_case?.lesson && (
+            <div className="mt-4 flex items-start gap-2.5 rounded-2xl border border-[#ffedd5] bg-[#fff7ed] p-4">
+              <span className="mt-0.5 text-base">💡</span>
+              <div>
+                <p className="text-[11px] font-semibold tracking-wide text-[#b45309]">과거에서 배우는 교훈</p>
+                <p className="mt-1.5 text-[13px] leading-relaxed text-[#92400e]">{data.historical_case.lesson}</p>
+              </div>
+            </div>
+          )}
         </div>
       </section>
     );
@@ -868,6 +924,7 @@ export default function Narrative() {
                 stepData={stepData}
                 stepTitle={stepTitle}
                 oneLiner={data.one_liner}
+                data={data}
                 onTermClick={openTermSheet}
               />
             ) : (
