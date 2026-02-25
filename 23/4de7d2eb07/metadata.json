@@ -3,7 +3,7 @@
   "checkpoint_id": "234de7d2eb07",
   "strategy": "manual-commit",
   "branch": "prod-final",
-  "checkpoints_count": 76,
+  "checkpoints_count": 77,
   "files_touched": [
     ".dockerignore",
     ".env.example",
@@ -12,6 +12,7 @@
     ".github/workflows/deploy-develop.yml",
     ".github/workflows/deploy-lxd.yml",
     ".github/workflows/deploy.yml",
+    ".gitignore",
     "CLAUDE.md",
     "Makefile",
     "QUICKSTART.md",
@@ -67,8 +68,12 @@
     "docker-compose.prod.yml",
     "docker-compose.staging.yml",
     "docs/README.md",
+    "docs/archive/chatbot_context_redesign_plan.md",
+    "docs/archive/chatbot_langgraph_structure.md",
+    "docs/archive/guardrail_verification_plan.md",
     "docs/getting-started/database-guide.md",
     "docs/getting-started/workflow.md",
+    "docs/reference/changelog.md",
     "docs/reference/git-workflow.md",
     "docs/reference/make-commands.md",
     "docs/team-guides/A_프론트엔드_손영진.md",
@@ -204,6 +209,7 @@
     "frontend/src/pages/index.js",
     "frontend/src/styles/globals.css",
     "frontend/vite.config.js",
+    "infra/README.md",
     "infra/docker-compose.yml",
     "infra/docker-dashboard/app.py",
     "infra/docker-dashboard/config.py",
@@ -243,6 +249,7 @@
     "infra/terraform/outputs.tf",
     "infra/terraform/variables.tf",
     "lxd/Makefile",
+    "lxd/README.md",
     "lxd/archive/test-server-staging.md",
     "lxd/inventory.md",
     "pytest.ini",
@@ -637,13 +644,20 @@
       "context": "/23/4de7d2eb07/53/context.md",
       "content_hash": "/23/4de7d2eb07/53/content_hash.txt",
       "prompt": "/23/4de7d2eb07/53/prompt.txt"
+    },
+    {
+      "metadata": "/23/4de7d2eb07/54/metadata.json",
+      "transcript": "/23/4de7d2eb07/54/full.jsonl",
+      "context": "/23/4de7d2eb07/54/context.md",
+      "content_hash": "/23/4de7d2eb07/54/content_hash.txt",
+      "prompt": "/23/4de7d2eb07/54/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 41715,
-    "cache_creation_tokens": 8364080,
-    "cache_read_tokens": 268221940,
-    "output_tokens": 984316,
-    "api_call_count": 3275
+    "input_tokens": 41804,
+    "cache_creation_tokens": 8482947,
+    "cache_read_tokens": 273401518,
+    "output_tokens": 1015556,
+    "api_call_count": 3354
   }
 }
