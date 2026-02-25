@@ -197,17 +197,36 @@ def _build_hallucination_check_inputs(
     }
 
 
+_DEFAULT_SECTION = {
+    "purpose": "",
+    "content": "",
+    "bullets": [],
+    "viz_hint": None,
+}
+
+
+def _ensure_complete_narrative(narrative: dict[str, Any]) -> dict[str, Any]:
+    """누락된 narrative 섹션을 기본값으로 채워 NarrativeBody 스키마를 만족시킨다."""
+    for key in NARRATIVE_SECTION_KEYS:
+        if key not in narrative or not isinstance(narrative[key], dict):
+            narrative[key] = dict(_DEFAULT_SECTION)
+    return narrative
+
+
 def _build_unvalidated_interface2(
     page_purpose: dict[str, Any],
     historical_case_output: dict[str, Any],
     narrative_output: dict[str, Any],
 ) -> dict[str, Any]:
+    narrative = narrative_output.get("narrative", narrative_output)
+    if isinstance(narrative, dict):
+        narrative = _ensure_complete_narrative(narrative)
     return {
         "theme": page_purpose.get("theme"),
         "one_liner": page_purpose.get("one_liner"),
         "concept": page_purpose.get("concept"),
         "historical_case": historical_case_output.get("historical_case", historical_case_output),
-        "narrative": narrative_output.get("narrative", narrative_output),
+        "narrative": narrative,
     }
 
 
