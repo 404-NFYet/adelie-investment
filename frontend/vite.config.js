@@ -70,6 +70,7 @@ export default defineConfig({
         ],
       },
       workbox: {
+        skipWaiting: true,
         cleanupOutdatedCaches: true,
         clientsClaim: true,
         globPatterns: ['**/*.html', '**/*.css', 'assets/index-*.js'],
