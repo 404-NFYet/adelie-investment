@@ -389,6 +389,12 @@ function ContentTemplate({ stepConfig, stepData, stepTitle, oneLiner, onTermClic
               ))}
             </ul>
           ) : null}
+
+          <MarkdownBody
+            content={stepData?.content}
+            onTermClick={onTermClick}
+            className="mt-4 border-t border-border pt-4"
+          />
         </div>
       </section>
     );

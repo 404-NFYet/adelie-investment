@@ -52,6 +52,7 @@ export default React.memo(function KeywordCard({
   quality_score,
   sync_rate,
   event_year,
+  iconSrc,
   onClick,
   selected = false,
 }) {
@@ -61,9 +62,13 @@ export default React.memo(function KeywordCard({
       className={`w-full cursor-pointer rounded-[20px] bg-white p-4 text-left transition hover:bg-gray-50 active:bg-gray-100 ${selected ? 'ring-2 ring-primary/40' : ''}`}
     >
       <div className="flex items-start gap-3">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#fff4ed] text-[18px]">
-          📰
-        </div>
+        {iconSrc ? (
+          <img src={iconSrc} alt="" className="h-11 w-11 shrink-0 object-contain" />
+        ) : (
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#fff4ed] text-[18px]">
+            📰
+          </div>
+        )}
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex items-center justify-between">
             <h3 className="truncate text-[15px] font-bold text-[#101828]">
