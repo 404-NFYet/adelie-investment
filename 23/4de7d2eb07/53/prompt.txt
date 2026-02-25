@@ -162,3 +162,15 @@ If you need specific details from before exiting plan mode (like exact code snip
 ---
 
 진행해라
+
+---
+
+데이터 수집 파이프라인이 동작하는지 확인해라.
+
+---
+
+해당 부분을 올바르게 업데이트할 필요가 있고, 3개의 카드가 정상적으로 생성되는지 확인해야 한다.
+
+---
+
+[Request interrupted by user for tool use]
