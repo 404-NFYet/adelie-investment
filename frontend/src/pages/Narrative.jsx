@@ -136,12 +136,21 @@ function preprocessMarkdown(content) {
   if (!content) return '';
   let s = content;
 
-  // 1) **...**  →  <strong>...</strong>
-  //    right-flanking delimiter 실패 케이스 (punctuation + ** + 한글) 포함 전체 처리
+  // 1) *[text] 패턴 제거 (LLM 오류: orphan * — *[유사점]** 같은 패턴)
+  s = s.replace(/\*(\[[^\]]+\])/g, '$1');
+
+  // 2) [text]** 패턴에서 ** 제거 (bracket 닫힘 직후 ** — 잘못된 delimiter)
+  s = s.replace(/(\[[^\]]+\])\*\*/g, '$1');
+
+  // 3) *텍스트** → **텍스트** 정규화 (앞 * 하나·뒤 ** 두 개 비대칭 LLM 오류)
+  s = s.replace(/(?<!\*)\*(?!\*)((?:[^*\n])+?)\*\*/g, '**$1**');
+
+  // 4) **...** → <strong>...</strong>
+  //    right-flanking delimiter 실패 케이스 (punctuation + ** + 한글 / HTML 태그) 포함
   s = s.replace(/\*\*((?:(?!\*\*)[^\n])+?)\*\*/g, '<strong>$1</strong>');
 
-  // 2) 잔여 orphan * 정리 — *[text]** 같은 LLM 오류 패턴
-  s = s.replace(/\*(\[[^\]]+\])/g, '$1');
+  // 5) 잔여 ** 정리 (매칭 실패한 고립 opening/closing delimiter)
+  s = s.replace(/\*\*/g, '');
 
   return s;
 }
