@@ -213,8 +213,12 @@ async def csrf_middleware(request: Request, call_next):
         return await call_next(request)
 
     csrf_cookie = request.cookies.get(settings.AUTH_CSRF_COOKIE_NAME)
+    if not csrf_cookie:
+        # CSRF 쿠키 없음 = 쿠키 인증 미사용 클라이언트 → 검증 스킵
+        # (Authorization 헤더 방식은 CSRF에 취약하지 않음)
+        return await call_next(request)
     csrf_header = request.headers.get(settings.AUTH_CSRF_HEADER_NAME)
-    if not csrf_cookie or not csrf_header or csrf_cookie != csrf_header:
+    if not csrf_header or csrf_cookie != csrf_header:
         return JSONResponse(
             status_code=403,
             content={"detail": "CSRF token missing or invalid"},
