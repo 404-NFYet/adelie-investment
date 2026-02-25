@@ -133,7 +133,7 @@ function MarkdownBody({ content, onTermClick, className = '' }) {
   if (!content) return null;
 
   return (
-    <div className={className}>
+    <div className={`${className} select-text`} style={{ userSelect: 'text', WebkitUserSelect: 'text' }}>
       <ReactMarkdown
         remarkPlugins={[remarkMath]}
         rehypePlugins={[rehypeRaw, rehypeKatex]}
@@ -406,7 +406,7 @@ export default function Narrative() {
   const navigate = useNavigate();
   const { claimReward } = usePortfolio();
   const { openTermSheet } = useTermContext();
-  const { setContextInfo } = useTutor();
+  const { setContextInfo, openTutor, sendMessage } = useTutor();
 
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -420,10 +420,21 @@ export default function Narrative() {
   const [rewardError, setRewardError] = useState('');
   const [pendingResumeState, setPendingResumeState] = useState(null);
   const [isResumeDialogOpen, setIsResumeDialogOpen] = useState(false);
+  const [selection, setSelection] = useState({ text: '', top: 0, left: 0, show: false });
+  const [isTouchDevice, setIsTouchDevice] = useState(true);
+
   const hasRestoredResumeRef = useRef(false);
   const scrollThrottleTimerRef = useRef(null);
   const hasLoggedInProgressRef = useRef(false);
   const totalSteps = STEP_CONFIGS.length;
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(pointer: coarse)');
+    setIsTouchDevice(mediaQuery.matches);
+    const handler = (e) => setIsTouchDevice(e.matches);
+    mediaQuery.addEventListener('change', handler);
+    return () => mediaQuery.removeEventListener('change', handler);
+  }, []);
 
   useEffect(() => {
     if (!caseId) {
@@ -730,6 +741,46 @@ export default function Narrative() {
     navigate('/portfolio');
   };
 
+  const handleSelection = useCallback(() => {
+    const activeSelection = window.getSelection();
+    if (!activeSelection || activeSelection.isCollapsed) {
+      setSelection((prev) => (prev.show ? { ...prev, show: false } : prev));
+      return;
+    }
+
+    const text = activeSelection.toString().trim();
+    if (!text) {
+      setSelection((prev) => (prev.show ? { ...prev, show: false } : prev));
+      return;
+    }
+
+    const range = activeSelection.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+
+    setSelection({
+      text,
+      show: true,
+      top: rect.top - 40, // 약간 위로 띄움
+      left: rect.left + rect.width / 2, // 가운데 정렬 기준
+    });
+  }, []);
+
+  const handleDocumentClick = useCallback((e) => {
+    // 툴팁 버튼 외의 영역을 클릭하면 툴팁 닫기
+    if (!e.target.closest('#tutor-selection-btn')) {
+      setSelection((prev) => (prev.show ? { ...prev, show: false } : prev));
+    }
+  }, []);
+
+  useEffect(() => {
+    document.addEventListener('selectionchange', handleSelection);
+    document.addEventListener('mousedown', handleDocumentClick);
+    return () => {
+      document.removeEventListener('selectionchange', handleSelection);
+      document.removeEventListener('mousedown', handleDocumentClick);
+    };
+  }, [handleSelection, handleDocumentClick]);
+
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -799,7 +850,7 @@ export default function Narrative() {
             animate="center"
             exit="exit"
             transition={{ duration: 0.24, ease: 'easeInOut' }}
-            drag="x"
+            drag={isTouchDevice ? 'x' : false}
             dragConstraints={{ left: 0, right: 0 }}
             dragElastic={0.12}
             onDragEnd={handleDragEnd}
@@ -844,6 +895,40 @@ export default function Narrative() {
           </motion.section>
         </AnimatePresence>
       </main>
+
+      {selection.show && (
+        <div
+          id="tutor-selection-btn"
+          className="fixed z-50 -translate-x-1/2 shadow-lg"
+          style={{ top: selection.top, left: selection.left }}
+        >
+          <button
+            onClick={() => {
+              const currentStepConfig = STEP_CONFIGS[currentStep];
+              const currentStepData = data?.steps?.[currentStepConfig.key];
+
+              openTutor({
+                type: 'case_selection',
+                id: Number(caseId),
+                stepKey: currentStepConfig.key,
+                stepTitle: currentStepData?.title || currentStepConfig.title,
+                stepContent: `[${currentStepData?.title || currentStepConfig.title} 단계 중 발췌]\n"${selection.text}"`,
+                sourcePage: 'narrative',
+              });
+
+              // 모달창이 뜨면서 동시에 질문을 전송
+              sendMessage(`"${selection.text}" 문구에 대해 설명해줘.`);
+
+              setSelection({ text: '', top: 0, left: 0, show: false });
+              window.getSelection()?.removeAllRanges();
+            }}
+            className="flex items-center gap-1.5 whitespace-nowrap rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-primary-hover active:bg-primary-active"
+          >
+            <img src="/images/penguin-3d.png" alt="" className="h-4 w-4 rounded-full object-cover" />
+            AI 튜터에게 질문하기
+          </button>
+        </div>
+      )}
 
       {rewardError && rewardViewState === 'none' ? (
         <div className="fixed bottom-20 left-0 right-0 z-40 px-4">

@@ -13,7 +13,7 @@ import ChatInput from './ChatInput';
 
 export default function TutorModal() {
   const {
-    isOpen, closeTutor, messages, isLoading, sendMessage,
+    isOpen, closeTutor, messages, isLoading, sendMessage, clearMessages,
     currentTerm, sessions, activeSessionId, contextInfo, agentStatus,
     createNewChat, deleteChat, loadChatHistory, refreshSessions,
   } = useTutor();
@@ -119,7 +119,13 @@ export default function TutorModal() {
             </div>
 
             {/* Input */}
-            <ChatInput ref={inputRef} value={input} onChange={setInput} onSubmit={handleSubmit} isLoading={isLoading} />
+            <ChatInput
+              ref={inputRef}
+              value={input}
+              onChange={setInput}
+              onSubmit={handleSubmit}
+              isLoading={isLoading}
+            />
           </motion.div>
         </>
       )}
