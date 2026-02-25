@@ -13,9 +13,6 @@ const AUTH_BYPASS_PATHS = [
 
 let refreshPromise = null;
 
-const getStoredAccessToken = () => localStorage.getItem('token') || localStorage.getItem('authToken') || '';
-const getStoredRefreshToken = () => localStorage.getItem('refreshToken') || '';
-
 const toPathname = (url) => {
   try {
     const value = typeof url === 'string' ? url : url?.url;
@@ -31,19 +28,24 @@ const isAuthBypassRequest = (url) => {
   return AUTH_BYPASS_PATHS.some((path) => pathname.endsWith(path));
 };
 
-const mergeAuthHeaders = (headers, token = getStoredAccessToken()) => {
+/** CSRF 토큰 쿠키 읽기 (Double-Submit Cookie 패턴) */
+const getCsrfToken = () => {
+  const match = document.cookie.match(/(?:^|;\s*)csrfToken=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : '';
+};
+
+/** 요청 헤더 생성: POST/PUT/PATCH/DELETE 시 CSRF 토큰 포함 */
+const mergeHeaders = (headers, method) => {
   const merged = new Headers(headers || {});
-  if (token && !merged.has('Authorization')) {
-    merged.set('Authorization', `Bearer ${token}`);
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method?.toUpperCase())) {
+    const csrf = getCsrfToken();
+    if (csrf) merged.set('X-CSRF-Token', csrf);
   }
   return merged;
 };
 
-/** 인증 실패 시 토큰 제거 + 자동 로그아웃 이벤트 발행 + 로그인 화면 이동 */
+/** 인증 실패 시 자동 로그아웃 이벤트 발행 + 로그인 화면 이동 */
 const handleAuthFailure = () => {
-  localStorage.removeItem('token');
-  localStorage.removeItem('authToken');
-  localStorage.removeItem('refreshToken');
   window.dispatchEvent(new Event('auth:logout'));
   if (!window.location.pathname.startsWith('/auth')) {
     window.location.assign('/auth');
@@ -55,33 +57,20 @@ const readErrorMessage = async (response) => {
   return errorData.detail || errorData.message || `요청 실패 (${response.status})`;
 };
 
+/** 리프레시 토큰으로 액세스 토큰 갱신 (쿠키 자동 전송) */
 const refreshAccessToken = async () => {
   if (refreshPromise) return refreshPromise;
   refreshPromise = (async () => {
-    const refreshToken = getStoredRefreshToken();
-    if (!refreshToken) throw new Error('refresh token not found');
-
     const response = await fetch(`${API_BASE_URL}/api/v1/auth/refresh`, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken }),
     });
 
     if (!response.ok) {
       const message = await readErrorMessage(response);
       throw new Error(message);
     }
-
-    const tokens = await response.json();
-    if (!tokens?.accessToken || !tokens?.refreshToken) {
-      throw new Error('invalid refresh response');
-    }
-
-    localStorage.setItem('token', tokens.accessToken);
-    localStorage.removeItem('authToken');
-    localStorage.setItem('refreshToken', tokens.refreshToken);
-
-    return tokens.accessToken;
   })().finally(() => {
     refreshPromise = null;
   });
@@ -89,11 +78,12 @@ const refreshAccessToken = async () => {
   return refreshPromise;
 };
 
-/** 인증 포함 fetch (401 시 refresh 후 원요청 1회 재시도) */
+/** 인증 포함 fetch (HttpOnly 쿠키 자동 전송, 401 시 refresh 후 1회 재시도) */
 export const authFetch = async (url, options = {}, canRetry = true) => {
   const response = await fetch(url, {
     ...options,
-    headers: mergeAuthHeaders(options.headers),
+    credentials: 'include',
+    headers: mergeHeaders(options.headers, options.method),
   });
 
   if (response.status !== 401 || !canRetry || isAuthBypassRequest(url)) {
@@ -101,10 +91,11 @@ export const authFetch = async (url, options = {}, canRetry = true) => {
   }
 
   try {
-    const nextAccessToken = await refreshAccessToken();
+    await refreshAccessToken();
     const retried = await fetch(url, {
       ...options,
-      headers: mergeAuthHeaders(options.headers, nextAccessToken),
+      credentials: 'include',
+      headers: mergeHeaders(options.headers, options.method),
     });
     if (retried.status === 401) {
       handleAuthFailure();

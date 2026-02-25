@@ -7,11 +7,17 @@ export const authApi = {
   register: (email, password, username) =>
     postJson(`${API_BASE_URL}/api/v1/auth/register`, { email, password, username }),
 
-  getMe: async (token) => {
-    const response = await authFetch(`${API_BASE_URL}/api/v1/auth/me`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    });
+  getMe: async () => {
+    const response = await authFetch(`${API_BASE_URL}/api/v1/auth/me`);
     if (!response.ok) throw new Error('Auth check failed');
+    return response.json();
+  },
+
+  logout: async () => {
+    const response = await authFetch(`${API_BASE_URL}/api/v1/auth/logout`, {
+      method: 'POST',
+    });
+    if (!response.ok) throw new Error('Logout failed');
     return response.json();
   },
 };
