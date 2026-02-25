@@ -1,0 +1,303 @@
+Implement the following plan:
+
+# 문서 구조화 및 정리 계획
+
+## Context
+
+프로젝트 문서(~24개 .md 파일)가 현재 서버 구성과 맞지 않고, 루트에 완료된 설계 문서가 방치되어 있으며, changelog가 v0.9.0(2026-02-08)에서 멈춰있고, AWS 관련 참조가 존재하지 않는 디렉토리를 가리키고 있음. CLAUDE.md는 팀원별로 다르게 운영될 예정이므로 git 추적에서 제거 필요.
+
+**git 커밋 분석 결과** (v0.9.0 → prod-final):
+- v1.0: LangGraph 튜터 에이전트, 18노드 파이프라인
+- v1.1: Agent Canvas v3, 모바일 반응형
+- v1.2: AWS Terraform 초기 구성 (별도 브랜치로 분리됨)
+- v1.2.1-stable-feb20: 튜터 FAB 활성화, 안정 배포 기준선
+- v1.3-unstable: 튜터 시각화 강화
+- prod-final: Docker 태그 정책, 로그 네임스페이스 통일, 데이터 동기화
+
+---
+
+## 변경 목록
+
+### 1. `.gitignore` — CLAUDE.md 추가
+**파일**: `.gitignore`
+- `# Claude Code` 섹션에 `CLAUDE.md` 추가
+- `git rm --cached CLAUDE.md` 실행하여 git 추적 제거 (로컬 파일 유지)
+
+### 2. `infra/README.md` — 현재 인프라에 맞게 전면 재작성
+**파일**: `infra/README.md` (212줄 → 전면 재작성)
+
+현재 문제:
+- "narrative-investment" (구 프로젝트명) 참조
+- Neo4j를 핵심 서비스로 기재 → **Neo4j 미사용**
+- infra-server를 공유 DB로 설명 → **2026-02-24부터 각 LXD dev 서버가 로컬 postgres 사용**
+- `/opt/narrative-investment/` 경로 참조 → 현재 `~/adelie-investment`
+- MinIO를 infra-server 서비스로 기재 → **deploy-test에서만 운영**
+
+재작성 골격:
+```
+# Adelie — 인프라 구성 (2026-02-25 기준)
+
+## 서버 역할
+
+### deploy-test (10.10.10.20) — 프로덕션 서버
+완전 독립 스택:
+| 서비스 | 컨테이너 | 포트 | 비고 |
+- adelie-frontend, adelie-backend-api, adelie-postgres, adelie-redis, adelie-minio
+- 모니터링: prometheus, grafana, cadvisor, alertmanager
+- 대시보드: streamlit (nginx 프록시)
+- Docker 태그: prod-YYYYMMDD (latest 미사용)
+- git 브랜치: prod-final
+
+### infra-server (10.10.10.10) — 모니터링 에이전트
+- cadvisor (8080): 컨테이너 메트릭 수집
+- node_exporter (9100): 시스템 메트릭 수집
+- → deploy-test Prometheus가 스크레이핑
+- 레거시: tmp-postgres-1, tmp-redis-1 (실행 중이나 미사용)
+
+### dev-* 서버 — 개인 개발 환경
+- 각 서버 로컬 postgres (docker-compose.dev.yml)
+- make -f lxd/Makefile dev-local-db-setup (초기 세팅)
+- make -f lxd/Makefile sync-dev-data (prod 데이터 최신화)
+
+## 서비스 URL 테이블
+## 배포 절차 (make build → push → deploy)
+## Docker 이미지 태그 정책
+## 모니터링 스택 설명
+## 리소스 요약 (deploy-test 기준)
+## 상태 확인 명령어
+## 문제 해결
+```
+
+### 3. `lxd/inventory.md` — infra-server 역할 + 날짜 업데이트
+**파일**: `lxd/inventory.md`
+- 줄 3: `2026-02-17` → `2026-02-25`
+- 줄 7: infra-server 역할 `PostgreSQL, Redis, MinIO` → `모니터링 에이전트 (cadvisor, node_exporter)`
+- 줄 46: infra-server 설명 확장 — 레거시 DB/Redis 미사용 상태 명시
+
+### 4. `lxd/README.md` — 실용적 내용으로 확장
+**파일**: `lxd/README.md` (14줄 → ~50줄)
+- 개요: LXD 5대 dev 서버 + 2대 인프라 서버 운영
+- 주요 Makefile 타겟 표: `sync-lxd`, `sync-dev-data`, `sync-dev-branches`, `dev-local-db-setup`, `health-lxd`, `fix-lxd-jwt`, `check-lxd-git`
+- profiles/, scripts/ 참조 유지
+- inventory.md 링크
+
+### 5. 루트 레벨 완료된 설계 문서 → `docs/archive/`로 이동
+**이동 대상** (`git mv`):
+- `chatbot_context_redesign_plan.md` → `docs/archive/chatbot_context_redesign_plan.md`
+- `chatbot_langgraph_structure.md` → `docs/archive/chatbot_langgraph_structure.md`
+- `guardrail_verification_plan.md` → `docs/archive/guardrail_verification_plan.md`
+
+이유: 모두 완료된 설계/계획 문서 (2026-02-20 완료 확인). 프로젝트 루트 정리.
+
+### 6. `docs/README.md` — 플레이스홀더 정리 + 죽은 링크 제거
+**파일**: `docs/README.md`
+
+변경:
+- 줄 49: `[AWS 배포](aws/)` 제거 — `docs/aws/` 디렉토리 미존재 (AWS 코드는 별도 브랜치 `feature/infra-aws-localstack`로 분리됨)
+- "인프라" 섹션: 플레이스홀더 `_(추가 예정)_` 제거 → `infra/README.md`, `lxd/inventory.md` 링크 추가
+- "STAR 리포트" 섹션: 플레이스홀더 제거 → `docs/star-reports/` 5개 파일 링크 추가
+- "아카이브" 섹션 신규 추가: 이동된 설계 문서 3개 목록
+- `changes/` 디렉토리 참조 추가 (프로젝트 변경이력)
+
+> 참고: `changes/`(변경이력)과 `docs/star-reports/`(STAR 리포트)는 **중복이 아님**.
+> - `changes/`: 상세 변경이력 (Phase별, 커밋 단위 추적)
+> - `star-reports/`: STAR 형식 기여 보고서 (Situation/Task/Action/Result)
+
+### 7. `docs/reference/changelog.md` — git 커밋 기반 최신화
+**파일**: `docs/reference/changelog.md` (91줄 → ~250줄)
+
+v0.9.0(2026-02-08) 이후 git 커밋 분석 결과를 반영하여 추가:
+
+```
+## prod-final (2026-02-24~25)
+### 인프라
+- Docker 이미지 태그 정책 변경: :latest 제거, prod-YYYYMMDD 명시적 태그 (afa4721)
+- 로그 네임스페이스 통일: narrative_api.* → narrative.* (0a9c492)
+- deploy-test → LXD 콘텐츠 데이터 동기화 스크립트 추가 (f75d752)
+- lxd/Makefile 싱크 타겟 브랜치명 dev-final/* 전환 (77921fe)
+- 브랜치 전략 & 워크플로우 문서 전면 재작성 (7464814)
+
+### 파이프라인
+- datapipeline 최신 코드 반영 (147ad7a)
+- interface2/3 텍스트 포맷팅 개선 (4fc6a05)
+
+## v1.2.1-stable-feb20 (2026-02-20)
+### 기능 추가
+- AI 튜터 FAB 활성화 + /tutor 자동 오픈 (091a1bb)
+### 인프라
+- CI/CD 재설계 + Makefile 섹션 정리 (41cd8e0)
+- frontend-dev 이미지 태그 관리 개선 (87fd2c4, 5897ddd)
+- LXD 개인 로컬 DB 환경 전환 (a5379e7, dev-local-db-setup)
+- DB 동기화 범위 확장 — 7개 → 31개 테이블 (9915edb)
+- Alembic migration 동기화 (db79485)
+### 프론트엔드
+- Agent Canvas v3: canvas API + UI 컴포넌트 (3a0789b, 91eb89e, 1c7b91c)
+- AgentDock 채팅 모드 분리 및 잔여 참조 제거 (b2476bd, 74d400f)
+
+## v1.2 (2026-02-22)
+### 인프라
+- AWS Terraform 인프라 초기 구성: VPC, ECS, RDS, CloudFront, ECR (6cfa989)
+- AWS IAM 권한 요청서 추가 (1e04722)
+### 테스트
+- Playwright 모바일 9종 project 추가 (d59715c)
+- Landing/Quiz/AgentCanvas 모바일 E2E 테스트 (5928f14, 4fc10aa)
+### UI/UX
+- Landing 반응형 리팩토링: clamp 타이포, 이미지 위치 (69b5831)
+- DailyQuizModal sticky 헤더, 터치 영역 최적화 (b3c88ae)
+- Agent Canvas 컴포넌트 반응형 최적화 360-440px (6d2be94)
+### 문서
+- 프로젝트 소개 및 기능 목록 최신화 (7706080)
+- 인프라 운영 이력 및 LXD 자동화 가이드 (1fb2af3)
+
+## v1.1 (2026-02-19~20)
+### 기능 추가
+- Agent Canvas v3 머지: 에이전트 채팅 시스템, UX v5 (a0b03b2)
+- 피드백 설문 페이지 및 반응 컴포넌트 (521ae1b, e19be0d, f11f188)
+- 사용 로그 트래킹 및 대시보드 피드백 통계 (f11f188)
+- Agent Canvas v7 통합 및 Alembic 체인 머지 (7942e1b)
+- staging 서버(10.10.10.21) 인프라 제거 (2b3d7b9)
+### 테스트
+- E2E 테스트 표준화 및 리네임 (53be685, 4d57ef3)
+- 교육/케이스/포트폴리오/프로필/알림 E2E 추가 (313d2bc, 790c181)
+- E2E 테스트 ID 매핑 가이드 문서 (aded113)
+### 인프라
+- LXD git 점검 + dev DB 동기화 자동화 (f9b6e82)
+
+## v1.0 (2026-02-13~18)
+### 기능 추가
+- LangGraph 기반 튜터 에이전트 구현 (v1.0 태그)
+- 챗봇 서비스 복원: 세션 API, 프롬프트, glossary 비동기 (e28f33e)
+- 슬래시 명령어 시스템 + /buy /sell /history (269738e, 00ffa4e)
+- 복습 카드 시스템 (aa7c37d)
+- 가드레일 CoT 고도화 (2ecc819)
+- 질문 의도 분류 + DB 쿼리 사전 세팅 (e7bb87a)
+- 호가창 시뮬레이션 모듈 (91bddd1)
+- 지정가 확률적 체결 + 24시간 만료 (cb3c29c)
+- Redis 키 네임스페이스 통일 + 슬라이딩 윈도우 레이트리밋 (0fcb554)
+### 버그 수정
+- JWT 설정 통일, 커넥션 풀 최적화 (6d13858)
+- JWT_SECRET startup 검증 및 토큰 로그 보안 패치 (711db04)
+- authFetch 10초 타임아웃 + AbortError (317179e)
+- 멀티턴 중복 응답 방지 (57d8de5)
+### 인프라
+- POST /api/v1/pipeline/run 수동 트리거 + 스케줄러 개선 (f7ceb76)
+- Alertmanager 통합, staging 서버 인프라 (149f942)
+- bcrypt<4.0.0 핀 (5d5fda2)
+- 인프라 전용 Makefile 분리 (lxd/Makefile) (1382b32)
+- CI/CD 파이프라인: pre-commit + GitHub Actions (079a9b0)
+### 리팩토링
+- TutorContext 3개 Context 분리 + SSE startTransition 배칭 (aa28cbe)
+- sys.path 해킹 → PYTHONPATH 전환 8곳 (c102aed)
+- 중복 라우트 통합 + broad exception 정리 + JWT 보안 강화 (b6834d8)
+### 성능
+- penguin-3d 8.2MB → 330KB WebP + nginx 보안 헤더 (32e99f4)
+- keywords N+1 쿼리 → 배치 조인 (4f56280)
+```
+
+### 8. `docs/reference/code-review-20260215.md` — 삭제
+**파일**: `git rm`으로 삭제
+- 이유: 8줄짜리 TODO 플레이스홀더, 10일+ 방치, 원본 미확보
+
+---
+
+## 작업 순서
+
+1. `.gitignore`에 CLAUDE.md 추가 + `git rm --cached CLAUDE.md`
+2. `docs/reference/code-review-20260215.md` 삭제 (`git rm`)
+3. `docs/archive/` 디렉토리 생성 + 루트 설계 문서 3개 이동 (`git mv`)
+4. `infra/README.md` 전면 재작성
+5. `lxd/inventory.md` 업데이트
+6. `lxd/README.md` 확장
+7. `docs/README.md` 정리 (죽은 링크 제거, 플레이스홀더 채움, 아카이브 섹션)
+8. `docs/reference/changelog.md` git 커밋 기반 최신화
+9. 검증: 깨진 링크, 구 프로젝트명 잔존, Neo4j 참조 확인
+
+## 수정 대상 파일 요약
+
+| 파일 | 작업 |
+|------|------|
+| `.gitignore` | CLAUDE.md 추가 |
+| `CLAUDE.md` | git rm --cached (추적 제거, 파일 유지) |
+| `infra/README.md` | 전면 재작성 (Neo4j/infra-server 공유DB 제거, 현재 구성 반영) |
+| `lxd/inventory.md` | infra-server 역할 + 날짜 업데이트 |
+| `lxd/README.md` | 14줄 → ~50줄로 확장 (Makefile 타겟 등) |
+| `docs/README.md` | AWS 죽은 링크 제거, 플레이스홀더 채움, 아카이브 섹션 |
+| `docs/reference/changelog.md` | v0.9.0 → prod-final 전체 변경사항 추가 (~160줄 추가) |
+| `docs/reference/code-review-20260215.md` | 삭제 |
+| `chatbot_context_redesign_plan.md` | → docs/archive/ 이동 |
+| `chatbot_langgraph_structure.md` | → docs/archive/ 이동 |
+| `guardrail_verification_plan.md` | → docs/archive/ 이동 |
+
+## 검증
+
+1. `git status` — 변경/삭제/이동 파일 확인
+2. `grep -r "narrative-investment" docs/ infra/ lxd/` — 구 프로젝트명 잔존 확인
+3. `grep -r "neo4j\|Neo4j" docs/ infra/` — Neo4j 참조 제거 확인
+4. `grep -r "aws/" docs/` — 죽은 AWS 링크 제거 확인
+5. docs/README.md 내 상대 경로 전부 확인 (파일 존재 여부)
+6. `git show :CLAUDE.md 2>/dev/null` — CLAUDE.md git 추적 해제 확인
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+star-reports도 팀원 파트별로 정리해야 한다. 그냥 문서별로 업데이트 계획을 자세하게 세우는게 나을 것 같다.  그리고 prod-final 브랜치에서 pull해올 내용도 있을 것이다. 그리고 진서님 브랜치에서 바뀐 내용에 대해서도 prod-final 브랜치에 반영해야 한다. 물론 코드 검증도 거쳐야 하며 PR도 열고 통과시켜야 한다. 각 commit과 push는 케이스에 맞게 개인 git계정으로 commit 및 push를 진행해야 한다.
+
+---
+
+# 프론트 작업 정리 (RefreshToken HttpOnly 쿠키 전환 기준)
+
+## 현재 상태 요약
+- **AccessToken/RefreshToken 모두 HttpOnly 쿠키로 전환**하는 흐름입니다.
+- 프론트에서는 토큰을 직접 읽지 않고 **쿠키 기반 인증**으로 동작해야 합니다.
+
+## 프론트에서 해야 할 작업
+
+### 1) accessToken/refreshToken 저장/삭제 로직 제거
+- `localStorage` 또는 기타 저장소에 access/refresh 토큰을 저장하지 않습니다.
+- access/refresh 토큰 관련 `get/set/remove` 코드 제거 필요.
+
+영향 위치 예시:
+- `frontend/src/contexts/UserContext.jsx`
+- `frontend/src/api/client.js`
+
+### 2) refresh 요청을 쿠키 기반으로 변경
+- `/api/v1/auth/refresh` 호출 시 refreshToken을 **body에 넣지 않음**
+- 대신 쿠키가 자동 전송되도록 `credentials: 'include'` 설정
+
+영향 위치 예시:
+- `frontend/src/api/client.js`
+
+### 3) 모든 인증 요청에 credentials 포함
+- 쿠키 기반 인증을 사용하는 요청은 반드시 `credentials: 'include'` 필요
+- 특히 refresh, 로그인/회원가입 후 인증된 요청 전체에 적용
+
+영향 위치 예시:
+- 공통 fetch 래퍼 또는 API 클라이언트
+
+### 4) Authorization 헤더 의존 로직 제거
+- AccessToken을 JS에서 읽을 수 없으므로 Authorization 헤더 전략을 제거합니다.
+- 모든 인증은 쿠키 기반으로 전환됩니다.
+
+### 5) CSRF 토큰 헤더 추가 (Double Submit Cookie)
+- 로그인/회원가입/리프레시 시 내려오는 **CSRF 쿠키** 값을 읽어
+  모든 `POST/PUT/PATCH/DELETE` 요청에 `X-CSRF-Token` 헤더로 전송해야 합니다.
+- `/api/v1/auth/csrf`로 CSRF 토큰만 발급받을 수도 있습니다.
+
+## 추가 고려사항
+- 인증 상태 판단은 `/api/v1/auth/me` 호출 결과로 결정하도록 단순화하는 편이 안전합니다.
+- 페이지 초기 로딩 시 `/api/v1/auth/refresh`를 호출하여 쿠키 갱신 여부를 확인할 수 있습니다.
+
+## 체크리스트
+- [ ] access/refresh 로컬 저장 제거
+- [ ] refresh 요청은 쿠키 기반으로 변경
+- [ ] 모든 인증 요청에 `credentials: 'include'`
+- [ ] Authorization 헤더 의존 로직 제거
+- [ ] 모든 state-changing 요청에 `X-CSRF-Token` 헤더 추가
+
+이 내용을 참고하면 될 것 같다.
+
+---
+
+[Request interrupted by user for tool use]
