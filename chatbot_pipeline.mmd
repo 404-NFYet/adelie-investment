@@ -1,0 +1,71 @@
+graph TD
+    classDef user fill:#e1f5fe,stroke:#0288d1,stroke-width:2px;
+    classDef system fill:#fff3e0,stroke:#f57c00,stroke-width:2px;
+    classDef guardrail fill:#ffebee,stroke:#d32f2f,stroke-width:2px;
+    classDef db fill:#e8f5e9,stroke:#388e3c,stroke-width:2px;
+    classDef llm fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px;
+    classDef stop fill:#fafafa,stroke:#d32f2f,stroke-dasharray: 5 5;
+
+    %% --- User Input ---
+    Start([사용자 입력<br>Chat Input]):::user --> Route[API 라우터<br>/tutor/chat]:::system
+    
+    %% --- Subgraph: Guardrail (LangGraph) ---
+    subgraph Guardrail ["가드레일 (LangGraph, guardrail.py)"]
+        direction TB
+        G1{1단계: 욕설/탈옥 키워드 검사}:::guardrail
+        G2[2단계: gpt-4o-mini 의도 분류<br>SAFE / ADVICE / OFF_TOPIC]:::llm
+        G3{결과 및 정책 판단}:::guardrail
+        
+        G1 -->|MALICIOUS 감지| Drop1([즉시 차단 및 경고 반환]):::stop
+        G1 -->|통과| G2
+        
+        G2 --> G3
+        G3 -->|OFF_TOPIC / ADVICE (하드 정책)| Drop2([소프트 가이드라인/거절 메시지 반환]):::stop
+        G3 -->|SAFE / ADVICE (소프트 정책)| DB_Save[차단 이력 DB 임시 저장<br>또는 메인 로직 통과]
+    end
+    
+    Route --> G1
+    DB_Save -->|안전/허용됨| Context_Collector
+    
+    %% --- Subgraph: Context Collection ---
+    subgraph Context_Collector ["컨텍스트 수집 엔진 (tutor_engine.py)"]
+        direction TB
+        C1[(DB: Glossary<br>용어 사전)]:::db
+        C2[(DB: Historical Cases<br>과거 사례)]:::db
+        C3[(DB: Broker Reports<br>증권사 리포트)]:::db
+        C4[Pykrx API<br>종목 주가/재무 상태 조회]:::system
+        C5[(DB: User Portfolio<br>사용자 보유 종목/현금)]:::db
+        
+        Gather[키워드/종목명/페이지 기반 데이터 병합]
+        C1 --> Gather
+        C2 --> Gather
+        C3 --> Gather
+        C4 --> Gather
+        C5 --> Gather
+    end
+    
+    %% --- Subgraph: LLM Prompting & Streaming ---
+    subgraph Main_LLM ["메인 LLM 추론 및 스트리밍 (tutor.py)"]
+        direction TB
+        P1[1. 고정 룰 조립<br>tutor_beginner.md 등<br>+ tutor_rules.md]:::system
+        P2[2. 동적 컨텍스트 병합<br>화면 텍스트 + DB/API 정보]:::system
+        P3[3. 이전 대화(Context Window) 주입]:::system
+        P4[gpt-4o-mini 호출 (SSE Streaming)]:::llm
+        
+        P1 --> P4
+        P2 --> P4
+        P3 --> P4
+    end
+    
+    Context_Collector --> P1
+    
+    %% --- Output & Viz ---
+    P4 -->|Chunk Stream| User_UI([사용자 화면 (마크다운 렌더링)]):::user
+    
+    P4 -->|전체 응답 완료 후| Viz_Check{차트 시각화 필요성 감지}:::system
+    Viz_Check -->|Y| Viz_Tool[2-Step 시각화 도구<br>1. 차트 유형 분류<br>2. Plotly JSON 생성]:::llm
+    Viz_Tool -->|JSON Stream| User_UI
+    Viz_Check -->|N| EndNode([응답 종료]):::stop
+    
+    %% --- DB Session Update ---
+    User_UI -.->|백그라운드 비동기| SaveSession[(DB: 세션 및 대화 내역 저장)]:::db

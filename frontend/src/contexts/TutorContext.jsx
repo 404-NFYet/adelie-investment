@@ -214,7 +214,14 @@ export function TutorProvider({ children }) {
                   executionTime: data.execution_time_ms,
                   timestamp: new Date().toISOString(),
                 };
-                setMessages((prev) => [...prev, vizMessage]);
+                // Insert BEFORE the current assistant text bubble (chart-first ordering)
+                setMessages((prev) => {
+                  const idx = prev.findIndex((m) => m.id === assistantMessage.id);
+                  if (idx === -1) return [...prev, vizMessage];
+                  const next = [...prev];
+                  next.splice(idx, 0, vizMessage);
+                  return next;
+                });
                 continue;
               }
 

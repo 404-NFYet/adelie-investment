@@ -106,8 +106,8 @@ def should_auto_visualize(message: str, stock_detected: bool, prev_messages: lis
     if any(s in msg for s in viz_signals):
         return True
 
-    # 2) 종목 감지 시 — 종목을 언급한 것 자체가 데이터 관심 신호
-    if stock_detected:
+    # 2) 종목 감지 + 시각화 키워드가 함께 있는 경우에만 차트 그려주기
+    if stock_detected and any(s in msg for s in viz_signals):
         return True
 
     # 3) 이전 대화에서 종목이 언급된 경우 + 시각화 키워드

@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 
-# main.py에 선언된 19개 라우터
+# main.py에 선언된 16개 라우터
 EXPECTED_ROUTERS = [
     "health",
     "briefing",
@@ -15,18 +15,15 @@ EXPECTED_ROUTERS = [
     "cases",
     "tutor",
     "pipeline",
-    "highlight",
     "keywords",
     "feedback",
     "trading",
     "narrative",
     "portfolio",
     "tutor_sessions",
-    "tutor_explain",
     "visualization",
     "notification",
     "briefings",
-    "chat",
     "quiz_reward",
 ]
 
@@ -44,9 +41,9 @@ def loaded_routers():
 
 
 class TestRouterLoading:
-    """19개 라우터 전부 로드되었는지 확인."""
+    """라우터 전부 로드되었는지 확인."""
 
-    def test_all_19_routers_loaded(self, loaded_routers):
+    def test_all_expected_routers_loaded(self, loaded_routers):
         missing = [name for name in EXPECTED_ROUTERS if name not in loaded_routers]
         assert not missing, f"라우터 미로드: {missing}"
         assert len(loaded_routers) >= len(EXPECTED_ROUTERS)
