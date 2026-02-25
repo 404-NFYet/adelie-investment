@@ -8,7 +8,9 @@ export const authApi = {
     postJson(`${API_BASE_URL}/api/v1/auth/register`, { email, password, username }),
 
   getMe: async () => {
-    const response = await authFetch(`${API_BASE_URL}/api/v1/auth/me`);
+    const response = await fetch(`${API_BASE_URL}/api/v1/auth/me`, {
+      credentials: 'include',
+    });
     if (!response.ok) throw new Error('Auth check failed');
     return response.json();
   },
