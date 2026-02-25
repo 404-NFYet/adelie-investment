@@ -501,8 +501,14 @@ def validate_interface2_node(state: dict) -> dict:
         if isinstance(summary_section, dict):
             summary_section["viz_hint"] = None
 
-        # Pydantic 검증
-        raw_narr = RawNarrative.model_validate(validated)
+        # Pydantic 검증 (실패 시 원본 fallback)
+        try:
+            raw_narr = RawNarrative.model_validate(validated)
+        except Exception as val_err:
+            logger.warning(
+                "  validated_interface_2 스키마 불일치 → 원본 fallback 사용: %s", val_err
+            )
+            raw_narr = RawNarrative.model_validate(fallback_validated)
         logger.info("  validate_interface2 완료: overall_risk=%s", result.get("overall_risk"))
 
         return {
