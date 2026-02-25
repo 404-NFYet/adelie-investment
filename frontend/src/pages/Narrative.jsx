@@ -83,53 +83,12 @@ const SWIPE_THRESHOLD = 70;
 const SWIPE_VELOCITY = 420;
 const RESUME_STORAGE_PREFIX = 'adelie:narrative:resume:';
 const RESUME_TTL_MS = 24 * 60 * 60 * 1000;
+const CTA_GUARD_SELECTOR = '#tutor-selection-btn';
+const SELECTION_IGNORE_SELECTOR = '#tutor-selection-btn, button, [role="button"], nav, input, textarea, select, option';
 
 const getResumeStorageKey = (caseId) => `${RESUME_STORAGE_PREFIX}${caseId}`;
 
-function getPlainLines(content) {
-  if (!content) return [];
-  return content
-    .replace(/<[^>]+>/g, ' ')
-    .split('\n')
-    .map((line) => line.replace(/^#{1,6}\s*/, '').replace(/^[-*]\s*/, '').trim())
-    .filter(Boolean);
-}
-
-function sanitizeChecklistItem(value) {
-  return String(value || '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function getChecklistItems(content, bullets) {
-  const items = [];
-  const pushItem = (value) => {
-    const cleaned = sanitizeChecklistItem(value);
-    if (!cleaned) return;
-    if (/투자 전에 꼭 확인할 포인트/.test(cleaned)) return;
-    if (!items.includes(cleaned)) {
-      items.push(cleaned);
-    }
-  };
-
-  if (Array.isArray(bullets)) {
-    bullets.forEach(pushItem);
-  }
-
-  String(content || '')
-    .split('\n')
-    .forEach((line) => {
-      const match = line.match(/^\s*(?:[-*]|\d+[.)])\s+(.+)$/);
-      if (match?.[1]) {
-        pushItem(match[1]);
-      }
-    });
-
-  return items.slice(0, 5);
-}
-
-function MarkdownBody({ content, onTermClick, className = '' }) {
+const MarkdownBody = React.memo(function MarkdownBody({ content, className = '' }) {
   if (!content) return null;
 
   return (
@@ -138,19 +97,10 @@ function MarkdownBody({ content, onTermClick, className = '' }) {
         remarkPlugins={[remarkMath]}
         rehypePlugins={[rehypeRaw, rehypeKatex]}
         components={{
-          mark: ({ node, ...props }) => (
-            <mark
-              className="term-highlight cursor-pointer"
-              onClick={(event) => {
-                event.preventDefault();
-                onTermClick?.(event.currentTarget.textContent || '');
-              }}
-              {...props}
-            />
-          ),
+          mark: ({ node, ...props }) => <span className="term-highlight" data-term-highlight="true" {...props} />,
           h1: ({ node, ...props }) => <h3 className="mb-2 text-base font-semibold text-text-primary" {...props} />,
-          h2: ({ node, ...props }) => <h3 className="mb-2 text-base font-semibold text-text-primary" {...props} />,
-          h3: ({ node, ...props }) => <h4 className="mb-2 text-sm font-semibold text-text-primary" {...props} />,
+          h2: ({ node, ...props }) => <h3 className="mb-2 mt-4 text-base font-semibold text-text-primary" {...props} />,
+          h3: ({ node, ...props }) => <h4 className="mb-2 mt-3 text-sm font-semibold text-text-primary" {...props} />,
           p: ({ node, ...props }) => <p className="mb-3 text-sm leading-relaxed text-text-secondary last:mb-0" {...props} />,
           ul: ({ node, ...props }) => <ul className="mb-3 list-disc space-y-1 pl-5 text-sm text-text-secondary" {...props} />,
           ol: ({ node, ...props }) => <ol className="mb-3 list-decimal space-y-1 pl-5 text-sm text-text-secondary" {...props} />,
@@ -161,7 +111,7 @@ function MarkdownBody({ content, onTermClick, className = '' }) {
       </ReactMarkdown>
     </div>
   );
-}
+});
 
 function NarrativeChartBlock({ stepKey, chart }) {
   const plot = useMemo(() => buildNarrativePlot(stepKey, chart), [stepKey, chart]);
@@ -242,12 +192,18 @@ function NarrativeSources({ sources = [] }) {
   );
 }
 
-function ContentTemplate({ stepConfig, stepData, stepTitle, oneLiner, onTermClick }) {
-  const contentLines = getPlainLines(stepData?.content || '');
-  const cautionItems = (stepData?.bullets && stepData.bullets.length > 0)
-    ? stepData.bullets
-    : contentLines.slice(0, 5);
-  const summaryChecklist = getChecklistItems(stepData?.content, stepData?.bullets);
+const ContentTemplate = React.memo(function ContentTemplate({ stepConfig, stepData, stepTitle, oneLiner }) {
+  const markdownContent = useMemo(() => {
+    if (stepData?.content?.trim()) {
+      return stepData.content;
+    }
+
+    if (Array.isArray(stepData?.bullets) && stepData.bullets.length > 0) {
+      return stepData.bullets.map((item) => `- ${item}`).join('\n');
+    }
+
+    return '';
+  }, [stepData?.content, stepData?.bullets]);
 
   if (stepConfig.template === 'content4') {
     return (
@@ -256,26 +212,11 @@ function ContentTemplate({ stepConfig, stepData, stepTitle, oneLiner, onTermClic
           <span className="inline-flex rounded-full bg-[#eef2f6] px-3 py-1 text-[11px] font-semibold text-[#4b5563]">
             {stepConfig.tag}
           </span>
-          <h2 className="line-limit-2 mt-3 text-[clamp(1.45rem,5.6vw,2rem)] font-extrabold leading-[1.2] text-black">
+          <h2 className="mt-3 text-[clamp(1.45rem,5.6vw,2rem)] font-extrabold leading-[1.2] text-black">
             {stepTitle}
           </h2>
 
-          <ul className="mt-5 space-y-3">
-            {cautionItems.slice(0, 5).map((item, idx) => (
-              <li key={`${item}-${idx}`} className="rounded-xl bg-[#f7f8fa] px-4 py-3 text-sm leading-relaxed text-text-secondary">
-                <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-xs font-semibold text-primary">
-                  {idx + 1}
-                </span>
-                {item}
-              </li>
-            ))}
-          </ul>
-
-          <MarkdownBody
-            content={stepData?.content}
-            onTermClick={onTermClick}
-            className="mt-4 border-t border-border pt-4"
-          />
+          <MarkdownBody content={markdownContent} className="mt-5" />
         </div>
       </section>
     );
@@ -288,7 +229,7 @@ function ContentTemplate({ stepConfig, stepData, stepTitle, oneLiner, onTermClic
           <span className="inline-flex rounded-full bg-[#ffeede] px-3 py-1 text-[11px] font-semibold text-primary">
             {stepConfig.tag}
           </span>
-          <h2 className="line-limit-2 mt-3 text-[clamp(1.75rem,7vw,2.55rem)] font-black leading-[1.15] tracking-[-0.02em] text-black">
+          <h2 className="mt-3 text-[clamp(1.75rem,7vw,2.55rem)] font-black leading-[1.15] tracking-[-0.02em] text-black">
             {stepTitle}
           </h2>
           {oneLiner ? (
@@ -302,8 +243,7 @@ function ContentTemplate({ stepConfig, stepData, stepTitle, oneLiner, onTermClic
           ) : null}
 
           <MarkdownBody
-            content={stepData?.content}
-            onTermClick={onTermClick}
+            content={markdownContent}
             className="mt-5"
           />
         </div>
@@ -318,13 +258,12 @@ function ContentTemplate({ stepConfig, stepData, stepTitle, oneLiner, onTermClic
           <span className="inline-flex rounded-full bg-[#e7eef7] px-3 py-1 text-[11px] font-semibold text-[#27507f]">
             {stepConfig.tag}
           </span>
-          <h2 className="line-limit-2 mt-3 text-[clamp(1.55rem,6vw,2.1rem)] font-extrabold leading-[1.2] text-black">
+          <h2 className="mt-3 text-[clamp(1.55rem,6vw,2.1rem)] font-extrabold leading-[1.2] text-black">
             {stepTitle}
           </h2>
 
           <MarkdownBody
-            content={stepData?.content}
-            onTermClick={onTermClick}
+            content={markdownContent}
             className="mt-4"
           />
 
@@ -345,13 +284,12 @@ function ContentTemplate({ stepConfig, stepData, stepTitle, oneLiner, onTermClic
           <span className="inline-flex rounded-full bg-[#eaf7ef] px-3 py-1 text-[11px] font-semibold text-[#1a7f54]">
             {stepConfig.tag}
           </span>
-          <h2 className="line-limit-2 mt-3 text-[clamp(1.5rem,5.9vw,2.05rem)] font-extrabold leading-[1.2] text-black">
+          <h2 className="mt-3 text-[clamp(1.5rem,5.9vw,2.05rem)] font-extrabold leading-[1.2] text-black">
             {stepTitle}
           </h2>
 
           <MarkdownBody
-            content={stepData?.content}
-            onTermClick={onTermClick}
+            content={markdownContent}
             className="mt-4"
           />
 
@@ -372,41 +310,29 @@ function ContentTemplate({ stepConfig, stepData, stepTitle, oneLiner, onTermClic
           <span className="inline-flex rounded-full bg-[#fff0e1] px-3 py-1 text-[11px] font-semibold text-primary">
             {stepConfig.tag}
           </span>
-          <h2 className="line-limit-2 mt-3 text-[clamp(1.55rem,6vw,2.1rem)] font-extrabold leading-[1.2] text-black">
+          <h2 className="mt-3 text-[clamp(1.55rem,6vw,2.1rem)] font-extrabold leading-[1.2] text-black">
             {stepTitle}
           </h2>
 
-          <h3 className="mt-4 text-sm font-semibold text-[#b45309]">투자 전에 꼭 확인할 포인트</h3>
-          {summaryChecklist.length > 0 ? (
-            <ul className="mt-2 space-y-2">
-              {summaryChecklist.map((item, idx) => (
-                <li key={`${item}-${idx}`} className="rounded-xl bg-[#fff7ed] px-4 py-3 text-sm leading-relaxed text-[#b45309]">
-                  <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-xs font-semibold text-primary">
-                    {idx + 1}
-                  </span>
-                  {item}
-                </li>
-              ))}
-            </ul>
-          ) : null}
+          <MarkdownBody content={markdownContent} className="mt-4" />
         </div>
       </section>
     );
   }
 
   return (
-    <section className="px-2 py-3">
-      <MarkdownBody content={stepData?.content} onTermClick={onTermClick} />
+      <section className="px-2 py-3">
+      <MarkdownBody content={markdownContent} />
     </section>
   );
-}
+});
 
 export default function Narrative() {
   const { caseId } = useParams();
   const navigate = useNavigate();
   const { claimReward } = usePortfolio();
   const { openTermSheet } = useTermContext();
-  const { setContextInfo, openTutor, sendMessage } = useTutor();
+  const { setContextInfo, updateSelectionCtaState, clearSelectionCtaState, selectionCtaState } = useTutor();
 
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -420,22 +346,17 @@ export default function Narrative() {
   const [rewardError, setRewardError] = useState('');
   const [pendingResumeState, setPendingResumeState] = useState(null);
   const [isResumeDialogOpen, setIsResumeDialogOpen] = useState(false);
-  const [selection, setSelection] = useState({ text: '', top: 0, left: 0, show: false });
-  const [isTouchDevice, setIsTouchDevice] = useState(true);
 
   const hasRestoredResumeRef = useRef(false);
   const scrollThrottleTimerRef = useRef(null);
   const hasLoggedInProgressRef = useRef(false);
+  const selectionScopeRef = useRef(null);
+  const swipeTouchRef = useRef(null);
   const totalSteps = STEP_CONFIGS.length;
 
-  useEffect(() => {
-    const mediaQuery = window.matchMedia('(pointer: coarse)');
-    setIsTouchDevice(mediaQuery.matches);
-    const handler = (e) => setIsTouchDevice(e.matches);
-    mediaQuery.addEventListener('change', handler);
-    return () => mediaQuery.removeEventListener('change', handler);
-  }, []);
-
+  // ──────────────────────────────────────────────
+  // 튜터 컨텍스트 동기화
+  // ──────────────────────────────────────────────
   useEffect(() => {
     if (!caseId) {
       setContextInfo(null);
@@ -446,14 +367,12 @@ export default function Narrative() {
     const currentStepData = data?.steps?.[currentStepConfig.key];
     let fullContextText = '';
 
-    // If data and steps exist, extract the current step's title and content for the chatbot context
     if (currentStepData) {
       const stepTitle = currentStepData.title || currentStepConfig.title;
       const stepContent = currentStepData.content || '';
 
       fullContextText = `[${stepTitle}]\n`;
 
-      // Also include bullets if they exist (especially for the 'caution' or 'summary' steps)
       if (currentStepData.bullets && currentStepData.bullets.length > 0) {
         fullContextText += currentStepData.bullets.map((b) => `- ${b}`).join('\n') + '\n\n';
       }
@@ -474,6 +393,9 @@ export default function Narrative() {
     return () => setContextInfo(null);
   }, [caseId, data, currentStep, setContextInfo]);
 
+  // ──────────────────────────────────────────────
+  // 이어보기 (resume) 로직
+  // ──────────────────────────────────────────────
   const clearResumeState = useCallback(() => {
     if (!caseId) return;
     try {
@@ -683,6 +605,9 @@ export default function Narrative() {
     };
   }, [caseId, currentStep, data, error, isLoading, saveResumeState]);
 
+  // ──────────────────────────────────────────────
+  // 단계 이동
+  // ──────────────────────────────────────────────
   const goToStep = (nextIndex) => {
     if (nextIndex < 0 || nextIndex >= totalSteps) return;
     setDirection(nextIndex > currentStep ? 1 : -1);
@@ -721,19 +646,41 @@ export default function Narrative() {
     }
   };
 
-  const handleDragEnd = (_, info) => {
-    const offsetX = info?.offset?.x ?? 0;
-    const velocityX = info?.velocity?.x ?? 0;
+  // ──────────────────────────────────────────────
+  // 스와이프 네비게이션 (순수 터치 이벤트)
+  // ──────────────────────────────────────────────
+  const handleSwipeTouchStart = useCallback((e) => {
+    const touch = e.touches[0];
+    if (!touch) return;
+    swipeTouchRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+  }, []);
 
-    if (offsetX <= -SWIPE_THRESHOLD || velocityX <= -SWIPE_VELOCITY) {
+  const handleSwipeTouchEnd = useCallback((e) => {
+    if (!swipeTouchRef.current) return;
+    const touch = e.changedTouches[0];
+    if (!touch) { swipeTouchRef.current = null; return; }
+
+    const dx = touch.clientX - swipeTouchRef.current.x;
+    const dy = touch.clientY - swipeTouchRef.current.y;
+    const dt = Date.now() - swipeTouchRef.current.time;
+    swipeTouchRef.current = null;
+
+    // 세로 움직임이 더 크면 스크롤이므로 무시
+    if (Math.abs(dy) > Math.abs(dx)) return;
+    // 너무 느리면 스와이프가 아님
+    if (dt > 500) return;
+    // 텍스트 선택 중이면 스와이프 무시
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed && sel.toString().trim()) return;
+
+    const velocity = (Math.abs(dx) / dt) * 1000;
+
+    if (dx <= -SWIPE_THRESHOLD || velocity >= SWIPE_VELOCITY) {
       if (!isLastStep) goToStep(currentStep + 1);
-      return;
-    }
-
-    if (offsetX >= SWIPE_THRESHOLD || velocityX >= SWIPE_VELOCITY) {
+    } else if (dx >= SWIPE_THRESHOLD || velocity >= SWIPE_VELOCITY) {
       goToStep(currentStep - 1);
     }
-  };
+  }, [currentStep, isLastStep]);
 
   const closeReward = () => {
     setRewardViewState('none');
@@ -741,46 +688,120 @@ export default function Narrative() {
     navigate('/portfolio');
   };
 
-  const handleSelection = useCallback(() => {
-    const activeSelection = window.getSelection();
-    if (!activeSelection || activeSelection.isCollapsed) {
-      setSelection((prev) => (prev.show ? { ...prev, show: false } : prev));
+  const handleScopeClick = useCallback((event) => {
+    const termEl = event.target?.closest?.('[data-term-highlight="true"]');
+    if (!termEl || !selectionScopeRef.current?.contains(termEl)) return;
+
+    const selectedText = window.getSelection?.()?.toString()?.trim();
+    if (selectedText) return;
+
+    event.preventDefault();
+    openTermSheet(termEl.textContent || '');
+  }, [openTermSheet]);
+
+  // ──────────────────────────────────────────────
+  // 텍스트 선택 → AI 튜터 CTA (최소 경로)
+  //
+  // 1) pointerup: 선택 확정 후 CTA 동기화
+  // 2) outside pointerdown: 선택/CTA 1회 해제
+  // ──────────────────────────────────────────────
+  const clearNarrativeSelection = useCallback(() => {
+    clearSelectionCtaState();
+    try {
+      window.getSelection()?.removeAllRanges();
+    } catch {
+      // ignore
+    }
+  }, [clearSelectionCtaState]);
+
+  const syncSelectionCta = useCallback(() => {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
+      clearSelectionCtaState();
       return;
     }
 
-    const text = activeSelection.toString().trim();
+    const text = sel.toString().trim();
     if (!text) {
-      setSelection((prev) => (prev.show ? { ...prev, show: false } : prev));
+      clearSelectionCtaState();
       return;
     }
 
-    const range = activeSelection.getRangeAt(0);
-    const rect = range.getBoundingClientRect();
-
-    setSelection({
-      text,
-      show: true,
-      top: rect.top - 40, // 약간 위로 띄움
-      left: rect.left + rect.width / 2, // 가운데 정렬 기준
-    });
-  }, []);
-
-  const handleDocumentClick = useCallback((e) => {
-    // 툴팁 버튼 외의 영역을 클릭하면 툴팁 닫기
-    if (!e.target.closest('#tutor-selection-btn')) {
-      setSelection((prev) => (prev.show ? { ...prev, show: false } : prev));
+    const range = sel.getRangeAt(0);
+    const scope = selectionScopeRef.current;
+    if (!scope || !scope.contains(range.startContainer) || !scope.contains(range.endContainer)) {
+      clearSelectionCtaState();
+      return;
     }
-  }, []);
 
+    // 전체 선택이 무시 대상(버튼 등) 내부인 경우 스킵
+    const anchorEl = sel.anchorNode?.nodeType === Node.ELEMENT_NODE ? sel.anchorNode : sel.anchorNode?.parentElement;
+    const focusEl = sel.focusNode?.nodeType === Node.ELEMENT_NODE ? sel.focusNode : sel.focusNode?.parentElement;
+    if (anchorEl?.closest(SELECTION_IGNORE_SELECTOR) && focusEl?.closest(SELECTION_IGNORE_SELECTOR)) {
+      clearSelectionCtaState();
+      return;
+    }
+
+    updateSelectionCtaState({
+      active: true,
+      text,
+      prompt: `"${text}" 문구에 대해 설명해줘.`,
+      context: {
+        type: 'case',
+        id: Number(caseId),
+        stepKey: stepConfig.key,
+        stepTitle: stepData?.title || stepConfig.title,
+        stepContent: `[${stepData?.title || stepConfig.title} 단계 중 발췌]\n"${text}"`,
+        sourcePage: 'narrative',
+      },
+    });
+  }, [caseId, stepConfig.key, stepConfig.title, stepData?.title, updateSelectionCtaState, clearSelectionCtaState]);
+
+  // 단계 변경 시 선택 초기화
   useEffect(() => {
-    document.addEventListener('selectionchange', handleSelection);
-    document.addEventListener('mousedown', handleDocumentClick);
-    return () => {
-      document.removeEventListener('selectionchange', handleSelection);
-      document.removeEventListener('mousedown', handleDocumentClick);
-    };
-  }, [handleSelection, handleDocumentClick]);
+    clearNarrativeSelection();
+  }, [currentStep, clearNarrativeSelection]);
 
+  // narrative-selection-clear 이벤트 (튜터가 질문 제출 후 발생)
+  useEffect(() => {
+    const handler = () => {
+      clearNarrativeSelection();
+    };
+    window.addEventListener('narrative-selection-clear', handler);
+    return () => window.removeEventListener('narrative-selection-clear', handler);
+  }, [clearNarrativeSelection]);
+
+  // 언마운트 시 정리
+  useEffect(() => () => clearSelectionCtaState(), [clearSelectionCtaState]);
+
+  // 메인 선택 이벤트 리스너
+  useEffect(() => {
+    const onPointerDown = (e) => {
+      if (e.target?.closest?.(CTA_GUARD_SELECTOR)) return;
+
+      // scope 밖 클릭 → 네이티브 선택도 해제
+      if (!selectionScopeRef.current?.contains(e.target)) {
+        clearNarrativeSelection();
+      }
+    };
+
+    const onPointerUp = (e) => {
+      if (e.target?.closest?.(CTA_GUARD_SELECTOR)) return;
+      requestAnimationFrame(syncSelectionCta);
+    };
+
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('pointerup', onPointerUp);
+
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('pointerup', onPointerUp);
+    };
+  }, [syncSelectionCta, clearNarrativeSelection]);
+
+  // ──────────────────────────────────────────────
+  // 렌더링
+  // ──────────────────────────────────────────────
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -809,7 +830,7 @@ export default function Narrative() {
   if (!data) return null;
 
   return (
-    <div className="min-h-screen bg-background pb-28">
+    <div className={`min-h-screen bg-background ${selectionCtaState.active ? 'pb-40' : 'pb-28'}`}>
       <header className="sticky top-0 z-30 border-b border-white/60 bg-white/80 backdrop-blur-md">
         <div className="mx-auto w-full max-w-mobile px-4 pb-3 pt-4">
           <div className="mb-3 flex items-center justify-between">
@@ -840,7 +861,12 @@ export default function Narrative() {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-mobile px-4 pt-4">
+      <main
+        ref={selectionScopeRef}
+        data-selection-scope="narrative"
+        onClick={handleScopeClick}
+        className="mx-auto w-full max-w-mobile px-4 pt-4"
+      >
         <AnimatePresence mode="wait" custom={direction}>
           <motion.section
             key={stepConfig.key}
@@ -850,11 +876,8 @@ export default function Narrative() {
             animate="center"
             exit="exit"
             transition={{ duration: 0.24, ease: 'easeInOut' }}
-            drag={isTouchDevice ? 'x' : false}
-            dragConstraints={{ left: 0, right: 0 }}
-            dragElastic={0.12}
-            onDragEnd={handleDragEnd}
-            className="touch-pan-y"
+            onTouchStart={handleSwipeTouchStart}
+            onTouchEnd={handleSwipeTouchEnd}
           >
             {stepData ? (
               <ContentTemplate
@@ -862,7 +885,6 @@ export default function Narrative() {
                 stepData={stepData}
                 stepTitle={stepTitle}
                 oneLiner={data.one_liner}
-                onTermClick={openTermSheet}
               />
             ) : (
               <section className="px-3 py-5 text-center">
@@ -895,40 +917,6 @@ export default function Narrative() {
           </motion.section>
         </AnimatePresence>
       </main>
-
-      {selection.show && (
-        <div
-          id="tutor-selection-btn"
-          className="fixed z-50 -translate-x-1/2 shadow-lg"
-          style={{ top: selection.top, left: selection.left }}
-        >
-          <button
-            onClick={() => {
-              const currentStepConfig = STEP_CONFIGS[currentStep];
-              const currentStepData = data?.steps?.[currentStepConfig.key];
-
-              openTutor({
-                type: 'case_selection',
-                id: Number(caseId),
-                stepKey: currentStepConfig.key,
-                stepTitle: currentStepData?.title || currentStepConfig.title,
-                stepContent: `[${currentStepData?.title || currentStepConfig.title} 단계 중 발췌]\n"${selection.text}"`,
-                sourcePage: 'narrative',
-              });
-
-              // 모달창이 뜨면서 동시에 질문을 전송
-              sendMessage(`"${selection.text}" 문구에 대해 설명해줘.`);
-
-              setSelection({ text: '', top: 0, left: 0, show: false });
-              window.getSelection()?.removeAllRanges();
-            }}
-            className="flex items-center gap-1.5 whitespace-nowrap rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-primary-hover active:bg-primary-active"
-          >
-            <img src="/images/penguin-3d.png" alt="" className="h-4 w-4 rounded-full object-cover" />
-            AI 튜터에게 질문하기
-          </button>
-        </div>
-      )}
 
       {rewardError && rewardViewState === 'none' ? (
         <div className="fixed bottom-20 left-0 right-0 z-40 px-4">

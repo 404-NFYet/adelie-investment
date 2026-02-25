@@ -213,7 +213,22 @@ export default React.memo(function Message({ message }) {
         <div className={`px-4 py-3 rounded-2xl rounded-tl-md ${message.isError ? 'bg-error-light text-error border border-error/20' : 'bg-surface border border-border'}`}>
           {message.isError ? <p className="text-sm">{message.content}</p> : (
             <div className="text-sm leading-relaxed text-text-primary prose prose-sm prose-headings:text-text-primary prose-strong:text-text-primary prose-code:text-primary prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs max-w-none dark:prose-invert">
-              <ReactMarkdown remarkPlugins={[remarkMath, remarkGfm, remarkBreaks]} rehypePlugins={[rehypeRaw, rehypeKatex]}>
+              <ReactMarkdown
+                remarkPlugins={[remarkMath, remarkGfm, remarkBreaks]}
+                rehypePlugins={[rehypeRaw, rehypeKatex]}
+                components={{
+                  table: ({ node, ...props }) => (
+                    <div className="my-3 overflow-x-auto">
+                      <table className="w-full border-collapse text-left text-xs" {...props} />
+                    </div>
+                  ),
+                  thead: ({ node, ...props }) => <thead className="bg-[#f8f9fa]" {...props} />,
+                  tbody: ({ node, ...props }) => <tbody {...props} />,
+                  tr: ({ node, ...props }) => <tr className="border-b border-border" {...props} />,
+                  th: ({ node, ...props }) => <th className="border border-border px-2 py-1.5 font-semibold text-text-primary" {...props} />,
+                  td: ({ node, ...props }) => <td className="border border-border px-2 py-1.5 align-top text-text-secondary" {...props} />,
+                }}
+              >
                 {markdownContent}
               </ReactMarkdown>
             </div>

@@ -16,6 +16,7 @@ export default function TutorModal() {
     isOpen, closeTutor, messages, isLoading, sendMessage, clearMessages,
     currentTerm, sessions, activeSessionId, contextInfo, agentStatus,
     createNewChat, deleteChat, loadChatHistory, refreshSessions,
+    stopGeneration, regenerateLastResponse,
   } = useTutor();
   const { settings } = useUser();
   const [input, setInput] = useState('');
@@ -58,6 +59,7 @@ export default function TutorModal() {
       try { await deleteChat(id); } catch (e) { console.error('삭제 실패:', e); }
     }
   };
+  const canRegenerate = !isLoading && messages.some((m) => m.role === 'user' && m.content?.trim());
 
   return (
     <AnimatePresence>
@@ -81,6 +83,22 @@ export default function TutorModal() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  {isLoading ? (
+                    <button
+                      onClick={stopGeneration}
+                      className="px-3 py-1.5 text-sm bg-warning text-white rounded-lg hover:opacity-90 transition-colors"
+                    >
+                      중단
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => regenerateLastResponse(settings.difficulty)}
+                      disabled={!canRegenerate}
+                      className="px-3 py-1.5 text-sm bg-surface text-text-primary border border-border rounded-lg hover:bg-surface-elevated transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      재생성
+                    </button>
+                  )}
                   <button onClick={handleNewChat} className="px-3 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors">새 대화</button>
                   <button onClick={() => setIsSessionsOpen((prev) => !prev)} className="px-3 py-1.5 text-sm bg-surface text-text-primary border border-border rounded-lg hover:bg-surface-elevated transition-colors">대화 목록</button>
                   <button onClick={closeTutor} className="p-2 rounded-lg hover:bg-surface transition-colors text-text-secondary">✕</button>
