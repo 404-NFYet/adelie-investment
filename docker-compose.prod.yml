@@ -124,6 +124,7 @@ services:
     env_file: .env
     environment:
       TZ: Asia/Seoul
+      WEB_CONCURRENCY: "1"     # 스케줄러 단일 실행 보장 (멀티 워커 → 중복 스케줄 방지)
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-narative}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-narrative_invest}
       REDIS_URL: redis://redis:6379/1
       REDIS_HOST: redis
