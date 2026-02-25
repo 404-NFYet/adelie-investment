@@ -146,6 +146,11 @@ class GlossaryItem(BaseModel):
     definition: str
     domain: str = ""
 
+    @field_validator("domain", mode="before")
+    @classmethod
+    def _none_to_empty_str(cls, v: Any) -> str:
+        return v if v is not None else ""
+
 
 class Page(BaseModel):
     step: int
