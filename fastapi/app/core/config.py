@@ -51,6 +51,24 @@ class Settings(BaseSettings):
     # CORS
     CORS_ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
 
+    # Auth cookies
+    AUTH_REFRESH_COOKIE_NAME: str = "refreshToken"
+    AUTH_REFRESH_COOKIE_SAMESITE: str = "lax"
+    AUTH_REFRESH_COOKIE_SECURE: bool = False
+    AUTH_REFRESH_COOKIE_PATH: str = "/"
+    AUTH_REFRESH_COOKIE_DOMAIN: str | None = None
+    AUTH_ACCESS_COOKIE_NAME: str = "accessToken"
+    AUTH_ACCESS_COOKIE_SAMESITE: str = "lax"
+    AUTH_ACCESS_COOKIE_SECURE: bool = False
+    AUTH_ACCESS_COOKIE_PATH: str = "/"
+    AUTH_ACCESS_COOKIE_DOMAIN: str | None = None
+    AUTH_CSRF_COOKIE_NAME: str = "csrfToken"
+    AUTH_CSRF_COOKIE_SAMESITE: str = "lax"
+    AUTH_CSRF_COOKIE_SECURE: bool = False
+    AUTH_CSRF_COOKIE_PATH: str = "/"
+    AUTH_CSRF_COOKIE_DOMAIN: str | None = None
+    AUTH_CSRF_HEADER_NAME: str = "X-CSRF-Token"
+
     # Application
     DEBUG: bool = False
     APP_NAME: str = "Narrative Investment API"

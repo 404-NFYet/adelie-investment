@@ -27,7 +27,6 @@ for _mod_name in [
     "cases",
     "tutor",
     "pipeline",
-    "highlight",
     "keywords",
     "feedback",
     "trading",
@@ -45,7 +44,7 @@ for _mod_name in [
         _route_modules[_mod_name] = importlib.import_module(f"app.api.routes.{_mod_name}")
     except Exception as _e:
         _logging.getLogger("startup").warning(f"라우터 '{_mod_name}' 로드 실패 (무시): {_e}")
-from app.core.config import settings
+from app.core.config import settings, get_settings
 from app.core.limiter import limiter
 from app.services import get_redis_cache, close_redis_cache
 from app.services.kis_service import close_kis_service
@@ -197,6 +196,32 @@ app.add_middleware(
 from app.middleware.rate_limit import RateLimitMiddleware
 app.add_middleware(RateLimitMiddleware)
 
+@app.middleware("http")
+async def csrf_middleware(request: Request, call_next):
+    settings = get_settings()
+    if request.method in {"GET", "HEAD", "OPTIONS"}:
+        return await call_next(request)
+
+    path = request.url.path
+    csrf_exempt_prefixes = {
+        "/api/v1/auth/login",
+        "/api/v1/auth/register",
+        "/api/v1/auth/refresh",
+        "/api/v1/auth/csrf",
+    }
+    if path in csrf_exempt_prefixes:
+        return await call_next(request)
+
+    csrf_cookie = request.cookies.get(settings.AUTH_CSRF_COOKIE_NAME)
+    csrf_header = request.headers.get(settings.AUTH_CSRF_HEADER_NAME)
+    if not csrf_cookie or not csrf_header or csrf_cookie != csrf_header:
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "CSRF token missing or invalid"},
+        )
+
+    return await call_next(request)
+
 
 @app.middleware("http")
 async def response_envelope_middleware(request: Request, call_next):
@@ -241,7 +266,6 @@ _router_config = {
     "cases": ("cases", "/api/v1"),
     "tutor": ("AI tutor", "/api/v1"),
     "pipeline": ("pipeline", "/api/v1"),
-    "highlight": ("highlighting", "/api/v1"),
     "keywords": ("keywords", "/api/v1"),
     "feedback": ("feedback", "/api/v1"),
     "trading": ("trading", "/api/v1"),

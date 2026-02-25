@@ -32,6 +32,8 @@ from app.services.tutor_engine import (
 )
 from app.services.stock_resolver import detect_stock_codes
 from app.services.guardrail import run_guardrail
+from app.services.tutor_chart_generator import classify_chart_request, generate_chart_json
+from app.schemas.tutor import ChartType
 
 router = APIRouter(prefix="/tutor", tags=["AI tutor"])
 
@@ -284,16 +286,30 @@ async def generate_tutor_response(
     except Exception as e:
         logger.warning("출처 수집 실패 (무시): %s", e)
 
-    system_prompt = get_difficulty_prompt(request.difficulty)
-    if page_context:
-        system_prompt += page_context
-    if extra_context:
-        system_prompt += extra_context
+    # --- V5 Prompt Caching Optimization & Metacognitive Architecture ---
+    # 1. 고정 시스템 역할 및 규칙 (Cache Hit 대상, 가장 안 변함)
+    system_base_rules = get_difficulty_prompt(request.difficulty)
+    system_base_rules += (
+        "\n\n[출력 형식 규칙]\n"
+        "- 수식은 반드시 LaTeX로 렌더링되게 작성하세요: 인라인 $...$, 블록 $$...$$\n"
+        "- 일반 텍스트는 마크다운: **볼드**, *이탤릭*, 불릿/번호 기호를 활용해 가독성을 높이세요.\n"
+        "- 두 가지 이상의 상반된/비교 데이터를 설명할 때는 반드시 마크다운 테이블(| 컬럼1 | 컬럼2 |)을 사용하세요.\n"
+        "- 소제목은 ## 또는 ### 를 사용하고 3줄 이상의 긴 답변은 문단 구분을 명확히 하세요.\n"
+        "- 투자 용어가 나오면 괄호 안에 쉬운 설명을 덧붙여주세요. 예: PER(주가수익비율, 주가를 이익으로 나눈 값).\n"
+        "\n[답변 구조 (3-Step 러닝 사이클)]\n"
+        "반드시 답변 마지막 문단에는 사용자의 이해도를 묻는 '메타인지 역질문' 1개를 포함하세요.\n"
+        "1. 질문에 대한 핵심 답변 (마크다운 포맷팅 적용)\n"
+        "2. [자기 점검] 메타인지 역질문 (예: '방금 설명드린 개념에서 가장 이해하기 어려운 부분은 어디였나요?')"
+    )
 
-    # 용어 설명은 LLM이 응답 내에서 자연스럽게 처리하도록 프롬프트에 지시
-    system_prompt += "\n\n투자 용어가 나오면 괄호 안에 쉬운 설명을 덧붙여주세요. 예: PER(주가수익비율, 주가를 이익으로 나눈 값)."
-    
-    # Load previous messages for multi-turn
+    # 2. 동적 컨텍스트 데이터 주입 (최신 화면, 종목, 용어 등 - 세션/이벤트 단위 변경)
+    dynamic_context = ""
+    if page_context:
+        dynamic_context += page_context
+    if extra_context:
+        dynamic_context += extra_context
+
+    # 3. 과거 대화 내역 (매 턴마다 변경됨)
     prev_msgs = []
     if request.session_id:
         try:
@@ -313,11 +329,12 @@ async def generate_tutor_response(
         except Exception as e:
             logger.warning("Failed to load previous messages: %s", e)
     
-    messages = [
-        {"role": "system", "content": system_prompt},
-        *prev_msgs,
-        {"role": "user", "content": request.message},
-    ]
+    # 4. 최종 메시지 배열 조립 (캐시 파괴가 잦은 순서를 맨 뒤로)
+    messages = [{"role": "system", "content": system_base_rules}]
+    if dynamic_context:
+        messages.append({"role": "system", "content": f"[참고용 동적 컨텍스트]\n{dynamic_context}"})
+    messages.extend(prev_msgs)
+    messages.append({"role": "user", "content": request.message})
     
     try:
         client = AsyncOpenAI(api_key=api_key)
@@ -325,7 +342,7 @@ async def generate_tutor_response(
         response = await client.chat.completions.create(
             model="gpt-4o-mini",
             messages=messages,
-            max_tokens=1000,
+            max_tokens=4096,
             stream=True,
         )
         
@@ -409,66 +426,30 @@ async def generate_tutor_response(
 
         if should_viz and full_response:
             try:
-                # 여기서 기존 gpt-4o-mini 호출 방식을 Anthropic SDK의 claude-sonnet-4-6 호출 방식으로 변경
-                import anthropic
-                import os
+                # Step 1: Chart Classification
+                classification = await classify_chart_request(request.message, full_response)
                 
-                viz_prompt = (
-                    "다음 내용을 Plotly.js 차트 JSON으로 변환하세요.\n"
-                    "반드시 아래 형식의 JSON만 반환하세요 (마크다운 코드블록 없이):\n"
-                    '{"data": [트레이스 객체들], "layout": {레이아웃 옵션}}\n\n'
-                    f"내용:\n{full_response[:500]}"
-                )
-                
-                claude_api_key = os.getenv("CLAUDE_API_KEY") or get_settings().ANTHROPIC_API_KEY
-                if claude_api_key:
-                    claude_client = anthropic.AsyncAnthropic(api_key=claude_api_key)
-                    viz_response = await claude_client.messages.create(
-                        model="claude-3-5-haiku-20241022", # 비용 효율적인 Haiku 모델 적용
-                        max_tokens=2000,
-                        system=(
-                            "당신은 Plotly.js 차트 전문가입니다. "
-                            "주어진 내용을 시각화하는 Plotly JSON config를 생성하세요. "
-                            '반드시 {"data": [...], "layout": {...}} 형식의 JSON만 반환하세요. '
-                            "디자인 규칙: 주요 색상 #FF6B00(주황), 보조 색상 #FF8C33, "
-                            "배경 투명(transparent), 한글 레이블 사용. "
-                            "마크다운 코드블록(```)으로 감싸지 마세요. 오직 JSON만 반환하세요."
-                        ),
-                        messages=[{"role": "user", "content": viz_prompt}],
-                    )
-                    json_content = viz_response.content[0].text.strip()
-                else:
-                    # Fallback to OpenAI if Claude API key is not available
-                    viz_response = await client.chat.completions.create(
-                        model="gpt-4o-mini",
-                        messages=[
-                            {"role": "system", "content": (
-                                "당신은 Plotly.js 차트 전문가입니다. "
-                                "주어진 내용을 시각화하는 Plotly JSON config를 생성하세요. "
-                                '반드시 {"data": [...], "layout": {...}} 형식의 JSON만 반환하세요. '
-                                "디자인 규칙: 주요 색상 #FF6B00(주황), 보조 색상 #FF8C33, "
-                                "배경 투명(transparent), 한글 레이블 사용. "
-                                "마크다운 코드블록(```)으로 감싸지 마세요. 오직 JSON만 반환하세요."
-                            )},
-                            {"role": "user", "content": viz_prompt},
-                        ],
-                        max_tokens=2000,
-                    )
-                    json_content = viz_response.choices[0].message.content.strip()
+                if classification.chart_type == ChartType.UNSUPPORTED:
+                    fallback_msg = "\n\n(안내: 요청하신 시각화 형태는 현재 지원하지 않아 차트 대신 텍스트로 설명해 드렸습니다 😊)"
+                    yield f"event: text_delta\ndata: {json.dumps({'content': fallback_msg})}\n\n"
                     
-                # ```json 코드 블록 제거 (LLM이 감쌀 수 있음)
-                if json_content.startswith("```"):
-                    json_content = json_content.split("```", 2)[1]
-                    if json_content.startswith("json"):
-                        json_content = json_content[4:]
-                    if "```" in json_content:
-                        json_content = json_content.rsplit("```", 1)[0]
-                    json_content = json_content.strip()
-                chart_data = json.loads(json_content)
-                if "data" in chart_data and isinstance(chart_data["data"], list):
-                    yield f"event: visualization\ndata: {json.dumps({'type': 'visualization', 'format': 'json', 'chartData': chart_data})}\n\n"
+                    # Log message update in background
+                    assistant_msg.content += fallback_msg
+                    await db.commit()
+                else:
+                    # Step 2: JSON Chart Generation
+                    viz_context = f"{full_response[:500]}\n사용자 추가 컨텍스트: {classification.reasoning}"
+                    chart_json = await generate_chart_json(viz_context, classification.chart_type)
+                    
+                    if chart_json and "data" in chart_json and isinstance(chart_json["data"], list):
+                        # Ensure 'type' field is explicitly injected in data traces if the LLM missed it
+                        for trace in chart_json["data"]:
+                            if "type" not in trace:
+                                trace["type"] = classification.chart_type.value
+                                
+                        yield f"event: visualization\ndata: {json.dumps({'type': 'visualization', 'format': 'json', 'chartData': chart_json})}\n\n"
             except Exception as viz_err:
-                logger.warning(f"시각화 생성 실패: {viz_err}")
+                logger.warning(f"시각화 파이프라인 실패: {viz_err}")
 
         done_data = {'session_id': session_id, 'total_tokens': total_tokens}
         if sources:

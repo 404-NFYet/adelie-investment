@@ -152,6 +152,10 @@ export function TutorProvider({ children }) {
         let fullContent = '';
         let buffer = '';
 
+        const STREAM_FLUSH_INTERVAL_MS = 120;
+        let lastFlushTime = Date.now();
+        let pendingFlush = false;
+
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -192,9 +196,7 @@ export function TutorProvider({ children }) {
                   });
                 }
                 fullContent += data.content;
-                setMessages((prev) =>
-                  prev.map((m) => (m.id === assistantMessage.id ? { ...m, content: fullContent } : m))
-                );
+                pendingFlush = true;
               }
 
               if (data.session_id) {
@@ -256,10 +258,17 @@ export function TutorProvider({ children }) {
               // ignore malformed SSE chunk
             }
           }
+          if (pendingFlush && Date.now() - lastFlushTime >= STREAM_FLUSH_INTERVAL_MS) {
+            setMessages((prev) =>
+              prev.map((m) => (m.id === assistantMessage.id ? { ...m, content: fullContent } : m))
+            );
+            lastFlushTime = Date.now();
+            pendingFlush = false;
+          }
         }
 
         setMessages((prev) =>
-          prev.map((m) => (m.id === assistantMessage.id ? { ...m, isStreaming: false } : m))
+          prev.map((m) => (m.id === assistantMessage.id ? { ...m, content: fullContent, isStreaming: false } : m))
         );
       } catch (error) {
         console.error('Tutor error:', error);

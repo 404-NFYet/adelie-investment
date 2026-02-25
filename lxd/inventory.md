@@ -1,10 +1,10 @@
 # LXD 서버 인벤토리
 
-## 인스턴스 현황 (2026-02-17 업데이트)
+## 인스턴스 현황 (2026-02-25 업데이트)
 
 | 인스턴스 | IP | 역할 | 담당자 | CPU/RAM | 프로파일 |
 |----------|-----|------|--------|---------|---------|
-| infra-server | 10.10.10.10 | PostgreSQL, Redis, MinIO | 공유 | 8/24GB | `infra.yml` |
+| infra-server | 10.10.10.10 | 모니터링 에이전트 (cadvisor, node_exporter) | 공유 | 8/24GB | `infra.yml` |
 | deploy-test | 10.10.10.20 | prod 배포 서버 | 도형준 | 16/32GB | `deploy.yml` |
 | dev-yj99son | 10.10.10.14 | PM / Frontend | 손영진 | 4/8GB | `dev-standard.yml` |
 | dev-j2hoon10 | 10.10.10.11 | Chatbot (LangGraph 에이전트) | 정지훈 | 4/12GB | `dev-ai.yml` |
@@ -43,7 +43,16 @@
 - Monitoring + Dashboard: `infra/monitoring/docker-compose.yml`
 - Main app: `docker-compose.prod.yml`
 
-### infra-server (10.10.10.10) — 로컬 SSH 접근 불가 (팀 내부망 전용)
+### infra-server (10.10.10.10) — 모니터링 에이전트 서버
+
+| 서비스 | 포트 | 상태 |
+|--------|------|------|
+| cAdvisor | :8080 | 운영 중 — deploy-test Prometheus 스크레이핑 |
+| node_exporter | :9100 | 운영 중 — deploy-test Prometheus 스크레이핑 |
+| tmp-postgres-1 | :5432 | 레거시 — 실행 중이나 미사용 (각 dev 서버가 로컬 DB 운영) |
+| tmp-redis-1 | :6379 | 레거시 — 실행 중이나 미사용 |
+
+> 2026-02-24부터 공유 DB 역할 종료. 각 dev-* 서버가 docker-compose.dev.yml로 로컬 postgres 운영.
 
 ## 역할 변경 이력 (2026-02-14)
 

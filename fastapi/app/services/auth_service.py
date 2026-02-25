@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 import jwt
 from fastapi import HTTPException, status
 from passlib.context import CryptContext
+from pydantic import EmailStr, TypeAdapter
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -61,19 +62,34 @@ def _build_token(subject: str, expires_in: int, extra_claims: dict | None = None
     )
 
 
-def _validate_email_domain(email: str, blocked_domains: list[str]) -> None:
-    if not email or "@" not in email:
+_email_adapter = TypeAdapter(EmailStr)
+
+
+def _validate_email_format(email: str) -> str:
+    if not email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="유효하지 않은 이메일 형식입니다.",
         )
-    domain = email.split("@", 1)[1].lower()
+    try:
+        return str(_email_adapter.validate_python(email))
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="유효하지 않은 이메일 형식입니다.",
+        )
+
+
+def _validate_email_domain(email: str, blocked_domains: list[str]) -> str:
+    normalized = _validate_email_format(email)
+    domain = normalized.split("@", 1)[1].lower()
     for blocked in blocked_domains:
         if domain == blocked.lower():
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"허용되지 않는 이메일 도메인입니다: {domain}",
             )
+    return normalized
 
 def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
@@ -138,7 +154,7 @@ async def register_user(
 ) -> dict:
     settings = get_settings()
 
-    _validate_email_domain(email, settings.registration_blocked_domains)
+    email = _validate_email_domain(email, settings.registration_blocked_domains)
 
     existing = await db.execute(select(User).where(User.email == email))
     if existing.scalar_one_or_none():

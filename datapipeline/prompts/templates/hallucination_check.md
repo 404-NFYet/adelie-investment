@@ -2,7 +2,7 @@
 provider: anthropic
 model: claude-sonnet-4-6
 temperature: 0.1
-max_tokens: 3000
+max_tokens: 16000
 response_format: json_object
 system_message: >
   당신은 금융 콘텐츠 팩트체커입니다. 정확성과 일관성을 최우선으로 검증합니다.
@@ -111,7 +111,14 @@ system_message: >
       "outcome": "string",
       "lesson": "string"
     },
-    "narrative": {}
+    "narrative": {
+      "background": {"purpose": "string", "content": "string", "bullets": ["string"], "viz_hint": "string or null"},
+      "concept_explain": {"purpose": "string", "content": "string", "bullets": ["string"], "viz_hint": "string or null"},
+      "history": {"purpose": "string", "content": "string", "bullets": ["string"], "viz_hint": "string or null"},
+      "application": {"purpose": "string", "content": "string", "bullets": ["string"], "viz_hint": "string or null"},
+      "caution": {"purpose": "string", "content": "string", "bullets": ["string"], "viz_hint": "string or null"},
+      "summary": {"purpose": "string", "content": "string", "bullets": ["string"], "viz_hint": null}
+    }
   }
 }
 ```

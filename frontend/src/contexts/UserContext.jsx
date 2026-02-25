@@ -37,28 +37,21 @@ export function UserProvider({ children }) {
     localStorage.setItem('userSettings', JSON.stringify(settings));
   }, [settings]);
 
-  // Initialize user (check for token and restore user info)
+  // 앱 시작 시 쿠키 기반 인증 상태 복원
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      authApi.getMe(token)
-        .then(data => {
-          setUser({
-            id: data.id,
-            email: data.email,
-            username: data.username,
-            isAuthenticated: true,
-          });
-        })
-        .catch(() => {
-          // 토큰 만료 또는 유효하지 않음 → 제거
-          localStorage.removeItem('token');
-          localStorage.removeItem('refreshToken');
-        })
-        .finally(() => setIsLoading(false));
-    } else {
-      setIsLoading(false);
-    }
+    authApi.getMe()
+      .then(data => {
+        setUser({
+          id: data.id,
+          email: data.email,
+          username: data.username,
+          isAuthenticated: true,
+        });
+      })
+      .catch(() => {
+        // 쿠키 만료 또는 미인증 → 미인증 상태 유지
+      })
+      .finally(() => setIsLoading(false));
   }, []);
 
   // 401 응답 시 자동 로그아웃 (client.js에서 이벤트 발행)
@@ -111,16 +104,13 @@ export function UserProvider({ children }) {
       username: authResponse.user?.username,
       isAuthenticated: true,
     });
-    localStorage.setItem('token', authResponse.accessToken);
-    if (authResponse.refreshToken) {
-      localStorage.setItem('refreshToken', authResponse.refreshToken);
-    }
+    // 토큰은 HttpOnly 쿠키로 자동 설정됨 — localStorage 저장 불필요
   }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    try { await authApi.logout(); } catch { /* 서버 로그아웃 실패 무시 */ }
     setUser(null);
-    localStorage.removeItem('token');
-    localStorage.removeItem('refreshToken');
+    // 쿠키는 서버 Set-Cookie로 제거됨 — localStorage 제거 불필요
   }, []);
 
   const value = useMemo(() => ({

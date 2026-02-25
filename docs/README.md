@@ -32,11 +32,18 @@
 
 ## 인프라 (Infrastructure)
 
-- _(localstack-guide.md 등 추가 예정)_
+- [인프라 구성](../infra/README.md) — 서버 역할, 배포 절차, Docker 태그 정책, 모니터링
+- [LXD 서버 인벤토리](../lxd/inventory.md) — 인스턴스 목록, 스펙, 배포 현황
 
 ## STAR 리포트 (Star Reports)
 
-- _(개인별 STAR 리포트 추가 예정)_
+| 담당자 | 리포트 |
+|--------|--------|
+| 손영진 | [YJ99Son](star-reports/YJ99Son.md) |
+| 정지훈 | [J2hoon10](star-reports/J2hoon10.md) |
+| 안례진 | [ryejinn](star-reports/ryejinn.md) |
+| 허진서 | [jjjh02](star-reports/jjjh02.md) |
+| 도형준 | [dorae222](star-reports/dorae222.md) |
 
 ## 참조 (Reference)
 
@@ -46,4 +53,11 @@
 - [KIS API](reference/kis-api.md)
 - [환경변수](reference/env-vars.md)
 - [LLM 모델](reference/llm-models.md)
-- [AWS 배포](aws/)
+- [변경이력 (changes/)](../changes/) — 팀원별 Phase 단위 상세 변경이력
+
+## 아카이브 (Archive)
+
+완료된 설계 문서:
+- [챗봇 컨텍스트 재설계](archive/chatbot_context_redesign_plan.md)
+- [챗봇 LangGraph 구조](archive/chatbot_langgraph_structure.md)
+- [가드레일 검증 계획](archive/guardrail_verification_plan.md)
