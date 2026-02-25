@@ -131,8 +131,24 @@ function getChecklistItems(content, bullets) {
   return items.slice(0, 5);
 }
 
+// CommonMark delimiter 규칙 우회: 한글+스마트인용부호 환경에서 **bold** 렌더링 보장
+function preprocessMarkdown(content) {
+  if (!content) return '';
+  let s = content;
+
+  // 1) **...**  →  <strong>...</strong>
+  //    right-flanking delimiter 실패 케이스 (punctuation + ** + 한글) 포함 전체 처리
+  s = s.replace(/\*\*((?:(?!\*\*)[^\n])+?)\*\*/g, '<strong>$1</strong>');
+
+  // 2) 잔여 orphan * 정리 — *[text]** 같은 LLM 오류 패턴
+  s = s.replace(/\*(\[[^\]]+\])/g, '$1');
+
+  return s;
+}
+
 function MarkdownBody({ content, onTermClick, className = '' }) {
   if (!content) return null;
+  const processed = preprocessMarkdown(content);
 
   return (
     <div className={`${className} select-text`} style={{ userSelect: 'text', WebkitUserSelect: 'text' }}>
@@ -171,7 +187,7 @@ function MarkdownBody({ content, onTermClick, className = '' }) {
           th: ({ node, ...props }) => <th className="px-2 py-1.5 text-left font-semibold text-text-primary" {...props} />,
         }}
       >
-        {content}
+        {processed}
       </ReactMarkdown>
     </div>
   );
