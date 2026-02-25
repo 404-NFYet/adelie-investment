@@ -282,6 +282,58 @@ cd ~/adelie-investment
 ./lxd/setup-git-worktree.sh dev/feature-branch
 ```
 
+## analytics LXD 서버 (PostHog)
+
+### 서버 정보
+- 인스턴스: `analytics` (10.10.10.17)
+- 서비스: PostHog hobby 배포 (24개 컨테이너)
+- URL: https://analytics.adelie-invest.com
+- Cloudflare Tunnel: deploy-test cloudflared → `10.10.10.17:80`
+
+### PostHog 관리
+
+```bash
+# 서버 접속
+lxc exec analytics -- bash
+
+# Docker 상태 확인
+docker ps --format "table {{.Names}}\t{{.Status}}"
+
+# PostHog 업그레이드
+cd /opt/posthog
+docker compose pull
+docker compose up -d
+
+# 로그 확인
+docker compose logs -f web
+```
+
+### Cloudflare Tunnel 관리
+
+deploy-test의 `~/.cloudflared/config.yml`에 analytics ingress 포함:
+
+```yaml
+ingress:
+  - hostname: analytics.adelie-invest.com
+    service: http://10.10.10.17:80
+  # ... 기존 항목들
+```
+
+```bash
+# DNS 라우트 추가 (최초 1회)
+cloudflared tunnel route dns adelie-demo analytics.adelie-invest.com
+
+# 터널 재시작
+sudo systemctl restart cloudflared
+
+# 상태 확인
+sudo systemctl status cloudflared
+```
+
+### 백업
+- PostHog 데이터: Docker volumes (clickhouse-data, postgres-data)
+- 백업: `docker compose exec postgres pg_dump` + ClickHouse snapshot
+
 ## 커밋 전 체크리스트
 - [ ] `git config user.name` = dorae222
 - [ ] `git config user.email` = dhj9842@gmail.com
