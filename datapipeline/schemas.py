@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # ────────────────────────────────────────────
@@ -152,9 +152,14 @@ class Page(BaseModel):
     title: str
     purpose: str
     content: str
-    bullets: list[str]
+    bullets: list[str] = Field(default_factory=list)
     chart: Optional[PlotlyChart] = None
     glossary: list[GlossaryItem] = Field(default_factory=list)
+
+    @field_validator("bullets", "glossary", mode="before")
+    @classmethod
+    def _none_to_empty_list(cls, v: Any) -> Any:
+        return v if v is not None else []
 
 
 class SourceItem(BaseModel):
