@@ -1,169 +1,134 @@
-# Adelie - Infrastructure Setup
+# Adelie — 인프라 구성 (2026-02-25 기준)
 
-## 개요
+## 서버 역할
 
-infra-server (10.10.10.10)에서 실행되는 모든 인프라 서비스를 하나의 `docker-compose.yml`로 통합 관리합니다.
+### deploy-test (10.10.10.20) — 프로덕션 서버
 
-**포함 서비스 (4개)**:
-- PostgreSQL 16 + pgvector (메인 DB)
-- Redis 7 (캐싱, 세션, Rate Limiting)
-- Neo4j 5 Community (기업 관계 그래프 DB)
-- MinIO (S3 호환 오브젝트 스토리지)
+완전 독립 스택. git 브랜치: `prod-final`.
 
-## 사전 조건
+| 서비스 | 컨테이너 | 포트 | 비고 |
+|--------|----------|------|------|
+| Frontend (nginx) | adelie-frontend | :80 | SPA + API 리버스 프록시 |
+| Backend API | adelie-backend-api | :8082 | FastAPI |
+| PostgreSQL 15 | adelie-postgres | :5432 | 내부 전용 |
+| Redis 7 | adelie-redis | :6379 | 캐싱, Rate Limiting |
+| MinIO | adelie-minio | :9000/:9001 | S3 호환 오브젝트 스토리지 |
+| Prometheus | adelie-prometheus | :9090 | 메트릭 수집 |
+| Grafana | adelie-grafana | :3000 | 모니터링 대시보드 |
+| cAdvisor | adelie-cadvisor | :8080 | 컨테이너 메트릭 |
+| Alertmanager | adelie-alertmanager | :9093 | 알림 관리 |
+| Streamlit | adelie-dashboard | :8501 | nginx 프록시 경유 |
 
-- Docker 및 Docker Compose 설치
-- infra-server (10.10.10.10) SSH 접근 권한
+- Main app: `docker-compose.prod.yml`
+- Monitoring + Dashboard: `infra/monitoring/docker-compose.yml`
 
-## 서비스 구성
+### infra-server (10.10.10.10) — 모니터링 에이전트
 
-```
-docker-compose.yml (통합)
-├── postgres    (pgvector/pgvector:pg16)    :5432
-├── redis       (redis:7-alpine)            :6379
-├── neo4j       (neo4j:5-community)         :7474, :7687
-└── minio       (minio/minio:latest)        :9000, :9001
-```
+deploy-test Prometheus가 스크레이핑하는 메트릭 수집 에이전트만 운영.
 
-모든 서비스는 `narrative-network` 네트워크에서 통신합니다.
+| 서비스 | 포트 | 상태 |
+|--------|------|------|
+| cAdvisor | :8080 | 운영 중 — 컨테이너 메트릭 수집 |
+| node_exporter | :9100 | 운영 중 — 시스템 메트릭 수집 |
+| tmp-postgres-1 | :5432 | 레거시 — 실행 중이나 미사용 (2026-02-24 개인 로컬 DB로 전환) |
+| tmp-redis-1 | :6379 | 레거시 — 실행 중이나 미사용 |
 
-## 설치 방법
+### dev-* 서버 — 개인 개발 환경 (LXD)
 
-### 1. 파일 복사
-
-```bash
-# 로컬에서 실행
-scp -r /home/hj/2026/project/narrative-investment/infra/* root@10.10.10.10:/opt/narrative-investment/infra/
-```
-
-### 2. 환경 변수 설정
-
-```bash
-# infra-server에서 실행
-cd /opt/narrative-investment/infra
-cp .env.example .env
-# 필요 시 .env 파일에서 비밀번호 등 수정
-```
-
-### 3. 컨테이너 시작
+각 서버가 `docker-compose.dev.yml`로 로컬 PostgreSQL을 운영.
 
 ```bash
-# 셋업 스크립트로 실행
-cd /opt/narrative-investment/infra
-chmod +x setup-infra.sh
-./setup-infra.sh
+# 초기 세팅 (기동 + 마이그레이션 + prod 데이터 복제 + 재시작)
+make -f lxd/Makefile dev-local-db-setup
+
+# prod 데이터 최신화
+make -f lxd/Makefile sync-dev-data
 ```
 
-또는 직접 docker-compose 실행:
+서버 목록: `lxd/inventory.md` 참조.
+
+## 서비스 URL
+
+| URL | 서비스 | 비고 |
+|-----|--------|------|
+| https://demo.adelie-invest.com | Frontend (nginx) | Cloudflare Tunnel → deploy-test:80 |
+| https://monitoring.adelie-invest.com | Grafana | Cloudflare Tunnel → deploy-test:3000 |
+| https://dashboard.adelie-invest.com | Streamlit 대시보드 | Cloudflare Tunnel → deploy-test:8501 (nginx) |
+
+## 배포 절차
 
 ```bash
-cd /opt/narrative-investment/infra
-docker compose --env-file .env up -d
+# 1. 빌드
+make build                  # frontend + backend-api 이미지 빌드
+
+# 2. Docker Hub 푸시
+make push                   # dorae222/adelie-* 이미지 푸시
+
+# 3. deploy-test 배포
+make deploy                 # SSH → docker compose pull + up -d
 ```
 
-## 서비스 정보
+또는 개별 서비스:
 
-### PostgreSQL 16 + pgvector
+```bash
+make build-frontend && make push    # 프론트엔드만
+make build-api && make push         # 백엔드만
+```
 
-| 항목 | 값 |
-|------|------|
-| Image | `pgvector/pgvector:pg16` |
-| Container | `narrative-postgres` |
-| Port | 5432 |
-| Database | narrative_invest |
-| Username | narative |
-| Password | password |
-| Memory Limit | 4G |
-| 용도 | 메인 DB, 벡터 검색 (pgvector), 주가/사례/스토리 저장 |
+## Docker 이미지 태그 정책
 
-### Redis 7
+- `:latest` **사용 중지** (2026-02-24~)
+- 배포 태그: `prod-YYYYMMDD` (예: `prod-20260224`)
+- 기준선 태그: `feb20-stable` (v1.2.1-stable-feb20 스냅샷)
+- `docker-compose.prod.yml`에 `TAG` 환경변수로 태그 지정
 
-| 항목 | 값 |
-|------|------|
-| Image | `redis:7-alpine` |
-| Container | `narrative-redis` |
-| Port | 6379 |
-| Max Memory | 512MB (allkeys-lru 정책) |
-| Persistence | AOF (appendonly) |
-| Memory Limit | 1G |
-| 용도 | 세션 캐싱, 브리핑 캐시 (TTL: 6시간), Rate Limiting |
+```bash
+# deploy-test에서
+TAG=prod-20260225 docker compose -f docker-compose.prod.yml up -d
+```
 
-### Neo4j 5 Community (Graph Database)
+## 모니터링 스택
 
-| 항목 | 값 |
-|------|------|
-| Image | `neo4j:5-community` |
-| Container | `narrative-neo4j` |
-| Browser URL | http://10.10.10.10:7474 |
-| Bolt URI | bolt://10.10.10.10:7687 |
-| Username | neo4j |
-| Password | password |
-| Plugins | APOC |
-| Heap | 512MB ~ 2G |
-| Memory Limit | 4G |
-| 용도 | 기업 관계 그래프 (공급망, 경쟁사, 계열사) |
+`infra/monitoring/` 디렉토리에서 관리.
 
-### MinIO (S3-compatible Storage)
+| 구성 요소 | 파일 |
+|-----------|------|
+| Prometheus | `prometheus.yml` — 스크레이프 타겟 (deploy-test + infra-server) |
+| Alertmanager | `alertmanager.yml` — Discord 알림 |
+| 알림 규칙 | `rules/adelie-alerts.yml` |
+| Grafana 대시보드 | Grafana UI에서 관리 |
 
-| 항목 | 값 |
-|------|------|
-| Image | `minio/minio:latest` |
-| Container | `narrative-minio` |
-| API URL | http://10.10.10.10:9000 |
-| Console URL | http://10.10.10.10:9001 |
-| Username | minioadmin |
-| Password | minioadmin123 |
-| Memory Limit | 1G |
-| 용도 | 증권사 리포트 PDF 저장, 추출 데이터 저장 |
+```bash
+# 모니터링 스택 재시작
+ssh deploy-test 'cd ~/adelie-investment/infra/monitoring && docker compose up -d'
+```
 
-## 버킷 생성 (MinIO)
+## 리소스 요약 (deploy-test 기준)
 
-MinIO Console (http://10.10.10.10:9001)에서 로그인 후 생성:
-
-| 버킷명 | 용도 |
-|--------|------|
-| `naver-reports` | 네이버 증권사 리포트 PDF 저장 |
-| `extracted-data` | Vision API로 추출한 데이터 저장 |
-
-## 리소스 요약
-
-| 서비스 | Memory Limit | CPU Limit |
-|--------|-------------|-----------|
-| PostgreSQL | 4G | 4 cores |
-| Redis | 1G | 1 core |
-| Neo4j | 4G | 2 cores |
-| MinIO | 1G | 1 core |
-| **합계** | **10G** | **8 cores** |
-
-## 볼륨
-
-| 볼륨명 | 서비스 | 컨테이너 경로 |
-|--------|--------|--------------|
-| `postgres_data` | PostgreSQL | /var/lib/postgresql/data |
-| `redis_data` | Redis | /data |
-| `neo4j_data` | Neo4j | /data |
-| `neo4j_logs` | Neo4j | /logs |
-| `neo4j_import` | Neo4j | /var/lib/neo4j/import |
-| `minio_data` | MinIO | /data |
+| 서비스 | Memory | 비고 |
+|--------|--------|------|
+| PostgreSQL | 4G | pgvector 포함 |
+| Redis | 512MB | allkeys-lru |
+| MinIO | 1G | |
+| Backend API | ~1G | FastAPI + uvicorn |
+| Frontend | ~256MB | nginx |
+| 모니터링 (4개) | ~2G | Prometheus + Grafana + cAdvisor + Alertmanager |
+| Streamlit | ~512MB | nginx + dashboard |
 
 ## 상태 확인
 
 ```bash
-# 전체 서비스 상태
-docker compose ps
+# deploy-test 전체 서비스 상태
+ssh deploy-test 'docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"'
 
-# 개별 서비스 헬스체크
-# PostgreSQL
-docker exec narrative-postgres pg_isready -U narative -d narrative_invest
+# PostgreSQL 헬스체크
+ssh deploy-test 'docker exec adelie-postgres pg_isready -U narative -d narrative_invest'
 
-# Redis
-docker exec narrative-redis redis-cli ping
+# Redis 핑
+ssh deploy-test 'docker exec adelie-redis redis-cli ping'
 
-# Neo4j
-curl http://10.10.10.10:7474
-
-# MinIO
-curl http://10.10.10.10:9000/minio/health/live
+# LXD 서버 전체 헬스체크
+make -f lxd/Makefile health-lxd
 ```
 
 ## 문제 해결
@@ -171,41 +136,34 @@ curl http://10.10.10.10:9000/minio/health/live
 ### 컨테이너 로그 확인
 
 ```bash
-docker logs narrative-postgres
-docker logs narrative-redis
-docker logs narrative-neo4j
-docker logs narrative-minio
+ssh deploy-test 'docker logs --tail 100 adelie-backend-api'
+ssh deploy-test 'docker logs --tail 100 adelie-frontend'
+ssh deploy-test 'docker logs --tail 100 adelie-postgres'
 ```
 
-### 개별 서비스 재시작
+### 서비스 재시작
 
 ```bash
-docker compose restart postgres
-docker compose restart redis
-docker compose restart neo4j
-docker compose restart minio
+# 개별 서비스
+ssh deploy-test 'cd ~/adelie-investment && docker compose -f docker-compose.prod.yml restart backend-api'
+
+# 전체 재시작
+ssh deploy-test 'cd ~/adelie-investment && docker compose -f docker-compose.prod.yml down && docker compose -f docker-compose.prod.yml up -d'
 ```
 
-### 전체 서비스 재시작
+### DB 마이그레이션
 
 ```bash
-cd /opt/narrative-investment/infra
-docker compose down
-docker compose --env-file .env up -d
+# deploy-test
+ssh deploy-test 'docker exec adelie-backend-api sh -c "cd /app/database && alembic upgrade head"'
+
+# 로컬 (LXD dev)
+cd database && ../.venv/bin/alembic upgrade head
 ```
 
 ### 데이터 초기화 (주의: 데이터 삭제됨)
 
 ```bash
-docker compose down -v    # 볼륨 포함 삭제
-docker compose --env-file .env up -d
-```
-
-## 백업
-
-`backup.sh` 스크립트를 사용하여 데이터를 백업할 수 있습니다:
-
-```bash
-chmod +x backup.sh
-./backup.sh
+ssh deploy-test 'cd ~/adelie-investment && docker compose -f docker-compose.prod.yml down -v'
+ssh deploy-test 'cd ~/adelie-investment && docker compose -f docker-compose.prod.yml up -d'
 ```
