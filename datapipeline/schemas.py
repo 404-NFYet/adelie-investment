@@ -142,11 +142,11 @@ class PlotlyChart(BaseModel):
 
 
 class GlossaryItem(BaseModel):
-    term: str
-    definition: str
+    term: str = ""
+    definition: str = ""
     domain: str = ""
 
-    @field_validator("domain", mode="before")
+    @field_validator("term", "definition", "domain", mode="before")
     @classmethod
     def _none_to_empty_str(cls, v: Any) -> str:
         return v if v is not None else ""
@@ -168,16 +168,31 @@ class Page(BaseModel):
 
 
 class SourceItem(BaseModel):
-    name: str
-    url_domain: str
-    used_in_pages: list[int]
+    name: str = ""
+    url_domain: str = ""
+    used_in_pages: list[int] = Field(default_factory=list)
+
+    @field_validator("name", "url_domain", mode="before")
+    @classmethod
+    def _none_to_empty_str(cls, v: Any) -> str:
+        return v if v is not None else ""
+
+    @field_validator("used_in_pages", mode="before")
+    @classmethod
+    def _none_to_empty_list(cls, v: Any) -> Any:
+        return v if v is not None else []
 
 
 class HallucinationItem(BaseModel):
-    claim: str
-    source: str
-    risk: str  # 낮음|중간|높음
-    note: str
+    claim: str = ""
+    source: str = ""
+    risk: str = "낮음"
+    note: str = ""
+
+    @field_validator("claim", "source", "risk", "note", mode="before")
+    @classmethod
+    def _none_to_empty_str(cls, v: Any) -> str:
+        return v if v is not None else ""
 
 
 class HomeIcon(BaseModel):
@@ -191,8 +206,13 @@ class FinalBriefing(BaseModel):
     generated_at: str
     pages: list[Page]
     home_icon: Optional[HomeIcon] = None
-    sources: list[SourceItem]
-    hallucination_checklist: list[HallucinationItem]
+    sources: list[SourceItem] = Field(default_factory=list)
+    hallucination_checklist: list[HallucinationItem] = Field(default_factory=list)
+
+    @field_validator("sources", "hallucination_checklist", mode="before")
+    @classmethod
+    def _none_to_empty_list(cls, v: Any) -> Any:
+        return v if v is not None else []
 
 
 # ────────────────────────────────────────────
