@@ -1,0 +1,278 @@
+Implement the following plan:
+
+# ** 마크다운 에러 수정 + UI/UX 개선 + 챗봇 차트 생성 보완
+
+## Context
+
+이전 플랜(Part 1-5: 대시보드/피드백/배포/파이프라인)은 실행 완료됨. 사용자가 추가 3가지 문제를 보고:
+
+1. **마크다운 ** 에러**: 핵심 개념 페이지 외에도 `**`가 raw text로 노출됨. `*` 뒤에 `**`가 바로 오는 패턴도 깨짐
+2. **UI/UX — 화면 중심 하향 치우침**: 랜딩~홈 화면에서 콘텐츠가 아래로 밀려 보임
+3. **챗봇 차트 생성 부족**: 튜터가 차트를 거의 생성하지 않음 → 프롬프트/도구/자동감지 모두 미흡
+
+---
+
+## Part 1: 마크다운 ** 에러 수정
+
+### 근본 원인
+- `HighlightedText.jsx`의 `formatInlineText()`가 정규식 `\*\*(.*?)\*\*/g`로 `**bold**` 처리
+- `dangerouslySetInnerHTML`로 직접 HTML 생성 → 불완전한 `**` 패턴 시 깨짐
+- LLM 출력(datapipeline)에서 `**bold**` 마크다운이 DB에 그대로 저장됨
+- Story.jsx, KeywordCard 등에서 이 컴포넌트 사용 → 에러 전파
+
+### 수정 방안: HighlightedText를 ReactMarkdown 기반으로 전환
+
+**파일**: `frontend/src/components/domain/HighlightedText.jsx`
+
+현재 `formatInlineText` + `dangerouslySetInnerHTML` 방식을 **ReactMarkdown 기반**으로 변경:
+
+```jsx
+import ReactMarkdown from 'react-markdown';
+import rehypeRaw from 'rehype-raw';
+
+// 용어 마크 처리 후 남은 텍스트 파트를 ReactMarkdown으로 렌더링
+// part.type === 'text' 일 때:
+<ReactMarkdown
+  rehypePlugins={[rehypeRaw]}
+  components={{
+    p: ({ children }) => <span>{children}</span>,  // p → span (인라인 컨텍스트)
+  }}
+>
+  {part.content}
+</ReactMarkdown>
+```
+
+- `formatInlineText()` 함수 제거
+- `dangerouslySetInnerHTML` 제거 → XSS 위험도 해소
+- `**bold**`, `*italic*`, 기타 마크다운 모두 정상 처리
+- 기존 `<mark class='term'>` / `[[term]]` 파싱 로직은 유지
+
+### 검증
+- Story 페이지: `**텍스트**`가 bold로 렌더링되는지 확인
+- `*이탤릭*` 뒤에 `**볼드**` 오는 패턴 처리 확인
+- 용어 하이라이트 클릭 동작 유지 확인
+
+---
+
+## Part 2: UI/UX — 홈 화면 레이아웃 개선
+
+### 근본 원인
+- **Home.jsx**: `pt-28` (112px) 과도한 상단 패딩 + AppHeader 미사용
+- 다른 보호 페이지(Profile, Search, Portfolio 등)는 모두 AppHeader를 포함하는데 Home만 없음
+- AppHeader는 `sticky top-0`으로 ~45px 높이 → `pt-28`은 112px로 과다
+
+### 수정 방안
+
+**파일**: `frontend/src/pages/Home.jsx`
+
+```jsx
+// Before
+<div className="min-h-screen bg-background pb-24">
+  <main className="max-w-mobile mx-auto px-6 pt-28">
+
+// After
+<div className="min-h-screen bg-background pb-24">
+  <AppHeader />
+  <main className="max-w-mobile mx-auto px-6 pt-6">
+```
+
+- AppHeader import 추가
+- `pt-28` → `pt-6` (AppHeader가 sticky로 고정, 콘텐츠 직후 시작)
+- 다른 페이지들과 일관된 레이아웃 패턴
+
+### 추가 점검 포인트
+
+| 페이지 | 현재 상태 | 수정 필요 |
+|--------|----------|----------|
+| Landing.jsx | `pt-24` + `min-h-screen flex-col` — 정상 | 아니오 |
+| Home.jsx | `pt-28` + AppHeader 없음 | **예** |
+| Profile.jsx | AppHeader 있음 — 정상 | 아니오 |
+| Search.jsx | AppHeader 있음 — 정상 | 아니오 |
+| Narrative.jsx | 별도 페이지 레이아웃 — 정상 | 아니오 |
+
+### 검증
+- 홈 화면에서 "안녕하세요" 텍스트가 화면 상단 적절한 위치에 표시
+- AppHeader의 로고/알림/프로필 아이콘 정상 동작
+- 스크롤 시 AppHeader sticky 동작 확인
+
+---
+
+## Part 3: 챗봇 차트 생성 보완
+
+### 근본 원인 (5가지)
+1. **프롬프트 미지시**: `tutor_system.md`에 차트 도구 언급 없음, 시각화 권유 없음
+2. **에이전트 도구 미로드**: `tutor_agent.py`에서 visualization_tool import 안 함 (실험 코드, 미사용)
+3. **프로덕션 키워드 감지만 의존**: `tutor.py:322`에서 "차트", "그래프" 등 명시 키워드만 감지
+4. **should_auto_visualize() 보수적**: 종목 감지 + 데이터 키워드 동시 필요
+5. **시스템 프롬프트에 차트 권유 없음**: `get_difficulty_prompt()`에 시각화 관련 지시 전무
+
+### 수정 방안
+
+#### 3-A. 시스템 프롬프트에 차트 생성 지시 추가
+
+**파일**: `fastapi/app/services/tutor_engine.py` (line 54-74)
+
+`get_difficulty_prompt()` 각 난이도에 시각화 관련 지시 추가:
+
+```python
+"beginner": (
+    "... 기존 프롬프트 ..."
+    " 종목이나 시장 데이터를 설명할 때는 차트로 시각화하여 보여주면 좋습니다."
+    " 사용자가 명시적으로 요청하지 않더라도, 주가 추이나 비교 데이터가 있으면 차트 생성을 고려하세요."
+),
+```
+
+#### 3-B. should_auto_visualize() 감지 범위 확대
+
+**파일**: `fastapi/app/services/stock_resolver.py` (line 99-118)
+
+```python
+def should_auto_visualize(message: str, stock_detected: bool, prev_messages=None) -> bool:
+    msg = message.lower()
+
+    # 1) 명시적 시각화 키워드
+    viz_signals = ["시각화", "차트", "그래프", "보여줘", "그려줘", "시각적", "그림으로", "표로",
+                   "비교", "추세", "흐름", "변화"]  # 추가
+    if any(s in msg for s in viz_signals):
+        return True
+
+    # 2) 종목 감지 시 — 데이터 관련 키워드 확대
+    if stock_detected:
+        data_signals = ["주가", "주식", "등락", "추이", "종가", "시세", "얼마", "수익률", "실적",
+                        "분석", "전망", "어떻", "괜찮", "좋을까", "투자", "매수", "매도"]  # 확대
+        if any(s in msg for s in data_signals):
+            return True
+
+    # 3) 종목 감지만 되어도 자동 시각화 (가장 큰 개선)
+    if stock_detected:
+        return True
+
+    ...
+```
+
+핵심 변경: **종목이 감지되면 항상 차트 생성 시도** → 사용자가 종목을 언급한 것 자체가 데이터 관심 신호
+
+#### 3-C. 튜터 라우트 차트 생성 조건 개선
+
+**파일**: `fastapi/app/api/routes/tutor.py` (line 322-326)
+
+```python
+# Before: 명시적 키워드만
+viz_keywords = ["차트", "그래프", "시각화", "그려", "보여줘", "chart", "graph"]
+should_viz = any(kw in request.message.lower() for kw in viz_keywords)
+
+# After: should_auto_visualize() + chart_data 존재 여부로 판단
+from app.services.stock_resolver import should_auto_visualize
+detected_stocks = detect_stock_codes(request.message)
+should_viz = should_auto_visualize(request.message, bool(detected_stocks))
+# chart_data가 이미 수집되어 있으면 자동 시각화
+if chart_data and not should_viz:
+    should_viz = True
+```
+
+### 검증
+- "삼성전자 어떨까?" → 차트 자동 생성
+- "005930 주가 보여줘" → 차트 생성
+- "PER이 뭐야?" (종목 미감지) → 차트 미생성 (정상)
+
+---
+
+## Part 4: 빌드 & 재배포
+
+코드 수정 후 프론트엔드 + 백엔드 빌드 → deploy-test 배포.
+파이프라인이 현재 진행 중이므로 완료 확인 후 배포.
+
+```bash
+# 빌드
+docker build -t dorae222/adelie-frontend:latest -f frontend/Dockerfile frontend/
+docker build -t dorae222/adelie-backend-api:latest -f fastapi/Dockerfile .
+
+# Push + Deploy
+docker push dorae222/adelie-frontend:latest && docker push dorae222/adelie-backend-api:latest
+ssh deploy-test 'cd ~/adelie-investment && docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d'
+```
+
+---
+
+## 수정 파일 목록
+
+| 파일 | 변경 내용 |
+|------|----------|
+| `frontend/src/components/domain/HighlightedText.jsx` | `formatInlineText` + `dangerouslySetInnerHTML` → ReactMarkdown 기반 렌더링 |
+| `frontend/src/pages/Home.jsx` | AppHeader 추가, `pt-28` → `pt-6` |
+| `fastapi/app/services/tutor_engine.py` | `get_difficulty_prompt()`에 차트 생성 권유 문구 추가 |
+| `fastapi/app/services/stock_resolver.py` | `should_auto_visualize()` 감지 범위 확대 |
+| `fastapi/app/api/routes/tutor.py` | 차트 생성 조건을 `should_auto_visualize()` 통합으로 변경 |
+
+## 실행 순서
+
+1. Part 1: HighlightedText.jsx 수정
+2. Part 2: Home.jsx 수정
+3. Part 3-A/B/C: 챗봇 차트 생성 개선 (tutor_engine, stock_resolver, tutor route)
+4. Part 4: 빌드 & deploy-test 재배포
+5. 검증: 각 페이지에서 ** 에러/레이아웃/차트 생성 확인
+
+## 데이터 재수집 여부
+
+현재 파이프라인이 이미 실행 중 (topic-count 3). 차트 생성 개선은 **프론트엔드/백엔드 코드 수정**으로 해결되므로, 데이터 자체를 재수집할 필요는 없음. 다만 배포 후 챗봇에서 종목 관련 질문 시 차트가 정상 생성되는지 확인 필요.
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+<task-notification>
+<task-id>b4ff38b</task-id>
+<output-file>REDACTED.output</output-file>
+<status>completed</status>
+<summary>Background command "Push frontend image to Docker Hub" completed (exit code 0)</summary>
+</task-notification>
+Read the output file to retrieve the result: REDACTED.output
+
+---
+
+<task-notification>
+<task-id>b66a179</task-id>
+<output-file>/tmp/claude-1000/-home-hj-2026-project-adelie-investment/tasks/b66a179.output</output-file>
+<status>completed</status>
+<summary>Background command "Build frontend Docker image" completed (exit code 0)</summary>
+</task-notification>
+Read the output file to retrieve the result: /tmp/claude-1000/-home-hj-2026-project-adelie-investment/tasks/b66a179.output
+
+---
+
+<task-notification>
+<task-id>ba53bc4</task-id>
+<output-file>REDACTED.output</output-file>
+<status>completed</status>
+<summary>Background command "Push frontend image to Docker Hub" completed (exit code 0)</summary>
+</task-notification>
+Read the output file to retrieve the result: REDACTED.output
+
+---
+
+<task-notification>
+<task-id>b5a38a5</task-id>
+<output-file>REDACTED.output</output-file>
+<status>completed</status>
+<summary>Background command "Push backend API image to Docker Hub" completed (exit code 0)</summary>
+</task-notification>
+Read the output file to retrieve the result: REDACTED.output
+
+---
+
+<task-notification>
+<task-id>b89d625</task-id>
+<output-file>REDACTED.output</output-file>
+<status>completed</status>
+<summary>Background command "Build backend API Docker image" completed (exit code 0)</summary>
+</task-notification>
+Read the output file to retrieve the result: REDACTED.output
+
+---
+
+모의 투자 수익률 및 랭킹에 아직 잘못 반영된 것 같다. 해당 부분을 점검하고 개선해라.
+
+---
+
+[Request interrupted by user for tool use]

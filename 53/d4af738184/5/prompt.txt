@@ -1,0 +1,371 @@
+Implement the following plan:
+
+# 모의투자 수익률 및 랭킹 버그 수정
+
+## Context
+
+모의투자 수익률과 랭킹이 잘못 반영되는 문제 보고. 코드 + DB 점검 결과 5가지 버그 발견:
+
+1. **user_portfolios에 user_id UNIQUE 제약 없음** → 14명 사용자가 중복 포트폴리오 보유, 리더보드에 동일 사용자 2회 표시, `scalar_one_or_none()`이 `MultipleResultsFound` 에러 발생
+2. **summary 엔드포인트 현재가 폴백 불일치** → 가격 조회 실패 시 holdings 가치가 0원으로 계산 (다른 엔드포인트는 avg_buy_price 폴백)
+3. **check_and_apply_multiplier에서 rewards 미차감** → 보상을 받은 사용자의 순수 투자 손실이 "수익"으로 판정
+4. **quiz_reward.py도 중복 포트폴리오에 취약** → `scalar_one_or_none()` + `update().where(user_id)` 로 전체 중복 행 업데이트
+5. **프론트엔드 수익률 소수점 표시 불일치** → `5.1%`로 표시되어야 할 것이 `5.1%`(toFixed 미적용)
+
+---
+
+## Phase 0: deploy-test DB 중복 데이터 정리
+
+마이그레이션 전에 중복 포트폴리오를 정리해야 UNIQUE 제약 생성이 가능.
+
+```sql
+-- 중복 중 holdings/trades 없는 것 삭제 (각 user_id당 가장 오래된 1개는 보존)
+DELETE FROM user_portfolios
+WHERE id IN (
+    SELECT p.id FROM user_portfolios p
+    LEFT JOIN portfolio_holdings h ON h.portfolio_id = p.id
+    LEFT JOIN simulation_trades t ON t.portfolio_id = p.id
+    WHERE p.user_id IN (SELECT user_id FROM user_portfolios GROUP BY user_id HAVING COUNT(*) > 1)
+    AND h.id IS NULL AND t.id IS NULL
+    AND p.id NOT IN (SELECT MIN(id) FROM user_portfolios GROUP BY user_id)
+);
+-- 잔여 중복 확인 (0건이어야 함)
+SELECT user_id, COUNT(*) FROM user_portfolios GROUP BY user_id HAVING COUNT(*) > 1;
+```
+
+---
+
+## Phase 1: Alembic 마이그레이션 + 모델 동기화
+
+### 신규 파일: `database/alembic/versions/20260218_unique_user_portfolio.py`
+
+- `ix_user_portfolios_user_id` 인덱스를 UNIQUE로 재생성
+- `down_revision = "20260217_rewards"`
+
+### 수정: `fastapi/app/models/portfolio.py` (line 34-36)
+
+```python
+# Before
+Index("ix_user_portfolios_user_id", "user_id"),
+# After
+Index("ix_user_portfolios_user_id", "user_id", unique=True),
+```
+
+---
+
+## Phase 2: get_or_create_portfolio() race condition 방지
+
+**파일**: `fastapi/app/services/portfolio_service.py` (line 21-45)
+
+- `scalar_one_or_none()` → `scalars().first()` (중복 시 에러 대신 첫 번째 반환)
+- INSERT 후 `IntegrityError` 발생 시 rollback → 재조회 패턴
+
+```python
+from sqlalchemy.exc import IntegrityError
+
+async def get_or_create_portfolio(db, user_id):
+    stmt = select(UserPortfolio).where(...).options(...)
+    result = await db.execute(stmt)
+    portfolio = result.scalars().first()  # 변경점
+
+    if not portfolio:
+        portfolio = UserPortfolio(...)
+        db.add(portfolio)
+        try:
+            await db.flush()
+        except IntegrityError:
+            await db.rollback()
+            result = await db.execute(stmt)
+            portfolio = result.scalars().first()
+        else:
+            await db.commit()
+            await db.refresh(portfolio, attribute_names=["holdings", "trades"])
+    return portfolio
+```
+
+---
+
+## Phase 3: quiz_reward.py 중복 안전 처리
+
+**파일**: `fastapi/app/api/routes/quiz_reward.py` (line 43-60)
+
+- 직접 쿼리 → `get_or_create_portfolio()` 호출
+- `update().where(user_id)` → `update().where(id == portfolio.id)` (특정 1개만 업데이트)
+
+---
+
+## Phase 4: summary + multiplier 계산 로직 통일
+
+### 4-A. summary 현재가 폴백
+
+**파일**: `fastapi/app/api/routes/portfolio.py` (line 215-219)
+
+```python
+# Before — 가격 없으면 건너뜀
+if cp:
+    total_holdings += cp * h.quantity
+
+# After — avg_buy_price 폴백
+cp = price_map.get(h.stock_code) or int(h.avg_buy_price)
+total_holdings += cp * h.quantity
+```
+
+### 4-B. check_and_apply_multiplier 가격 폴백 + rewards 차감
+
+**파일**: `fastapi/app/services/portfolio_service.py` (line 209-215)
+
+```python
+# 가격 폴백 (line 210-212)
+cp = price_map.get(h.stock_code) or int(h.avg_buy_price)
+total_holdings_value += cp * h.quantity
+
+# rewards 차감 (line 215)
+rewards = portfolio.total_rewards_received or 0
+profit = total_value - portfolio.initial_cash - rewards
+```
+
+---
+
+## Phase 5: 리더보드 중복 사용자 방어
+
+**파일**: `fastapi/app/api/routes/portfolio.py` (line 100, sort 직전)
+
+```python
+# user_id 중복 제거 (UNIQUE 제약 이전 데이터 방어)
+seen_users = set()
+unique_entries = []
+for e in entries:
+    if e["user_id"] not in seen_users:
+        seen_users.add(e["user_id"])
+        unique_entries.append(e)
+entries = unique_entries
+```
+
+---
+
+## Phase 6: 프론트엔드 수익률 소수점 toFixed(2)
+
+### `Leaderboard.jsx` (line 98, 134)
+
+```jsx
+{Number(entry.profit_loss_pct).toFixed(2)}%
+```
+
+### `Portfolio.jsx` (line 42, 214, 240)
+
+```jsx
+{Number(holding.profit_loss_pct || 0).toFixed(2)}%
+{Number(displayPortfolio.total_profit_loss_pct).toFixed(2)}%
+{Number(pct).toFixed(2)}%
+```
+
+---
+
+## Phase 7: 빌드 & 배포
+
+```bash
+# 1. 마이그레이션 실행 (deploy-test)
+ssh deploy-test 'docker exec adelie-backend-api sh -c "cd /app/database && alembic upgrade head"'
+
+# 2. 빌드 & 배포
+docker build -t dorae222/adelie-frontend:latest -f frontend/Dockerfile frontend/
+docker build -t dorae222/adelie-backend-api:latest -f fastapi/Dockerfile .
+docker push dorae222/adelie-frontend:latest && docker push dorae222/adelie-backend-api:latest
+ssh deploy-test 'cd ~/adelie-investment && docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d'
+```
+
+---
+
+## 수정 파일 목록
+
+| 파일 | 변경 내용 |
+|------|----------|
+| `database/alembic/versions/20260218_unique_user_portfolio.py` | 신규 — user_id UNIQUE 인덱스 |
+| `fastapi/app/models/portfolio.py` | `__table_args__` Index에 `unique=True` |
+| `fastapi/app/services/portfolio_service.py` | `get_or_create_portfolio` race condition 방지 + `check_and_apply_multiplier` 폴백/차감 |
+| `fastapi/app/api/routes/portfolio.py` | summary 폴백 + 리더보드 중복 방어 |
+| `fastapi/app/api/routes/quiz_reward.py` | `get_or_create_portfolio` 통일 + WHERE 조건 수정 |
+| `frontend/src/components/trading/Leaderboard.jsx` | toFixed(2) 적용 |
+| `frontend/src/pages/Portfolio.jsx` | toFixed(2) 적용 |
+
+## 검증
+
+1. DB: `SELECT user_id, COUNT(*) FROM user_portfolios GROUP BY user_id HAVING COUNT(*) > 1;` → 0건
+2. 리더보드: 동일 사용자 중복 표시 없음, 수익률 소수점 2자리
+3. 포트폴리오: 가격 조회 실패 시에도 총자산/수익률이 0으로 떨어지지 않음
+4. 퀴즈 보상: 지급 후 포트폴리오 정상 조회
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+아래 내용까지 반영하여 위 두 단계를 진행해라
+
+현재 LXD 서버와 docker image 및 docker hub, github 브랜치 들의 호환상태를 파악해라.
+그리고 이에 맞게 문서 및 참조 문서들을 업데이트해라.
+
+랜딩페이지에서 계속 첫화면이 반복되는데 이를 올바르게 수정해라. 그리고 피드백과 관련해서는 정상적으로 작동하지 않는다.
+
+ImportError: cannot import name 'inject_custom_css' from 'utils.ui_components' (/app/utils/ui_components.py)
+Traceback:
+File "/app/app.py", line 46, in <module>
+    nav.run()
+File "/usr/local/lib/python3.11/site-packages/streamlit/navigation/page.py", line 310, in run
+    exec(code, module.__dict__)  # noqa: S102
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "/app/pages/feedback.py", line 8, in <module>
+    from utils.ui_components import (
+
+
+배포 레포도 git을 최신 상태로 만들고, 모니터링과 대시보드 링크를 확인하고 관련된 코드를 확인하여 올바르게 수정해야 한다. 그리고 대시보드에서는 사라진게 있는데 해당 탭들도 올바르게 복구해라. 둘 다  제대로 동작하지 않는 것이 많다. 모니터링도 제대로 동작하지 않는 게 많다. 각 링크들이 어느 서버에서 관리 중인지도 체크해야 한다. 모니터링과 대시보드를 완전히 분리하던가 해라.
+
+모니터링: https://monitoring.adelie-invest.com/
+대시보드: https://dashboard.adelie-invest.com/
+서비스: https://demo.adelie-invest.com/
+
+참조 문서에도 링크들을 올바르게 업데이트하여 맥락을 잘 반영하도록 해라.
+
+---
+
+현재 LXD 서버와 docker image 및 docker hub, github 브랜치들의 코드와 호환 정보를 파악해 주세요. 브랜치들에서 업데이트가 있었고, 새로운 브랜치들도 생겼으니 참고하여 현재 계획에 최신으로 어떻게 반영할지 설계해 주세요. 그리고 이에 맞게 문서 및 참조 문서들을 업데이트해 주세요.
+
+—
+
+랜딩페이지에서 계속 첫화면이 반복되는데 이를 올바르게 수정해 주세요. 그리고 피드백과 관련하여서는 정상적으로 작동하지 않습니다.
+
+ImportError: cannot import name ‘inject_custom_css’ from ‘utils.ui_components’ (/app/utils/ui_components.py)
+Traceback:
+File “/app/app.py”, line 46, in <module>
+    nav.run()
+File “/usr/local/lib/python3.11/site-packages/streamlit/navigation/page.py”, line 310, in run
+    exec(code, module.__dict__)  # noqa: S102
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File “/app/pages/feedback.py”, line 8, in <module>
+    from utils.ui_components import (
+
+
+배포 레포도 git을 최신 상태로 만들고, 모니터링과 대시보드 링크를 확인하고 관련된 코드를 확인하여 올바르게 수정해야 합니다. 그리고 대시보드에서는 사라진 게 있는데 해당 탭들도 올바르게 복구해 주세요. 둘 다 제대로 동작하지 않는 것이 많습니다. 모니터링도 제대로 동작하지 않는 게 많습니다. 각 링크들이 어느 서버에서 관리 중인지도 체크해야 합니다. 모니터링과 대시보드를 완전히 분리하는 것이 좋습니다. 해당 페이지들은 반드시 모두 정상적으로 동작하고, 데이터가 올바르게 로드되는지 확인해야 합니다.
+
+모니터링: https://monitoring.adelie-invest.com/
+대시보드: https://dashboard.adelie-invest.com/
+서비스: https://demo.adelie-invest.com/
+
+참조 문서에 링크들을 업데이트하여 맥락을 명확히 하고, 모의투자 값을 모두 100만원으로 리셋하며 매수 및 매도 내역도 초기화합니다. 총 자산은 본인만 볼 수 있도록 설정하고, 수익률은 전체적으로 표시하는 것이 좋습니다. 공동 순위는 제거합니다.
+
+Langsmith와 관련하여 Tokens, Cost, First Token, Tags 등 Tracing Points를 추가할 수 있는 부분이 많습니다. 또한, 메타데이터/필터링 후 Reranking을 활용하여 데이터 수집 및 챗봇 모두에서 멀티턴 활용도를 높일 수 있으며, ‘의도 전환 감지’와 리랭킹 조합도 적용 가능합니다.
+
+다음 내용을 수행하는 에이전트도 함께 설계 및 구현해야 합니다.
+
+[역할]
+당신은 FastAPI 기반 서비스의 Redis 설계를 개선하고 실제 코드로 구현하는 개발 에이전트입니다. 목표는 “성능(지연/부하), 안정성(장애/폭주), 운영성(관측/디버깅), 비용” 개선을 위한 Redis 사용 패턴을 도입하는 것입니다. Redis는 ‘정답 저장소’가 아닌 ‘가속/완충 레이어’로 사용하며, 장애 발생 시에도 서비스는 가능한 한 degrade(성능 저하) 상태로 동작해야 합니다.
+
+[대상 프로젝트 컨텍스트]
+- FastAPI 백엔드
+- PostgreSQL(+pgvector) 사용
+- 스트리밍(SSE) 기반 챗/튜터 응답 존재
+- LangGraph 기반 파이프라인/에이전트 흐름 존재 가능성
+- 현재 Redis는 캐시/레이트리밋 중심이며, 보다 체계적이고 확장 가능한 구조로 개선하고자 합니다.
+
+[개선 요구사항(핵심)]
+1) Redis 클라이언트/연결 관리 표준화
+   - redis-py의 asyncio 인터페이스(redis.asyncio.Redis) 사용 권장
+   - 앱 시작/종료(lifespan)에서 연결/종료 관리
+   - 타임아웃/재시도/헬스체크 구성
+  - Redis 다운 시 예외가 서비스 전체를 중단시키지 않도록 “best-effort” 모드를 제공하며, 캐시/레이트리밋은 실패 시 우회합니다.
+
+2) Key naming / TTL / Namespace / Versioning 표준
+  - 모든 키는 {env}:{service}:{module}:… 형태로 네임스페이스를 통일합니다.
+  - TTL 정책을 모듈별로 문서화하여, 짧은 TTL(수초~분)과 긴 TTL(시간~일)의 정책을 구분합니다.
+  - 스키마 변경 시 캐시 버전 접두사(예: v1/v2)를 올려 안전하게 무효화합니다.
+
+3) 캐시 패턴 정리(Cache-aside + stampede 방지)
+  - 기본 캐시 패턴은 cache-aside이며, 조회 시 캐시에서 실패하면 DB/외부 호출 후 캐시 저장됩니다.
+  - 캐시 스탬피드(dogpile) 방지에는 TTL에 jitter(랜덤 분산) 적용과 singleflight/lock(분산락) 또는 “soft TTL + background refresh” 중 하나를 도입하는 것이 있습니다.
+  - Negative caching(없는 값도 짧게 캐시)으로 DB 폭주 방지를 하고, 큰 객체는 압축/직렬화 정책을 통일하여 json/msgpack/gzip 등 다양한 방식을 활용할 수 있습니다.
+
+4) 레이트리밋 고도화(원자성 + 전략 선택)
+  - 단순 INCR/EXPIRE 대신 Lua script 기반 원자적 처리를 권장하며, 정책은 아래 중 하나를 선택하여 구현합니다:
+    - fixed window(구현이 쉬움)
+    - sliding window(더 공정)
+    - token bucket(실무에서 선호)
+  - 기준 키는 ip, user_id, api_key 등 조합 가능하며, 헤더로 제한 정보(remaining/reset 등)를 반환할 수 있는 경우 제공합니다.
+
+5) 멀티턴/스트리밍을 위한 세션 상태 저장(선택)
+  - 세션/대화 상태를 Redis에 짧은 TTL로 저장하여 빠른 재개/복구 지원을 제공합니다.
+  - 예시로는 sse connection metadata, last_event_id, partial state 등이 있습니다.
+  - 단, 장기 보관은 PostgreSQL을 source-of-truth로 유지합니다.
+
+6) 백그라운드 작업 큐(선택)
+  - LangGraph 파이프라인/배치 작업이 있다면 Redis Streams 또는 RQ/Celery 도입을 검토합니다.
+  - 최소 구현으로는 Streams로 작업 enqueue, worker가 consume하고, 결과는 Postgres/Redis에 기록하는 방식입니다.
+  - 재시도/멱등성 키(idempotency key) 설계도 포함합니다.
+
+7) 관측/운영(필수)
+  - Redis hit rate, latency, error rate, rate-limit triggered count 메트릭을 노출합니다.
+  - 로그에는 redis key prefix, op 종류, duration을 남기되 민감 정보는 금지합니다.
+  - 장애 시 fallback이 정상 동작하는지 테스트 케이스를 포함합니다.
+
+[구현 작업 목록(구체)]
+A. Redis 모듈 생성/정리
+- app/core/redis.py (예시):
+  - get_redis(): Redis 인스턴스를 제공하며, close_redis() 함수를 통해 인스턴스를 닫습니다. 또한, ping healthcheck를 통해 Redis 서버의 상태를 확인합니다. 공통 설정으로는 socket_timeout, retry_on_timeout, max_connections, decode_responses 옵션을 결정합니다.
+
+B. Key Schema 정의 파일
+- app/core/redis_keys.py:
+  - key_user_profile(user_id): 사용자의 프로필 키를 정의합니다.
+  - key_rerank_cache(query_hash, candidates_hash): 검색 횟수 캐시를 정의합니다.
+  - key_rate_limit(scope, identifier): 제한 scopes 및 identifiers를 위한 캐시를 정의합니다.
+  - prefix, version, env을 포함한 키 패턴을 정의합니다.
+
+C. Cache helpers 구현
+- app/services/cache.py: Cache 관련 함수를 구현합니다.
+  - async get_or_set(key, TTL, loader_fn, negative_ttl=None, lock_key=None, lock_ttl=5, jitter=0.1)
+  - stampede 방지(락 기반) 옵션 제공
+  - json serialization 통일
+
+D. Rate limiter middleware 구현
+- app/middleware/rate_limit.py:
+  - Lua script 기반 token bucket 또는 sliding window 구현
+  - Redis 실패 시, 정책상 “허용” (서비스 보호는 약해지지만 장애 전파 방지) 또는 “제한적 허용” 선택 가능하게
+  - 응답 헤더로 제한 정보 제공
+
+E. Session store(선택)
+- app/services/session_store.py:
+  - set_session(session_id, payload, ttl)
+  - get_session(session_id)
+  - touch_session(session_id, ttl)
+
+F. 테스트/문서화
+- tests/test_cache.py / tests/test_rate_limit.py
+- docs/redis.md: 키 스키마, TTL 정책, 장애 시 동작, 운영 메트릭
+
+[수용 기준(Acceptance Criteria)]
+1) Redis 연결은 앱 라이프사이클에서 생성/종료되며, 장애 시에도 앱이 죽지 않습니다.
+2) 캐시 키 스키마가 통일되고 TTL+jitter 적용이 있습니다.
+3) get_or_set 형태의 표준 캐시 헬퍼가 있고 최소 2~3개 엔드포인트에 적용됩니다.
+4) 레이트리밋은 원자적으로 동작하며(경합 상황에서도 안정), Redis 장애 시 fallback 정책이 의도대로 동작합니다.
+5) 메트릭/로그가 추가되어 운영 시 hit/miss/latency/에러를 볼 수 있습니다.
+6) 단위 테스트 또는 간단한 통합 테스트가 포함됩니다.
+
+[주의/제약]
+- Redis에 PII(민감정보) 그대로 저장 금지. 필요 시 최소화/마스킹/암호화.
+- 캐시는 정답이 아니므로, 캐시 미스/실패 시 항상 원본(PostgreSQL/외부 호출)으로 돌아갈 수 있어야 합니다.
+키 폭발과 scan 남발을 방지하기 위해 무효화는 버전 bump 또는 tag 기반(가능하면 set)으로 제한합니다. 동시성이 높은 구간은 루아 스크립트 또는 MULTI/EXEC를 활용하여 원자성을 확보해야 합니다.
+
+[산출물]
+- 파일별 diff 형식의 PR 코드 변경
+- docs/redis.md 업데이트
+- 적용된 엔드포인트/미들웨어 목록 제공
+- 간단한 벤치/부하 테스트 결과(가능한 경우) 공유
+
+이 요구사항에 따라 Redis 관련 개선을 수행하고, 코드와 문서로 결과를 명확하게 제시합니다.
+
+마지막으로
+  1. Phase 0: deploy-test DB에서 중복 포트폴리오 삭제 SQL 실행
+  2. Phase 7: 마이그레이션 + 빌드 + 배포
+2가지를 수행해라.
+
+---
+
+[Request interrupted by user for tool use]

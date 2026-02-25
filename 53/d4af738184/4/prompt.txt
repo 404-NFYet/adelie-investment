@@ -1,0 +1,96 @@
+Implement the following plan:
+
+# 대시보드 SQL 오류 수정 + 포트폴리오 수익률 보상 제외 + Docker 검증
+
+## Context
+
+피드백 대시보드에서 `created_at` 컬럼 모호성으로 SQL 에러 발생. 포트폴리오 수익률 계산에 보상(카드 포인트)이 포함되어 리더보드와 불일치. Docker 설정은 검증 완료, 문제 없음.
+
+**핵심 원칙**: 수익률 = 순수 매매 수익만 (브리핑/퀴즈/체류 보상 제외)
+- 공식: `profit = total_value - initial_cash - total_rewards_received`
+- 리더보드는 이미 올바름. 포트폴리오/요약 API도 동일 공식 적용 필요.
+
+---
+
+## 수정 파일 3개
+
+### 1. `infra/docker-dashboard/pages/feedback.py` — SQL 오류 + 비회원 제거
+
+**A. ambiguous column 수정** (WHERE 절의 `created_at`에 테이블 별칭 `uf.` 추가)
+- Line 113: `"created_at >= ..."` → `"uf.created_at >= ..."`
+- Line 115: `"created_at >= ..."` → `"uf.created_at >= ..."`
+- Line 117: `"created_at >= ..."` → `"uf.created_at >= ..."`
+
+**B. 비회원 참조 제거** (모든 사용자가 회원이므로 COALESCE 불필요)
+- Line 129: `COALESCE(u.username, '비회원')` → `u.username`
+- Line 344: `COALESCE(u.username, '비회원')` → `u.username`
+- Line 550: `COALESCE(u.username, '비회원')` → `u.username`
+
+LEFT JOIN은 유지 (과거 NULL user_id 데이터 호환)
+
+### 2. `fastapi/app/api/routes/portfolio.py` — 수익률에서 보상 제외
+
+**A. get_portfolio** (line 183-196):
+```python
+# 기존 (보상 포함됨 — 잘못됨)
+total_pl = total_value - portfolio.initial_cash
+
+# 수정 (보상 제외 — 리더보드와 동일 공식)
+rewards = portfolio.total_rewards_received or 0
+total_pl = total_value - portfolio.initial_cash - rewards
+```
+PortfolioResponse에 `total_rewards_received=rewards` 추가
+
+**B. get_portfolio_summary** (line 218-226):
+```python
+# 동일한 수정 적용
+rewards = portfolio.total_rewards_received or 0
+total_pl = total_value - portfolio.initial_cash - rewards
+```
+PortfolioSummary에 `total_rewards_received=rewards` 추가
+
+### 3. `fastapi/app/schemas/portfolio.py` — 스키마에 보상 필드 추가
+
+- `PortfolioResponse`에 `total_rewards_received: int = 0` 추가
+- `PortfolioSummary`에 `total_rewards_received: int = 0` 추가
+
+---
+
+## 변경 불필요 확인 완료
+
+| 파일 | 이유 |
+|------|------|
+| `fastapi/app/models/portfolio.py` | `total_rewards_received` 필드 이미 존재 (default=0) |
+| `fastapi/app/services/portfolio_service.py` | 보상 지급 시 `total_rewards_received` 정상 갱신 |
+| `fastapi/app/api/routes/quiz_reward.py` | 퀴즈 보상 시 `total_rewards_received` 정상 갱신 |
+| `frontend/src/components/trading/Leaderboard.jsx` | API 데이터 그대로 표시, 백엔드 수정 후 자동 반영 |
+| `frontend/src/api/portfolio.js` | JSON 패스스루, 변경 불필요 |
+| Docker 전체 (Dockerfile, compose, requirements) | 검증 완료, 문제 없음 |
+
+---
+
+## 구현 순서
+
+1. `fastapi/app/schemas/portfolio.py` — 스키마 필드 추가 (선행 필요)
+2. `fastapi/app/api/routes/portfolio.py` — 수익률 계산 수정
+3. `infra/docker-dashboard/pages/feedback.py` — SQL 수정 (독립적)
+
+---
+
+## 검증 방법
+
+1. 대시보드: 피드백 페이지에서 기간 필터(오늘/7일/30일) 적용 시 SQL 에러 없는지 확인
+2. Portfolio API: `GET /api/v1/portfolio` 응답에 `total_rewards_received` 포함, `total_profit_loss`에서 보상 제외 확인
+3. Summary API: `GET /api/v1/portfolio/summary` 동일 확인
+4. Leaderboard: 포트폴리오 페이지 수익률 == 리더보드 수익률 일치 확인
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+진행되지 않는 내용이 있는지 점검해라
+
+---
+
+[Request interrupted by user for tool use]

@@ -1,0 +1,279 @@
+Implement the following plan:
+
+# Playwright E2E 전면 정비 계획
+
+## Context
+
+현재 E2E 테스트 21개 파일 중 4개가 중복/불완전, 6개 라우트가 미커버.
+모바일 반응형 스프린트(2026-02-22) 이후 커버리지 확장 + 정리 + 문서화가 필요.
+담당: ryejinn (test 커밋), YJ99Son (프론트 컴포넌트 data-testid 보완)
+
+---
+
+## Phase 1: 정리 (삭제 + 이동)
+
+### 삭제 대상 (4개 파일)
+
+| 파일 | 이유 |
+|------|------|
+| `home.spec.js` | `comprehensive-fix-test.spec.js`에 더 강한 home 검증 포함. 느슨한 `h1, h2, [class*="title"]` 선택자 사용 |
+| `search.spec.js` | `search-flow.spec.js`가 동일 커버. "textbox 존재 확인"만 하는 빈약한 2개 테스트 |
+| `tutor.spec.js` | 비결정적 — "may or may not be visible" 주석 있는 1개 테스트. `tutor-chat.spec.js`로 대체 |
+| `onboarding.spec.js` | `mobile-full-flow.spec.js` FE-ONB-01~06으로 완전 대체됨. URL 체크만 하는 3개 약 테스트 |
+
+### 이동/리네임
+
+| 파일 | 변경 |
+|------|------|
+| `api-health.spec.js` | UI 무관 순수 API 헬스체크 → `tests/backend/test_api_smoke.py`로 이동. 파일 삭제 후 backend로 통합 |
+| `bugfix-retest.spec.js` | `regression.spec.js`로 리네임 (목적 명확화) |
+
+---
+
+## Phase 2: 기존 테스트 개선 (3개 파일)
+
+### 2-A: `narrative-flow.spec.js` — 선택자 강화
+
+**문제**: `button:has-text("다음")` 같은 텍스트 선택자 → 번역/리팩터링에 취약
+**수정**:
+```js
+// before
+await page.click('button:has-text("다음")');
+// after
+await page.getByRole('button', { name: '다음' }).click();
+// 또는 (컴포넌트에 testid 추가 후)
+await page.getByTestId('narrative-next-btn').click();
+```
+- URL/쿼리 파라미터 기반 이동 검증 추가 (`expect(page).toHaveURL(/.*story/)`)
+
+### 2-B: `tutor-visualization.spec.js` — 테스트 확장
+
+**문제**: 단일 조건부 테스트, timeout 30000ms, 차트 렌더링 미검증
+**수정**: 3개 테스트로 확장
+```
+FE-VIZ-01: 튜터에서 "차트" 키워드 입력 시 차트 버튼 노출
+FE-VIZ-02: 차트 버튼 클릭 → Plotly 컨테이너(.js-plotly-plot) 렌더링
+FE-VIZ-03: 차트 기간(1개월/3개월/1년) 변경 UI 동작
+```
+- timeout 표준화: 15000ms (LLM 응답)
+
+### 2-C: `smoke.spec.js` — 범위 확장
+
+**추가 테스트**:
+```
+FE-SMOKE-04: 미인증 상태로 /home 접근 → /auth 리다이렉트
+FE-SMOKE-05: BottomNav 4개 탭(홈/포트/프로필/알림) 전환 동작
+FE-SMOKE-06: 존재하지 않는 /case/99999 → 404 또는 홈 리다이렉트
+```
+
+---
+
+## Phase 3: 신규 테스트 파일 (6개 라우트 커버)
+
+### 3-A: `portfolio-trading.spec.js` (신규)
+
+**라우트**: `/portfolio`
+**선행조건**: 로그인 필요 (beforeEach에서 auth 처리)
+
+```
+FE-PORT-01: 포트폴리오 페이지 로드 + 보유 종목 섹션 표시
+FE-PORT-02: 종목 검색 → StockDetail 모달 열기/닫기
+FE-PORT-03: 매수 모달 UI (매수 버튼 클릭 → 모달 표시 확인, 실제 거래 불필요)
+FE-PORT-04: 자유매매 탭 전환 (보유/미보유 전환)
+FE-PORT-05: 랭킹보드 탭 → 사용자 목록 표시
+FE-PORT-M01: 모바일(360px) 매수 버튼 터치 영역 40px+ 확인
+```
+
+**패턴**:
+```js
+test.beforeEach(async ({ page }) => {
+  await page.goto('/auth');
+  await page.fill('input[name="nickname"]', `port_tester_${Date.now()}`);
+  await page.fill('input[name="password"]', 'test1234');
+  await page.getByRole('button', { name: '시작하기' }).click();
+  await page.waitForURL('**/home');
+  await page.goto('/portfolio');
+});
+```
+
+### 3-B: `profile-settings.spec.js` (신규)
+
+**라우트**: `/profile`
+
+```
+FE-PROF-01: 프로필 페이지 로드 + 닉네임 표시
+FE-PROF-02: 난이도 변경 (쉬움/보통/어려움) 선택 + 저장 → toast 확인
+FE-PROF-03: 로그아웃 버튼 → Landing 리다이렉트 + localStorage 클리어
+FE-PROF-04: 1:1 문의 제출 (텍스트 입력 + 전송)
+FE-PROF-M01: 모바일(390px) 레이아웃 + 버튼 터치 영역
+```
+
+### 3-C: `notifications.spec.js` (신규)
+
+**라우트**: `/notifications`
+
+```
+FE-NOT-01: 알림 페이지 로드 (로그인 필요)
+FE-NOT-02: 알림 없을 시 빈 상태 메시지 표시
+FE-NOT-03: 알림 목록 항목(있을 경우) — 날짜, 내용 구조 확인
+```
+
+> Note: 알림 생성은 파이프라인 의존 → 빈 상태(empty state) 위주 테스트
+
+### 3-D: `education-flow.spec.js` (신규)
+
+**라우트**: `/education`, `/education/archive`
+
+```
+FE-EDU-01: 교육 페이지 로드 + 탭/섹션 존재 확인
+FE-EDU-02: 활동 아카이브(/education/archive) 로드
+FE-EDU-03: 아카이브 — 날짜별 캘린더/리스트 UI 표시
+FE-EDU-M01: 모바일(390px) 레이아웃
+```
+
+### 3-E: `case-redirect.spec.js` (신규)
+
+**라우트**: `/case/:caseId`
+
+```
+FE-CASE-01: /case/:id 접근 → /narrative/:id 리다이렉트 확인
+FE-CASE-02: 존재하지 않는 caseId → 오류 메시지 또는 홈 리다이렉트
+```
+
+---
+
+## Phase 4: 문서화
+
+### 4-A: `frontend/e2e/README.md` 신규 작성
+
+내용:
+```markdown
+# E2E 테스트 ID 매핑 테이블
+
+| ID 범위 | 파일 | 라우트 | 디바이스 |
+|---------|------|--------|--------|
+| FE-SMOKE-01~06 | smoke.spec.js | 여러 | Desktop |
+| FE-LAND-M01~05 | landing-mobile.spec.js | / | 9종 모바일 |
+| FE-ONB-01~06 | mobile-full-flow.spec.js | /onboarding | Mobile |
+| FE-HOME-01~06 | home-keywords.spec.js, comprehensive | /home | Desktop |
+| FE-AUTH-01~05 | auth-flow.spec.js | /auth | Desktop |
+| FE-SEARCH-01~04 | search-flow.spec.js | /search | Desktop |
+| FE-MATCH-01~08 | comprehensive-fix-test | /comparison | Desktop |
+| FE-STORY-01~06 | comprehensive-fix-test | /story | Desktop |
+| FE-COMP-01~08 | comprehensive-fix-test | /comparison | Desktop |
+| FE-COMPANIES-01~04 | comprehensive-fix-test | /companies | Desktop |
+| FE-NARR-01~03 | narrative-flow.spec.js | /narrative/:id | Desktop |
+| FE-TUTOR-01~03 | tutor-chat.spec.js | /agent | Desktop |
+| FE-AGENT-M01~04 | agent-canvas-mobile.spec.js | /agent | 9종 모바일 |
+| FE-QUIZ-M01~03 | daily-quiz-modal-mobile.spec.js | /home | 9종 모바일 |
+| FE-VIZ-01~03 | tutor-visualization.spec.js | /agent | Desktop |
+| FE-PORT-01~05, M01 | portfolio-trading.spec.js | /portfolio | Desktop+Mobile |
+| FE-PROF-01~04, M01 | profile-settings.spec.js | /profile | Desktop+Mobile |
+| FE-NOT-01~03 | notifications.spec.js | /notifications | Desktop |
+| FE-EDU-01~03, M01 | education-flow.spec.js | /education | Desktop+Mobile |
+| FE-CASE-01~02 | case-redirect.spec.js | /case/:id | Desktop |
+```
+
+### 4-B: `docs/team-guides/A_프론트엔드_손영진.md` 업데이트
+
+- E2E 테스트 실행 가이드 섹션 추가
+- `data-testid` 추가 규칙 (신규 컴포넌트 작성 시 필수)
+
+---
+
+## Phase 5: 타임아웃/선택자 표준화
+
+**표준 타임아웃 (모든 파일에 통일)**:
+```js
+const TIMEOUT = {
+  fast: 5_000,     // 즉각 DOM 변경
+  network: 10_000, // API 응답 대기
+  llm: 20_000,     // LLM 스트리밍 응답
+};
+```
+
+**선택자 우선순위** (Playwright 권장 순서):
+1. `getByRole()` — ARIA 역할 기반 (가장 권장)
+2. `getByTestId()` — data-testid 속성
+3. `getByText()` — 텍스트 콘텐츠 (짧은 고유 텍스트만)
+4. CSS 선택자 — 최후 수단
+
+---
+
+## 파일 변경 목록
+
+| 파일 | 변경 종류 |
+|------|----------|
+| `frontend/e2e/home.spec.js` | ❌ 삭제 |
+| `frontend/e2e/search.spec.js` | ❌ 삭제 |
+| `frontend/e2e/tutor.spec.js` | ❌ 삭제 |
+| `frontend/e2e/onboarding.spec.js` | ❌ 삭제 |
+| `frontend/e2e/api-health.spec.js` | ❌ 삭제 (backend로 이동) |
+| `frontend/e2e/bugfix-retest.spec.js` | 🔄 `regression.spec.js`로 리네임 |
+| `frontend/e2e/narrative-flow.spec.js` | ✏️ 선택자 강화 |
+| `frontend/e2e/tutor-visualization.spec.js` | ✏️ FE-VIZ-01~03으로 확장 |
+| `frontend/e2e/smoke.spec.js` | ✏️ FE-SMOKE-04~06 추가 |
+| `frontend/e2e/portfolio-trading.spec.js` | ➕ 신규 (FE-PORT-01~05, M01) |
+| `frontend/e2e/profile-settings.spec.js` | ➕ 신규 (FE-PROF-01~04, M01) |
+| `frontend/e2e/notifications.spec.js` | ➕ 신규 (FE-NOT-01~03) |
+| `frontend/e2e/education-flow.spec.js` | ➕ 신규 (FE-EDU-01~03, M01) |
+| `frontend/e2e/case-redirect.spec.js` | ➕ 신규 (FE-CASE-01~02) |
+| `frontend/e2e/README.md` | ➕ 테스트 ID 매핑 문서 |
+| `tests/backend/test_api_smoke.py` | ✏️ api-health 테스트 통합 |
+| `docs/team-guides/A_프론트엔드_손영진.md` | ✏️ E2E 가이드 섹션 추가 |
+
+---
+
+## 실행 순서 및 커밋 전략
+
+```
+커밋 1 (ryejinn): test: 중복·미완성 E2E 파일 제거 (home, search, tutor, onboarding, api-health)
+커밋 2 (ryejinn): test: 기존 E2E 선택자 및 타임아웃 표준화 (narrative, tutor-viz, smoke)
+커밋 3 (ryejinn): test: 포트폴리오·프로필·알림 E2E 추가 (FE-PORT/PROF/NOT)
+커밋 4 (ryejinn): test: 교육·케이스 리다이렉트 E2E 추가 (FE-EDU/CASE)
+커밋 5 (ryejinn): docs: E2E 테스트 ID 매핑 및 가이드 문서화
+```
+
+---
+
+## 검증
+
+```bash
+# 단계별 검증 (서버 기동 필요: make dev-api + npm run dev)
+npx playwright test --grep "FE-PORT" --reporter=list
+npx playwright test --grep "FE-PROF" --reporter=list
+npx playwright test --grep "FE-NOT" --reporter=list
+npx playwright test --grep "FE-EDU" --reporter=list
+
+# 전체 실행 (CI 기준)
+make test-e2e
+
+# 삭제 후 커버리지 확인 (기존 파일 삭제해도 깨지는 것 없는지)
+npx playwright test --reporter=html
+```
+
+---
+
+## 예상 결과
+
+| 지표 | 현재 | 목표 |
+|------|------|------|
+| E2E spec 파일 수 | 21개 | 18개 (5개 삭제 + 5개 신규) |
+| 실제 유효 테스트 수 | ~65개 | ~90개 |
+| 커버된 라우트 | 13/19 | 19/19 |
+| 모바일 전용 파일 | 3개 | 5개 (portfolio-trading, education-flow M시리즈 추가) |
+| 정리된 파일 | 0 | 4개 삭제, 1개 리네임 |
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+테스트 진행을 하기 위한 계획을 세워라. 그리고 배포 서버 및 모든 LXD 서버 각 특징에 맞게 싱크를 맞추고 git이나 도커도 다시 한 번 싱크를 맞춰야 한다.
+dashboard 탭에 각 LXD 서버 별로 팀원들이 본인의 서버나 관련된 것들을 질문하기 위한 챗봇 탭을 만들어주면 좋을 것 같은데, 어떻게 생각하는가?
+모델은 claude sonnet 4.6이면 충분하고도 남을 것 같다. 대화 세션이나 탭도 만들어주는 것이다.
+그리고 streamlit 코드 및 UI 등을 좀 더 최적화할 필요가 있을 것 같다. 챗봇은 내부용이니 정말 간단하게 디자인을 만들어라.
+
+---
+
+[Request interrupted by user for tool use]

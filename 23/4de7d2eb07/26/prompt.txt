@@ -1,0 +1,509 @@
+Implement the following plan:
+
+# Agent v5 — Tutor→Agent 통합 설계 문서
+
+## Context
+
+demo(deploy-test)에는 Agent Canvas v4가 동작 중이고, test-server는 `feb20-stable`(구 Tutor 모달 기반)로 롤백된 상태.
+demo UI를 참고하되 **새로 설계**하여, Agent가 Tutor를 완전 대체하는 통합 AI 인터페이스를 만든다.
+
+### 현재 문제점 (demo 기준)
+
+| 문제 | 설명 |
+|------|------|
+| Tutor/Agent 이원화 | TutorModal과 AgentDock이 공존, 사용자 혼란 |
+| 명칭 불일치 | 프론트="Agent", 백엔드 API=`/tutor/*` |
+| 미사용 코드 | `/canvas/analyze` 엔드포인트 만들어놓고 프론트 미연결 |
+| 830줄 단일 파일 | `AgentCanvasPage.jsx`에 모드 분기+스와이프+세션+진행바 등 과도 집중 |
+| 상태 분산 | 턴 관리가 TutorContext와 로컬 state에 이중 존재 |
+| 하단 영역 경합 | TutorModal(85vh) + AgentDock + BottomNav 세 레이어 |
+
+---
+
+## 1. 정보 아키텍처
+
+### 1.1 내비게이션 (변경 최소)
+
+```
+BottomNav (3탭 유지)
+├── /portfolio  (투자)
+├── /home       (홈)
+└── /education  (교육)
+
+글로벌 레이어
+├── AgentDock        — 하단 입력바 (BottomNav 위, 항상 노출)
+├── TermBottomSheet  — 용어 탭 바텀시트 (유지)
+└── SelectionAskChip — 텍스트 선택 플로팅 칩
+
+전용 라우트
+├── /agent          — Agent Hub (분석+대화 통합)
+├── /agent/history  — 세션 히스토리
+└── /tutor          → /agent 리다이렉트 (하위 호환)
+```
+
+### 1.2 제거 대상
+
+| 항목 | 파일 | 이유 |
+|------|------|------|
+| TutorModal | `components/tutor/TutorModal.jsx` | Agent Hub로 대체 |
+| TutorChat 페이지 | `pages/TutorChat.jsx` | `/agent` 리다이렉트로 대체 |
+| TutorPanel | `components/tutor/TutorPanel.jsx` | 사용처 없음 |
+| SessionSidebar | `components/tutor/SessionSidebar.jsx` | AgentHistoryPage로 통합 |
+| ChatInput | `components/tutor/ChatInput.jsx` | AgentDock 입력 UI로 통합 |
+| MessageBubble | `components/tutor/MessageBubble.jsx` | AgentCanvasSections 마크다운으로 대체 |
+| `isOpen`/`openTutor`/`closeTutor` | TutorUIContext 내부 | 모달 없어지므로 불필요 |
+
+### 1.3 AgentDock 가시성 규칙
+
+```
+노출: 인증 사용자 + 현재 경로가 /, /landing, /auth, /onboarding, /agent/history가 아닌 경우
+숨김: 키보드 활성 시 BottomNav 숨기고 Dock만 키보드 위에 유지
+/agent 라우트: Dock은 Agent Hub 하단에 자연스럽게 위치 (현재 패턴 유지)
+```
+
+---
+
+## 2. Agent Hub 페이지 (`/agent`)
+
+### 2.1 레이아웃
+
+```
+┌──────────────────────────────────────────┐
+│ [<] 오늘 시장 흐름      [모드배지] [H]  │ ← 컴팩트 헤더
+│  (접히는 컨텍스트 요약)                  │
+├──────────────────────────────────────────┤
+│ [진행바 - 홈 모드 전용]                  │
+│ [1/3 ───── 스와이프 핸들]               │
+│                                          │
+│ ┌──────────────────────────────────────┐ │
+│ │ 💬 사용자 질문 (이전 턴 탐색 시)     │ │
+│ ├──────────────────────────────────────┤ │
+│ │ ## 핵심 요약                         │ │
+│ │ 마크다운 + Plotly 차트               │ │
+│ │ (ReactMarkdown + rehype)             │ │
+│ │                                      │ │
+│ │ [SelectionAskChip 오버레이]          │ │
+│ └──────────────────────────────────────┘ │
+│ [CTA 버튼 1] [CTA 버튼 2]              │
+├──────────────────────────────────────────┤
+│ AgentDock (글로벌, 위치만 연동)          │
+├──────────────────────────────────────────┤
+│ [투자]  [홈]  [교육]  ← BottomNav       │
+└──────────────────────────────────────────┘
+```
+
+### 2.2 핵심 설계 결정
+
+**대화 모드를 별도로 만들지 않는다.**
+- 마크다운 캔버스 + 하단 입력(Dock)이 이미 충분히 대화적
+- 별도 채팅 UI 추가 시 다시 Tutor/Agent 이원화 반복
+- 480px에서 버블 UI와 마크다운 캔버스 동시 표시 불가
+- 대신 스와이프로 이전 턴(질문-답변 쌍) 탐색 강화
+
+**용어 설명 통합:**
+- 변경 전: 용어 탭 → TermBottomSheet → "AI 튜터에게 더 물어보기" → TutorModal
+- 변경 후: 용어 탭 → TermBottomSheet → "에이전트에게 더 물어보기" → `/agent`로 navigate
+
+### 2.3 AgentCanvasPage 분해 (830줄 → 5개 파일)
+
+```
+AgentHubPage.jsx (~200줄, 컨테이너)
+├── AgentHubHeader.jsx (~80줄)
+│   ├── 뒤로가기, 제목, 모드 배지
+│   ├── 중단/재생성/저장 버튼
+│   └── 상태 도트, 컨텍스트 토글
+├── AgentTurnNavigator.jsx (~60줄)
+│   ├── 스와이프 핸들, 진행률
+│   └── 이전/다음 턴 화살표
+├── AgentCanvasBody.jsx (~100줄)
+│   ├── 가드레일 알림
+│   ├── 사용자 질문 표시 (이전 턴 탐색 시)
+│   ├── AgentCanvasSections (기존 유지)
+│   └── 로딩 상태
+├── AgentProgressBar.jsx (~30줄, 홈 모드 전용)
+└── useAgentTurns.js (신규 훅, 턴 관리 로직 추출)
+```
+
+---
+
+## 3. Agent Dock 변경
+
+### 3.1 `open_chat` 분기 제거
+
+```javascript
+// 변경 전 (AgentDock.jsx 내 routePrompt 처리)
+if (nextDecision === 'open_chat') {
+  openTutor(decision?.canvas_prompt || normalized);  // TutorModal 오픈
+}
+
+// 변경 후
+if (nextDecision === 'open_chat' || nextDecision === 'open_canvas') {
+  submitPromptToCanvas(decision?.canvas_prompt || normalized);  // Agent Hub로 통합
+}
+```
+
+### 3.2 슬래시 커맨드 확장
+
+기존 8개 + 신규 2개:
+```
+/explain (/설명) — 용어 설명 (prefix: [용어 설명])
+/review  (/복습) — 복습 카드 목록으로 이동
+```
+
+### 3.3 훅 참조 변경
+
+`useTutor()` → `useAgent()` (alias로 하위 호환 유지)
+
+---
+
+## 4. Context 리팩토링
+
+### 4.1 리네이밍 (내부 구조 유지)
+
+```
+변경 전:                         변경 후:
+TutorProvider                 → AgentProvider
+├── TutorUIProvider           → AgentUIProvider
+├── TutorSessionProvider      → AgentSessionProvider
+└── TutorChatProvider         → AgentChatProvider
+
+useTutor() 합성 훅             → useAgent() (useTutor는 alias로 유지)
+```
+
+### 4.2 TutorUIContext 변경
+
+| 속성/메서드 | 변경 |
+|------------|------|
+| `isOpen` | **제거** (모달 없음) |
+| `openTutor()` | **제거** |
+| `closeTutor()` | **제거** |
+| `currentTerm` | TermContext로 완전 이관 |
+| `agentStatus` | 유지 |
+| `contextInfo` | 유지 |
+| `requestVisualization` | 유지 |
+
+### 4.3 하위 호환 브릿지
+
+```javascript
+// contexts/index.js
+export { useAgent as useTutor } from './AgentContext';
+```
+
+---
+
+## 5. 백엔드 API 통합
+
+### 5.1 점진적 마이그레이션
+
+```
+신규 /api/v1/agent/* 라우터:
+POST /agent/chat            ← /tutor/chat (SSE 스트리밍)
+POST /agent/route           ← /tutor/route (라우팅 결정)
+GET  /agent/explain/{term}  ← /tutor/explain/{term}
+POST /agent/quick-qa        ← /canvas/quick-qa
+GET  /agent/precomputed     ← /canvas/precomputed
+POST /agent/cta-feedback    ← /canvas/cta-feedback
+GET  /agent/sessions        ← /tutor/sessions
+POST /agent/sessions/new    ← /tutor/sessions/new
+POST /agent/sessions/{id}/pin ← /tutor/sessions/{id}/pin
+```
+
+기존 `/tutor/*`, `/canvas/*`는 호환성 래퍼로 유지 → 추후 제거.
+
+### 5.2 SSE 이벤트 타입 (변경 없음)
+
+현재 `/tutor/chat`의 이벤트 타입을 그대로 사용:
+`thinking` → `tool_call` → `text_delta` → `visualization` → `ui_action` → `sources` → `done` / `error`
+
+### 5.3 `/canvas/analyze` 폐기
+
+프론트에서 미사용 확인됨. deprecated 처리 후 제거.
+
+---
+
+## 6. 컴포넌트 트리 (최종)
+
+```
+App.jsx
+├── AgentProvider (was TutorProvider)
+│   ├── AgentUIProvider
+│   ├── AgentSessionProvider
+│   └── AgentChatProvider
+├── TermProvider (openTutorWithTerm → navigate('/agent', ...))
+├── TermBottomSheet (버튼 텍스트만 변경)
+├── AgentDock (open_chat 분기 제거, useAgent 전환)
+├── BottomNav (isTutorOpen 조건 제거)
+│
+├── Routes
+│   ├── /agent → AgentHubPage
+│   │   ├── AgentHubHeader
+│   │   ├── AgentProgressBar (홈 모드)
+│   │   ├── AgentTurnNavigator
+│   │   └── AgentCanvasBody → AgentCanvasSections
+│   ├── /agent/history → AgentHistoryPage (변경 최소)
+│   ├── /tutor → Redirect('/agent')
+│   └── ... (기타 변경 없음)
+│
+└── ❌ TutorModal (제거)
+```
+
+---
+
+## 7. 사용자 흐름 (5가지 시나리오)
+
+### S1: 홈에서 에이전트 열기
+`/home` → AgentDock 입력 → `/agent/route` 라우팅 → `open_canvas` → `/agent` 이동 → SSE 스트리밍 → 마크다운+차트 → CTA
+
+### S2: 아무 페이지에서 간단한 질문
+AgentDock 입력 → `/agent/route` → `inline_reply` → Dock 내 인라인 텍스트 표시 → [자세히] 탭 시 `/agent` 이동
+
+### S3: 종목 심층 분석
+`/portfolio` → AgentDock "삼성전자 분석" → `open_canvas` → `/agent` (mode=stock) → 차트+분석 → CTA "매수하기" → ActionConfirmDialog
+
+### S4: 용어 설명
+내러티브 페이지 → 용어 하이라이트 탭 → TermBottomSheet → "에이전트에게 더 물어보기" → `/agent` 이동
+
+### S5: 세션 복습
+`/home` ReviewCard → "이어하기" → `/agent` (sessionId 전달) → loadChatHistory → 마지막 턴 캔버스 표시 → 추가 질문 가능
+
+---
+
+## 8. 마이그레이션 단계
+
+### Phase 1: Context 리네이밍 + TutorModal 제거 (1~2일)
+
+| 작업 | 파일 |
+|------|------|
+| TutorContext → AgentContext 리네이밍 | `contexts/TutorContext.jsx` → `AgentContext.jsx` |
+| TutorUIContext에서 isOpen/openTutor/closeTutor 제거 | `contexts/TutorUIContext.jsx` |
+| TutorModal 제거 | `App.jsx`, `components/tutor/TutorModal.jsx` |
+| /tutor → /agent 리다이렉트 | `App.jsx` |
+| BottomNav에서 isTutorOpen 조건 제거 | `components/layout/BottomNav.jsx` |
+| TermContext openTutorWithTerm → navigate('/agent') | `contexts/TermContext.jsx` |
+| 하위 호환 alias 유지 | `contexts/index.js` |
+
+### Phase 2: AgentCanvasPage 분해 (2~3일)
+
+| 작업 | 파일 |
+|------|------|
+| useAgentTurns 훅 추출 | `hooks/useAgentTurns.js` (신규) |
+| AgentHubHeader 분리 | `components/agent/AgentHubHeader.jsx` (신규) |
+| AgentTurnNavigator 분리 | `components/agent/AgentTurnNavigator.jsx` (신규) |
+| AgentCanvasBody 분리 | `components/agent/AgentCanvasBody.jsx` (신규) |
+| AgentCanvasPage → AgentHubPage 리네이밍 | `pages/AgentCanvasPage.jsx` → `AgentHubPage.jsx` |
+
+### Phase 3: 백엔드 API 통합 (1~2일)
+
+| 작업 | 파일 |
+|------|------|
+| /agent/* 라우터 신규 생성 | `fastapi/app/api/routes/agent.py` (신규) |
+| 프론트 API 엔드포인트 변경 | `frontend/src/api/tutor.js` → `agent.js` |
+| /tutor/*를 deprecated 래퍼로 유지 | `fastapi/app/api/routes/tutor.py` |
+
+### Phase 4: 정리 (1일)
+
+| 작업 | 파일 |
+|------|------|
+| tutor 컴포넌트 디렉토리 제거 | `components/tutor/` 전체 |
+| TutorChat 페이지 제거 | `pages/TutorChat.jsx` |
+| /canvas/analyze deprecated | `fastapi/app/api/routes/canvas.py` |
+| E2E 테스트 업데이트 | `tests/` |
+
+---
+
+## 9. 검증 방법
+
+```bash
+# Phase 1 완료 후
+npm run dev  # TutorModal 없이 정상 동작 확인
+# /tutor 접근 시 /agent로 리다이렉트 확인
+# AgentDock에서 질문 → Agent Hub로 이동 확인
+# TermBottomSheet → "에이전트에게 더 물어보기" 동작 확인
+
+# Phase 2 완료 후
+# /agent 페이지 정상 렌더링 확인
+# 스와이프 턴 탐색 동작 확인
+# 각 하위 컴포넌트 독립 렌더링 확인
+
+# Phase 3 완료 후
+# /api/v1/agent/chat SSE 스트리밍 확인
+# /api/v1/agent/sessions CRUD 확인
+# 기존 /api/v1/tutor/* 호환성 래퍼 동작 확인
+
+# 전체 E2E
+make test-e2e  # Playwright 모바일 뷰포트 테스트
+```
+
+---
+
+## 수정 대상 파일 요약
+
+**프론트엔드 (수정):**
+- `frontend/src/App.jsx` — TutorModal 제거, Provider 리네이밍
+- `frontend/src/contexts/TutorContext.jsx` → `AgentContext.jsx`
+- `frontend/src/contexts/TutorUIContext.jsx` — isOpen 제거
+- `frontend/src/contexts/TutorSessionContext.jsx` → `AgentSessionContext.jsx`
+- `frontend/src/contexts/TutorChatContext.jsx` → `AgentChatContext.jsx`
+- `frontend/src/contexts/TermContext.jsx` — openTutorWithTerm 변경
+- `frontend/src/contexts/index.js` — alias 업데이트
+- `frontend/src/components/layout/BottomNav.jsx` — isTutorOpen 제거
+- `frontend/src/components/agent/AgentDock.jsx` — open_chat 분기 제거
+- `frontend/src/pages/AgentCanvasPage.jsx` → 분해
+
+**프론트엔드 (신규):**
+- `frontend/src/hooks/useAgentTurns.js`
+- `frontend/src/components/agent/AgentHubHeader.jsx`
+- `frontend/src/components/agent/AgentTurnNavigator.jsx`
+- `frontend/src/components/agent/AgentCanvasBody.jsx`
+
+**프론트엔드 (삭제):**
+- `frontend/src/components/tutor/` 전체 디렉토리
+- `frontend/src/pages/TutorChat.jsx`
+
+**백엔드 (신규):**
+- `fastapi/app/api/routes/agent.py`
+
+**백엔드 (수정):**
+- `fastapi/app/api/routes/tutor.py` — deprecated 래퍼로 전환
+- `frontend/src/api/tutor.js` → `agent.js` 리네이밍
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+test 배포를 우선 진행해라. 바뀐 UI 및 테스트를 해보고 수정사항이나 업데이트할 내용을 전달 해주겠다.
+그리고 백그라운드로 데이터 수집 파이프라인도 다시 한 번 돌려 3개가 올바르게 적재되도록 할 필요가 있을 것 같다.
+
+---
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Analysis:
+Let me analyze the conversation chronologically:
+
+1. The user provided a detailed implementation plan for "Agent v5 — Tutor→Agent 통합 설계 문서" which outlined migrating from a dual Tutor/Agent system to a unified Agent interface.
+
+2. I explored the codebase extensively using subagents to understand:
+   - Frontend context system (TutorContext, TutorUIContext, TutorSessionContext, TutorChatContext)
+   - Component structure (TutorModal, AgentDock, AgentCanvasPage, BottomNav)
+   - Backend routes (tutor.py, canvas.py, tutor_sessions.py)
+   - All consumer files that reference Tutor contexts
+
+3. I implemented 4 phases:
+   - Phase 1: Context renaming + TutorModal removal
+   - Phase 2: AgentCanvasPage decomposition (830 lines → ~300 + 4 components)
+   - Phase 3: Backend API integration (/agent/* router)
+   - Phase 4: Cleanup (remove old tutor files)
+
+4. The user's latest message asks to:
+   - Deploy to test server first
+   - Run data pipeline in background (collect 3 items properly)
+   - They will test the changed UI and provide feedback
+
+Let me trace through all the specific files and changes made.
+
+Summary:
+1. Primary Request and Intent:
+   The user provided a comprehensive implementation plan titled "Agent v5 — Tutor→Agent 통합 설계 문서" to unify the Tutor and Agent interfaces into a single Agent system. The plan had 4 phases: Context renaming + TutorModal removal, AgentCanvasPage decomposition, Backend API integration, and Cleanup. All 4 phases were implemented. The user's most recent request is to deploy to the test server and run the data pipeline in the background.
+
+2. Key Technical Concepts:
+   - React Context pattern with composite hooks (3 sub-contexts → 1 composite `useAgent()` hook)
+   - SSE (Server-Sent Events) streaming for AI chat responses
+   - FastAPI router delegation pattern (agent router delegates to existing tutor/canvas handlers)
+   - React.lazy code splitting with route-based code splitting
+   - Component decomposition (extracting hooks and sub-components from a monolithic page)
+   - Backward compatibility aliases (useTutor → useAgent)
+   - Mobile-first design (max-width: 480px)
+   - Turn-based navigation with horizontal swipe gestures
+
+3. Files and Code Sections:
+
+   **NEW Frontend Context Files:**
+   - `frontend/src/contexts/AgentUIContext.jsx` — Replaces TutorUIContext, removes `isOpen`, `openTutor()`, `closeTutor()` (modal-related state). Only retains `contextInfo`, `currentTerm`, `agentStatus`, `requestVisualization`.
+   - `frontend/src/contexts/AgentSessionContext.jsx` — Replaces TutorSessionContext, identical logic (sessions CRUD, localStorage persistence with `adelie_tutor_session` key).
+   - `frontend/src/contexts/AgentChatContext.jsx` — Replaces TutorChatContext (693 lines), identical SSE streaming logic, renamed exports from `TutorChatProvider`/`useTutorChat` to `AgentChatProvider`/`useAgentChat`.
+   - `frontend/src/contexts/AgentContext.jsx` — Composite provider wrapping AgentUI + AgentSession + AgentChat. Exports `useAgent()` hook (same API as old `useTutor()` minus `isOpen`/`openTutor`/`closeTutor`). Also exports `useTutor = useAgent` alias.
+
+   **Modified Frontend Files:**
+   - `frontend/src/contexts/index.js` — Complete rewrite: exports Agent* contexts + backward-compatible aliases (useTutor→useAgent, useTutorUI→useAgentUI, etc.)
+   - `frontend/src/contexts/TermContext.jsx` — Changed `openTutorWithTerm()` from calling `openTutor(term)` to using `navigate('/agent', { state: { mode: 'home', initialPrompt: '[용어 설명] ${term}에 대해 설명해주세요.', resetConversation: true } })`. Removed `useTutor` import, added `useNavigate`.
+   - `frontend/src/App.jsx` — Changed `TutorProvider` → `AgentProvider`, removed TutorModal import/render, removed TutorChat lazy import, changed `/tutor` route to `<Navigate to="/agent" replace />`.
+   - `frontend/src/components/layout/BottomNav.jsx` — Removed `useTutor` import and `isTutorOpen` check. Also removed `/tutor` from HIDDEN_PREFIXES.
+   - `frontend/src/components/agent/AgentDock.jsx` — Changed `useTutor, useTutorUI` imports to `useAgent`. Merged `open_chat` decision branch into `open_canvas` (line 259: `nextDecision === 'open_canvas' || nextDecision === 'open_chat'`). Removed `openTutor` reference.
+   - `frontend/src/components/domain/TermBottomSheet.jsx` — Changed button text from "AI 튜터에게 더 물어보기" to "에이전트에게 더 물어보기".
+   - `frontend/src/components/index.js` — Removed `TutorModal` and `TutorPanel` exports.
+   - `frontend/src/pages/AgentCanvasPage.jsx` — Complete rewrite from 830 lines to ~300 lines using extracted components (AgentHubHeader, AgentCanvasBody, AgentProgressBar) and useAgentTurns hook.
+   - `frontend/src/pages/AgentHistoryPage.jsx` — Changed `useTutor` → `useAgent` import.
+   - `frontend/src/pages/Narrative.jsx` — Changed `useTutor` → `useAgent` import.
+   - `frontend/src/pages/Home.jsx` — Changed `useTutorSession` → `useAgentSession` import.
+
+   **NEW Frontend Component Files (Phase 2 decomposition):**
+   - `frontend/src/hooks/useAgentTurns.js` — Extracted turn navigation logic: turns list, activeTurnIndex, swipe handlers, moveTurn, showSwipeToast, swipeProgress.
+   - `frontend/src/components/agent/AgentHubHeader.jsx` — ~80 lines, compact header with back/stop/regenerate/pin/status/history buttons.
+   - `frontend/src/components/agent/AgentTurnNavigator.jsx` — ~100 lines, swipe handle + progress + left/right arrows + guardrail notice.
+   - `frontend/src/components/agent/AgentCanvasBody.jsx` — ~50 lines, composition of TurnNavigator + AgentCanvasSections + loading state.
+   - `frontend/src/components/agent/AgentProgressBar.jsx` — ~20 lines, home mode progress bar.
+
+   **NEW Backend File:**
+   - `fastapi/app/api/routes/agent.py` — Unified `/agent/*` router that delegates to existing tutor/canvas handlers:
+     - `POST /agent/chat` → `generate_tutor_response()` from tutor.py
+     - `POST /agent/route` → `tutor_route()` from tutor.py
+     - `GET /agent/explain/{term}` → `explain_term()` from tutor.py
+     - `POST /agent/quick-qa` → `handle_quick_qa()` from canvas services
+     - `GET /agent/precomputed` → `get_precomputed_canvas()` from canvas services
+     - `POST /agent/cta-feedback` → `record_cta_feedback()` from canvas services
+     - Session CRUD (`/agent/sessions/*`) → tutor_sessions.py functions
+     - Imports `SessionPinRequest` from tutor_sessions for pin endpoint
+
+   **Modified Backend Files:**
+   - `fastapi/app/main.py` — Added `"agent": ("agent", "/api/v1")` and `"canvas": ("canvas", "/api/v1")` to `_router_config`.
+   - `fastapi/app/api/routes/canvas.py` — Added `deprecated=True` to `/canvas/analyze` endpoint.
+
+   **Deleted Files:**
+   - `frontend/src/components/tutor/` — entire directory (TutorModal.jsx, TutorPanel.jsx, MessageBubble.jsx, ChatInput.jsx, SessionSidebar.jsx)
+   - `frontend/src/pages/TutorChat.jsx`
+   - `frontend/src/contexts/TutorContext.jsx`, `TutorUIContext.jsx`, `TutorSessionContext.jsx`, `TutorChatContext.jsx`
+
+4. Errors and fixes:
+   - **AgentSessionContext deleteChat URL typo**: Initially wrote `/api/v1/sessions/${id}` instead of `/api/v1/tutor/sessions/${id}`. Fixed immediately after noticing.
+   - **Agent router function name mismatch**: Initially tried to reference `route_prompt` and `create_session` which don't exist — actual names are `tutor_route`, `create_new_session`. Rewrote the entire agent.py to use correct function signatures matching the originals.
+   - **Agent router pin_session signature**: First attempt used `Request` as payload parameter. Had to match the `SessionPinRequest` Pydantic model used in tutor_sessions.py. Fixed by importing `SessionPinRequest` directly from tutor_sessions.
+   - **Agent router BaseModel import**: Left unused `BaseModel` import after removing inline `SessionPinRequest` definition. Cleaned up.
+   - **Backend import test failure**: `ModuleNotFoundError: No module named 'jwt'` — This is expected locally (jwt not in local venv). Verified syntax correctness with `ast.parse()` instead.
+
+5. Problem Solving:
+   - Successfully unified dual Tutor/Agent architecture into single Agent interface
+   - Preserved all SSE streaming logic (proven robust, 693 lines)
+   - Maintained backward compatibility with `useTutor` alias
+   - Decomposed monolithic 830-line page into 5 focused files
+   - Created thin backend proxy router to avoid code duplication
+   - All frontend builds pass (verified 3 times with `vite build`)
+
+6. All user messages:
+   - User message 1: "Implement the following plan:" followed by the complete Agent v5 design document (detailed 4-phase migration plan with navigation architecture, component tree, backend API mapping, user flow scenarios)
+   - User message 2: "test 배포를 우선 진행해라. 바뀐 UI 및 테스트를 해보고 수정사항이나 업데이트할 내용을 전달 해주겠다. 그리고 백그라운드로 데이터 수집 파이프라인도 다시 한 번 돌려 3개가 올바르게 적재되도록 할 필요가 있을 것 같다." (Deploy to test first. Will test the changed UI and provide feedback. Also run data pipeline in background to properly load 3 items.)
+
+7. Pending Tasks:
+   - Deploy the implemented changes to test server (deploy-test at 10.10.10.20)
+   - Run data pipeline in background (`python -m datapipeline.run --backend live --market KR --topic-count 3`)
+   - Wait for user feedback on UI changes and implement fixes
+
+8. Current Work:
+   All 4 phases of the Agent v5 implementation are complete. The frontend build succeeds. The user has requested deployment to the test server and running the data pipeline. No commits have been made yet — the changes are all in the working tree on branch `feature/canvas-agent-v4`.
+
+9. Optional Next Step:
+   Based on the user's latest message: "test 배포를 우선 진행해라... 그리고 백그라운드로 데이터 수집 파이프라인도 다시 한 번 돌려"
+   
+   Next steps:
+   1. Commit the changes in logical units (per CLAUDE.md git rules: 커밋 단위 분리)
+   2. Deploy to deploy-test server using `/deploy` skill
+   3. Run data pipeline in background: `ssh deploy-test "docker exec adelie-backend-api python -m datapipeline.run --backend live --market KR --topic-count 3"`
+   4. Await user's UI testing feedback
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+Please continue the conversation from where we left off without asking the user any further questions. Continue with the last task that you were asked to work on.
+
+---
+
+[Request interrupted by user for tool use]

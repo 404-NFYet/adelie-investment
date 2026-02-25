@@ -1,0 +1,346 @@
+Implement the following plan:
+
+# AgentDock 통합 + 액션 수정 + LangSmith + 파이프라인 진단
+
+## Context
+
+4가지 이슈를 한 번에 해결:
+1. AgentDock "대화/에이전트" 토글 → UX 혼란. 시스템 자동 라우팅으로 통합
+2. 고위험 액션(매매) 무음 실패 → ActionConfirmDialog 연결
+3. 튜터 LLM 호출 LangSmith 미추적 → 트래킹 추가
+4. 데이터 파이프라인 토픽 1개만 생성 → 진단 + 수정
+
+**실행 순서**: B(버그 수정) → A(UX 통합 + 프론트 UI 개선) → D(파이프라인) → C(LangSmith) → 배포
+
+---
+
+## 현재 작업 트리 상태 (이전 구현에서 적용된 변경)
+
+### ✅ 이미 적용됨 (유지)
+- `frontend/src/hooks/useAgentControlOrchestrator.js` — navigate 블록 조건 제거 (B-1)
+- `frontend/src/components/agent/AgentDock.jsx` — 토글 제거 + open_chat + ActionConfirmDialog (A-2, B-2)
+- `frontend/src/components/agent/AgentControlPulse.jsx` — mode prop 제거, 항상 블루 글로우 (A-2)
+- `fastapi/app/schemas/tutor.py` — open_chat 추가 (A-1)
+- `fastapi/app/api/routes/tutor.py` — normalize + 시스템 프롬프트 + open_chat (A-1)
+
+### ❌ 되돌려야 함
+- `datapipeline/nodes/curation.py` — 더미 mock 데이터 추가분 **삭제** (사용자 지시: 더미데이터 금지)
+  - 추가한 2차전지/금리인하 mock topics 제거, `topic_count` 전달 로직만 유지
+
+### 🔧 추가 작업 필요
+- Part D: 파이프라인 라이브 모드 토픽 수 보장
+- Part C: LangSmith 트래킹
+- Part A 마무리: AgentDock UI 리뷰 + 전체 UX 정리
+
+---
+
+## Part B: 액션 실행 버그 수정 ✅ (이미 적용)
+
+### B-1. 저위험 내비게이션 즉시 실행
+- `useAgentControlOrchestrator.js` line 275: `action.type === 'navigate'` 조건 제거 완료
+
+### B-2. AgentDock에 ActionConfirmDialog 연결
+- `AgentDock.jsx`: import, pendingAction 추출, JSX 삽입 완료
+
+---
+
+## Part A: 토글 제거 + 통합 라우팅 + 프론트 UI 개선
+
+### A-1. 백엔드 ✅ (이미 적용)
+- `tutor.py` 스키마: `open_chat` 추가
+- `_normalize_route_response`: `open_chat` 허용
+- `_route_with_llm` 시스템 프롬프트: `open_chat` 설명 추가
+
+### A-2. 프론트엔드 ✅ (이미 적용, 리뷰 필요)
+- `dockMode` state 제거
+- `effectiveDockMode` 계산 제거
+- 토글 UI 블록 제거 (대화/에이전트 버튼)
+- `submitPrompt` 통합: 모든 입력이 routePrompt → open_chat 분기 추가
+- `AgentControlPulse`: mode prop 제거, 항상 블루 글로우
+- 상태 dot: 항상 블루(활성)/그린(idle)
+- placeholder: `suggestedPrompt` 통일
+
+### A-3. 프론트 전체 UX 리뷰 (추가)
+
+**확인 및 정리 항목**:
+1. `AgentDock.jsx` 최종 상태 리뷰 — 토글 제거 후 상단 바 레이아웃 정상 확인
+2. `BottomNav.jsx` — AgentDock과 겹침 없는지 확인 (이미 M 상태)
+3. 토글 제거 후 남은 불필요 import (`SLASH_COMMANDS` 등) 정리
+4. `AgentControlPulse` 미사용 CSS 클래스 (`animate-agent-control-pulse`) 잔존 확인
+5. 키보드 올림/내림 시 AgentDock 위치 정상 동작 확인
+
+---
+
+## Part D: 파이프라인 진단 + 수정
+
+### 진단 결과
+
+**DB 상태** (deploy-test 2/23):
+- 2026-02-18 (수): keyword **5개** ✅ (정상)
+- 2026-02-23 (월): keyword **1개** ⚠️ (부족)
+
+**원인 분석**:
+- 큐레이터 코드(`openai_curator.py`) 자체는 2/18 이후 변경 없음
+- 프롬프트에 "3~5개 투자 테마" 요청하지만, `topic_count` 파라미터가 전달되지 않음
+- 입력 데이터(뉴스/리서치/스크리닝) 품질에 따라 LLM이 1개만 생성할 수 있음
+- `run.py` line 333: `len(curated_topics) > 1` 조건으로 2차+ 토픽 생성 차단 → 1개면 즉시 break
+
+**`daily_narratives`/`narrative_scenarios` 테이블**:
+- orphaned 스키마 (파이프라인이 write하지 않음, API도 read하지 않음)
+- 실제 데이터는 `daily_briefings.top_keywords` + `historical_cases.keywords` JSONB에 저장
+- **이번 작업에서는 건드리지 않음** (별도 마이그레이션 필요)
+
+### D-1. 더미 mock 데이터 제거
+
+**파일**: `datapipeline/nodes/curation.py`
+- 이전 구현에서 추가한 2차전지/금리인하 mock topics **삭제** (원본 복원)
+- `topic_count` 전달 로직만 유지
+
+### D-2. `curate_with_websearch`에 `topic_count` 전달
+
+**파일**: `datapipeline/data_collection/openai_curator.py`
+
+1. 함수 시그니처에 `topic_count: int = 3` 추가
+2. 프롬프트에 최소 토픽 수 명시:
+   ```
+   "반드시 최소 {topic_count}개 이상의 투자 테마를 생성하세요."
+   ```
+3. 검증 단계에서 topic_count 미달 시 경고 로그
+
+**파일**: `datapipeline/nodes/curation.py`
+- live 모드에서 `state.get("topic_count", 3)` → `curate_with_websearch(..., topic_count=topic_count)` 전달
+- 토픽 수 미달 시 경고 로그 추가 (이미 적용됨, 유지)
+
+### D-3. `run.py` topic_count를 state에 주입
+
+**파일**: `datapipeline/run.py`
+- `_build_initial_state`에서 `topic_count` 인자를 state에 포함
+- 큐레이션 노드가 state에서 `topic_count`를 읽을 수 있도록
+
+---
+
+## Part C: LangSmith 트래킹
+
+**파일**: `fastapi/app/api/routes/tutor.py`
+
+### C-1. import 추가
+```python
+from shared.langsmith_config import trace_context, create_run_metadata
+```
+
+### C-2. 라우팅 결정 래핑
+`_route_with_llm` 내부 LLM 호출부:
+```python
+with trace_context(name="tutor_route_decision", tags=["tutor", "routing"],
+    metadata={"mode": route_request.mode, "model": route_model}):
+    response = await client.chat.completions.create(...)
+```
+
+### C-3. 메인 챗 LLM 호출 래핑
+`generate_tutor_response` 내부 — Responses API 호출부 + Chat Completions 호출부 각각:
+```python
+with trace_context(name="tutor_chat_llm", tags=["tutor", "chat"],
+    metadata=create_run_metadata(user_id=str(user_id), session_id=session_id, module_name="tutor")):
+```
+
+### C-4. 가드레일 + 용어 설명
+각각 `trace_context`로 LLM 호출부 래핑.
+
+---
+
+## 수정 파일 요약
+
+| 파일 | Part | 변경 | 상태 |
+|------|------|------|------|
+| `frontend/src/hooks/useAgentControlOrchestrator.js` | B | navigate 블록 제거 | ✅ 완료 |
+| `frontend/src/components/agent/AgentDock.jsx` | A,B | 토글 제거 + open_chat + ActionConfirmDialog | ✅ 완료 |
+| `frontend/src/components/agent/AgentControlPulse.jsx` | A | mode prop 제거 | ✅ 완료 |
+| `fastapi/app/schemas/tutor.py` | A | open_chat Literal 추가 | ✅ 완료 |
+| `fastapi/app/api/routes/tutor.py` | A,C | normalize + 프롬프트 + LangSmith | A✅ C🔧 |
+| `datapipeline/nodes/curation.py` | D | mock 더미 삭제 + topic_count 전달 | 🔧 수정필요 |
+| `datapipeline/data_collection/openai_curator.py` | D | topic_count 파라미터 + 프롬프트 강화 | 🔧 추가 |
+| `datapipeline/run.py` | D | topic_count state 주입 | 🔧 추가 |
+
+---
+
+## 검증
+
+### Part B (액션)
+- "투자 탭으로 이동해줘" → 즉시 `/portfolio` 이동 (확인 대화상자 없이)
+- "삼성전자 1주 매도해줘" → ActionConfirmDialog → 실행/자동모드/취소
+
+### Part A (UX 통합 + 프론트 UI)
+- 토글 버튼 완전 사라졌는지 확인
+- 상단 바 레이아웃: 상태 dot + 텍스트 + 검색/기록 버튼만 남아있는지
+- "PER이 뭐야?" → TutorModal (open_chat)
+- "삼성전자 전망 분석해줘" → 캔버스 (open_canvas)
+- "홈으로 가줘" → 즉시 이동 (inline_action)
+- AgentControlPulse 블루 글로우만 작동하는지
+
+### Part D (파이프라인)
+- `--backend live` 로컬 실행 → 토픽 수 ≥ 3 확인
+- 프롬프트에 "최소 3개" 명시된 것 확인
+- deploy-test 파이프라인 수동 실행 후 키워드 3개 이상 저장 확인
+
+### Part C (LangSmith)
+- LangSmith 대시보드에서 `tutor_route_decision`, `tutor_chat_llm` run 확인
+
+### 배포
+- `/deploy frontend` + `/deploy api`
+- deploy-test 파이프라인 수동 실행: `docker exec adelie-backend-api python -m datapipeline.run --backend live --market KR --topic-count 3`
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+배포 서버에도 반영해라.
+
+---
+
+Base directory for this skill: /home/hj/2026/project/adelie-investment/.claude/skills/deploy
+
+# Deploy Skill
+
+서비스를 빌드하고 deploy-test 서버에 배포합니다.
+
+## 사용법
+
+`/deploy all`
+
+- `/deploy frontend` — 프론트엔드만 빌드 + 푸시 + 배포
+- `/deploy api` — FastAPI 백엔드만 빌드 + 푸시 + 배포
+- `/deploy all` — 전체 서비스 빌드 + 푸시 + 배포
+- `/deploy` (인자 없음) — 변경된 서비스 자동 감지 후 배포
+
+## 서버 경로 (중요)
+
+| 환경 | 프로젝트 경로 |
+|------|--------------|
+| **deploy-test (10.10.10.20)** | `~/adelie-investment` |
+| **로컬 개발** | `/home/hj/2026/project/adelie-investment` |
+
+## Docker 이미지 태깅 규칙
+
+### 이미지 목록
+
+| 서비스 | 이미지명 | 빌드 명령 |
+|--------|---------|-----------|
+| Frontend | `dorae222/adelie-frontend` | `make build-frontend` |
+| Backend API | `dorae222/adelie-backend-api` | `make build-api` |
+| AI Pipeline | `dorae222/adelie-ai-pipeline` | `make build-ai` |
+
+### 태그 규칙
+
+| 태그 | 용도 | 예시 |
+|------|------|------|
+| `latest` | 기본값, deploy-test 배포용 | `dorae222/adelie-frontend:latest` |
+| `YYYYMMDD` | 날짜 기반 스냅샷 (릴리스 시) | `dorae222/adelie-frontend:20260214` |
+| `v{N}` | 프로덕션 릴리스 버전 | `dorae222/adelie-frontend:v1` |
+
+- 일반 배포: `make build push` (latest 태그 자동 사용)
+- 태그 지정 배포: `TAG=20260214 make build push`
+- deploy-test의 docker-compose.prod.yml은 `latest` 태그를 참조
+
+## 실행 절차
+
+### 전체 배포 (`/deploy all`)
+```bash
+# 1. 빌드
+make build-frontend
+make build-api
+
+# 2. Docker Hub 푸시
+make push
+
+# 3. deploy-test 서버 배포
+ssh deploy-test "cd ~/adelie-investment && docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d"
+
+# 4. 상태 확인
+ssh deploy-test "docker ps --format 'table {{.Names}}\t{{.Status}}'"
+```
+
+### 단일 서비스 배포 (`/deploy frontend` 또는 `/deploy api`)
+```bash
+# frontend 예시
+make build-frontend
+docker push dorae222/adelie-frontend:latest
+ssh deploy-test "cd ~/adelie-investment && docker compose -f docker-compose.prod.yml pull frontend && docker compose -f docker-compose.prod.yml up -d frontend"
+```
+
+### 원스텝 배포 (Makefile)
+```bash
+make deploy-test        # 전체: build → push → 서버 pull → up
+SVC=frontend make deploy-test-service  # 단일 서비스
+```
+
+## 서비스 의존 순서
+
+```
+postgres (healthy) → redis (healthy) → backend-api (healthy) → frontend
+                                     → minio
+```
+
+`docker compose up -d`는 healthcheck 기반으로 순서를 자동 관리한다.
+
+## 배포 후 검증
+
+```bash
+# 1. 컨테이너 상태 확인
+ssh deploy-test "docker ps --format 'table {{.Names}}\t{{.Status}}'"
+
+# 2. API 헬스체크
+ssh deploy-test "curl -sf http://localhost:8082/api/v1/health || echo FAIL"
+
+# 3. 프론트엔드 접속 확인
+ssh deploy-test "curl -sf -o /dev/null -w '%{http_code}' http://localhost:80"
+
+# 4. 최근 로그 확인
+ssh deploy-test "docker logs adelie-backend-api --tail 20"
+ssh deploy-test "docker logs adelie-frontend --tail 20"
+```
+
+## 롤백
+
+```bash
+# 이전 이미지로 롤백 (Docker Hub에 이전 태그가 있는 경우)
+ssh deploy-test "cd ~/adelie-investment && \
+  docker compose -f docker-compose.prod.yml pull && \
+  docker compose -f docker-compose.prod.yml up -d"
+
+# 특정 태그로 롤백
+TAG=20260213 ssh deploy-test "cd ~/adelie-investment && \
+  REGISTRY=dorae222 TAG=20260213 docker compose -f docker-compose.prod.yml up -d"
+
+# 긴급: 서비스만 재시작 (이미지 변경 없이)
+ssh deploy-test "docker restart adelie-backend-api"
+```
+
+## 주의사항
+
+- 배포 전 `git status`로 커밋되지 않은 변경 확인
+- TAG를 명시하지 않으면 latest 태그 사용
+- **서버 경로**: `~/adelie-investment` (절대 `~/adelie`가 아님)
+- 에러 발생 시 `ssh deploy-test "docker logs adelie-{서비스} --tail 50"` 로 로그 확인
+
+---
+
+<task-notification>
+<task-id>b53161e</task-id>
+<tool-use-id>toolu_01DzPTRCJjJNAEoDFWJ3UDdr</tool-use-id>
+<output-file>/tmp/claude-1000/-home-hj-2026-project-adelie-investment/tasks/b53161e.output</output-file>
+<status>completed</status>
+<summary>Background command "Build backend API Docker image" completed (exit code 0)</summary>
+</task-notification>
+Read the output file to retrieve the result: /tmp/claude-1000/-home-hj-2026-project-adelie-investment/tasks/b53161e.output
+
+---
+
+<task-notification>
+<task-id>b42f7a1</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>REDACTED.output</output-file>
+<status>completed</status>
+<summary>Background command "Build frontend Docker image" completed (exit code 0)</summary>
+</task-notification>
+Read the output file to retrieve the result: REDACTED.output

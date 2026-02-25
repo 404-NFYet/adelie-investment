@@ -1,0 +1,66 @@
+Implement the following plan:
+
+# test-server (10.10.10.19) staging 환경 참조 제거
+
+## Context
+`test.adelie-invest.com` (10.10.10.19, LXC `test-server`)은 staging 배포 서버로, 프로덕션 `demo.adelie-invest.com` (10.10.10.20, SSH `deploy-test`)과 별개로 운영되었다. 혼동 방지를 위해 test-server 관련 참조를 코드베이스에서 제거하되, 내용은 아카이브로 백업한다.
+
+## 영향 범위 (2개 파일만 해당)
+
+| 파일 | 제거 대상 |
+|------|----------|
+| `lxd/inventory.md` | test-server 행 (L15), 합계 갱신 (L16), staging 배포 현황 섹션 (L47-59) |
+| `lxd/Makefile` | `.PHONY` 항목 (L11), help 텍스트 (L27-28), staging 섹션 전체 (L209-233) |
+
+**제거하지 않는 것** (혼동 주의):
+- `deploy-test` (10.10.10.20) — 프로덕션 서버 SSH alias, demo.adelie-invest.com
+- `rollback-stable` 타겟 — deploy-test용 롤백, test-server 아님
+- `dev-final-*` 타겟 — dev LXD 서버용, test-server 아님
+- `release/feb20-stable` 브랜치 참조 (staging 섹션 밖) — 다른 용도로 사용 중
+
+## 구현 단계
+
+### 1. 아카이브 백업 생성
+- `lxd/archive/test-server-staging.md` 신규 생성
+- inventory.md의 test-server 행 + 배포 현황 섹션 백업
+- Makefile의 deploy-staging, health-staging 타겟 백업
+- 아카이브 날짜/사유 기록
+
+### 2. `lxd/inventory.md` 수정
+- **L15**: test-server 행 삭제
+- **L16**: 합계 `46/108GB` → `48/112GB` (현재 테이블 기준 재계산)
+- **L3**: 날짜 `2026-02-17` → `2026-02-24`
+- **L47-59**: `### test-server` 섹션 전체 삭제 (13줄)
+
+### 3. `lxd/Makefile` 수정
+- **L11**: `.PHONY`에서 `deploy-staging health-staging \` 행 삭제
+- **L27-28**: help 타겟에서 staging 관련 2줄 삭제
+- **L209-233**: staging 섹션 전체 삭제 (comment, STAGING_TAG, deploy-staging, health-staging — 25줄)
+
+## 검증
+```bash
+# 1. test-server 참조 완전 제거 확인 (archive만 매칭되어야 함)
+grep -rn 'test-server\|test\.adelie-invest\.com\|10\.10\.10\.19' lxd/
+
+# 2. Makefile help 정상 출력
+make -f lxd/Makefile help
+
+# 3. production 참조 무결성 확인
+grep -n 'demo\.adelie-invest\.com\|deploy-test' lxd/inventory.md
+grep -n 'deploy-test\|rollback-stable\|dev-final' lxd/Makefile
+```
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+lxd 서버까지 모두 제거하였는가?
+
+---
+
+컨테이너도 정리해라
+
+---
+
+localstack도 제거해라.

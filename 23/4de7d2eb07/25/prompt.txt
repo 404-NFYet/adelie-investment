@@ -1,0 +1,996 @@
+Implement the following plan:
+
+# Agent v5 + 프론트엔드 품질 개선 종합 계획
+
+## Context
+
+기존 Agent v5 계획(F1-F3 채팅 컴포넌트, B1-B6 백엔드 개선)에 더해, 데모 커밋(`9c09e40`) 분석 및 6가지 추가 요구사항을 반영한 종합 계획.
+
+**핵심 문제:**
+1. 페이지 파일이 모놀리식 (Home 546줄, Education 484줄, Narrative 932줄) → 시니어 엔지니어 수준 모듈화 필요
+2. 데모 커밋에 있는 복습카드(FlashCard) 시스템이 현재 브랜치에 미반영
+3. 한글 슬래시 명령어, ChatBubble 마크다운 스타일 개선 등 데모 UX 개선사항 미반영
+4. 기존 Agent v5의 F1/F2/F3 신규 컴포넌트 + B1-B6 백엔드 개선 여전히 필요
+
+---
+
+## 탐색 결과 요약
+
+### [1] 홈/교육 배치 — 이미 완료 ✅
+- **Home.jsx**: 학습 스케줄(주간 캘린더) → 오늘의 이슈(캐러셀) → 대화 정리(고정 세션 2열) — 3개 섹션 모두 존재
+- **Education.jsx**: 오늘의 미션(퀴즈) → 활동 캘린더 → 활동 대시보드 → AI 복습카드 → 복습카드(학습 진도) → 에이전트 CTA — 6개 섹션 모두 존재
+- **작업 내용**: 배치는 유지, 모듈화만 수행
+
+### [2] 아이콘 선정 로직 — 이미 존재 ✅
+- `frontend/src/constants/homeIconCatalog.js`: 20개 Figma PNG 아이콘 카탈로그
+- `getHomeIconSrc(iconKey)`: 키 기반 아이콘 URL 반환, 폴백 기본값
+- `/images/figma/home-icons/{key}.png` 경로에 실제 파일 존재
+- 이슈 카드/대화 정리에서 이미 활용 중
+- **작업 내용**: 복습카드에도 동일 패턴 적용
+
+### [3] 복습카드 — 데모 커밋에서 포팅 필요 🔴
+- 데모 커밋(`9c09e40`)에 FlashCard 시스템 전체 구현:
+  - `fastapi/app/models/flashcard.py`: SQLAlchemy 모델 (id, user_id, title, content_html, source_session_id)
+  - `fastapi/app/api/routes/flashcards.py`: CRUD 3개 엔드포인트 (POST, GET, DELETE)
+  - `frontend/src/api/flashcards.js`: API 클라이언트
+  - `AgentChatSheet` 내 `FlashCardListView` 컴포넌트
+  - `/복습` 슬래시 명령어 → 복습카드 생성
+- **현재 브랜치**: ReviewCard.jsx(고정 세션 기반)만 존재, FlashCard 없음
+- **작업 내용**: 데모 FlashCard를 포팅 + 구조 개선 (key_points, topic_tags JSONB 추가)
+
+### [4] 피드백 — 이미 충분 ✅ (일부 개선)
+- `FeedbackSurvey.jsx`: 5항목 1-5점 + 자유의견 + 에러 스크린샷 — 이미 Google Forms 수준
+- `BriefingFeedback.jsx`: 브리핑 후 3이모지 평가 + 선호 섹션
+- `ReactionButtons.jsx`: 좋아요/싫어요 인라인 반응
+- `Profile.jsx`: 서비스 평가 카드(→ `/feedback-survey`) + 문의사항 (→ `/api/v1/feedback`)
+- 7개 백엔드 엔드포인트 + 분석 대시보드 이미 존재
+- **작업 내용**: Profile.jsx의 문의/설문 영역을 더 눈에 띄게 개선
+
+### [5] 데모 커밋 (`9c09e40`) 포팅 대상
+| 항목 | 포팅 여부 | 이유 |
+|------|----------|------|
+| FlashCard 모델+API | ✅ 포팅 | 핵심 신규 기능 |
+| 한글 슬래시 명령어 12개 | ✅ 포팅 | UX 개선 |
+| ChatBubble 마크다운 스타일 | ✅ 포팅 | 가독성 대폭 개선 |
+| StatusIndicator 컴포넌트 | ✅ 포팅 | 에이전트 상태 UX |
+| SessionListView 슬라이드 패널 | ❌ 스킵 | 우리 F2 AgentSessionPanel로 대체 |
+| Home openTutor() 전환 | ❌ 스킵 | 우리 구조에서는 `/agent` 내비게이션 유지 |
+| agent-ux-spec.md 문서 | ✅ 포팅 | 아키텍처 참조 |
+
+### [6] 코드 모듈화 우선순위
+| 파일 | 줄수 | 심각도 | 추출 대상 |
+|------|------|--------|----------|
+| **Narrative.jsx** | 932 | CRITICAL | ContentTemplate 1-5, MarkdownBody, NarrativeSources, NarrativeChartBlock, StepHeader |
+| **Home.jsx** | 546 | HIGH | AssetSummaryCard, LearningSchedule, IssueCarousel, ConversationCards |
+| **Education.jsx** | 484 | HIGH | PinnedReviewCards, LearningProgressCards, AgentLearningCTA |
+| AgentCanvasPage.jsx | 638 | MEDIUM | F1/F2/F3로 이미 분리 예정 |
+
+---
+
+## 작업 목록 (구현 순서)
+
+### Phase A: 코드 모듈화 (프론트엔드 구조 개선)
+
+#### A1. Narrative.jsx 분해 (932줄 → ~300줄)
+**추출할 파일 5개:**
+
+| 신규 파일 | 원본 줄 | 역할 |
+|----------|---------|------|
+| `components/narrative/ContentTemplate.jsx` | 248-405 | 5개 템플릿 분기 (switch/case로 정리) |
+| `components/narrative/MarkdownBody.jsx` | 135-167 | ReactMarkdown 래퍼 (remarkGfm, rehypeRaw, rehypeKatex) |
+| `components/narrative/NarrativeChartBlock.jsx` | 169-210 | ECharts/Plotly 차트 블록 |
+| `components/narrative/NarrativeSources.jsx` | 212-246 | 출처 뱃지 접기/펼치기 |
+| `components/narrative/StepNavigation.jsx` | 773-801 | 스텝 헤더 + 진행 도트 + 네비게이션 |
+
+**Narrative.jsx 잔존:** 상태관리 + 데이터 페칭 + 레이아웃 조합만 남음
+
+#### A2. Home.jsx 분해 (546줄 → ~200줄)
+**추출할 파일 3개:**
+
+| 신규 파일 | 원본 줄 | 역할 |
+|----------|---------|------|
+| `components/home/LearningSchedule.jsx` | 304-359 | 주간 캘린더 + 출석률 + 진행바 |
+| `components/home/IssueCarousel.jsx` | 361-491 | 오늘의 이슈 캐러셀 (스와이프 + 자동재생 + 반응 버튼) |
+| `components/home/ConversationCards.jsx` | 493-535 | 대화 정리 2열 그리드 |
+
+**AssetSummaryCard** (18줄)는 인라인 유지 (추출 오버헤드 > 이점)
+
+#### A3. Education.jsx 분해 (484줄 → ~200줄)
+**추출할 파일 2개:**
+
+| 신규 파일 | 원본 줄 | 역할 |
+|----------|---------|------|
+| `components/education/LearningProgressCards.jsx` | 394-457 | 학습 진도 기반 복습 카드 목록 |
+| `components/education/AgentLearningCTA.jsx` | 458-479 | 에이전트 학습 도우미 CTA |
+
+이미 추출된 컴포넌트: `DailyQuizMissionCard`, `MonthlyActivityCalendar`, `ActivityDayDashboard`, `ReviewCard`
+
+#### A4. components/index.js 배럴 업데이트
+모든 신규 컴포넌트를 `components/index.js`에 등록
+
+---
+
+### Phase B: 복습카드 시스템 (FlashCard)
+
+#### B-FC1. 백엔드 — FlashCard 모델 + 마이그레이션
+**파일:** `fastapi/app/models/flashcard.py` (신규 — 데모에서 포팅 + 확장)
+
+```python
+class FlashCard(Base):
+    __tablename__ = "flashcards"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    title: Mapped[str] = mapped_column(String(300))
+    content_html: Mapped[str] = mapped_column(Text)  # 정리된 HTML
+    key_points: Mapped[Optional[dict]] = mapped_column(JSONB, default=list)  # 핵심 포인트 배열
+    topic_tags: Mapped[Optional[dict]] = mapped_column(JSONB, default=list)  # 주제 태그 배열
+    source_session_id: Mapped[Optional[int]] = mapped_column(ForeignKey("tutor_sessions.id"))
+    source_type: Mapped[str] = mapped_column(String(20), default="conversation")  # conversation|briefing|quiz
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+```
+
+**마이그레이션:** `database/alembic/versions/20260224_flashcards.py`
+
+#### B-FC2. 백엔드 — FlashCard CRUD API
+**파일:** `fastapi/app/api/routes/flashcards.py` (신규 — 데모에서 포팅)
+- `POST /api/v1/flashcards` — 복습카드 생성
+- `GET /api/v1/flashcards` — 목록 조회 (최신순, limit 파라미터)
+- `DELETE /api/v1/flashcards/{card_id}` — 삭제
+- JWT 인증 필수 (`get_current_user`)
+
+#### B-FC3. 백엔드 — 복습카드 자동 생성 로직
+**파일:** `fastapi/app/api/routes/tutor.py` (기존 파일에 추가)
+
+`/복습` 슬래시 명령어 처리 시 또는 세션 저장 시:
+1. 최근 대화 내용 수집 (session의 messages)
+2. LLM 호출로 구조화된 복습카드 생성:
+   - title: 대화 주제 요약 (1줄)
+   - key_points: 핵심 포인트 3-5개
+   - topic_tags: 관련 키워드 3-5개
+   - content_html: 마크다운→HTML 정리 요약
+3. FlashCard DB 저장
+
+**프롬프트 설계:**
+```
+다음 대화를 학습 복습 카드로 정리해주세요.
+- 제목: 1줄 요약
+- 핵심 포인트: 3-5개 불릿
+- 주제 태그: 3-5개 키워드
+- 요약: 마크다운 형식, 200자 내외
+
+대화 내용:
+{conversation_text}
+```
+
+#### B-FC4. 프론트엔드 — API 클라이언트
+**파일:** `frontend/src/api/flashcards.js` (신규 — 데모에서 포팅)
+- `saveFlashCard(body)`, `listFlashCards()`, `deleteFlashCard(id)`
+
+#### B-FC5. 프론트엔드 — FlashCardList 컴포넌트
+**파일:** `frontend/src/components/domain/FlashCardList.jsx` (신규)
+- 복습카드 목록 표시 (Education 페이지에서 사용)
+- 각 카드: 제목 + key_points (최대 3개) + topic_tags + 날짜 + 삭제 버튼
+- 빈 상태: "복습카드가 없어요. /복습 명령어로 만들어보세요"
+- `homeIconCatalog`의 `bulb-dynamic-color` 아이콘 활용
+
+#### B-FC6. Education.jsx에 FlashCard 섹션 통합
+- 기존 "AI 복습 카드" (고정 세션) 아래에 "내 복습카드" 섹션 추가
+- `listFlashCards()` 호출로 데이터 로드
+- FlashCardList 컴포넌트 렌더링
+
+---
+
+### Phase C: 데모 UX 개선 포팅
+
+#### C1. 한글 슬래시 명령어 추가
+**파일:** `frontend/src/hooks/useSlashCommands.js` + `frontend/src/components/agent/SlashCommandMenu.jsx`
+
+데모에서 포팅할 12개 한글 명령어:
+- `/매수`, `/매도` — 매매 (확인 필요, parseArgs 한글 처리)
+- `/포트폴리오`, `/브리핑`, `/퀴즈`, `/복습`, `/시세`, `/공시`, `/도움말` — 기능
+- `/시각화`, `/차트`, `/비교` — 분석
+
+`UNIQUE_COMMANDS` 배열도 추가하여 SlashCommandMenu에서 한글만 표시 (중복 제거)
+
+#### C2. ChatBubble 마크다운 스타일 개선
+**파일:** AgentChatThread.jsx (F1)에 반영 또는 별도 `components/agent/markdownComponents.js`
+
+데모에서 포팅할 스타일 변경:
+- h2: `border-b border-[#F2F4F6]` 하단 구분선
+- p: `text-[15px] leading-[1.8]` → 기존 `text-sm leading-[1.7]` 대비 가독성 향상
+- ul/ol: `space-y-2` → 기존 `space-y-1` 대비 간격 증가
+- blockquote: `border-[#FF6B00]` → 브랜드 컬러 적용
+- table: `rounded-xl border shadow-sm` + hover 효과 + divide-y
+- code block: `rounded-xl p-4` → 더 넉넉한 패딩
+- 에이전트: 말풍선 제거 → 흰 바탕에 직접 마크다운 렌더링 (깔끔)
+- 사용자: `max-w-[80%]`, `text-[15px]`
+
+#### C3. StatusIndicator 컴포넌트
+**파일:** `frontend/src/components/agent/StatusIndicator.jsx` (신규)
+
+데모에서 포팅: phase 기반 상태 표시 (idle/thinking/tool_call/streaming/done/error)
+- 글로우 펄스 도트 (framer-motion)
+- 상태별 컬러: 대기(회색), 분석(주황), 응답(녹색), 오류(빨강)
+- AgentChatThread에서 스트리밍 중 표시
+
+#### C4. agent-ux-spec.md 문서 포팅
+**파일:** `docs/architecture/agent-ux-spec.md` (신규)
+- 데모 커밋의 416줄 UX 명세서 포팅
+- 유저 여정별 기능 흐름, 액션 카탈로그, 연결 구조
+
+---
+
+### Phase D: 피드백 시스템 개선
+
+#### D1. Profile.jsx 피드백 접근성 강화
+**파일:** `frontend/src/pages/Profile.jsx`
+
+현재: 서비스 평가 카드(작은 링크) + 문의사항(텍스트 폼)
+개선:
+- "서비스 평가" 카드를 더 눈에 띄게 (주황 테두리 + 아이콘)
+- "문의사항" 입력 영역을 "전체 설문"(FeedbackSurvey)으로 이동할 수 있는 안내 추가
+- "전체 설문 바로가기" 버튼 추가 (간단한 문의는 인라인, 상세 피드백은 설문 페이지)
+
+---
+
+### Phase E: Agent v5 기존 작업 (변경 없음)
+
+#### E1. F1 — AgentChatThread.jsx (Phase C2 마크다운 스타일 반영)
+#### E2. F2 — AgentSessionPanel.jsx
+#### E3. F3 — ChatInput.jsx (Phase C1 한글 슬래시 반영)
+#### E4. B1 — _build_llm_messages 버그 수정 + 메모리 통합
+#### E5. B2 — 토큰 카운트 + 메모리 갱신
+#### E6. B3 — 출력 가드레일 통합
+#### E7. B4 — tiktoken 의존성
+#### E8. B5 + B6 — LangSmith 메타데이터 + 컨텍스트 병렬화
+
+---
+
+## 구현 순서
+
+```
+Step 1: Phase A (모듈화) — 3개 병렬 서브에이전트
+  ├─ Agent1: A1 Narrative.jsx 분해 (5개 파일 추출)
+  ├─ Agent2: A2 Home.jsx 분해 (3개 파일 추출)
+  └─ Agent3: A3 Education.jsx 분해 (2개 파일 추출) + A4 index.js 업데이트
+
+Step 2: Phase E (Agent v5 BLOCKING) — 3개 병렬 서브에이전트
+  ├─ Agent1: E1 AgentChatThread.jsx (C2 마크다운 + C3 StatusIndicator 포함)
+  ├─ Agent2: E2 AgentSessionPanel.jsx
+  └─ Agent3: E3 ChatInput.jsx
+
+Step 3: Phase B (복습카드) — 2개 병렬 서브에이전트
+  ├─ Agent1: B-FC1~FC3 백엔드 (모델, API, 생성 로직)
+  └─ Agent2: B-FC4~FC6 프론트엔드 (API 클라이언트, 컴포넌트, 통합)
+
+Step 4: Phase C (데모 UX) — 순차
+  ├─ C1 한글 슬래시 명령어
+  └─ C4 agent-ux-spec.md 문서
+
+Step 5: Phase D (피드백) + Phase E 백엔드 — 순차
+  ├─ D1 Profile.jsx 개선
+  ├─ E4-E6 tutor.py 백엔드 수정 (순차)
+  ├─ E7 tiktoken
+  └─ E8 LangSmith + 병렬화
+
+Step 6: 빌드 확인 + 전체 검증
+```
+
+---
+
+## 파일 변경 요약
+
+### 신규 파일 (~18개)
+
+| # | 파일 | 유형 |
+|---|------|------|
+| 1 | `components/narrative/ContentTemplate.jsx` | 프론트 |
+| 2 | `components/narrative/MarkdownBody.jsx` | 프론트 |
+| 3 | `components/narrative/NarrativeChartBlock.jsx` | 프론트 |
+| 4 | `components/narrative/NarrativeSources.jsx` | 프론트 |
+| 5 | `components/narrative/StepNavigation.jsx` | 프론트 |
+| 6 | `components/home/LearningSchedule.jsx` | 프론트 |
+| 7 | `components/home/IssueCarousel.jsx` | 프론트 |
+| 8 | `components/home/ConversationCards.jsx` | 프론트 |
+| 9 | `components/education/LearningProgressCards.jsx` | 프론트 |
+| 10 | `components/education/AgentLearningCTA.jsx` | 프론트 |
+| 11 | `components/agent/AgentChatThread.jsx` | 프론트 (F1) |
+| 12 | `components/agent/AgentSessionPanel.jsx` | 프론트 (F2) |
+| 13 | `components/agent/ChatInput.jsx` | 프론트 (F3) |
+| 14 | `components/agent/StatusIndicator.jsx` | 프론트 (C3) |
+| 15 | `components/domain/FlashCardList.jsx` | 프론트 (B-FC5) |
+| 16 | `api/flashcards.js` | 프론트 (B-FC4) |
+| 17 | `fastapi/app/models/flashcard.py` | 백엔드 (B-FC1) |
+| 18 | `fastapi/app/api/routes/flashcards.py` | 백엔드 (B-FC2) |
+| 19 | `database/alembic/versions/20260224_flashcards.py` | DB (B-FC1) |
+| 20 | `docs/architecture/agent-ux-spec.md` | 문서 (C4) |
+
+### 수정 파일 (~12개)
+
+| 파일 | 변경 내용 |
+|------|----------|
+| `pages/Narrative.jsx` | 모듈화 — 인라인 함수 → import 교체 (932줄 → ~300줄) |
+| `pages/Home.jsx` | 모듈화 — 섹션 추출 (546줄 → ~200줄) |
+| `pages/Education.jsx` | 모듈화 + FlashCard 섹션 추가 (484줄 → ~250줄) |
+| `pages/Profile.jsx` | 피드백 접근성 강화 |
+| `components/index.js` | 신규 컴포넌트 배럴 등록 |
+| `hooks/useSlashCommands.js` | 한글 슬래시 12개 추가 |
+| `components/agent/SlashCommandMenu.jsx` | UNIQUE_COMMANDS 한글 표시 |
+| `fastapi/app/models/__init__.py` | FlashCard import 추가 |
+| `fastapi/app/api/routes/tutor.py` | B1-B6 백엔드 개선 + 복습카드 생성 |
+| `fastapi/requirements.txt` | tiktoken>=0.5.0 추가 |
+| `database/alembic/env.py` | FlashCard 모델 등록 |
+
+---
+
+## 검증
+
+### 빌드
+```bash
+cd frontend && npm run build   # 모듈화된 import 모두 성공
+cd fastapi && python -c "from app.models.flashcard import FlashCard; print('OK')"
+cd fastapi && python -c "from app.services.conversation_memory import ConversationMemoryManager; print('OK')"
+```
+
+### 수동 테스트 (15항목)
+
+**모듈화 검증:**
+1. 홈 → 학습 스케줄, 이슈 캐러셀, 대화 정리 정상 렌더링
+2. 교육 → 미션, 캘린더, 대시보드, 복습카드 정상 렌더링
+3. 내러티브 → 스텝 1-6 전환, 차트, 출처 정상 렌더링
+4. 기존 기능 회귀 없음 (스와이프, 반응 버튼, 퀴즈 등)
+
+**복습카드:**
+5. `/복습` 명령어 → 복습카드 자동 생성 확인
+6. 교육 페이지 → "내 복습카드" 섹션에 생성된 카드 표시
+7. 복습카드 삭제 동작 확인
+
+**UX 개선:**
+8. `/매수 삼성전자 10주` → 한글 파싱 정상
+9. 에이전트 마크다운 렌더링: h2 구분선, 넓은 간격, 테이블 스타일
+10. 스트리밍 중 StatusIndicator 글로우 애니메이션
+
+**피드백:**
+11. 프로필 → "서비스 평가" 카드 눈에 띄게 표시
+12. 프로필 → "전체 설문 바로가기" → FeedbackSurvey 이동
+
+**Agent v5:**
+13. `/agent` → 채팅 스레드 + 세션 패널 + 입력 정상
+14. 스트리밍 + 중단 + 재생성 동작
+15. 10턴+ 대화 후 메모리 컨텍스트 유지
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Analysis:
+Let me chronologically analyze the entire conversation:
+
+1. **User's Initial Request**: The user provided a comprehensive implementation plan called "Agent v5 + 프론트엔드 품질 개선 종합 계획" with 6 phases (A through E + D) and 6 implementation steps. This is a large-scale refactoring and feature addition plan for the Adelie Investment platform.
+
+2. **Phase A - Code Modularization**: Three parallel agents were launched:
+   - A1: Narrative.jsx (932→579 lines) - 5 components extracted
+   - A2: Home.jsx (546→289 lines) - 3 components extracted  
+   - A3: Education.jsx (484→409 lines) - 2 components extracted + index.js barrel update
+
+3. **Phase E (Step 2) - Agent v5 Components**: Three parallel agents:
+   - E1: AgentChatThread.jsx + StatusIndicator.jsx + markdown styles (C2, C3)
+   - E2: AgentSessionPanel.jsx
+   - E3: ChatInput.jsx
+
+4. **Phase B - FlashCard System**: Two parallel agents:
+   - B-FC1~3: Backend (model, migration, CRUD API, agent.py integration)
+   - B-FC4~6: Frontend (API client, FlashCardList component, Education.jsx integration)
+
+5. **Phase C - Slash Commands**: Direct edit to SlashCommandMenu.jsx adding 4 new commands and UNIQUE_COMMANDS export, plus Korean-first display
+
+6. **Phase D - Profile Feedback**: Direct edit to Profile.jsx enhancing the feedback card visibility
+
+7. **Phase E Backend - tutor.py fixes**: 
+   - E4: Fixed `_build_llm_messages` bug (undefined `system_prompt` variable, duplicated FORMAT_RULES)
+   - E5: Integrated ConversationMemoryManager 3-tier memory into `_build_llm_messages`
+   - E7: Added tiktoken to requirements.txt
+
+8. **Build Verification**: Frontend build succeeded. Backend import check failed with ModuleNotFoundError (expected - needs to run from fastapi directory or with proper PYTHONPATH).
+
+Key files modified/created, errors encountered, and current state need to be documented thoroughly.
+
+Summary:
+1. Primary Request and Intent:
+   The user requested implementation of a comprehensive plan titled "Agent v5 + 프론트엔드 품질 개선 종합 계획" covering 6 phases:
+   - **Phase A**: Modularize monolithic page files (Narrative 932→~300 lines, Home 546→~200 lines, Education 484→~200 lines)
+   - **Phase B**: FlashCard (복습카드) system — backend model/API/migration + frontend components/integration
+   - **Phase C**: Korean slash commands (한글 슬래시 명령어), ChatBubble markdown styles, StatusIndicator, agent-ux-spec.md doc
+   - **Phase D**: Profile.jsx feedback accessibility improvements
+   - **Phase E**: Agent v5 components (AgentChatThread, AgentSessionPanel, ChatInput) + backend improvements (_build_llm_messages bug fix, memory integration, token count, guardrail, tiktoken, LangSmith)
+   - **Step 6**: Build verification
+   
+   Implementation order: A (parallel) → E frontend (parallel) → B (parallel) → C → D+E backend → Build verify
+
+2. Key Technical Concepts:
+   - React 19 + Vite component extraction/modularization pattern
+   - ReactMarkdown with remarkGfm, rehypeRaw for rich markdown rendering
+   - SSE streaming chat with turn-based rendering
+   - 3-tier conversation memory (Tier1: verbatim messages, Tier2: rolling summary, Tier3: entity store)
+   - FlashCard CRUD with JWT auth (get_current_user)
+   - SQLAlchemy async models with mapped_column, JSONB columns
+   - Alembic migrations
+   - Slash command system with Korean aliases and UNIQUE_COMMANDS
+   - Agent context envelope pattern (mode, ui_snapshot, action_catalog, interaction_state)
+   - Parallel subagent execution for independent tasks
+
+3. Files and Code Sections:
+
+   **CREATED FILES (18+ new files):**
+
+   - `frontend/src/components/narrative/ContentTemplate.jsx` (7.2KB)
+     - Extracted 5-template switch/case from Narrative.jsx, imports MarkdownBody and NarrativeChartBlock internally
+
+   - `frontend/src/components/narrative/MarkdownBody.jsx` (1.8KB)
+     - ReactMarkdown wrapper with remarkGfm, rehypeRaw, rehypeKatex plugins
+
+   - `frontend/src/components/narrative/NarrativeChartBlock.jsx` (1.8KB)
+     - ECharts/Plotly chart block rendering
+
+   - `frontend/src/components/narrative/NarrativeSources.jsx` (1.3KB)
+     - Source badges with expand/collapse
+
+   - `frontend/src/components/narrative/StepNavigation.jsx` (2.4KB)
+     - Step header + progress dots + navigation, exports StepHeader and StepFooterNav
+
+   - `frontend/src/components/home/LearningSchedule.jsx` (74 lines)
+     - Weekly calendar + attendance rate + progress bar
+
+   - `frontend/src/components/home/IssueCarousel.jsx` (225 lines)
+     - Today's issue carousel with swipe, autoplay, reaction buttons, `onActiveCardChange` callback
+
+   - `frontend/src/components/home/ConversationCards.jsx` (55 lines)
+     - 2-column conversation summary grid
+
+   - `frontend/src/components/education/LearningProgressCards.jsx` (83 lines)
+     - Learning progress review card list
+
+   - `frontend/src/components/education/AgentLearningCTA.jsx` (35 lines)
+     - Agent learning helper CTA section
+
+   - `frontend/src/components/agent/AgentChatThread.jsx` (20.3KB)
+     - Chat thread component with turn-based rendering, custom markdown components (C2), suggested questions, streaming support, sources display, guardrail notices
+
+   - `frontend/src/components/agent/AgentSessionPanel.jsx` (6.5KB)
+     - Session list slide-down panel with relative time, delete, pin indicators
+
+   - `frontend/src/components/agent/ChatInput.jsx` (8KB)
+     - Agent canvas input bar with slash command integration, prefix mode, streaming stop
+
+   - `frontend/src/components/agent/StatusIndicator.jsx` (1.4KB)
+     - Phase-based status glow dot (idle/thinking/tool_call/streaming/done/error)
+
+   - `frontend/src/components/domain/FlashCardList.jsx` (5KB)
+     - FlashCard list with delete, key_points bullets, topic_tags chips, relative dates
+
+   - `frontend/src/api/flashcards.js` (575B)
+     - API client: saveFlashCard, listFlashCards, deleteFlashCard
+
+   - `fastapi/app/models/flashcard.py` (1.4KB)
+     - FlashCard SQLAlchemy model with JSONB key_points/topic_tags
+
+   - `fastapi/app/api/routes/flashcards.py` (2.6KB)
+     - CRUD: POST/GET/DELETE with JWT auth
+
+   - `database/alembic/versions/20260224_flashcards.py`
+     - Migration creating flashcards table
+
+   **MODIFIED FILES (10+ files):**
+
+   - `frontend/src/pages/Narrative.jsx` — 932→579 lines, replaced inline code with imports from narrative/ components
+
+   - `frontend/src/pages/Home.jsx` — 546→289 lines (-47%), extracted 3 sections, added activeIssueCardRef + onActiveCardChange callback pattern
+
+   - `frontend/src/pages/Education.jsx` — 484→409 lines, extracted 2 components, added FlashCard state/fetch/section integration:
+     ```javascript
+     const [flashCards, setFlashCards] = useState([]);
+     const [isLoadingFlashCards, setIsLoadingFlashCards] = useState(false);
+     // useEffect fetches flashcards on mount
+     // "내 복습카드" section added between LearningProgressCards and AgentLearningCTA
+     ```
+
+   - `frontend/src/components/index.js` — 17→37 lines, added 10 new barrel exports organized by category
+
+   - `frontend/src/pages/Profile.jsx` — Enhanced feedback card with orange border, icon wrapper, "전체 설문 바로가기" arrow link, and survey link in contact section
+
+   - `frontend/src/components/agent/SlashCommandMenu.jsx` — Added 4 new commands (/briefing, /price, /disclosure, /help with Korean aliases), added UNIQUE_COMMANDS export, changed menu display to show Korean name first
+
+   - `fastapi/app/api/routes/tutor.py` — THREE fixes:
+     1. **E4 Bug fix**: `static_system` → `system_prompt` (line 836), removed duplicate FORMAT_RULES (lines 852-861)
+     2. **E5 Memory integration**: Rewrote conversation history loading to use ConversationMemoryManager for sessions with memory_state, with legacy char-based fallback
+     3. Key code change:
+     ```python
+     system_prompt = get_difficulty_prompt(request.difficulty) + FORMAT_RULES
+     # ... (was: static_system = ... which was never used, then system_prompt += ... which was undefined)
+     
+     # New 3-tier memory path:
+     if session_obj.memory_state:
+         memory_mgr = ConversationMemoryManager()
+         ctx = await memory_mgr.load_context(session_obj, db)
+         # Tier 3 entities → system_prompt
+         # Tier 2 summary → system_prompt  
+         # Tier 1 messages → prev_msgs
+     # Legacy fallback for sessions without memory_state
+     ```
+
+   - `fastapi/app/api/routes/agent.py` — Added 3 flashcard endpoints (/agent/flashcards POST/GET/DELETE) following existing lazy-import pattern
+
+   - `fastapi/app/models/__init__.py` — Added FlashCard import and __all__ entry
+
+   - `fastapi/requirements.txt` — Added `tiktoken>=0.5.0`
+
+   **KEY FILES READ (context gathering):**
+
+   - `frontend/src/pages/AgentCanvasPage.jsx` (638 lines) — Already imports AgentChatThread, AgentSessionPanel, ChatInput; has full props interface for all three
+   - `frontend/src/contexts/AgentContext.jsx` — Composite hook combining AgentUI, AgentSession, AgentChat contexts
+   - `frontend/src/components/agent/AgentHubHeader.jsx` — Header with session panel toggle, new chat, stop/regenerate buttons
+   - `frontend/src/components/agent/AgentDock.jsx` — Existing dock with slash commands, used as style reference for ChatInput
+   - `fastapi/app/models/tutor.py` — TutorSession model with memory_state JSONB, TutorMessage with token_count
+   - `fastapi/app/services/conversation_memory.py` — ConversationMemoryManager with 3-tier memory, tiktoken encoder
+
+4. Errors and Fixes:
+   - **E4 `_build_llm_messages` bug**: `static_system` was assigned on line 836 but `system_prompt` (undefined) was used from line 848 onward. FORMAT_RULES was also duplicated. Fix: renamed `static_system` → `system_prompt`, removed duplicate FORMAT_RULES block.
+   - **Backend import check failed**: `python -c "from app.models.flashcard import FlashCard"` failed with `ModuleNotFoundError: No module named 'app'` — this is expected when run from the project root instead of the fastapi directory. Not a real error, just needs correct PYTHONPATH.
+
+5. Problem Solving:
+   - Narrative.jsx agent completed but didn't import MarkdownBody/NarrativeChartBlock directly — verified they are imported internally by ContentTemplate.jsx (correct design)
+   - Home.jsx IssueCarousel needed `onActiveCardChange` callback because `activeIssueIndex` state moved into the carousel but Home.jsx's `useSelectionAskPrompt` still needs the active card title — solved with ref + callback pattern
+   - All subagent tasks verified by checking file existence and key imports after completion
+
+6. All User Messages:
+   - Message 1: "Implement the following plan: [full Agent v5 + 프론트엔드 품질 개선 종합 계획]" with detailed 6-phase plan, file lists, code snippets, and implementation order
+   - Messages 2-8: All system reminders about agent progress (no user content)
+   - Final message: Summary request
+
+7. Pending Tasks:
+   - **C4**: `docs/architecture/agent-ux-spec.md` document porting (from demo commit) — mentioned in plan but not yet created
+   - **E6**: Output guardrail integration (already partially exists in tutor.py, the plan mentions "통합" but the guardrail is already integrated in generate_tutor_response)
+   - **E8**: LangSmith metadata + context parallelization (LangSmith traces already exist in tutor.py; context parallelization via `_collect_all_context` function exists but isn't used by the main `_collect_context` — could be wired up)
+   - **B-FC3**: `/복습` slash command → FlashCard auto-generation logic in tutor.py (the plan mentions this but it wasn't implemented — the `/review` command currently navigates to education page)
+   - **Backend import verification**: The `python -c` import check needs to be run with correct PYTHONPATH
+   - **Task #11**: Build verification — frontend build passed, backend verification incomplete
+
+8. Current Work:
+   The final step was **build verification (Task #11)**. Frontend `npm run build` succeeded with no errors. Backend import check was attempted but failed due to PYTHONPATH (not a real error). The task list shows all tasks #1-#10 completed, #11 (빌드 확인 + 전체 검증) in_progress.
+
+9. Optional Next Step:
+   Complete Task #11 build verification by running the backend import check with correct PYTHONPATH:
+   ```bash
+   cd /home/hj/2026/project/adelie-investment/fastapi && PYTHONPATH=. ../.venv/bin/python -c "from app.models.flashcard import FlashCard; print('OK')"
+   ```
+   Then verify `conversation_memory` import and consider creating the `docs/architecture/agent-ux-spec.md` document (C4) which was in the plan but not yet done. The user's original request was "Implement the following plan" and the plan's Step 6 says "빌드 확인 + 전체 검증".
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+Please continue the conversation from where we left off without asking the user any further questions. Continue with the last task that you were asked to work on.
+
+---
+
+<task-notification>
+<task-id>accc2dbda9fa398f4</task-id>
+<tool-use-id>toolu_01LzqECWyEtSkGtDDxvQAv7F</tool-use-id>
+<status>completed</status>
+<summary>Agent "A3: Education.jsx 모듈화 + A4 index.js" completed</summary>
+<result>The file went from 484 lines to 409 lines (75 lines removed). The extracted JSX code (~87 lines of inline JSX) was replaced by 8 lines of component usage (the `<LearningProgressCards .../>` and `<AgentLearningCTA .../>` blocks plus comments).
+
+Here is a summary of all changes made:
+
+---
+
+## Summary
+
+### Part 1: Education.jsx Modularization (484 -> 409 lines)
+
+**2 new component files created:**
+
+1. **`/home/hj/2026/project/adelie-investment/frontend/src/components/education/LearningProgressCards.jsx`** (83 lines)
+   - Extracted from Education.jsx lines 394-457
+   - Renders the learning progress review cards list (loading state, empty state, card list with open/complete actions)
+   - Props: `reviewCards`, `isLoadingReviews`, `completingReviewId`, `onOpenCard`, `onCompleteCard`
+   - Imports `getHomeIconSrc` and `DEFAULT_HOME_ICON_KEY` from `homeIconCatalog` (moved from Education.jsx since this is where they are used for rendering)
+
+2. **`/home/hj/2026/project/adelie-investment/frontend/src/components/education/AgentLearningCTA.jsx`** (35 lines)
+   - Extracted from Education.jsx lines 458-479
+   - Renders the "agent learning helper" CTA section with navigate-to-agent button
+   - Props: `contextPayload`
+   - Uses its own `useNavigate` hook internally (self-contained navigation logic)
+
+**Modified file:**
+
+3. **`/home/hj/2026/project/adelie-investment/frontend/src/pages/Education.jsx`** (484 -> 409 lines)
+   - Added imports for `AgentLearningCTA` and `LearningProgressCards`
+   - Removed unused `getHomeIconSrc` from the `homeIconCatalog` import (still kept `DEFAULT_HOME_ICON_KEY` which is used in the `fetchReviewCards` data mapping on line 121)
+   - Replaced ~87 lines of inline JSX with two clean component usages passing appropriate props
+   - All state management, event handlers, and data fetching remain in Education.jsx; only presentation was extracted
+
+### Part 2: components/index.js Barrel Update
+
+4. **`/home/hj/2026/project/adelie-investment/frontend/src/components/index.js`** (17 -> 37 lines)
+   - All 16 existing exports preserved (reorganized into alphabetical order within each category)
+   - Added 10 new barrel exports organized by category:
+     - **education/** (2): `AgentLearningCTA`, `LearningProgressCards`
+     - **home/** (3): `ConversationCards`, `IssueCarousel`, `LearningSchedule`
+     - **narrative/** (5): `ContentTemplate`, `MarkdownBody`, `NarrativeChartBlock`, `NarrativeSources`, `StepNavigation`
+   - Categories grouped with comments: `common/`, `domain/`, `education/`, `home/`, `narrative/`</result>
+<usage><total_tokens>52495</total_tokens><tool_uses>23</tool_uses><duration_ms>112077</duration_ms></usage>
+</task-notification>
+Full transcript available at: REDACTED.output
+
+---
+
+<task-notification>
+<task-id>a8e44f60227ca88bf</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<status>completed</status>
+<summary>Agent "A1: Narrative.jsx 모듈화" completed</summary>
+<result>Here is a summary of the completed refactoring:
+
+---
+
+## Refactoring Summary: Narrative.jsx Modularization
+
+### Original
+- `/home/hj/2026/project/adelie-investment/frontend/src/pages/Narrative.jsx`: **932 lines**
+
+### After Refactoring
+- `/home/hj/2026/project/adelie-investment/frontend/src/pages/Narrative.jsx`: **579 lines** (state management + data fetching + layout assembly)
+
+### 5 Extracted Components
+
+1. **`/home/hj/2026/project/adelie-investment/frontend/src/components/narrative/MarkdownBody.jsx`** (43 lines)
+   - ReactMarkdown wrapper with `remarkMath`, `rehypeRaw`, `rehypeKatex` plugins
+   - Custom component mappings (mark with term click, heading downgrades, paragraph/list styling)
+
+2. **`/home/hj/2026/project/adelie-investment/frontend/src/components/narrative/NarrativeChartBlock.jsx`** (52 lines)
+   - ECharts/Plotly chart block rendering
+   - `buildNarrativePlot` + `convertPlotlyToECharts` conversion logic
+   - Conditional rendering between `ResponsiveEChart` and `ResponsivePlotly`
+
+3. **`/home/hj/2026/project/adelie-investment/frontend/src/components/narrative/NarrativeSources.jsx`** (41 lines)
+   - Source list with link/text rendering
+   - Max 6 sources, link detection with `target="_blank"`
+
+4. **`/home/hj/2026/project/adelie-investment/frontend/src/components/narrative/ContentTemplate.jsx`** (218 lines)
+   - 5 template branches (content1~content5) with different styling per step type
+   - Includes helper functions `getPlainLines`, `sanitizeChecklistItem`, `getChecklistItems`
+   - Imports `MarkdownBody` and `NarrativeChartBlock` as dependencies
+
+5. **`/home/hj/2026/project/adelie-investment/frontend/src/components/narrative/StepNavigation.jsx`** (69 lines)
+   - `StepHeader`: sticky header with back button, step counter, progress dots
+   - `StepFooterNav`: previous/next navigation buttons
+   - Named exports (not default)
+
+### What Remains in Narrative.jsx
+- All React state (`useState`, `useRef`)
+- All effects (`useEffect` for data fetching, resume state, scroll tracking, learning progress, context info)
+- All callbacks (`goToStep`, `goPrev`, `goNext`, `handleDragEnd`, resume handlers)
+- Constants (`STEP_CONFIGS`, `slideVariants`, swipe thresholds, resume storage config)
+- Layout composition with `AnimatePresence`/`motion` for slide transitions
+- Resume dialog, reward screen, and feedback modal rendering
+
+### Imports Moved
+- `ReactMarkdown`, `rehypeKatex`, `rehypeRaw`, `remarkMath` --> `MarkdownBody.jsx`
+- `buildNarrativePlot`, `ResponsiveEChart`, `ResponsivePlotly`, `convertPlotlyToECharts` --> `NarrativeChartBlock.jsx`
+- `useMemo` removed from Narrative.jsx (no longer needed there)
+
+### Build Verification
+The Vite build successfully transforms all 118 modules. A pre-existing build error in `AgentCanvasPage.jsx` (missing `AgentChatThread` component) is unrelated to this refactoring.</result>
+<usage><total_tokens>66152</total_tokens><tool_uses>16</tool_uses><duration_ms>205807</duration_ms></usage>
+</task-notification>
+Full transcript available at: REDACTED.output
+
+---
+
+<task-notification>
+<task-id>a82fa2b866203e799</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<status>completed</status>
+<summary>Agent "A2: Home.jsx 모듈화" completed</summary>
+<result>Good -- `Home` is still the default export from `Home.jsx`, so the lazy import in `App.jsx` will continue to work.
+
+Here is a summary of the refactoring completed:
+
+---
+
+## Summary
+
+### Files created (3 new components)
+
+1. **`/home/hj/2026/project/adelie-investment/frontend/src/components/home/LearningSchedule.jsx`** (74 lines)
+   - Extracted the weekly calendar + attendance rate + progress bar section (original lines 304-359)
+   - Props: `todayDateKey`, `weekDays`, `activitiesByDate`, `isActivityLoading`, `weekActivityCount`, `weekProgress`
+   - Uses its own `useNavigate` for the calendar link and day buttons
+
+2. **`/home/hj/2026/project/adelie-investment/frontend/src/components/home/IssueCarousel.jsx`** (225 lines)
+   - Extracted the "today's issue" carousel with swipe, autoplay, and reaction buttons (original lines 361-491)
+   - Internally manages `activeIndex`, `autoPlayStopped` state and all touch/swipe handlers
+   - Moved `ISSUE_AUTO_ADVANCE_MS`, `ISSUE_SWIPE_THRESHOLD_PX` constants and `formatKoreanDate` helper into this file
+   - Moved `ReactionButtons` and `trackEvent` imports here (no longer needed in Home.jsx)
+   - Exposes `onActiveCardChange` callback so Home.jsx can track the active card for the text selection chip
+   - Props: `issueCards`, `isLoadingKeywords`, `keywordError`, `marketSummary`, `todayDateKey`, `openAgentFromHome`, `selectableRef`, `onActiveCardChange`
+
+3. **`/home/hj/2026/project/adelie-investment/frontend/src/components/home/ConversationCards.jsx`** (55 lines)
+   - Extracted the 2-column conversation summary grid (original lines 493-535)
+   - Props: `conversationCards`, `onCardClick`
+   - Uses its own `useNavigate` for the "full history" link
+
+### File modified
+
+4. **`/home/hj/2026/project/adelie-investment/frontend/src/pages/Home.jsx`** (546 lines -> 289 lines, -47%)
+   - Replaced inline section UI code with `<LearningSchedule>`, `<IssueCarousel>`, and `<ConversationCards>` component calls
+   - Removed unused imports: `getHomeIconSrc`, `formatRelativeDate`, `ReactionButtons`, `trackEvent`
+   - Removed inline `formatKoreanDate` helper (moved to IssueCarousel)
+   - Removed carousel state management (`activeIssueIndex`, `autoPlayStopped`, touch handlers, `moveIssue`, `stopIssueAutoPlay`) -- all moved into IssueCarousel
+   - Added `activeIssueCardRef` (a ref) + `onActiveCardChange` callback pattern so the selection chip can still access the active card title without managing carousel index state
+   - Changed `openSessionSummaryCard` from plain function to `useCallback` for stable reference when passed as prop
+   - Retained: data fetching, derived data computation, agent context payloads, navigation handlers, AssetSummaryCard inline, and SelectionAskChip
+
+### Design decisions
+
+- **`activeIssueCard` access for selection chip**: Since `activeIssueIndex` moved inside IssueCarousel but `handleAskIssueSelection` in Home.jsx needs the active card title, I used a `useRef` + `onActiveCardChange` callback pattern. This avoids lifting carousel index state back into Home.jsx while keeping the text selection chip functional.
+- **AssetSummaryCard** remains inline as specified (18 lines, extraction overhead > benefit).
+- **No breaking changes**: All props are passed correctly, all event handlers preserved, all import paths use relative paths as specified.</result>
+<usage><total_tokens>60706</total_tokens><tool_uses>20</tool_uses><duration_ms>220414</duration_ms></usage>
+</task-notification>
+Full transcript available at: REDACTED.output
+
+---
+
+<task-notification>
+<task-id>aace1bbe4c85ca7c6</task-id>
+<tool-use-id>toolu_01G5mqwFymbyNZSputyGprkZ</tool-use-id>
+<status>completed</status>
+<summary>Agent "E2: AgentSessionPanel 생성" completed</summary>
+<result>The import path in `AgentCanvasPage.jsx` (line 7) resolves to `frontend/src/components/agent/AgentSessionPanel.jsx`, which matches the file we just created.
+
+---
+
+Here is a summary of the created file:
+
+**File**: `/home/hj/2026/project/adelie-investment/frontend/src/components/agent/AgentSessionPanel.jsx`
+
+**What it does**: A slide-down session list panel that appears below the `AgentHubHeader`. It displays the user's conversation sessions with icons, titles, relative timestamps, pin indicators, and delete buttons.
+
+**Key implementation details**:
+
+1. **Slide-down animation**: Uses `framer-motion`'s `AnimatePresence` + `motion.div` with `height: 0 -> auto` and opacity transitions. The ease curve `[0.25, 0.1, 0.25, 1]` provides a smooth ease-out on open and ease-in on close.
+
+2. **Session list items**: Each item renders:
+   - Left: Icon from `homeIconCatalog` (via `getHomeIconSrc`, falling back to `DEFAULT_HOME_ICON_KEY`)
+   - Center: Title (truncated) + optional `summary_snippet` + relative time (using the `formatRelativeTime` helper)
+   - Right: Pin star icon (shown only when `is_pinned` is true) + trash delete button (red on hover/active)
+
+3. **Active session indicator**: The currently active session gets a left orange bar (`bg-[#FF6B00]`, 3px wide, rounded-right) and a warm background highlight (`bg-[#FFF8F3]`).
+
+4. **Delete handling**: Calls `onDeleteSession(sessionId)` directly on click with `e.stopPropagation()` to prevent triggering session selection.
+
+5. **Empty state**: Shows "대화 기록이 없습니다" centered message when `sessions` is empty or not an array.
+
+6. **Scroll**: `max-h-[60vh] overflow-y-auto` constrains the panel height with vertical scrolling for long session lists.
+
+7. **Props interface** matches exactly what `AgentCanvasPage.jsx` passes: `sessions`, `activeSessionId`, `onSelectSession`, `onDeleteSession`, `isOpen`.</result>
+<usage><total_tokens>49765</total_tokens><tool_uses>10</tool_uses><duration_ms>66867</duration_ms></usage>
+</task-notification>
+Full transcript available at: REDACTED.output
+
+---
+
+<task-notification>
+<task-id>aa826292134051c42</task-id>
+<tool-use-id>toolu_015oS5NPAaopZ744rUYk9SXq</tool-use-id>
+<status>completed</status>
+<summary>Agent "E3: ChatInput 생성" completed</summary>
+<result>The import path `../components/agent/ChatInput` from `pages/AgentCanvasPage.jsx` correctly resolves to `components/agent/ChatInput.jsx`.
+
+---
+
+Here is a summary of the created file:
+
+**File**: `/home/hj/2026/project/adelie-investment/frontend/src/components/agent/ChatInput.jsx`
+
+**What it does**: A bottom-fixed input bar for the Agent Canvas page, serving as a simplified version of `AgentDock` specifically designed for in-canvas message composition.
+
+**Key implementation details**:
+
+1. **Layout**: Fixed to the bottom of the viewport (`fixed bottom-0`), centered with `max-w-mobile`, safe-area-inset-bottom padding via `env()`, z-index 20. White background with upward shadow (`shadow-[0_-4px_20px_rgba(0,0,0,0.06)]`).
+
+2. **Input form**: Single `input[type=text]` (mobile-optimized) with three sections:
+   - **Left**: Slash command button (`/` icon) -- clicking it inserts `/` and opens the SlashCommandMenu
+   - **Center**: Text input with placeholder from props, plus optional prefix chip
+   - **Right**: Send button (orange circle) or stop button (orange-on-peach square icon during streaming)
+
+3. **Slash command integration**: When input starts with `/`, `SlashCommandMenu` is displayed above the input bar. Navigate-type commands call `onNavigate`, param-type commands with a prefix enter "prefix mode". Korean aliases are handled by the existing `SlashCommandMenu` component.
+
+4. **Prefix mode**: When a param-type slash command with `prefix` is selected (e.g., "/chart" -> "시각화 요청" chip), a badge appears before the input. Backspace on empty input removes the chip. On send, the prefix string is prepended to the user's message.
+
+5. **Streaming state**: When `isStreaming` is true, the send button is replaced by a stop button (`bg-[#FFF2E8] text-[#FF6B00]` with a filled square icon). Clicking it calls `onStop()`.
+
+6. **Send behavior**: Enter key or send button triggers `onSubmit(message)`. Empty input disables the send button (grayed out `bg-[#E8EBED]`). Input is cleared after send.
+
+7. **Props interface** matches exactly what `AgentCanvasPage.jsx` passes:
+   - `mode`, `onSubmit`, `onStop`, `onNavigate`, `isStreaming`, `suggestedPrompt`, `placeholder`, `contextPayload`
+
+8. **Style consistency**: Colors, font sizes, button dimensions, and chip styling are directly aligned with `AgentDock.jsx` conventions (`text-[14px]`, `h-8 w-8` buttons, `#FF6B00` primary, `#FFF2E8` accent background, etc.).</result>
+<usage><total_tokens>52091</total_tokens><tool_uses>9</tool_uses><duration_ms>81364</duration_ms></usage>
+</task-notification>
+Full transcript available at: REDACTED.output
+
+---
+
+<task-notification>
+<task-id>abbcb1e36b27b92d3</task-id>
+<tool-use-id>toolu_01RgwWwVARGTxPAXmgHFR2mM</tool-use-id>
+<status>completed</status>
+<summary>Agent "E1: AgentChatThread + 마크다운 + StatusIndicator" completed</summary>
+<result>All clean. Here is a summary of what was created:
+
+---
+
+## Created Files
+
+### 1. `/home/hj/2026/project/adelie-investment/frontend/src/components/agent/AgentChatThread.jsx`
+
+The main chat thread component (569 lines). It receives the `turns` array and renders user/AI message bubbles. Key sub-components defined within the file:
+
+- **`markdownComponents`** (C2 spec) -- Custom ReactMarkdown component mapping with Toss-style typography. Covers `h2`, `h3`, `p`, `ul`, `ol`, `li`, `blockquote`, `table`/`th`/`td`/`tr`, `code` (inline + block), `strong`, `a`. Uses the project's primary color `#FF6B00` for accents (blockquote border, links).
+
+- **`UserBubble`** -- Right-aligned user message with `bg-[#FF6B00]`, white text, `max-w-[80%]`, `rounded-2xl rounded-br-md`.
+
+- **`AssistantCard`** -- Left-aligned AI response area. Renders markdown via `ReactMarkdown` with `remarkGfm`, `remarkMath`, `rehypeRaw`, `rehypeKatex` plugins. Includes `GuardrailBanner`, `KeyPointsSummary`, `SourcesBadges`, `ActionButtons`, `StatusIndicator`, and `TypingCursor` as needed.
+
+- **`EmptyState`** -- Shown when no turns exist. Displays "무엇이 궁금하신가요?" with a chat icon and 3 mode-specific suggestion chips.
+
+- **`SuggestionChip`** -- Reusable pill button for suggested questions, also used at the end of conversation ("이어서 물어보기").
+
+- **`GuardrailBanner`** -- Yellow warning banner with triangle-alert icon for `guardrailNotice`.
+
+- **`KeyPointsSummary`** -- Numbered list from `structured.key_points` in a light gray card.
+
+- **`SourcesBadges`** -- Collapsible source links with external-link icons.
+
+- **`ActionButtons`** -- Renders `uiActions` as pill buttons that call `onActionClick`.
+
+- **`TypingCursor`** -- Animated orange cursor bar during streaming.
+
+- **`TurnBlock`** -- Wraps `UserBubble` + `AssistantCard` with `animate-step-enter` animation.
+
+**Scroll behavior:**
+- Uses `IntersectionObserver` on a bottom sentinel `div` to report `onAtBottomChange`.
+- Auto-scrolls to bottom on new turn or streaming text change, respecting `followOutput` callback.
+
+**Props match exactly** what `AgentCanvasPage.jsx` passes: `turns`, `isLoading`, `isStreamingActive`, `onActionClick`, `contentRef`, `mode`, `onSuggestedClick`, `onAtBottomChange`, `followOutput`.
+
+**Dependencies used** -- all from existing `package.json`:
+- `react-markdown` (v10.1.0)
+- `remark-gfm` (v4.0.1)
+- `remark-math` (v6.0.0)
+- `rehype-raw` (v7.0.0)
+- `rehype-katex` (v7.0.1)
+
+### 2. `/home/hj/2026/project/adelie-investment/frontend/src/components/agent/StatusIndicator.jsx`
+
+Lightweight phase-based status indicator (42 lines). Shows a colored dot with a label:
+
+| Phase | Color | Label | Pulse |
+|-------|-------|-------|-------|
+| `idle` | `#8B95A1` (gray) | 대기 | No |
+| `thinking` | `#FF6B00` (orange) | 분석 중... | Yes |
+| `tool_call` | `#FF6B00` (orange) | 도구 실행 중... | Yes |
+| `streaming` | `#16A34A` (green) | 응답 중... | Yes |
+| `done` | `#16A34A` (green) | 완료 | No |
+| `error` | `#EF4444` (red) | 오류 | No |
+
+Uses Tailwind's built-in `animate-pulse` for active phases and inline `boxShadow` for the glow effect. No `framer-motion` dependency -- CSS-only animation for minimal bundle impact.</result>
+<usage><total_tokens>68644</total_tokens><tool_uses>21</tool_uses><duration_ms>165854</duration_ms></usage>
+</task-notification>
+Full transcript available at: REDACTED.output
+
+---
+
+<task-notification>
+<task-id>a284ab011b702550b</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<status>completed</status>
+<summary>Agent "B-FC1~3: FlashCard 백엔드" completed</summary>
+<result>All five files are correctly created/modified. Here is the summary of all changes:
+
+---
+
+## 완료된 작업 요약
+
+### B-FC1: FlashCard 모델 + 마이그레이션
+
+**신규 파일 1:** `/home/hj/2026/project/adelie-investment/fastapi/app/models/flashcard.py`
+- `FlashCard` SQLAlchemy 모델 (테이블명: `flashcards`)
+- 컬럼: `id`, `user_id` (FK users.id), `title` (String 300), `content_html` (Text), `key_points` (JSONB), `topic_tags` (JSONB), `source_session_id` (FK tutor_sessions.id, nullable), `source_type` (String 20, default "conversation"), `created_at`
+- 인덱스: `ix_flashcards_user_id`, `ix_flashcards_created_at`
+
+**수정 파일 2:** `/home/hj/2026/project/adelie-investment/fastapi/app/models/__init__.py`
+- `from app.models.flashcard import FlashCard` import 추가
+- `__all__`에 `"FlashCard"` 추가
+
+**신규 파일 3:** `/home/hj/2026/project/adelie-investment/database/alembic/versions/20260224_flashcards.py`
+- Revision: `20260224_flashcards`, down_revision: `20260223_memory` (현재 마이그레이션 HEAD)
+- upgrade: `flashcards` 테이블 생성 + 2개 인덱스
+- downgrade: 인덱스 drop + 테이블 drop
+
+### B-FC2: FlashCard CRUD API
+
+**신규 파일 4:** `/home/hj/2026/project/adelie-investment/fastapi/app/api/routes/flashcards.py`
+- `POST /flashcards` -- 복습카드 생성 (JWT 인증 필수)
+- `GET /flashcards` -- 복습카드 목록 조회 (최신순, limit 최대 50)
+- `DELETE /flashcards/{card_id}` -- 복습카드 삭제 (본인 카드만)
+- `main.py`의 동적 라우터 임포트가 자동으로 `/api/v1/flashcards/*`로 마운트
+
+### B-FC3: /agent/flashcards 라우트 등록
+
+**수정 파일 5:** `/home/hj/2026/project/adelie-investment/fastapi/app/api/routes/agent.py`
+- 기존 `/agent/sessions/*` 섹션 아래에 flashcard 엔드포인트 3개 추가
+- `POST /agent/flashcards` -- `flashcards.create_flashcard`로 위임 (lazy import 패턴)
+- `GET /agent/flashcards` -- `flashcards.list_flashcards`로 위임 (`Query(20, le=50)`)
+- `DELETE /agent/flashcards/{card_id}` -- `flashcards.delete_flashcard`로 위임
+- `Query`는 이미 기존 import에 포함되어 있어 추가 import 불필요</result>
+<usage><total_tokens>43066</total_tokens><tool_uses>19</tool_uses><duration_ms>81062</duration_ms></usage>
+</task-notification>
+Full transcript available at: REDACTED.output
+
+---
+
+<task-notification>
+<task-id>a2c7a4e74ac81994b</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<status>completed</status>
+<summary>Agent "B-FC4~6: FlashCard 프론트엔드" completed</summary>
+<result>Build succeeded with no errors. Here is a summary of all changes made.
+
+---
+
+## Summary
+
+Three files were created/modified to integrate the FlashCard feature into the frontend:
+
+### 1. New file: `/home/hj/2026/project/adelie-investment/frontend/src/api/flashcards.js`
+
+API client module for flashcard CRUD operations. Key design decisions:
+- Uses `deleteJson` from `client.js` (not `fetchJson` with `{ method: 'DELETE' }`), matching the existing pattern used by `notificationApi.deleteOne` in `api/index.js`.
+- Uses relative URL paths (no `API_BASE_URL` prefix), consistent with the newer `canvas.js` API module which also targets `/api/v1/agent/*` endpoints.
+- Exports three named async functions: `saveFlashCard`, `listFlashCards`, `deleteFlashCard`.
+
+### 2. New file: `/home/hj/2026/project/adelie-investment/frontend/src/components/domain/FlashCardList.jsx`
+
+Component that renders a list of flashcards with:
+- **Empty state**: Displays a lightbulb icon and guidance text ("복습카드가 없어요. /복습 명령어로 만들어보세요")
+- **Card rendering**: Each card shows title (bold), key_points as a bulleted list (max 3, with orange dot bullets matching `ReviewCard`'s style), topic_tags as orange chips (`bg-[#FFF2E8] text-[#FF6B00]`), and a relative timestamp
+- **Delete handling**: Trash icon SVG button with `deletingId` state that shows `opacity-50` during deletion and disables the button. On success, calls `onCardDeleted(id)` to let the parent remove the card from state
+- **Relative date formatting**: `formatRelativeDate()` outputs Korean-friendly strings (방금 전, N분 전, N시간 전, N일 전, or full date for older items)
+
+### 3. Modified: `/home/hj/2026/project/adelie-investment/frontend/src/pages/Education.jsx`
+
+Minimal changes to integrate the FlashCard section:
+- **Lines 5, 8**: Added imports for `listFlashCards` and `FlashCardList`
+- **Lines 84-86**: Added `flashCards` and `isLoadingFlashCards` state declarations
+- **Lines 165-178**: Added `useEffect` to fetch flashcards on mount (with cleanup/cancellation pattern) and `handleFlashCardDeleted` callback
+- **Lines 425-433**: Added "내 복습카드" section in the JSX, placed between `LearningProgressCards` and `AgentLearningCTA`, with loading state and `FlashCardList` rendering
+
+All existing code in `Education.jsx` was preserved without modification. The Vite build completes successfully with no errors.</result>
+<usage><total_tokens>50023</total_tokens><tool_uses>18</tool_uses><duration_ms>125704</duration_ms></usage>
+</task-notification>
+Full transcript available at: REDACTED.output
+
+---
+
+test 배포를 진행해라.
+지금 설계한 것 중 빠진 내용이 없는지 체크해라.
+그리고 테스트 케이스들을 설계하고, LLM 결과들을 체크할 필요가 있을 것 같다.
+이외에도 UI/UX 경험도 괜찮을지 테스트 케이스를 설계해야 한다.
+
+---
+
+[Request interrupted by user for tool use]

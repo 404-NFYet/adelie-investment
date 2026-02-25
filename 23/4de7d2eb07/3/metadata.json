@@ -1,0 +1,41 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "234de7d2eb07",
+  "session_id": "f790608a-6421-4604-b10a-436abc7a67fd",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-21T12:05:18.457816514Z",
+  "branch": "develop",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "datapipeline/db/writer.py",
+    "fastapi/app/api/routes/tutor.py",
+    "fastapi/app/core/auth.py",
+    "fastapi/app/core/config.py",
+    "fastapi/app/core/database.py",
+    "fastapi/app/main.py",
+    "fastapi/app/services/auth_service.py",
+    "frontend/src/contexts/PortfolioContext.jsx",
+    "frontend/src/contexts/TutorChatContext.jsx",
+    "frontend/src/contexts/TutorContext.jsx",
+    "frontend/src/contexts/TutorSessionContext.jsx",
+    "frontend/src/contexts/TutorUIContext.jsx",
+    "frontend/src/contexts/index.js"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 1014,
+    "cache_creation_tokens": 132293,
+    "cache_read_tokens": 5647033,
+    "output_tokens": 24332,
+    "api_call_count": 63
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-21T12:05:18.395305769Z",
+    "agent_lines": 0,
+    "human_added": 17,
+    "human_modified": 2,
+    "human_removed": 0,
+    "total_committed": 17,
+    "agent_percentage": 0
+  }
+}

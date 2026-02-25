@@ -1,0 +1,325 @@
+Implement the following plan:
+
+# 반응형 모바일 최적화 + AWS 이전 종합 계획
+
+## Context
+
+세 가지 사항이 추가 발견되어 계획을 전면 재편성함:
+
+1. **`feat/agent-canvas-v3-yj99son` 브랜치** — Agent Canvas 신규 컴포넌트 6개에 Critical/High 모바일 이슈 다수
+2. **반응형 설계 원칙 부재** — 기존 계획이 `clamp()` 패치 수준에 머물렀으나, 고정 px 전반을 유동 단위로 전환 필요
+3. **AWS + Terraform 이전** — 현재 LXD 베어메탈 → AWS 이전 로드맵 병행 수립 필요
+
+---
+
+## 반응형 설계 원칙 (이 프로젝트 기준)
+
+> **모든 Part A 수정의 기준.** 고정 px를 아래 규칙으로 치환한다.
+
+| 범주 | 잘못된 패턴 | 올바른 패턴 | 이유 |
+|------|-----------|-----------|------|
+| 컨테이너 | `max-w-[430px]` | `max-w-mobile` (480px) | Tailwind 토큰 일관성 |
+| 타이포그래피 | `text-[88px]` | `text-[clamp(3rem,20vw,5.5rem)]` | 360~440px 유동 대응 |
+| 여백 | `px-[37px]` | `px-4` ~ `px-5` 또는 `clamp()` | 총 수평 패딩 ≤ 64px 유지 |
+| 이미지 | `w-[282px]` | `w-full max-w-[282px]` 또는 `max-w-[80vw]` | 360px에서 잘림 방지 |
+| 버튼 너비 | `w-[100px]` | `min-w-[76px] px-4` 또는 `flex-1` | 고정 너비 대신 유동 |
+| 터치 영역 | `h-9 w-9` (36px) | `h-10 w-10` 이상 (40px+) | iOS HIG 최소 44px 권장 |
+| 아이콘 | `h-8 w-8` 5개 나란히 | `h-7 w-7` 또는 오버플로우 메뉴 | 360px 안전폭 320px 기준 |
+| 브레이크포인트 | `sm:px-7` (sm=640px) | **제거** — 480px 모바일에서 절대 활성화 안 됨 |
+| Sticky | 버튼이 스크롤 밖으로 사라짐 | header sticky top-0 + footer sticky bottom-0 + 중간만 overflow-y-auto |
+| 절대 위치 | `bottom-[-58px]` 고정 | `[bottom:calc(-1*clamp(...))]` 또는 CSS 변수 |
+
+---
+
+## Part A: 반응형 모바일 최적화 코드 수정
+
+### A 전제조건: `feat/agent-canvas-v3-yj99son` → `develop` 머지
+
+```bash
+# dev-yj99son 에서
+git checkout develop && git pull
+git merge origin/feat/agent-canvas-v3-yj99son
+# 충돌 해결 후 push
+```
+
+머지 후 A-1~A-3을 `develop` 기반으로 작업.
+
+---
+
+### A-1. `frontend/src/pages/Landing.jsx` — 담당: YJ99Son
+
+**① Hero 텍스트** (`text-[88px]` → clamp)
+```jsx
+// Before
+<p className="text-[88px] leading-none font-black tracking-[-0.03em] text-black">
+// After
+<p className="text-[clamp(3rem,20vw,5.5rem)] leading-none font-black tracking-[-0.03em] text-black">
+```
+
+**② Hero 이미지 위치/크기** (`bottom-[-58px]`, `w-[170%]`)
+```jsx
+// After — CSS arbitrary property로 clamp 음수 처리
+className="pointer-events-none absolute [bottom:calc(-1*clamp(1.5rem,8vw,3.6rem))] left-1/2 z-0 w-[clamp(130%,40vw+90%,170%)] max-w-none -translate-x-[58%] select-none"
+```
+
+**③ Feature 섹션 패딩** (`px-[37px] pt-[80px]`)
+```jsx
+// After — Tailwind 표준 간격으로 교체
+<section className="px-4 pt-[clamp(2rem,12vw,5rem)] sm-none:px-5">
+```
+> `sm-none`: sm 브레이크포인트 클래스 사용 불가 (640px > 480px). `px-4`(16px) 사용.
+
+**④ Feature 이미지** — `max-w-[80vw] h-auto` 추가
+```jsx
+<img className={`pointer-events-none select-none max-w-[80vw] h-auto ${currentSlide.imageClass}`} />
+```
+
+**⑤ `max-w-[430px]` → `max-w-mobile`**
+```jsx
+// Line 165: max-w-[430px] → max-w-mobile
+```
+
+**커밋**: `fix: Landing 반응형 리팩토링 (clamp 타이포, 이미지 위치, 패딩)`
+
+---
+
+### A-2. `frontend/src/components/quiz/DailyQuizModal.jsx` — 담당: YJ99Son
+
+**① 헤더 sticky 고정**
+```jsx
+// Before: <div className="mb-4 flex items-center justify-between">
+// After:
+<div className="sticky top-0 z-10 bg-[#f9fafb] pb-3 mb-1 flex items-center justify-between">
+```
+
+**② 닫기 버튼 터치 영역** (`h-9 w-9` → `h-10 w-10`)
+
+**③ 이전 버튼 너비** (`w-[100px]` → `min-w-[76px]`)
+
+**④ `sm:` 클래스 제거** (Line 112의 `sm:items-center sm:pb-8`, `sm:rounded-[30px]`, `sm:px-5 sm:pt-6`)
+```jsx
+// Before: fixed inset-0 ... sm:items-center sm:pb-8
+// After:  fixed inset-0 ... (sm: 제거)
+```
+
+**커밋**: `fix: DailyQuizModal sticky 헤더, 터치 영역, sm: 클래스 제거`
+
+---
+
+### A-3. Agent Canvas 컴포넌트 — 담당: YJ99Son (`feat/agent-canvas-v3-yj99son` 머지 후)
+
+머지 후 신규 파일에 반응형 설계 원칙 적용:
+
+#### `frontend/src/components/agent/AgentDock.jsx`
+| 이슈 | 위치 | 수정 |
+|------|------|------|
+| 아이콘 버튼 5개 (`h-8 w-8` × 5 = 160px 최소) | Lines 252, 276, 291, 305 | `h-7 w-7` (28px)로 축소, 또는 `flex-wrap` + 오버플로우 처리 |
+| 입력 바 인라인 메시지 `px-3` | Lines 210-218 | `px-2 py-1.5` |
+| 세션 버튼 라벨 길이 (`진행 중인 대화가 있어요`) | Line 239 | `진행 중` 또는 `truncate max-w-[8rem]` |
+
+#### `frontend/src/pages/AgentCanvasPage.jsx`
+| 이슈 | 위치 | 수정 |
+|------|------|------|
+| 하단 패딩 `pb-[calc(var(--bottom-nav-h,68px)+var(--agent-dock-h,104px)+16px)]` = 188px | Line 411 | CSS 변수 기반 유지하되 `var(--agent-dock-h, 88px)` 기본값 축소 |
+| `max-w-[430px]` → `max-w-mobile` | Line 165 상당 | 토큰 일관성 |
+
+#### `frontend/src/pages/AgentHistoryPage.jsx`
+| 이슈 | 위치 | 수정 |
+|------|------|------|
+| 새로고침 버튼 (`px-2.5 py-1.5`) + 타이틀 경쟁 | Line 99 | 버튼을 헤더 오른쪽으로 이동, 타이틀 `truncate` |
+| 세션 아이템 `gap-3` | Line 131 | `gap-2` |
+
+#### `frontend/src/components/agent/AgentCanvasSections.jsx`
+| 이슈 | 위치 | 수정 |
+|------|------|------|
+| prose `max-w-none` → 마크다운 테이블/코드 overflow | Line 46 | `max-w-[90vw] overflow-x-auto` 래퍼 추가 |
+| 액션 버튼 2열 그리드, 긴 텍스트 | Line 13 | `text-[12px]` on mobile 또는 `break-keep` |
+
+#### `frontend/src/components/agent/AgentStatusDots.jsx`
+- Line 27: `<span className="truncate max-w-[10rem]">` 추가
+
+**커밋**: `fix: Agent Canvas 컴포넌트 반응형 최적화 (360-440px 대응)`
+
+---
+
+## Part B: Playwright 모바일 9종 테스트
+
+### B-1. `frontend/playwright.config.js` — 모바일 project 추가
+
+기존 `Desktop Chrome` 유지, 아래 9종 추가:
+
+| Project 이름 | Base | viewport | DPR |
+|-------------|------|----------|-----|
+| iPhone SE 3rd | `devices['iPhone SE']` | 375×667 | 2 |
+| iPhone 16 | `devices['iPhone 15']` + override | 393×852 | 3 |
+| iPhone 16 Plus | `devices['iPhone 15 Plus']` + override | 430×932 | 3 |
+| iPhone 16 Pro | `devices['iPhone 15 Pro']` + override | 402×874 | 3 |
+| iPhone 16 Pro Max | `devices['iPhone 15 Pro Max']` + override | 440×956 | 3 |
+| Galaxy S24 | `devices['Galaxy S24']` | 360×780 | 3 |
+| Galaxy S25 | Galaxy S24 base + viewport | 360×780 | 3 |
+| Galaxy S25 Plus | Galaxy S24 base + override | 412×891 | 3 |
+| Galaxy S25 Ultra | Galaxy S24 base + override | 412×891 | 3.5 |
+
+### B-2. 신규 테스트 파일
+
+| 파일 | 테스트 ID | 내용 |
+|------|----------|------|
+| `e2e/landing-mobile.spec.js` | FE-LAND-M01~05 | ADELIE 텍스트 viewport 내 표시, 이미지 겹침, 건너뛰기 버튼, 자동 전환, Feature 이미지 |
+| `e2e/daily-quiz-modal-mobile.spec.js` | FE-QUIZ-M01~03 | sticky 헤더 위치, 버튼 viewport 내, 닫기 40px |
+| `e2e/agent-canvas-mobile.spec.js` | FE-AGENT-M01~04 | AgentDock 입력바 표시, 아이콘 버튼 overflow 없음, AgentHistory 목록 삭제 버튼 접근성 |
+| `frontend/docs/mobile-devices.md` | — | 기기 기준표 참조 문서 |
+
+### 담당: ryejinn
+**커밋 3건**: `test: Playwright 모바일 9종 project 추가` / `test: Landing+QuizModal 모바일 E2E` / `test: AgentCanvas 모바일 E2E 추가`
+
+---
+
+## Part C: 전체 서버 배포 & 싱크
+
+> Part A+B 완료, `develop` push 후 실행
+
+```bash
+# 1. 빌드 + 푸시 (dorae222)
+make build-frontend && docker push dorae222/adelie-frontend:latest
+
+# 2. deploy-test 프로덕션
+make -f lxd/Makefile deploy-test-service SVC=frontend
+
+# 3. staging
+make -f lxd/Makefile deploy-staging
+
+# 4. LXD 5대 일괄 싱크
+for srv in dev-yj99son dev-j2hoon10 dev-jjjh02 dev-ryejinn dev-hj; do
+  lxc exec $srv -- bash -c "cd ~/adelie-investment && git pull origin develop && docker compose -f docker-compose.dev.yml pull && docker compose -f docker-compose.dev.yml up -d --remove-orphans"
+done
+```
+
+---
+
+## Part D: AWS + Terraform 이전 로드맵 (별도 이니셔티브)
+
+> Part A~C와 병행 설계, 구현은 별도 PR/이슈로 분리
+
+### D-1. 서비스 매핑
+
+| 현재 (LXD/Docker) | AWS 대상 | 비고 |
+|-------------------|---------|------|
+| nginx (frontend) | CloudFront + S3 (정적) 또는 ECS + ALB | SPA이므로 S3+CF 권장 |
+| FastAPI (backend-api:8082) | ECS Fargate | 컨테이너 그대로 사용 |
+| PostgreSQL 15 | RDS PostgreSQL 15 (Multi-AZ) | Aurora 불필요, 단일 인스턴스로 시작 |
+| Redis 7 | ElastiCache Redis (Serverless 또는 t4g.micro) | |
+| MinIO | S3 (네이티브 대체) | MinIO SDK → boto3/AWS SDK 변경 필요 |
+| Grafana + Prometheus | Amazon Managed Grafana 또는 ECS 유지 | 비용 고려 |
+| Cloudflare Tunnel | Route53 + ACM + ALB | HTTPS 인증서 자동화 |
+
+### D-2. Terraform 디렉토리 구조
+
+```
+infra/terraform/
+├── modules/
+│   ├── network/       # VPC, 서브넷, NAT GW, SG
+│   ├── compute/       # ECS Cluster, Task Def, Service, ALB
+│   ├── database/      # RDS, ElastiCache
+│   ├── storage/       # S3 (frontend, MinIO 대체), ECR
+│   └── cdn/           # CloudFront + ACM
+├── environments/
+│   ├── staging/       # 저비용 (t3.micro, 단일 AZ)
+│   └── prod/          # 고가용성 (Multi-AZ RDS, Fargate Spot)
+├── variables.tf
+├── outputs.tf
+└── README.md
+```
+
+### D-3. CI/CD 파이프라인 변경
+
+```
+현재: 수동 docker push → ssh → docker compose pull
+목표: GitHub Actions → ECR push → ECS Rolling Deploy
+```
+
+```yaml
+# .github/workflows/deploy.yml (신규)
+# trigger: push to main
+# steps: build → ECR push → ECS update-service
+```
+
+### D-4. Secrets 관리
+
+```
+현재: .env 파일 직접 관리
+목표: AWS Secrets Manager → ECS Task에 환경변수 주입
+```
+
+### D-5. 마이그레이션 순서
+
+```
+Phase 1: Terraform 상태 파일 초기화, 네트워크(VPC) 구성
+Phase 2: ECR 레포 생성, CI/CD GitHub Actions 구성
+Phase 3: staging 환경 AWS 구성, 병렬 운영 검증 (2주)
+Phase 4: RDS/ElastiCache 데이터 마이그레이션 (pg_dump → restore)
+Phase 5: DNS 전환 (Cloudflare → Route53) + Cloudflare Tunnel 제거
+Phase 6: LXD 인프라 정리
+```
+
+### D-6. 비용 예상 (프로덕션 기준)
+
+| 서비스 | 스펙 | 월 비용 (USD) |
+|--------|------|-------------|
+| ECS Fargate (backend-api) | 0.5 vCPU / 1 GB × 2 task | ~$15 |
+| RDS PostgreSQL | db.t3.medium, 20GB | ~$40 |
+| ElastiCache Redis | cache.t4g.micro | ~$12 |
+| S3 + CloudFront | 정적 파일 + CDN | ~$5 |
+| ALB | 1개 | ~$20 |
+| NAT Gateway | | ~$35 |
+| **합계** | | **~$130/월** |
+
+> 현재 LXD 베어메탈 대비 비용 증가 — staging은 단일 AZ + Fargate Spot으로 ~$50/월 목표
+
+### 담당: dorae222
+**별도 이슈/PR**: `feat: AWS Terraform 인프라 초기 구성`
+
+---
+
+## 수정/추가 파일 요약
+
+| 파일 | 변경 내용 | 담당 | Part |
+|------|----------|------|------|
+| `frontend/src/pages/Landing.jsx` | clamp, max-w-mobile, sm: 제거 | YJ99Son | A-1 |
+| `frontend/src/components/quiz/DailyQuizModal.jsx` | sticky, 터치영역, sm: 제거 | YJ99Son | A-2 |
+| `frontend/src/components/agent/AgentDock.jsx` | 아이콘 크기, 패딩 | YJ99Son | A-3 |
+| `frontend/src/pages/AgentCanvasPage.jsx` | max-w-mobile, 패딩 | YJ99Son | A-3 |
+| `frontend/src/pages/AgentHistoryPage.jsx` | 레이아웃 gap, truncate | YJ99Son | A-3 |
+| `frontend/src/components/agent/AgentCanvasSections.jsx` | prose overflow, 텍스트 크기 | YJ99Son | A-3 |
+| `frontend/src/components/agent/AgentStatusDots.jsx` | truncate max-w | YJ99Son | A-3 |
+| `frontend/playwright.config.js` | 모바일 9종 project | ryejinn | B-1 |
+| `frontend/e2e/landing-mobile.spec.js` | FE-LAND-M01~05 | ryejinn | B-2 |
+| `frontend/e2e/daily-quiz-modal-mobile.spec.js` | FE-QUIZ-M01~03 | ryejinn | B-2 |
+| `frontend/e2e/agent-canvas-mobile.spec.js` | FE-AGENT-M01~04 | ryejinn | B-2 |
+| `frontend/docs/mobile-devices.md` | 기기 기준표 | ryejinn | B-2 |
+| `infra/terraform/` (신규 디렉토리) | AWS 인프라 IaC | dorae222 | D |
+
+---
+
+## 검증
+
+```bash
+# 모바일 전 기종 테스트
+cd frontend && npx playwright test e2e/landing-mobile.spec.js e2e/agent-canvas-mobile.spec.js
+
+# 특정 기기
+npx playwright test --project="Galaxy S25" --project="iPhone SE 3rd"
+
+# 전체 E2E
+make test-e2e
+```
+
+### 배포 후 스모크 테스트
+| URL | viewport | 확인 |
+|-----|----------|------|
+| demo.adelie-invest.com | 360px Galaxy S25 | ADELIE clamp, Feature 이미지, AgentDock 아이콘 |
+| demo.adelie-invest.com | 375px iPhone SE | QuizModal sticky, AgentHistory 레이아웃 |
+| demo.adelie-invest.com | 440px iPhone 16 Pro Max | 기존 디자인 유지 확인 |
+| staging (10.10.10.21) | 동일 3종 | cross-check |
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl

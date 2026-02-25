@@ -1,0 +1,176 @@
+Implement the following plan:
+
+# 데이터 파이프라인 스케줄러 수정 계획
+
+## Context
+
+deploy-test에서 스케줄러가 2026-02-25(화)를 "휴장일"로 오판 → 모닝(09:00 KST) + 데일리(16:10 KST) 파이프라인 모두 스킵.
+
+### 근본 원인 2가지
+
+**1. pykrx 타이밍 + lru_cache 영구 캐시**
+- 09:00 KST(장 시작 직후): 당일 OHLCV 미확정 → pykrx가 전일 반환 → `nearest ≠ today` → False
+- `@lru_cache`가 False를 **영구 캐시** → 16:10 KST 데일리도 캐시 히트로 False → 종일 스킵
+
+**2. uvicorn 4 workers → 스케줄러 4중 실행**
+- Dockerfile CMD: `--workers ${WEB_CONCURRENCY:-4}`
+- 4개 워커 각각 `start_scheduler()` → 파이프라인 4중 동시 실행 (DB race condition + 리소스 낭비)
+
+---
+
+## 수정 방향: pykrx 제거 → 평일 + KRX 휴장일 목록
+
+pykrx의 `get_nearest_business_day_in_a_week`는 당일 OHLCV 데이터에 의존하여 장 시작 직후(09:00) 신뢰 불가.
+→ **단순 평일 체크 + 2026년 KRX 공식 휴장일 하드코딩**으로 대체. 결정론적이고 외부 API 의존 없음.
+
+---
+
+## 수정 파일 (3개)
+
+### 1. `fastapi/app/services/market_calendar.py` — 전면 재작성
+
+pykrx 의존 제거. 평일(Mon-Fri) + KRX 2026 휴장일 목록으로 결정론적 판별.
+
+```python
+"""한국 주식시장 영업일 판별 유틸.
+
+pykrx 대신 평일 체크 + KRX 공식 휴장일 목록 기반.
+매년 초 KRX_HOLIDAYS 세트를 갱신해야 한다.
+"""
+
+import logging
+from datetime import datetime, timezone, timedelta
+
+KST = timezone(timedelta(hours=9))
+logger = logging.getLogger(__name__)
+
+# 2026년 KRX 휴장일 (평일만 포함, 주말은 이미 제외)
+# 출처: https://www.calendarlabs.com/krx-market-holidays-2026/
+KRX_HOLIDAYS = {
+    # 신정
+    "20260101",
+    # 설날 연휴
+    "20260216", "20260217", "20260218",
+    # 삼일절 대체공휴일 (3/1 일요일 → 3/2 월요일)
+    "20260302",
+    # 근로자의 날
+    "20260501",
+    # 어린이날
+    "20260505",
+    # 부처님오신날 대체공휴일 (5/24 일요일 → 5/25 월요일)
+    "20260525",
+    # 광복절 대체공휴일 (8/15 토요일 → 8/17 월요일)
+    "20260817",
+    # 추석 연휴
+    "20260924", "20260925",
+    # 개천절 대체공휴일 (10/3 토요일 → 10/5 월요일)
+    "20261005",
+    # 한글날
+    "20261009",
+    # 성탄절
+    "20261225",
+    # 연말 휴장
+    "20261231",
+}
+
+
+def is_trading_day(date_str: str | None = None) -> bool:
+    """한국 주식시장 영업일 여부를 확인한다.
+
+    Args:
+        date_str: "YYYYMMDD" 형식. None이면 오늘(KST).
+
+    Returns:
+        평일이고 KRX 휴장일이 아니면 True.
+    """
+    if date_str is None:
+        date_str = datetime.now(KST).strftime("%Y%m%d")
+
+    d = datetime.strptime(date_str, "%Y%m%d").date()
+
+    # 주말 체크
+    if d.weekday() >= 5:
+        return False
+
+    # KRX 휴장일 체크
+    if date_str in KRX_HOLIDAYS:
+        logger.info("KRX 휴장일: %s", date_str)
+        return False
+
+    return True
+
+
+async def is_kr_market_open_today() -> bool:
+    """오늘이 한국 주식시장 영업일인지 확인한다 (기존 인터페이스 호환)."""
+    return is_trading_day()
+```
+
+**변경 요약:**
+- `@lru_cache` + pykrx → `KRX_HOLIDAYS` 세트 조회 (O(1), 결정론적)
+- `is_kr_market_open_today()` 인터페이스 유지 (scheduler, trading, portfolio 3곳 호환)
+- `is_trading_day(date_str)` 동기 함수 추가 (직접 호출 가능)
+- async executor 불필요 (동기 연산만)
+
+### 2. `fastapi/app/core/scheduler.py` — `_is_trading_day` 간소화
+
+market_calendar 로직이 결정론적이므로 재시도 불필요. 기존 코드 유지, 변경 없음.
+
+### 3. `docker-compose.prod.yml` — 단일 워커
+
+backend-api environment에 `WEB_CONCURRENCY: "1"` 추가 → 워커 1개 → 스케줄러 단일 실행.
+
+```yaml
+    environment:
+      TZ: Asia/Seoul
+      WEB_CONCURRENCY: "1"     # ← 추가: 스케줄러 단일 실행 보장
+      DATABASE_URL: ...
+```
+
+---
+
+## 커밋 & 배포
+
+```
+fix: 스케줄러 영업일 오판 수정 (KRX 휴장일 목록 + 단일 워커)
+```
+
+1. 2개 파일 수정 → 커밋 → push origin prod-final
+2. 이미지 리빌드: `TAG=prod-20260225 make build-api`
+3. Docker Hub push: `docker push dorae222/adelie-backend-api:prod-20260225`
+4. deploy-test 배포: compose pull + up -d
+5. sync-dev-branches → sync-lxd
+
+---
+
+## 검증
+
+```bash
+# 1. deploy-test 재시작 후 "스케줄러 시작" 로그 1회만 출력되는지
+ssh deploy-test 'docker logs adelie-backend-api 2>&1 | grep "스케줄러 시작"'
+
+# 2. 수동 파이프라인 트리거로 정상 동작 확인
+ssh deploy-test 'curl -s -X POST http://localhost:8082/api/v1/pipeline/run'
+
+# 3. /trading/market-status API로 영업일 판별 확인
+ssh deploy-test 'curl -s http://localhost:8082/api/v1/trading/market-status'
+# 기대: {"is_trading_day": true} (2026-02-25 화요일)
+```
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+진행해라
+
+---
+
+데이터 수집 파이프라인이 동작하는지 확인해라.
+
+---
+
+해당 부분을 올바르게 업데이트할 필요가 있고, 3개의 카드가 정상적으로 생성되는지 확인해야 한다.
+
+---
+
+[Request interrupted by user for tool use]

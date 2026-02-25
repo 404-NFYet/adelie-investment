@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "234de7d2eb07",
+  "session_id": "7f0debad-4a33-4147-be28-d766855236d0",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-21T11:32:37.903146765Z",
+  "branch": "develop",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "infra/docker-compose.yml",
+    "infra/docker-dashboard/pages/feedback.py",
+    "infra/monitoring/docker-compose.yml"
+  ],
+  "agent": "Claude Code",
+  "checkpoint_transcript_start": 422,
+  "transcript_lines_at_start": 422,
+  "token_usage": {
+    "input_tokens": 62,
+    "cache_creation_tokens": 300440,
+    "cache_read_tokens": 6094902,
+    "output_tokens": 28619,
+    "api_call_count": 56
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-21T11:32:37.790360604Z",
+    "agent_lines": 0,
+    "human_added": 3781,
+    "human_modified": 15,
+    "human_removed": 0,
+    "total_committed": 3796,
+    "agent_percentage": 0
+  }
+}

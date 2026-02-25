@@ -1,0 +1,178 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "53d4af738184",
+  "strategy": "manual-commit",
+  "branch": "develop",
+  "checkpoints_count": 23,
+  "files_touched": [
+    "CLAUDE.md",
+    "Makefile",
+    "database/alembic/versions/20260213_trading_tables.py",
+    "database/alembic/versions/20260217_add_total_rewards_received.py",
+    "database/alembic/versions/20260218_unique_user_portfolio.py",
+    "datapipeline/nodes/screening.py",
+    "docker-compose.dev.yml",
+    "docs/aws/aws-iam-permissions.md",
+    "fastapi/app/api/routes/keywords.py",
+    "fastapi/app/api/routes/portfolio.py",
+    "fastapi/app/api/routes/quiz_reward.py",
+    "fastapi/app/api/routes/tutor.py",
+    "fastapi/app/core/config.py",
+    "fastapi/app/core/redis_keys.py",
+    "fastapi/app/main.py",
+    "fastapi/app/middleware/rate_limit.py",
+    "fastapi/app/models/portfolio.py",
+    "fastapi/app/schemas/portfolio.py",
+    "fastapi/app/services/auth_service.py",
+    "fastapi/app/services/cache.py",
+    "fastapi/app/services/market_calendar.py",
+    "fastapi/app/services/portfolio_service.py",
+    "fastapi/app/services/stock_resolver.py",
+    "fastapi/app/services/tutor_engine.py",
+    "fastapi/requirements.txt",
+    "frontend/src/components/domain/HighlightedText.jsx",
+    "frontend/src/components/domain/TermBottomSheet.jsx",
+    "frontend/src/components/layout/BottomNav.jsx",
+    "frontend/src/components/layout/ChatFAB.jsx",
+    "frontend/src/components/trading/Leaderboard.jsx",
+    "frontend/src/contexts/TutorContext.jsx",
+    "frontend/src/pages/Home.jsx",
+    "frontend/src/pages/Landing.jsx",
+    "frontend/src/pages/Portfolio.jsx",
+    "frontend/src/pages/TutorChat.jsx",
+    "frontend/src/utils/markdown.js",
+    "infra/docker-compose.yml",
+    "infra/docker-dashboard/.streamlit/config.toml",
+    "infra/docker-dashboard/pages/feedback.py",
+    "infra/monitoring/docker-compose.yml",
+    "infra/monitoring/grafana/provisioning/dashboards/adelie-overview.json",
+    "infra/monitoring/nginx-dashboard.conf",
+    "infra/terraform/environments/localstack/main.tf",
+    "infra/terraform/modules/s3/main.tf",
+    "infra/terraform/modules/secrets/variables.tf",
+    "lxd/docs/sync-guide.md",
+    "lxd/inventory.md",
+    "lxd/scripts/setup-dev-env.sh"
+  ],
+  "sessions": [
+    {
+      "metadata": "/53/d4af738184/0/metadata.json",
+      "transcript": "/53/d4af738184/0/full.jsonl",
+      "context": "/53/d4af738184/0/context.md",
+      "content_hash": "/53/d4af738184/0/content_hash.txt",
+      "prompt": "/53/d4af738184/0/prompt.txt"
+    },
+    {
+      "metadata": "/53/d4af738184/1/metadata.json",
+      "transcript": "/53/d4af738184/1/full.jsonl",
+      "context": "/53/d4af738184/1/context.md",
+      "content_hash": "/53/d4af738184/1/content_hash.txt",
+      "prompt": "/53/d4af738184/1/prompt.txt"
+    },
+    {
+      "metadata": "/53/d4af738184/2/metadata.json",
+      "transcript": "/53/d4af738184/2/full.jsonl",
+      "context": "/53/d4af738184/2/context.md",
+      "content_hash": "/53/d4af738184/2/content_hash.txt",
+      "prompt": "/53/d4af738184/2/prompt.txt"
+    },
+    {
+      "metadata": "/53/d4af738184/3/metadata.json",
+      "transcript": "/53/d4af738184/3/full.jsonl",
+      "context": "/53/d4af738184/3/context.md",
+      "content_hash": "/53/d4af738184/3/content_hash.txt",
+      "prompt": "/53/d4af738184/3/prompt.txt"
+    },
+    {
+      "metadata": "/53/d4af738184/4/metadata.json",
+      "transcript": "/53/d4af738184/4/full.jsonl",
+      "context": "/53/d4af738184/4/context.md",
+      "content_hash": "/53/d4af738184/4/content_hash.txt",
+      "prompt": "/53/d4af738184/4/prompt.txt"
+    },
+    {
+      "metadata": "/53/d4af738184/5/metadata.json",
+      "transcript": "/53/d4af738184/5/full.jsonl",
+      "context": "/53/d4af738184/5/context.md",
+      "content_hash": "/53/d4af738184/5/content_hash.txt",
+      "prompt": "/53/d4af738184/5/prompt.txt"
+    },
+    {
+      "metadata": "/53/d4af738184/6/metadata.json",
+      "transcript": "/53/d4af738184/6/full.jsonl",
+      "context": "/53/d4af738184/6/context.md",
+      "content_hash": "/53/d4af738184/6/content_hash.txt",
+      "prompt": "/53/d4af738184/6/prompt.txt"
+    },
+    {
+      "metadata": "/53/d4af738184/7/metadata.json",
+      "transcript": "/53/d4af738184/7/full.jsonl",
+      "context": "/53/d4af738184/7/context.md",
+      "content_hash": "/53/d4af738184/7/content_hash.txt",
+      "prompt": "/53/d4af738184/7/prompt.txt"
+    },
+    {
+      "metadata": "/53/d4af738184/8/metadata.json",
+      "transcript": "/53/d4af738184/8/full.jsonl",
+      "context": "/53/d4af738184/8/context.md",
+      "content_hash": "/53/d4af738184/8/content_hash.txt",
+      "prompt": "/53/d4af738184/8/prompt.txt"
+    },
+    {
+      "metadata": "/53/d4af738184/9/metadata.json",
+      "transcript": "/53/d4af738184/9/full.jsonl",
+      "context": "/53/d4af738184/9/context.md",
+      "content_hash": "/53/d4af738184/9/content_hash.txt",
+      "prompt": "/53/d4af738184/9/prompt.txt"
+    },
+    {
+      "metadata": "/53/d4af738184/10/metadata.json",
+      "transcript": "/53/d4af738184/10/full.jsonl",
+      "context": "/53/d4af738184/10/context.md",
+      "content_hash": "/53/d4af738184/10/content_hash.txt",
+      "prompt": "/53/d4af738184/10/prompt.txt"
+    },
+    {
+      "metadata": "/53/d4af738184/11/metadata.json",
+      "transcript": "/53/d4af738184/11/full.jsonl",
+      "context": "/53/d4af738184/11/context.md",
+      "content_hash": "/53/d4af738184/11/content_hash.txt",
+      "prompt": "/53/d4af738184/11/prompt.txt"
+    },
+    {
+      "metadata": "/53/d4af738184/12/metadata.json",
+      "transcript": "/53/d4af738184/12/full.jsonl",
+      "context": "/53/d4af738184/12/context.md",
+      "content_hash": "/53/d4af738184/12/content_hash.txt",
+      "prompt": "/53/d4af738184/12/prompt.txt"
+    },
+    {
+      "metadata": "/53/d4af738184/13/metadata.json",
+      "transcript": "/53/d4af738184/13/full.jsonl",
+      "context": "/53/d4af738184/13/context.md",
+      "content_hash": "/53/d4af738184/13/content_hash.txt",
+      "prompt": "/53/d4af738184/13/prompt.txt"
+    },
+    {
+      "metadata": "/53/d4af738184/14/metadata.json",
+      "transcript": "/53/d4af738184/14/full.jsonl",
+      "context": "/53/d4af738184/14/context.md",
+      "content_hash": "/53/d4af738184/14/content_hash.txt",
+      "prompt": "/53/d4af738184/14/prompt.txt"
+    },
+    {
+      "metadata": "/53/d4af738184/15/metadata.json",
+      "transcript": "/53/d4af738184/15/full.jsonl",
+      "context": "/53/d4af738184/15/context.md",
+      "content_hash": "/53/d4af738184/15/content_hash.txt",
+      "prompt": "/53/d4af738184/15/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 8266,
+    "cache_creation_tokens": 1690705,
+    "cache_read_tokens": 47812362,
+    "output_tokens": 186537,
+    "api_call_count": 693
+  }
+}

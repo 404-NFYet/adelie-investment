@@ -1,0 +1,94 @@
+Implement the following plan:
+
+# 챗봇 FAB 활성화 — BottomNav 롤백 + ChatFAB 정상화 + TutorChat 버그 수정
+
+## Context
+AI 튜터 접근 방식: **ChatFAB(플로팅 버튼)만 사용**, BottomNav는 원래 3탭([교육][홈][모의투자]) 유지.
+이전 구현에서 BottomNav에 AI 튜터 탭을 추가했으나 이는 잘못된 방향 → 롤백 필요.
+ChatFAB은 `openTutor()` 연결 + 주황색 복원이 이미 적용되어 있음 (유지).
+TutorChat.jsx는 useEffect 경쟁 조건 버그 존재 → 수정 필요.
+
+---
+
+## 변경 파일 목록
+
+### 1. `frontend/src/components/layout/BottomNav.jsx` — 롤백
+이전에 추가한 변경사항 모두 제거:
+- `useTutor` import 삭제
+- `tabs` 배열에서 `{ id: 'tutor', ... }` 제거 → 원래 3탭으로 복원
+- `icons`에서 `tutor` 아이콘 제거
+- `handleTabClick` 함수 제거 → 원래 `onClick={() => navigate(tab.path)}` 복원
+- `const { openTutor, isOpen: isTutorOpen } = useTutor()` 제거
+
+최종 상태 — 원본과 동일:
+```jsx
+import { useNavigate, useLocation } from 'react-router-dom';
+
+const tabs = [
+  { id: 'education', label: '교육', path: '/education' },
+  { id: 'home', label: '홈', path: '/home' },
+  { id: 'portfolio', label: '모의투자', path: '/portfolio' },
+];
+// tabs.map((tab) => onClick={() => navigate(tab.path)}
+```
+
+### 2. `frontend/src/components/layout/ChatFAB.jsx` — 유지 (이미 정상)
+- `useTutor`의 `openTutor()` 호출 ✅
+- `bg-primary`, `opacity:1` ✅
+- `aria-label="AI 튜터 열기"` ✅
+
+### 3. `frontend/src/pages/TutorChat.jsx` — 버그 수정
+**버그**: 마운트 시 Effect 1이 `hasOpened.current=true` 설정 후 `openTutor()` 호출하면,
+Effect 2가 같은 렌더에서 `hasOpened.current=true && isOpen=false(미갱신)` 조건으로 즉시 `/home` 이동.
+
+**수정**: `hasEverBeenOpen` ref로 `isOpen`이 실제 `true`가 된 이후에만 navigate 허용:
+```jsx
+import { useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useTutor } from '../contexts';
+
+export default function TutorChat() {
+  const { openTutor, isOpen } = useTutor();
+  const navigate = useNavigate();
+  const hasEverBeenOpen = useRef(false);
+
+  useEffect(() => {
+    openTutor();
+  }, [openTutor]);
+
+  useEffect(() => {
+    if (isOpen) {
+      hasEverBeenOpen.current = true;
+    } else if (hasEverBeenOpen.current) {
+      navigate('/home', { replace: true });
+    }
+  }, [isOpen, navigate]);
+
+  return <div className="min-h-screen bg-background" />;
+}
+```
+
+---
+
+## 배포 절차
+
+```bash
+make build-frontend && make push
+# 또는 /deploy frontend 스킬 사용
+```
+
+---
+
+## 검증 방법
+1. BottomNav: [교육][홈][모의투자] 3탭만 표시 확인 (AI 튜터 탭 없음)
+2. `/narrative/*`, `/case/*` 등 콘텐츠 페이지 → ChatFAB(주황색) 우하단 노출 확인
+3. ChatFAB 클릭 → TutorModal 바텀시트 오픈 확인
+4. 메시지 전송 → SSE 스트리밍 응답 수신 확인
+5. `/tutor` 직접 URL → 모달 자동 오픈 확인, 닫으면 `/home`으로 이동 확인
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+git 및 도커 이미지나 배포 서버까지 모두 올바르게 반영되었나?

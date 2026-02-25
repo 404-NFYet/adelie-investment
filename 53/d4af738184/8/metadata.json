@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "53d4af738184",
+  "session_id": "aeabf019-d025-4817-99f2-3daa949753fc",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-19T00:42:49.806561822Z",
+  "branch": "develop",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "fastapi/app/main.py",
+    "fastapi/requirements.txt",
+    "frontend/src/utils/markdown.js",
+    "infra/monitoring/docker-compose.yml",
+    "infra/monitoring/grafana/provisioning/dashboards/adelie-overview.json"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 3646,
+    "cache_creation_tokens": 204125,
+    "cache_read_tokens": 4434750,
+    "output_tokens": 7034,
+    "api_call_count": 55
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-19T00:42:49.738941554Z",
+    "agent_lines": 0,
+    "human_added": 25,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 25,
+    "agent_percentage": 0
+  }
+}

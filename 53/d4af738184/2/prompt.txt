@@ -1,0 +1,231 @@
+Implement the following plan:
+
+# LocalStack LXD 서버 구축 + Terraform 검증 + AWS 코드 브랜치 분리
+
+## Context
+
+AWS 인프라 코드(Terraform 7모듈, LocalStack, IAM 권한서, 가이드 12문서)가 `develop`에 존재하지만 한 번도 실행/검증된 적 없음. 현재 운영은 LXD + Docker + MinIO.
+
+**목표**: LocalStack 전용 LXD 인스턴스를 생성하여 Terraform 코드를 실제 검증하고, AWS 인프라 코드를 develop에서 분리하여 별도 브랜치로 관리.
+
+**IAM 단순화**: 사용자가 1명(도형준)만 담당하므로 `adelie-developer-role` (4명 대상) 제거, IAM 사용자 목록도 dorae222 1명으로 축소.
+
+---
+
+## Step 1: develop에서 AWS 인프라 코드 브랜치 분리
+
+### 1-1. 별도 브랜치 생성
+```bash
+git checkout develop
+git checkout -b feature/infra-aws-localstack
+```
+
+### 1-2. develop에서 AWS 코드 제거
+`develop`으로 돌아와 아래 경로 삭제:
+- `infra/terraform/` (전체 — modules/, environments/)
+- `infra/localstack/` (docker-compose.yml)
+- `docs/aws/` (12개 가이드 문서)
+- `docs/infrastructure/localstack-guide.md`
+
+### 1-3. Makefile 정리
+`Makefile`에서 AWS/LocalStack 관련 타겟 제거:
+- `localstack-up`, `localstack-down` (line 183-190)
+- `terraform-init`, `terraform-plan`, `terraform-apply`, `terraform-destroy` (line 193-207)
+- `ENV`, `TF_DIR` 변수 (line 179-180)
+- help 텍스트의 인프라 섹션 (line 49-55)
+- `.PHONY` 목록에서 해당 타겟 (line 14-15)
+
+### 1-4. 커밋
+```
+develop: chore: AWS/LocalStack 인프라 코드 별도 브랜치로 분리
+feature/infra-aws-localstack: (현재 코드 그대로 유지)
+```
+
+---
+
+## Step 2: IAM 권한서 단순화 (feature 브랜치에서)
+
+**파일**: `docs/aws/aws-iam-permissions.md`
+
+### 변경사항
+
+| 항목 | Before | After |
+|------|--------|-------|
+| 팀 규모 | 5명 | 1명 (도형준 — 전체 관리) |
+| IAM 사용자 | 5명 | 1명 (`dorae222`) |
+| `adelie-developer-role` | 4명 대상 존재 | **삭제** |
+| GitHub 리포 | `dorae222/adelie-investment` | `404-NFYet/adelie-investment` |
+
+### 제거 대상
+- Section 2.4 `Developer` 역할 전체 (role, trust policy, policy)
+- Section 3 역할 배정 표에서 Developer 행
+- Section 6 사전 설정의 IAM 사용자 목록에서 4명 제거, dorae222만 유지
+
+### 유지 대상 (변경 없음)
+- `adelie-terraform-executor` — dorae222 전용
+- `adelie-ecs-execution-role` — ECS 서비스 런타임 (사람이 아님)
+- `adelie-ecs-task-role` — 컨테이너 런타임 (사람이 아님)
+- `adelie-cicd-pipeline-role` — GitHub Actions OIDC (사람이 아님)
+
+---
+
+## Step 3: LocalStack LXD 인스턴스 생성
+
+### 3-1. 인스턴스 사양
+
+| 항목 | 값 | 근거 |
+|------|-----|------|
+| 이름 | `localstack` | 역할 명확 |
+| IP | `10.10.10.16` (예비) | dev-hj(10.10.10.15) 바로 다음 |
+| CPU | 4 | LocalStack 12서비스 + Terraform |
+| RAM | 8GB | LocalStack 최소 4GB + Docker 오버헤드 |
+| Disk | 100GB | Docker 이미지 + Terraform state + LocalStack 영속 데이터 |
+| OS | Ubuntu 22.04 | 다른 인스턴스와 동일 |
+
+### 3-2. LXD 명령어
+```bash
+# 호스트에서 실행
+lxc launch ubuntu:22.04 localstack
+lxc config set localstack limits.cpu 4
+lxc config set localstack limits.memory 8GB
+lxc config device set localstack root size=100GB
+
+# 네트워크 고정 IP (기존 프로파일에 따라 다를 수 있음)
+lxc config device add localstack eth0 nic nictype=bridged parent=lxdbr0
+# 또는 기존 네트워크 설정 방식에 맞춰 조정
+```
+
+### 3-3. inventory.md 업데이트
+`lxd/inventory.md` 테이블에 행 추가:
+```
+| localstack | 10.10.10.16 | LocalStack (AWS 로컬 테스트) | 도형준 | 4/8GB | dev-standard.yml |
+```
+합계: 38 CPU / 92GB RAM
+
+---
+
+## Step 4: LocalStack 인스턴스 환경 설정
+
+### 4-1. Docker 설치
+```bash
+lxc exec localstack -- bash -c "
+  apt-get update && apt-get install -y ca-certificates curl gnupg
+  install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+  echo 'deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu jammy stable' > /etc/apt/sources.list.d/docker.list
+  apt-get update && apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+  systemctl enable --now docker
+"
+```
+
+### 4-2. Terraform 설치
+```bash
+lxc exec localstack -- bash -c "
+  apt-get install -y gnupg software-properties-common
+  curl -fsSL https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+  echo 'deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com jammy main' > /etc/apt/sources.list.d/hashicorp.list
+  apt-get update && apt-get install -y terraform
+  terraform --version
+"
+```
+
+### 4-3. 프로젝트 코드 배포
+```bash
+# feature 브랜치의 infra/ 코드를 LocalStack 인스턴스에 복사
+lxc exec localstack -- bash -c "mkdir -p /opt/adelie-infra"
+# git clone 또는 lxc file push
+lxc exec localstack -- bash -c "
+  apt-get install -y git
+  cd /opt && git clone -b feature/infra-aws-localstack https://github.com/404-NFYet/adelie-investment.git adelie-infra
+"
+```
+
+---
+
+## Step 5: LocalStack 기동 + Terraform 검증
+
+### 5-1. LocalStack 시작
+```bash
+lxc exec localstack -- bash -c "
+  cd /opt/adelie-infra/infra/localstack
+  docker compose up -d
+  # 헬스체크 대기
+  until curl -sf http://localhost:4566/_localstack/health; do sleep 2; done
+  echo 'LocalStack ready'
+"
+```
+
+### 5-2. Terraform 실행
+```bash
+lxc exec localstack -- bash -c "
+  cd /opt/adelie-infra/infra/terraform/environments/localstack
+  terraform init
+  terraform plan
+  terraform apply -auto-approve
+"
+```
+
+### 5-3. 검증 체크리스트
+
+| 모듈 | 검증 명령 | 예상 결과 |
+|------|-----------|-----------|
+| VPC | `aws --endpoint=http://localhost:4566 ec2 describe-vpcs` | adelie VPC 존재 |
+| ECR | `aws --endpoint=http://localhost:4566 ecr describe-repositories` | 3개 리포 |
+| S3 | `aws --endpoint=http://localhost:4566 s3 ls` | 2개 버킷 |
+| Secrets | `aws --endpoint=http://localhost:4566 secretsmanager list-secrets` | 7개 시크릿 |
+| IAM | `aws --endpoint=http://localhost:4566 iam list-roles` | adelie-* 역할 |
+| RDS | `aws --endpoint=http://localhost:4566 rds describe-db-instances` | adelie-db |
+| ElastiCache | `aws --endpoint=http://localhost:4566 elasticache describe-cache-clusters` | adelie-redis |
+| ECS | `aws --endpoint=http://localhost:4566 ecs list-clusters` | adelie-cluster |
+
+```bash
+# AWS CLI 설치 + LocalStack alias 설정
+lxc exec localstack -- bash -c "
+  apt-get install -y awscli
+  alias awslocal='aws --endpoint-url=http://localhost:4566 --region ap-northeast-2'
+
+  # 환경변수 설정 (LocalStack 더미)
+  export AWS_ACCESS_KEY_ID=test
+  export AWS_SECRET_ACCESS_KEY=test
+  export REDACTED
+
+  # 각 모듈 검증
+  aws --endpoint-url=http://localhost:4566 ec2 describe-vpcs --query 'Vpcs[].CidrBlock'
+  aws --endpoint-url=http://localhost:4566 ecr describe-repositories --query 'repositories[].repositoryName'
+  aws --endpoint-url=http://localhost:4566 s3 ls
+  aws --endpoint-url=http://localhost:4566 secretsmanager list-secrets --query 'SecretList[].Name'
+"
+```
+
+---
+
+## 수정 파일 목록
+
+| # | 파일 | 변경 | 브랜치 |
+|---|------|------|--------|
+| 1 | `Makefile` | LocalStack/Terraform 타겟 제거 | develop |
+| 2 | `infra/terraform/` | 삭제 | develop |
+| 3 | `infra/localstack/` | 삭제 | develop |
+| 4 | `docs/aws/` | 삭제 | develop |
+| 5 | `docs/infrastructure/localstack-guide.md` | 삭제 | develop |
+| 6 | `docs/aws/aws-iam-permissions.md` | Developer 역할 제거, 1명 간소화 | feature |
+| 7 | `lxd/inventory.md` | localstack 인스턴스 추가 | develop |
+
+---
+
+## 실행 순서
+
+1. **Step 1**: feature 브랜치 생성 → develop에서 AWS 코드 제거 → 커밋+푸시
+2. **Step 2**: feature 브랜치에서 IAM 간소화 → 커밋
+3. **Step 3**: LXD 인스턴스 생성 (호스트 접근 필요 — 사용자 확인 후)
+4. **Step 4**: Docker + Terraform 설치
+5. **Step 5**: LocalStack 기동 + Terraform apply + 검증
+
+> **Note**: Step 3~5는 LXD 호스트 접근 권한이 필요합니다. `lxc` 명령은 호스트에서 실행하거나, 사용자가 직접 실행해야 할 수 있습니다.
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+LXD 호스트에서 Step 3~5 실행해줘

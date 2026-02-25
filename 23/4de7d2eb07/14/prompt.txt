@@ -1,0 +1,1084 @@
+Implement the following plan:
+
+# Dev Assistant v2 — 내부 AI 개발 어시스턴트 종합 설계
+
+## Context
+
+Adelie Investment 팀 내부 전용 AI 개발 어시스턴트를 **서브 프로젝트 수준**으로 구축한다.
+기존 `feature/dashboard-chatbot` 챗봇(단순 Claude API 호출)을 넘어서, 코드베이스를 실시간 검색하고 서버 환경을 조회하며 코드를 실행할 수 있는 **에이전트 기반 시스템**을 설계한다.
+
+### 핵심 설계 원칙
+- **API 키 불필요**: 각 팀원의 Claude Code/Codex 구독을 그대로 사용 (MCP 서버 방식)
+- **Dual Interface**: MCP 서버(primary) + Streamlit 웹 UI(secondary) — 같은 도구 레이어 공유
+- **별도 인프라**: 전용 LXD 컨테이너 + 전용 git 브랜치로 격리 운영
+- **계층적 에이전트**: Supervisor + 병렬 Worker 패턴 (LangGraph 1.0)
+- **보안**: 네트워크 격리 + 공유 로그인 + 감사 로그 + 샌드박스 격리
+- **사전 적재 지식**: 30+ 문서 파일(CLAUDE.md, docs/, .claude/rules/)을 DB + MCP Resource로 사전 인덱싱
+- **실시간 코드 동기화**: git hook + 스케줄러로 코드 변경 자동 감지 + 증분 인덱싱
+- **사용량 추적**: 팀원별 토큰/비용 대시보드 + Claude Code `/cost` 연동 가이드
+- **Light/Dark UI**: Streamlit CSS 변수 기반 테마 전환, 양쪽 모드 시각 최적화
+
+---
+
+## 1. 아키텍처 개요
+
+### 1.1 접속 경로
+
+Dev Assistant는 기존 Streamlit 대시보드(`dashboard.adelie-invest.com`)의 새 페이지로 추가:
+
+```
+[외부] https://dashboard.adelie-invest.com/
+    → Cloudflare Tunnel → deploy-test:8501 (nginx)
+    → nginx → dashboard:8501 (Streamlit 컨테이너)
+    → st.navigation() → pages/dev_assistant.py
+
+※ 현재 대시보드는 인증 없이 외부 접근 가능 (보안 이슈)
+→ 이번에 mutsa1234 공유 로그인을 대시보드 전체에 적용하여 해결
+```
+
+### 1.2 Dual-Interface 구조
+
+```
+┌─ MCP Clients (각자 본인 구독 사용) ─────────────────────────┐
+│                                                              │
+│  손영진: Claude Code (Pro) ──┐                               │
+│  정지훈: Codex CLI ─────────┤  stdio / Streamable HTTP      │
+│  허진서: Claude Code ───────┼──────→ MCP Server (:8090)     │
+│  안례진: Codex CLI ─────────┤        (FastMCP)               │
+│  도형준: Claude Code ───────┘                               │
+│                                                              │
+│  ※ LLM 호출은 각 팀원 계정에서 발생 → 팀 API 비용 0          │
+└──────────────────────────────────────────────────────────────┘
+                         ↕ 같은 도구 레이어 공유
+┌─ Web UI (대시보드 확장) ─────────────────────────────────────┐
+│  Streamlit Dev Assistant (:8502)                             │
+│  → 빠른 조회/차트/세션 이력 관리                              │
+│  → 공유 Claude API 키 사용 (기존 .env)                       │
+└──────────────────────────────────────────────────────────────┘
+                         ↕
+┌─ Shared Tool Layer (devassistant 패키지) ────────────────────┐
+│  Tools:  db_query | code_search | file_read | server_status  │
+│          code_exec | deploy | git_ops | alembic_ops          │
+│  RAG:    tree-sitter 청킹 + pgvector HNSW + RRF 하이브리드   │
+│  Agent:  LangGraph Supervisor + 4 Worker (웹 UI용)           │
+│  DB:     PostgreSQL (세션/메시지/코드인덱스/감사로그)          │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### 1.2 MCP가 API 키를 불필요하게 만드는 이유
+
+```
+[기존 방식]  대시보드 → Claude API (팀 공유 키, 팀이 비용 부담)
+[MCP 방식]   개발자 → Claude Code (본인 구독) → MCP 서버 (도구만 제공)
+             MCP 서버는 LLM을 호출하지 않음. 도구/데이터만 제공.
+             LLM 호출은 각 팀원의 구독에서 처리됨.
+```
+
+Claude Code/Codex 모두 MCP 프로토콜을 지원하므로, **하나의 MCP 서버**로 양쪽 다 연결 가능.
+한 번 `.mcp.json` 또는 `~/.codex/config.toml` 설정하면 이후 자동 연결.
+
+---
+
+## 2. 인프라 구성
+
+### 2.1 별도 LXD 컨테이너
+
+```
+이름:     dev-assistant
+IP:       10.10.10.16 (또는 가용 IP)
+프로파일: dev-ai (4CPU/12GB RAM)
+서비스:
+  - MCP Server (port 8090, Streamable HTTP)
+  - Streamlit UI (port 8502)
+  - Code Sandbox (Docker-in-Docker)
+네트워크: 내부망(10.10.10.0/24) 전용, 외부 노출 없음
+```
+
+### 2.2 Git 브랜치
+
+```bash
+git checkout develop && git pull origin develop
+git checkout -b feature/dev-assistant-v2
+```
+
+### 2.3 모듈 구조
+
+```
+adelie-investment/
+├── devassistant/                    ➕ NEW (최상위 모듈)
+│   ├── __init__.py
+│   ├── config.py                    # pydantic-settings 기반 설정
+│   ├── schemas.py                   # Pydantic v2 스키마
+│   │
+│   ├── mcp/                         # MCP Server
+│   │   ├── __init__.py
+│   │   ├── server.py                # FastMCP 서버 정의
+│   │   ├── tools/                   # 도구 8종
+│   │   │   ├── db_query.py          # SELECT-only DB 쿼리
+│   │   │   ├── code_search.py       # 하이브리드 RAG 검색
+│   │   │   ├── file_read.py         # SSH 파일 읽기
+│   │   │   ├── server_status.py     # 서버 헬스/Docker/git
+│   │   │   ├── code_exec.py         # 샌드박스 코드 실행
+│   │   │   ├── deploy.py            # 배포 트리거
+│   │   │   ├── git_ops.py           # git status/log/diff
+│   │   │   └── alembic_ops.py       # 마이그레이션 상태
+│   │   ├── resources/               # MCP Resources (8종, 사전 적재 지식)
+│   │   │   ├── project_context.py   # CLAUDE.md, 아키텍처, 컨벤션
+│   │   │   ├── team_guide.py        # 팀원별 개발 가이드 (docs/team-guides/)
+│   │   │   ├── team_member.py       # 팀원 서버/브랜치/역할 정보
+│   │   │   ├── db_schema.py         # 실시간 테이블 스키마
+│   │   │   ├── docs.py              # Getting Started + 참조 문서
+│   │   │   └── index_status.py      # RAG 인덱싱 상태 모니터링
+│   │   └── prompts/                 # MCP Prompts (재사용 프롬프트)
+│   │       ├── debug_server.py
+│   │       ├── review_code.py
+│   │       └── write_migration.py
+│   │
+│   ├── rag/                         # Codebase RAG 파이프라인
+│   │   ├── chunker.py               # tree-sitter AST 청킹
+│   │   ├── embedder.py              # OpenAI 임베딩 (768d halfvec)
+│   │   ├── searcher.py              # 벡터 + BM25 + RRF 하이브리드
+│   │   ├── reranker.py              # 크로스인코더 리랭킹
+│   │   ├── incremental.py           # git diff 기반 증분 인덱싱
+│   │   └── knowledge_base.py        # 사전 적재 지식 (30+ 문서)
+│   │
+│   ├── agent/                       # LangGraph Agent (웹 UI용)
+│   │   ├── state.py                 # AgentState TypedDict
+│   │   ├── supervisor.py            # 의도 분류 + 라우팅
+│   │   ├── graph.py                 # StateGraph 정의
+│   │   └── workers/                 # 전문 워커 에이전트
+│   │       ├── db_worker.py
+│   │       ├── code_worker.py
+│   │       ├── infra_worker.py
+│   │       └── exec_worker.py
+│   │
+│   ├── services/                    # 공유 서비스 레이어
+│   │   ├── ssh_service.py           # SSHManager 재사용
+│   │   ├── docker_service.py        # Docker CLI via SSH
+│   │   ├── db_service.py            # asyncpg DB 연산
+│   │   ├── sandbox_service.py       # Docker 코드 실행 샌드박스
+│   │   ├── audit_service.py         # 감사 로그
+│   │   ├── auth_service.py          # 로그인 + 쿠키 + 팀원 식별
+│   │   └── usage_service.py         # 토큰 사용량 + 비용 추적
+│   │
+│   ├── db/                          # DB 레이어
+│   │   ├── models.py                # SQLAlchemy 모델
+│   │   └── repository.py            # CRUD (GenericRepository 확장)
+│   │
+│   ├── tests/
+│   │   ├── test_rag.py
+│   │   ├── test_tools.py
+│   │   └── test_agent.py
+│   │
+│   ├── requirements.txt
+│   └── Dockerfile
+│
+├── .mcp.json                        ➕ 프로젝트 MCP 서버 설정 (git tracked)
+├── docker-compose.dev-assistant.yml ➕ 전용 Docker Compose
+│
+├── database/alembic/versions/
+│   └── 20260223_devassistant_tables.py  ➕ 6테이블 마이그레이션
+│
+└── infra/docker-dashboard/pages/
+    └── dev_assistant.py             ➕ Streamlit 웹 UI 페이지
+```
+
+---
+
+## 3. 인증 & 보안 설계
+
+### 3.1 통합 로그인 (웹 UI + MCP 연동)
+
+**웹 UI**: 공유 계정 `mutsa1234` / `mutsa1234`로 로그인 → 본인 선택 → 세션 쿠키 유지
+
+```python
+# devassistant/config.py
+SHARED_LOGIN = {"id": "mutsa1234", "pw_hash": bcrypt.hash("mutsa1234")}
+
+TEAM_MEMBERS = {
+    "dorae222":  {"name": "도형준", "role": "infra",    "icon": "🛠️", "server": "dev-hj"},
+    "YJ99Son":   {"name": "손영진", "role": "frontend", "icon": "🎨", "server": "dev-yj99son"},
+    "J2hoon10":  {"name": "정지훈", "role": "chatbot",  "icon": "🤖", "server": "dev-j2hoon10"},
+    "jjjh02":    {"name": "허진서", "role": "backend",  "icon": "⚙️", "server": "dev-jjjh02"},
+    "ryejinn":   {"name": "안례진", "role": "pipeline", "icon": "🧪", "server": "dev-ryejinn"},
+}
+```
+
+**로그인 흐름**:
+```
+웹 UI (dashboard.adelie-invest.com 전체):
+  mutsa1234 로그인 → 팀원 선택(아이콘 버튼) → 대시보드 전체 접근 허용
+  ↓ (st.session_state에 user_name 저장 + 브라우저 쿠키 영속)
+  이후 재접속 시 자동 로그인 (쿠키 유효 30일)
+  ※ 대시보드 app.py에서 로그인 게이트 → 비인증 시 모든 페이지 차단
+
+MCP:
+  .mcp.json에 DEVASSIST_USER 설정 → 1회 설정 후 영속
+  ↓ (Claude Code/Codex 세션마다 자동 연결)
+  본인 MCP 계정 ↔ 웹 UI 계정 동일 user_name으로 세션 공유 가능
+```
+
+**핵심**: 로그인 후 본인이 파악되므로 Claude Code ↔ Codex ↔ 웹 UI 간 자유 이동 가능. 같은 `user_name`이면 대화 이력도 공유.
+
+> **보안 개선**: 현재 `dashboard.adelie-invest.com`은 인증 없이 외부 접근 가능.
+> `mutsa1234` 로그인을 `app.py` 최상단에 적용하여 **대시보드 전체**를 보호.
+
+### 3.2 팀원별 MCP 설정 (1회 설정 후 영속)
+
+**Claude Code 사용자** (프로젝트 루트 `.mcp.json`):
+```json
+{
+  "mcpServers": {
+    "adelie-dev": {
+      "command": "python",
+      "args": ["-m", "devassistant.mcp.server"],
+      "cwd": "~/adelie-investment",
+      "env": { "DEVASSIST_USER": "${GIT_USER_NAME}" }
+    }
+  }
+}
+```
+
+**Codex CLI 사용자** (`~/.codex/config.toml`):
+```toml
+[mcp_servers.adelie-dev]
+command = "python"
+args = ["-m", "devassistant.mcp.server"]
+env = { DEVASSIST_USER = "J2hoon10" }
+startup_timeout_sec = 15
+tool_timeout_sec = 120
+```
+
+**원격 접속 (외부 → 내부)** — SSH 터널 경유:
+```bash
+# 개인 머신에서 MCP 서버로 SSH 터널
+ssh -L 8090:10.10.10.16:8090 deploy-test -N &
+```
+
+### 3.3 모델 선택 + 클라이언트 자유 이동
+
+Claude Code/Codex 사용자는 본인 구독의 모델을 자유롭게 선택:
+- Claude Code: `claude-sonnet-4-6`, `claude-opus-4-6`, `claude-haiku-4-5`
+- Codex CLI: `gpt-4o`, `gpt-4o-mini`, `o3-mini`
+- 웹 UI: 사이드바 드롭다운에서 모델 선택 (Claude API 키 사용)
+
+MCP 서버는 모델에 무관 — 도구만 제공하므로 어떤 모델이든 호환.
+
+**클라이언트 이동**: 같은 `user_name`으로 식별되므로:
+- Claude Code에서 시작한 작업 → Codex CLI로 이어서 진행 가능
+- MCP 세션 이력이 DB에 기록되므로 웹 UI에서도 조회 가능
+- MCP 연결은 세션마다 새로 생성되지만, 서버 측 상태(DB)는 영속
+
+### 3.4 보안 4계층
+
+| 계층 | 대상 | 방법 |
+|------|------|------|
+| **네트워크** | MCP 서버 | 10.10.10.0/24 바인딩, 외부 접속은 SSH 터널 필수 |
+| **인증** | 웹 UI | 공유 로그인(mutsa1234) + 팀원 선택, 쿠키 30일 유지 |
+| **인증** | MCP | `DEVASSIST_USER` 환경변수, `.mcp.json` 영속 |
+| **권한** | SQL/SSH | SELECT only, SSH 호스트 화이트리스트, 명령어 필터링 |
+| **격리** | 코드 실행 | Docker --network=none, --read-only, mem 512M, timeout 30s |
+
+### 3.5 감사 로그
+
+모든 도구 호출을 `devassist_audit_log` 테이블에 기록:
+```sql
+INSERT INTO devassist_audit_log (user_name, action, target, result_status)
+VALUES ('dorae222', 'tool:db_query', 'SELECT count(*) FROM ...', 'success');
+```
+
+---
+
+## 4. PostgreSQL 스키마 (Alembic 마이그레이션)
+
+기존 DB 확장 활용: `pgvector 0.8+`, `pg_trgm`, 신규 `ltree`
+
+### 4.1 새 테이블 6개 (`narrative_invest` DB)
+
+```sql
+CREATE EXTENSION IF NOT EXISTS ltree;
+
+-- 1. 세션 (대화 세션)
+CREATE TABLE devassist_sessions (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_name     VARCHAR(50) NOT NULL,
+    title         VARCHAR(200),
+    model_used    VARCHAR(100),
+    interface     VARCHAR(20) DEFAULT 'mcp',  -- 'mcp' | 'web'
+    metadata      JSONB DEFAULT '{}',
+    created_at    TIMESTAMPTZ DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ DEFAULT NOW(),
+    archived_at   TIMESTAMPTZ
+);
+
+-- 2. 메시지 (월별 파티셔닝)
+CREATE TABLE devassist_messages (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id    UUID NOT NULL REFERENCES devassist_sessions(id) ON DELETE CASCADE,
+    role          VARCHAR(20) NOT NULL,
+    content       TEXT NOT NULL,
+    tool_name     VARCHAR(100),
+    tool_args     JSONB,
+    tool_result   JSONB,
+    tokens_used   JSONB,
+    latency_ms    INTEGER,
+    created_at    TIMESTAMPTZ DEFAULT NOW()
+) PARTITION BY RANGE (created_at);
+-- 월별 파티션 3개 자동 생성
+
+-- 3. 코드베이스 인덱스 (RAG 보조 레이어 — 의미 기반 검색용)
+--    Primary 코드 접근: SSH 직접 (항상 최신)
+--    이 테이블: 벡터 검색 가속 레이어 (백그라운드 10분 갱신)
+CREATE TABLE devassist_codebase_index (
+    id            BIGSERIAL PRIMARY KEY,
+    server_name   VARCHAR(50) NOT NULL DEFAULT 'shared',  -- 'dev-hj', 'dev-yj99son', 'shared'
+    file_path     ltree NOT NULL,            -- 'fastapi.app.api.routes.briefing'
+    file_path_raw TEXT NOT NULL,
+    chunk_type    VARCHAR(30) NOT NULL,       -- 'function' | 'class' | 'method'
+    chunk_name    VARCHAR(200),
+    chunk_content TEXT NOT NULL,
+    start_line    INTEGER NOT NULL,
+    end_line      INTEGER NOT NULL,
+    language      VARCHAR(20) DEFAULT 'python',
+    git_hash      VARCHAR(40) NOT NULL,
+    embedding     halfvec(768) NOT NULL,     -- HNSW + halfvec (50% 스토리지 절약)
+    metadata      JSONB DEFAULT '{}',
+    is_deleted    BOOLEAN DEFAULT FALSE,     -- soft delete (파일 삭제 시)
+    indexed_at    TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(server_name, file_path_raw, chunk_type, chunk_name, start_line)
+);
+
+-- HNSW 벡터 인덱스 (IVFFlat 대비 2-10x 빠른 쿼리)
+CREATE INDEX ix_codebase_hnsw ON devassist_codebase_index
+    USING hnsw (embedding halfvec_cosine_ops)
+    WITH (m=16, ef_construction=200);
+
+-- ltree 경로 인덱스 (WHERE file_path @> 'fastapi.app.api' 지원)
+CREATE INDEX ix_codebase_path ON devassist_codebase_index USING gist (file_path);
+
+-- pg_trgm 퍼지 텍스트 검색 (코드 내용 + 심볼명)
+CREATE INDEX ix_codebase_content_trgm ON devassist_codebase_index
+    USING gin (chunk_content gin_trgm_ops);
+CREATE INDEX ix_codebase_name_trgm ON devassist_codebase_index
+    USING gin (chunk_name gin_trgm_ops);
+
+-- 4. 에이전트 트레이스 (디버깅/분석)
+CREATE TABLE devassist_agent_traces (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id      UUID REFERENCES devassist_sessions(id) ON DELETE SET NULL,
+    user_name       VARCHAR(50) NOT NULL,
+    trace_type      VARCHAR(30) NOT NULL,
+    node_name       VARCHAR(100),
+    input_data      JSONB,
+    output_data     JSONB,
+    latency_ms      INTEGER,
+    error_message   TEXT,
+    langsmith_run_id VARCHAR(100),
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 5. 토큰 사용량 (비용 추적)
+CREATE TABLE devassist_token_usage (
+    id              BIGSERIAL PRIMARY KEY,
+    user_name       VARCHAR(50) NOT NULL,
+    model           VARCHAR(100) NOT NULL,
+    provider        VARCHAR(30) NOT NULL,
+    prompt_tokens   INTEGER DEFAULT 0,
+    completion_tokens INTEGER DEFAULT 0,
+    embedding_tokens INTEGER DEFAULT 0,
+    cost_usd        NUMERIC(10,6) DEFAULT 0,
+    context         VARCHAR(50),
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 6. 감사 로그 (보안)
+CREATE TABLE devassist_audit_log (
+    id            BIGSERIAL PRIMARY KEY,
+    user_name     VARCHAR(50) NOT NULL,
+    action        VARCHAR(100) NOT NULL,
+    target        TEXT,
+    result_status VARCHAR(20) DEFAULT 'success',
+    ip_address    INET,
+    details       JSONB DEFAULT '{}',
+    created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+### 4.2 설계 근거
+
+| 선택 | 이유 |
+|------|------|
+| **halfvec(768)** | pgvector 0.7+ halfvec = 16bit float → 50% 스토리지 절감, 동일 recall |
+| **HNSW** | IVFFlat 대비 30x 높은 QPS, O(log n) 검색, 빈 테이블에서도 작동 |
+| **ltree** | 파일 경로 계층 쿼리(`@>` 연산자) → LIKE 패턴 대비 수십배 빠름 |
+| **pg_trgm GIN** | 코드 식별자 퍼지 매칭 (함수명 오타 허용) |
+| **월별 파티셔닝** | 메시지 테이블 partition pruning → 최근 조회 빠름 |
+| **JSONB** | 도구 인자/결과, 메타데이터 유연 저장 |
+
+---
+
+## 5. Codebase RAG 파이프라인
+
+### 5.1 파이프라인 흐름
+
+```
+[인덱싱]
+Git 레포 → tree-sitter 파싱 → AST 기반 청킹 → 임베딩(768d) → PostgreSQL HNSW
+
+[검색]
+쿼리 → 임베딩 → ┬─ 벡터 유사도 (HNSW) ──→ top-50
+                 └─ pg_trgm 퍼지 매칭 ───→ top-50
+                           ↓
+                    RRF 융합 (k=60) → top-20
+                           ↓
+                    리랭커 (Jina v2) → top-10
+                           ↓
+                    컨텍스트 빌더 → LLM
+```
+
+### 5.2 AST 청킹 (`rag/chunker.py`)
+
+`tree-sitter-language-pack` (Python, JS, TS, SQL, YAML 160+ 언어 지원):
+
+```python
+# 청킹 전략
+Python  → function_definition, class_definition, 메서드 개별 분리
+JS/JSX  → function_declaration, arrow_function, class_declaration
+SQL     → statement 단위 (CREATE TABLE, SELECT 등)
+Markdown → ## 헤더 기반 섹션 분리
+```
+
+메타데이터 추출: `{imports, decorators, docstring, parent_class, sibling_signatures}`
+
+### 5.3 하이브리드 검색 SQL (`rag/searcher.py`)
+
+```sql
+-- RAG 보조 검색 (2차). 1차는 SSH grep.
+-- $5 = 사용자의 server_name (e.g., 'dev-hj')
+-- 본인 서버 + shared 인덱스에서 벡터 검색
+WITH vector AS (
+    SELECT id, server_name, ROW_NUMBER() OVER (ORDER BY embedding <=> $1) AS rank
+    FROM devassist_codebase_index
+    WHERE server_name IN ('shared', $5) AND NOT is_deleted
+      AND ($2::ltree IS NULL OR file_path @> $2)
+    ORDER BY embedding <=> $1::halfvec(768) LIMIT 50
+),
+fuzzy AS (
+    SELECT id, server_name, ROW_NUMBER() OVER (ORDER BY similarity(chunk_content, $3) DESC) AS rank
+    FROM devassist_codebase_index
+    WHERE server_name IN ('shared', $5) AND NOT is_deleted
+      AND (chunk_content % $3 OR chunk_name % $3)
+    LIMIT 50
+),
+rrf AS (
+    SELECT id, server_name, 0.6/(60+rank) AS s FROM vector
+    UNION ALL
+    SELECT id, server_name, 0.4/(60+rank) AS s FROM fuzzy
+)
+SELECT id, SUM(s) + CASE WHEN server_name = $5 THEN 0.1 ELSE 0 END AS score
+FROM rrf GROUP BY id, server_name ORDER BY score DESC LIMIT $4;
+```
+
+### 5.4 코드베이스 = 개인 LXD 서버 (실시간 SSH 접근)
+
+**핵심 원칙**: 각 팀원의 LXD 서버가 곧 **그 팀원의 코드베이스**. 별도 복사본이 아닌, 서버 파일을 직접 실시간으로 접근.
+
+```
+┌─ 팀원이 질문 ────────────────────────────────────────────────────┐
+│ "briefing 라우터 코드 보여줘"                                      │
+└──────┬───────────────────────────────────────────────────────────┘
+       ↓
+┌─ 코드 접근 경로 ─────────────────────────────────────────────────┐
+│                                                                    │
+│  1. file_read(path)                                                │
+│     → SSH 직접 접근: 본인 LXD 서버 파일 실시간 읽기                │
+│     → 항상 최신 (uncommitted 변경 포함)                            │
+│                                                                    │
+│  2. code_search(query)                                             │
+│     → [1차] SSH grep: 본인 LXD 서버에서 키워드 검색               │
+│     → [2차] RAG 검색: 의미 기반 벡터 검색 (보조)                  │
+│     → 결과 merge + 본인 서버 결과 우선                             │
+│                                                                    │
+│  3. git_ops(command)                                               │
+│     → SSH 직접 실행: 본인 LXD 서버의 git log/diff/status          │
+│                                                                    │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+**서버 매핑**:
+```python
+# 팀원 → LXD 서버 → SSH 접속
+TEAM_MEMBERS = {
+    "dorae222":  {"server": "dev-hj",       "host": "10.10.10.15"},
+    "YJ99Son":   {"server": "dev-yj99son",  "host": "10.10.10.14"},
+    "J2hoon10":  {"server": "dev-j2hoon10", "host": "10.10.10.11"},
+    "jjjh02":    {"server": "dev-jjjh02",   "host": "10.10.10.12"},
+    "ryejinn":   {"server": "dev-ryejinn",  "host": "10.10.10.13"},
+}
+# 추가 대상: deploy-test (10.10.10.20), staging (10.10.10.21)
+```
+
+**code_search 2단계 전략**:
+```python
+async def code_search(query: str, user_name: str, scope: str = None):
+    host = TEAM_MEMBERS[user_name]["host"]
+
+    # [1단계] SSH grep — 키워드 매칭 (빠름, 정확)
+    grep_results = await ssh_cmd(host,
+        f"cd {PROJECT_DIR} && grep -rn --include='*.py' --include='*.js' "
+        f"--include='*.jsx' '{query}' {scope or '.'} | head -30"
+    )
+
+    # [2단계] RAG 벡터 검색 — 의미 기반 (유사 코드 탐색)
+    rag_results = await hybrid_search(query, server_name=host)
+
+    # merge: SSH grep 결과 우선, RAG로 보충
+    return merge_and_rank(grep_results, rag_results)
+```
+
+**RAG 인덱스는 보조 레이어**:
+- 직접 SSH 접근이 항상 primary (최신, uncommitted 포함)
+- RAG 인덱스는 의미 기반 검색을 위한 가속 레이어 (백그라운드 갱신)
+- 인덱스가 stale해도 무관 — SSH 결과가 항상 우선
+
+**RAG 인덱스 갱신 (백그라운드, 10분 주기)**:
+- 모든 LXD 서버 순회 → SSH로 변경 파일 감지 → 재인덱싱
+- `server_name` 컬럼으로 서버별 인덱스 분리
+- `ON CONFLICT (server_name, file_path_raw, chunk_type, chunk_name, start_line) DO UPDATE`
+
+인덱싱 대상:
+```python
+INDEX_PATTERNS = {
+    "backend":  ["fastapi/app/**/*.py"],
+    "frontend": ["frontend/src/**/*.{js,jsx}"],
+    "pipeline": ["datapipeline/**/*.py"],
+    "chatbot":  ["chatbot/**/*.py"],
+    "infra":    ["lxd/Makefile", "infra/**/*.yml"],
+    "docs":     ["CLAUDE.md", "docs/**/*.md", ".claude/rules/*.md"],
+}
+```
+
+### 5.5 사전 적재 지식 베이스 (`rag/knowledge_base.py`)
+
+프로젝트에 이미 존재하는 30+ 문서를 **MCP Resource + DB**에 사전 적재하여 응답 속도 향상:
+
+```python
+# 사전 적재 대상 (시작 시 1회 + 변경 감지 시 갱신)
+KNOWLEDGE_SOURCES = {
+    # 프로젝트 핵심 문서 → MCP Resource로 노출
+    "architecture": ["CLAUDE.md", "docs/architecture/overview.md"],
+    "getting_started": ["docs/getting-started/*.md"],  # setup, docker, workflow, database
+    "conventions": [".claude/rules/fastapi.md", ".claude/rules/frontend.md"],
+
+    # 팀원별 가이드 → 팀원 context에 자동 주입
+    "team_guides": {
+        "frontend": "docs/team-guides/A_프론트엔드_손영진.md",
+        "backend":  "docs/team-guides/B_백엔드_허진서.md",
+        "chatbot":  "docs/team-guides/C_챗봇_정지훈.md",
+        "pipeline": "docs/team-guides/D_파이프라인_안례진.md",
+        "infra":    "docs/team-guides/E_인프라_도형준.md",
+    },
+
+    # 참조 문서 → 필요 시 검색으로 활용
+    "reference": ["docs/reference/*.md"],  # prd, changelog, env-vars, llm-models, kis-api
+
+    # 환경변수 + DB 스키마 → 실시간 쿼리로 보완
+    "runtime": ["devassist_codebase_index 테이블 (RAG)", "information_schema (실시간)"],
+}
+```
+
+**적재 전략**:
+| 유형 | 저장소 | 접근 방식 | 갱신 주기 |
+|------|--------|----------|----------|
+| 프로젝트 문서 | `devassist_codebase_index` (RAG) | 벡터 검색 + 키워드 | git push 시 |
+| 팀원 가이드 | MCP Resource (`adelie://guide/{role}`) | 직접 주입 | 파일 변경 감지 |
+| DB 스키마 | MCP Resource (`adelie://db/schema/{table}`) | 실시간 쿼리 | 항상 최신 |
+| 환경변수 참조 | MCP Resource (`adelie://project/env-vars`) | 읽기 전용 | 시작 시 |
+| 코드 컨벤션 | MCP Resource (`adelie://project/conventions`) | 직접 주입 | 파일 변경 감지 |
+
+이렇게 하면 "Alembic 마이그레이션 방법" 질문에 기존 문서(`database-guide.md`)에서 즉시 답변 가능 — LLM 호출 없이 검색만으로 수 초 응답.
+
+---
+
+## 6. MCP 서버 설계 (`mcp/server.py`)
+
+### 6.1 도구 8종
+
+| 도구 | 기능 | 보안 |
+|------|------|------|
+| `db_query` | SELECT-only PostgreSQL 쿼리 (최대 500행) | SQL 패턴 필터, 파라미터 바인딩 |
+| `code_search` | SSH grep(1차) + RAG 벡터(2차) 하이브리드 검색 | 읽기 전용 |
+| `file_read` | SSH로 본인 LXD 서버 파일 실시간 읽기 (50KB 제한) | 호스트 화이트리스트 |
+| `server_status` | Docker/git/디스크/메모리 상태 | 읽기 전용 |
+| `code_exec` | 샌드박스 Python/Bash 실행 | Docker 격리, 패키지 화이트리스트 |
+| `deploy` | 배포 트리거 (pull/build/up) | infra 역할만 full deploy |
+| `git_ops` | git log/diff/branch across servers | 읽기 전용 |
+| `alembic_ops` | 마이그레이션 current/heads/history | 읽기 전용 |
+
+### 6.2 리소스 8종 (사전 적재 지식 포함)
+
+| 리소스 URI | 내용 | 소스 파일 |
+|-----------|------|----------|
+| `adelie://project/architecture` | CLAUDE.md + 아키텍처 개요 | `CLAUDE.md`, `docs/architecture/overview.md` |
+| `adelie://project/conventions` | 코드 컨벤션 (FastAPI + Frontend) | `.claude/rules/*.md` |
+| `adelie://project/env-vars` | 환경변수 참조 | `docs/reference/env-vars.md` |
+| `adelie://guide/{role}` | 팀원별 개발 가이드 | `docs/team-guides/*.md` |
+| `adelie://team/{member}` | 팀원 서버/브랜치/역할 정보 | `config.py TEAM_MEMBERS` |
+| `adelie://db/schema/{table}` | 실시간 테이블 스키마 | `information_schema` 쿼리 |
+| `adelie://docs/{topic}` | Getting Started 문서 | `docs/getting-started/*.md` |
+| `adelie://index/status` | RAG 인덱싱 상태 (최근 해시, 파일수) | `devassist_codebase_index` 통계 |
+
+Claude Code에서 `@adelie-dev:adelie://guide/backend`로 즉시 참조 가능 (Tool Search 불필요).
+
+### 6.3 프롬프트 3종
+
+| 프롬프트 | 용도 |
+|---------|------|
+| `debug_server` | 서버 장애 조사 가이드 |
+| `review_code` | 코드 리뷰 체크리스트 |
+| `write_migration` | Alembic 마이그레이션 작성 가이드 |
+
+### 6.4 컨텍스트 관리 전략
+
+MCP Tool Search 활성화 시 도구 정의가 컨텍스트의 10% 이상을 차지하면 자동으로 on-demand 로딩:
+
+```python
+# MCP 서버 측 컨텍스트 최적화
+@mcp.tool(description="코드베이스 하이브리드 검색 (벡터+키워드+RRF). 함수/클래스/파일 검색에 사용.")
+async def code_search(query: str, scope: str = None, limit: int = 10):
+    """명확한 description → Claude Code Tool Search가 적절한 시점에 호출"""
+    ...
+
+# 리소스 → 대화 초기에 컨텍스트로 주입 (Tool 호출 없이)
+# 도구 → 필요할 때만 호출 (컨텍스트 절약)
+```
+
+**세션별 컨텍스트 관리 (웹 UI)**:
+- 최근 N개 메시지만 LLM에 전달 (sliding window, 기본 20개)
+- 오래된 메시지는 자동 요약 후 `summary` 필드에 저장
+- 도구 호출 결과는 요약본만 대화 이력에 포함 (원본은 DB에 별도 저장)
+- 세션 시작 시 팀원 role에 맞는 MCP Resource 자동 주입
+
+**MCP 출력 제한**: 도구 결과는 기본 25,000 토큰, `code_search`는 10,000 토큰으로 제한하여 컨텍스트 낭비 방지.
+
+---
+
+## 7. LangGraph 에이전트 (웹 UI용)
+
+MCP 경로: Claude Code가 에이전트 역할 → 에이전트 불필요.
+웹 UI 경로: LangGraph Supervisor가 도구 오케스트레이션.
+
+### 7.1 그래프 구조
+
+```
+START → [supervisor] → 의도 분류 (haiku/mini)
+            ↓
+      ┌─────┼──────┬──────┬──────┐
+      ↓     ↓      ↓      ↓      ↓
+  db_worker code  infra  exec  direct→END
+      │     │      │      │
+      └─────┴──────┴──────┘
+            ↓
+          END (응답 스트리밍)
+```
+
+### 7.2 Worker 4종
+
+| Worker | 도구 조합 | 역할 |
+|--------|----------|------|
+| `db_worker` | db_query + alembic_ops | DB 쿼리, 스키마 탐색, 마이그레이션 |
+| `code_worker` | code_search + file_read + git_ops | 코드 검색, 파일 분석, diff |
+| `infra_worker` | server_status + deploy + git_ops | 서버 상태, 배포, 동기화 |
+| `exec_worker` | code_exec | 코드 실행, Plotly 차트 생성 |
+
+---
+
+## 8. 코드 실행 샌드박스
+
+### 8.1 격리 전략
+
+```python
+container = docker.run(
+    image="python:3.11-slim",
+    network_mode="none",         # 네트워크 차단
+    read_only=True,              # 읽기 전용 FS
+    mem_limit="512m",            # 메모리 제한
+    cpu_count=1,                 # CPU 제한
+    security_opt=["no-new-privileges"],
+    pids_limit=100,              # 프로세스 제한
+    timeout=30,                  # 실행 시간 제한
+)
+```
+
+### 8.2 패키지 화이트리스트
+
+```python
+ALLOWED_PACKAGES = {"pandas", "numpy", "plotly", "matplotlib", "seaborn", "scipy"}
+```
+
+### 8.3 Plotly 차트 자동 감지
+
+코드 실행 후 `plotly.graph_objects.Figure` 인스턴스 감지 → HTML/JSON export → Streamlit `st.plotly_chart()` 렌더링
+
+---
+
+## 9. Streamlit 웹 UI (`pages/dev_assistant.py`)
+
+### 9.1 로그인 흐름
+
+```
+[1단계] 로그인                    [2단계] 팀원 선택
+┌─────────────────────────┐    ┌─────────────────────────────────┐
+│    Adelie Dev Assistant  │    │  안녕하세요! 누구신가요?          │
+│                          │    │                                 │
+│  ID:  [mutsa1234      ]  │    │  🎨 영진  🤖 지훈  ⚙️ 진서     │
+│  PW:  [••••••••       ]  │    │  🧪 례진  🛠️ 형준              │
+│                          │    │                                 │
+│     [🔑 로그인]          │    │  (30일 쿠키 유지)               │
+└─────────────────────────┘    └─────────────────────────────────┘
+```
+
+재접속 시 쿠키로 자동 로그인 → 바로 채팅 화면.
+
+### 9.2 메인 레이아웃
+
+```
+┌─ 사이드바 ─────────────┐ ┌─ 메인 ───────────────────────────────┐
+│ 🛠️ 도형준              │ │ 🛠️ 도형준 | dev-hj | dev/infra | 🟢  │
+│ [🔄 새 대화]            │ │ 🐳 backend-api✅ postgres✅ redis✅   │
+│ 모델: [sonnet-4.6 ▼]   │ ├───────────────────────────────────────┤
+│ 🌙/☀️ 테마 전환         │ │ [🔌DB] [🗄️Alembic] [📝코드] [🚀배포] │
+│ ─────────────────       │ ├───────────────────────────────────────┤
+│ 📊 사용량               │ │ user: briefing API 엔드포인트 보여줘  │
+│  웹UI: 12.3K tokens     │ │                                       │
+│  MCP:  45.6K tokens     │ │ 🔧 tools:                            │
+│  비용: $0.042 (오늘)    │ │  └ code_search: "briefing API" ✅     │
+│ ─────────────────       │ │                                       │
+│ 📅 오늘                 │ │ assistant: 검색 결과입니다:           │
+│ • Alembic 충돌 해결     │ │  📎 fastapi/app/api/routes/briefing.py│
+│ • mock 테스트 디버그     │ │  ```python                           │
+│ 📅 어제                 │ │  @router.get("/today")               │
+│ • LangGraph 노드 에러   │ │  async def get_today_briefing(...)    │
+│ ─────────────────       │ │  ```                                 │
+│ [↔️ 사용자 전환]        │ ├───────────────────────────────────────┤
+│ [🚪 로그아웃]           │ │ [💬 질문 입력...]              [▶실행]│
+└─────────────────────────┘ └───────────────────────────────────────┘
+```
+
+### 9.3 핵심 기능
+
+- **로그인/세션**: mutsa1234 공유 로그인 + 팀원 선택, 쿠키 30일 유지
+- **세션 이력**: PostgreSQL에서 로드, 날짜별 그룹, 사이드바 표시
+- **도구 실행 표시**: 실시간 expander + 완료 뱃지 (✅/❌)
+- **소스 인용**: `📎 file_path:line_number` 클릭 가능 링크
+- **Plotly 차트**: code_exec 결과 인라인 렌더링
+- **모델 전환**: 세션 중 드롭다운으로 변경 가능
+- **사용량 표시**: 사이드바에 오늘/주간 토큰 사용량 + 예상 비용
+- **사용자 전환**: 로그아웃 없이 팀원 전환 (공유 PC 대응)
+
+### 9.4 Light/Dark 모드 테마
+
+기존 대시보드는 Light 모드만 지원. 양쪽 모드를 CSS 변수 기반으로 최적화:
+
+```python
+# utils/ui_components.py 확장
+def inject_theme_css():
+    """CSS 변수 기반 Light/Dark 전환"""
+    theme = st.session_state.get("theme", "light")
+    vars = {
+        "light": {
+            "--bg-primary": "#FFFFFF",
+            "--bg-secondary": "#F8F9FA",
+            "--bg-card": "#FFFFFF",
+            "--text-primary": "#1A1A2E",
+            "--text-secondary": "#6B7280",
+            "--accent": "#FF6B00",
+            "--accent-light": "#FFF3E8",
+            "--border": "#E5E7EB",
+            "--shadow": "0 1px 3px rgba(0,0,0,0.08)",
+            "--code-bg": "#F3F4F6",
+        },
+        "dark": {
+            "--bg-primary": "#0F172A",
+            "--bg-secondary": "#1E293B",
+            "--bg-card": "#1E293B",
+            "--text-primary": "#F1F5F9",
+            "--text-secondary": "#94A3B8",
+            "--accent": "#FF8C38",
+            "--accent-light": "#1C1410",
+            "--border": "#334155",
+            "--shadow": "0 1px 3px rgba(0,0,0,0.3)",
+            "--code-bg": "#0F172A",
+        },
+    }
+    ...
+```
+
+**Streamlit config** (`.streamlit/config.toml`):
+- 기존 `primaryColor = "#FF6B00"` 유지
+- Dark 모드: Streamlit 내장 `base="dark"` + 커스텀 CSS 오버라이드
+- 토글: 사이드바 🌙/☀️ 버튼으로 전환, `st.session_state["theme"]`에 저장
+
+### 9.5 추가 UX 개선
+
+| 기능 | 설명 | 구현 |
+|------|------|------|
+| **코드 구문 강조** | 언어 자동 감지 + `st.code(language=...)` | code_search 결과에 적용 |
+| **대화 내보내기** | 마크다운 형식으로 대화 Export | 사이드바 "📥 내보내기" 버튼 |
+| **Discord 알림** | 장시간 도구 실행 완료 시 알림 | 기존 `DISCORD_PIPELINE_WEBHOOK` 재사용 |
+| **Redis 캐싱** | 자주 조회하는 MCP Resource + 검색 결과 | `infra-server:6379` Redis, TTL 5분 |
+| **Rate Limit** | 웹 UI Claude API 호출 제한 | 팀원당 분당 10회, 일일 200회 |
+| **코드 인덱스 상태** | 마지막 인덱싱 시간 + 파일 수 표시 | 사이드바 하단 인포 배지 |
+
+**대시보드 전체 인증 적용 (`app.py` 수정)**:
+```python
+# infra/docker-dashboard/app.py 최상단
+if not st.session_state.get("authenticated"):
+    _render_login_page()  # mutsa1234 로그인 + 팀원 선택
+    st.stop()
+
+# 인증 후에만 st.navigation() 실행
+pages = st.navigation(...)
+pages.run()
+```
+
+---
+
+## 10. 서버 동기화 (기존 deploy.py 개선)
+
+`pages/deploy.py`에 탭 추가:
+
+```python
+tab1, tab2, tab3 = st.tabs(["🚀 배포", "🔄 LXD 동기화", "❤️ 헬스체크"])
+
+with tab2:  # LXD 동기화
+    col1, col2, col3 = st.columns(3)
+    col1.button("🔄 전체 동기화")    # make -f lxd/Makefile sync-lxd
+    col2.button("🏥 헬스체크")      # make -f lxd/Makefile health-lxd
+    col3.button("🚀 Staging 배포")  # make -f lxd/Makefile deploy-staging
+    # 5개 서버별 브랜치/ahead/behind/컨테이너 테이블 표시
+```
+
+---
+
+## 11. Docker & 배포
+
+### 11.1 docker-compose.dev-assistant.yml
+
+```yaml
+services:
+  dev-assistant:
+    build:
+      context: .
+      dockerfile: devassistant/Dockerfile
+    container_name: adelie-dev-assistant
+    ports:
+      - "10.10.10.16:8090:8090"  # MCP SSE
+      - "10.10.10.16:8502:8502"  # Streamlit
+    env_file: .env
+    environment:
+      LANGCHAIN_PROJECT: adelie-dev-assistant
+      LANGCHAIN_TRACING_V2: "true"
+    volumes:
+      - /home/ubuntu/.ssh/id_ed25519:/root/.ssh/id_ed25519:ro
+      - /home/ubuntu/.ssh/known_hosts:/root/.ssh/known_hosts:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+```
+
+### 11.2 requirements.txt
+
+```
+fastmcp>=2.0.0                 # MCP 서버
+langgraph>=0.3.0               # 에이전트 그래프
+langchain-core>=0.3.0          # 메시지 타입
+langsmith>=0.2.0               # 트레이싱
+tree-sitter-language-pack>=0.5 # AST 파싱
+openai>=1.60.0                 # 임베딩
+anthropic>=0.40.0              # 웹 UI 모델
+asyncpg>=0.30.0                # async DB
+sqlalchemy[asyncio]>=2.0.0     # ORM
+pgvector>=0.3.0                # 벡터 타입
+paramiko>=3.5.0                # SSH
+docker>=7.0.0                  # 샌드박스
+redis>=5.0.0                   # 캐싱 (MCP Resource, 검색 결과)
+streamlit>=1.41                # 웹 UI
+extra-streamlit-components>=0.1 # 쿠키 관리 (로그인 유지)
+plotly>=5.24                   # 차트
+pandas>=2.2                    # 데이터
+tiktoken>=0.7.0                # 토큰 계산
+pydantic-settings>=2.0         # 설정
+```
+
+---
+
+## 12. LangSmith 연동
+
+프로젝트: `adelie-dev-assistant` (기존 `default` 프로젝트와 분리)
+
+```python
+os.environ["LANGCHAIN_PROJECT"] = "adelie-dev-assistant"
+```
+
+모든 도구 호출 + 에이전트 스텝을 `@traceable` 데코레이터로 트레이싱:
+
+```python
+from langsmith.run_helpers import traceable
+
+@traceable(name="tool:code_search", tags=["dev-assistant", "rag"])
+async def code_search(query: str, **kwargs): ...
+```
+
+---
+
+## 13. 사용량 추적 + 비용 대시보드
+
+### 13.1 추적 대상
+
+| 경로 | 추적 방법 | 저장 |
+|------|----------|------|
+| **웹 UI** (Claude API) | API 응답의 `usage` 필드 (prompt/completion tokens) | `devassist_token_usage` 테이블 |
+| **MCP 도구 호출** | 도구 실행 시간 + 결과 크기 기록 | `devassist_audit_log` 테이블 |
+| **임베딩** (OpenAI) | 인덱싱 시 임베딩 토큰 수 | `devassist_token_usage` (provider=openai) |
+| **Claude Code/Codex** (개인) | 각자 `/cost` 명령으로 확인 | 서버 측 추적 불가 (개인 구독) |
+
+### 13.2 비용 계산
+
+```python
+# devassistant/services/usage_service.py
+MODEL_PRICING = {
+    # Claude (per 1M tokens)
+    "claude-sonnet-4-6":   {"input": 3.0,  "output": 15.0},
+    "claude-haiku-4-5":    {"input": 0.80, "output": 4.0},
+    # OpenAI Embedding
+    "text-embedding-3-small": {"input": 0.02, "output": 0},
+}
+
+async def calculate_cost(user_name: str, period: str = "today") -> dict:
+    """팀원별 기간별 비용 집계"""
+    return {
+        "total_tokens": 58200,
+        "total_cost_usd": 0.042,
+        "breakdown": {"web_ui": 0.035, "embedding": 0.007},
+        "period": "2026-02-23",
+    }
+```
+
+### 13.3 웹 UI 사이드바 표시
+
+```
+📊 사용량 (오늘)
+━━━━━━━━━━━━━━━━━
+  웹 UI:  12.3K tokens ($0.035)
+  임베딩:  5.2K tokens ($0.007)
+  합계:   17.5K tokens ($0.042)
+━━━━━━━━━━━━━━━━━
+📋 Claude Code 잔여량 확인:
+  → 세션에서 /cost 입력
+```
+
+> Claude Code/Codex는 개인 구독이므로 서버에서 잔여량을 직접 조회할 수 없음.
+> 대신 사이드바에 `/cost` 명령 안내를 표시하고, `devassist_token_usage` 기반으로 **웹 UI 사용분만** 정확히 추적.
+
+---
+
+## 14. 커밋 전략
+
+| # | 커밋 메시지 | 내용 |
+|---|------------|------|
+| 1 | `chore: devassistant 모듈 초기 구조 및 설정` | config(+TEAM_MEMBERS, +SHARED_LOGIN), schemas, requirements, Dockerfile |
+| 2 | `feat: devassistant DB 스키마 (6테이블, HNSW/ltree/FTS)` | Alembic 마이그레이션 |
+| 3 | `feat: devassistant SSH/Docker/인증 서비스 레이어` | ssh_service, docker_service, auth_service, usage_service |
+| 4 | `feat: devassistant 코드베이스 RAG + 사전 지식 적재` | chunker, embedder, searcher, incremental, knowledge_base |
+| 5 | `feat: devassistant MCP 서버 (도구 8종 + 리소스 8종)` | FastMCP server, tools, resources, prompts, 컨텍스트 관리 |
+| 6 | `feat: devassistant LangGraph Supervisor + Worker 4종` | agent graph, state, workers |
+| 7 | `feat: devassistant 코드 실행 샌드박스` | sandbox_service, Docker 격리 |
+| 8 | `feat: devassistant Streamlit 웹 UI (로그인+테마+사용량)` | 로그인, Light/Dark 테마, 사용량 사이드바, 세션 관리 |
+| 9 | `feat: devassistant Docker Compose + LXD 배포` | docker-compose, .mcp.json |
+| 10 | `test: devassistant 유닛 테스트` | RAG, tools, agent, auth |
+| 11 | `docs: devassistant 설정 가이드 + CLAUDE.md 업데이트` | 문서 |
+
+---
+
+## 15. 검증 체크리스트
+
+### Infrastructure
+- [ ] LXD `dev-assistant` 컨테이너 (10.10.10.16) 생성 + dev-ai 프로파일
+- [ ] Alembic 마이그레이션 성공 (6 테이블 + 인덱스)
+- [ ] SSH 5개 dev 서버 + deploy-test + staging 연결 확인
+- [ ] 대시보드 배포: `ssh deploy-test 'cd ~/adelie-investment/infra/monitoring && docker compose up -d --build nginx dashboard'`
+- [ ] `dashboard.adelie-invest.com` 접속 → 로그인 게이트 동작 확인
+
+### 인증 & 로그인
+- [ ] 웹 UI: mutsa1234 로그인 성공
+- [ ] 팀원 선택 후 세션 시작
+- [ ] 쿠키 유지: 브라우저 재접속 시 자동 로그인
+- [ ] 사용자 전환: 로그아웃 없이 다른 팀원으로 전환
+- [ ] MCP: `DEVASSIST_USER` 환경변수로 식별 확인
+
+### RAG + 사전 지식
+- [ ] tree-sitter 파싱 (Python/JS 전체 파일)
+- [ ] halfvec(768) 임베딩 생성 + HNSW 인덱스 생성
+- [ ] 하이브리드 검색: "JWT 인증 미들웨어" → 관련 코드 반환
+- [ ] ltree 경로 쿼리: `WHERE file_path @> 'fastapi.app.api'` 작동
+- [ ] 사전 적재: CLAUDE.md, docs/, .claude/rules/ 인덱싱 완료
+- [ ] 증분 인덱싱: 파일 수정 후 자동 감지 + 재인덱싱
+
+### MCP
+- [ ] `python -m devassistant.mcp.server` stdio 모드 시작
+- [ ] Claude Code에서 MCP 연결 + 도구 목록 확인
+- [ ] MCP Resource: `@adelie-dev:adelie://guide/backend` 조회 성공
+- [ ] `db_query` SELECT 성공, INSERT 차단 확인
+- [ ] `code_search` 관련 코드 청크 반환
+- [ ] `file_read` SSH로 원격 파일 읽기 성공
+- [ ] `code_exec` 샌드박스 실행 + Plotly 차트 생성
+- [ ] 감사 로그 기록 확인
+
+### Agent (웹 UI)
+- [ ] Supervisor → Worker 라우팅 정상
+- [ ] Streamlit 챗 인터페이스 스트리밍 응답
+- [ ] 세션 이력 사이드바 표시
+- [ ] 사용량 표시: 토큰 수 + 비용 사이드바
+- [ ] Light/Dark 테마 전환 정상
+- [ ] LangSmith `adelie-dev-assistant` 프로젝트에 트레이스 확인
+
+### E2E
+- [ ] Claude Code: "briefing 라우터 GET 엔드포인트 보여줘" → code_search 결과
+- [ ] Claude Code: "deploy-test 서버 상태" → server_status 결과
+- [ ] Codex: "daily_briefings 최근 5건" → db_query 결과
+- [ ] 웹 UI: 동일 쿼리 → 동일 결과 + 차트 렌더링
+- [ ] 클라이언트 이동: 같은 user_name으로 MCP↔웹 UI 세션 이력 공유 확인
+
+---
+
+## 재사용할 기존 코드
+
+| 패턴 | 원본 위치 | 재사용 대상 |
+|------|----------|------------|
+| SSH Pool | `infra/docker-dashboard/utils/ssh.py` | `services/ssh_service.py` |
+| Docker CLI | `infra/docker-dashboard/utils/docker_cmd.py` | `services/docker_service.py` |
+| SQL Guard | `infra/docker-dashboard/utils/database.py` | `mcp/tools/db_query.py` |
+| Claude Stream | `infra/docker-dashboard/utils/claude_client.py` | `agent/` (웹 UI) |
+| Server Context | `infra/docker-dashboard/utils/context_collector.py` | `mcp/tools/server_status.py` |
+| pgvector 마이그레이션 | `database/alembic/versions/20260211_*.py` | HNSW+halfvec+ltree 마이그레이션 |
+| LangGraph 패턴 | `datapipeline/graph.py` | `agent/graph.py` |
+| Pydantic Settings | `fastapi/app/core/config.py` | `devassistant/config.py` |
+| GenericRepository | `fastapi/app/repositories/base.py` | `db/repository.py` |
+| Chatbot UI | `infra/docker-dashboard/pages/chatbot.py` | `pages/dev_assistant.py` |
+| CSS 테마 | `infra/docker-dashboard/utils/ui_components.py` (inject_custom_css) | `utils/ui_components.py` (Light/Dark) |
+| Streamlit Config | `infra/docker-dashboard/.streamlit/config.toml` | `.streamlit/config.toml` (Dark 추가) |
+| 팀원 가이드 | `docs/team-guides/*.md` (5개 파일) | MCP Resource `adelie://guide/{role}` |
+| 프로젝트 문서 | `docs/getting-started/*.md`, `docs/reference/*.md` | RAG 인덱싱 + MCP Resource |
+| Nginx 설정 | `infra/monitoring/nginx-dashboard.conf` | WebSocket + path rewrite 유지 |
+| 대시보드 배포 | `infra/monitoring/docker-compose.yml` (dashboard 서비스) | Dockerfile + compose 수정 |
+| Discord 알림 | `fastapi/app/core/scheduler.py` (`_notify_discord`) | `services/` 재사용 패턴 |
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+[Request interrupted by user]
+
+---
+
+해당 계획은 일단 보류하는 것으로 하자. 다른 세션에서 진행 중인 것들에 영향을 주지 않도록 롤백해라.

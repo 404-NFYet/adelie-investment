@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "234de7d2eb07",
+  "session_id": "02cbcf8b-9c6e-4235-9ed1-e0f78b61506e",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-21T13:02:59.229252932Z",
+  "branch": "develop",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "Makefile",
+    "database/scripts/sync_dev_data.sh",
+    "lxd/Makefile"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 82,
+    "cache_creation_tokens": 78954,
+    "cache_read_tokens": 4624154,
+    "output_tokens": 16282,
+    "api_call_count": 74
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-21T13:02:59.191603641Z",
+    "agent_lines": 0,
+    "human_added": 145,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 145,
+    "agent_percentage": 0
+  }
+}

@@ -1,0 +1,102 @@
+Implement the following plan:
+
+# 데이터 파이프라인 추가 버그 수정
+
+## Context
+
+2026-02-24 파이프라인 3회 실행 중 누적 발견한 버그들. 현재 3차 실행이 진행 중이며
+`assemble_output` 패치(glossary None→[])가 적용되어 통과 가능성이 높다.
+그러나 **2개의 구조적 버그가 남아 있어 매 실행마다 품질 저하가 발생**하므로 추가 수정이 필요하다.
+
+---
+
+## 기수정 이력 (이번 세션)
+
+| 회차 | 실패 지점 | 수정 파일 | 수정 내용 |
+|------|-----------|-----------|-----------|
+| 1차 | `validate_interface2` (이전 세션) | `hallucination_check.md` | `max_tokens: 3000→6000` |
+| 1차 | `validate_interface2` (이전 세션) | `nodes/interface2.py` | 불완전 응답 시 원본 fallback |
+| 2차 | `run_hallcheck_glossary` | `3_hallcheck_glossary.md` | `max_tokens: 6000` 추가 |
+| 2차 | `run_hallcheck_glossary` | `nodes/interface3.py` | JSONParseError → 원본 glossary fallback |
+| 3차 | `assemble_output` | `nodes/interface3.py` | pages 조립 전 `glossary/bullets: None→[]` 정규화 |
+
+---
+
+## 추가 수정 필요한 버그 2개
+
+### Bug A: `3_tone_final` max_tokens 부족 (매 실행마다 발생)
+
+**현상**: 매 실행마다 `3_tone_final`이 5000 토큰 한도에서 잘림 → JSON retry 2회 → gpt-5.2 폴백 → 페이지 수 손실 (5→4 또는 6→4)
+**근본 원인**: `3_tone_final.md:4` `max_tokens: 5000` — 입력이 이미 ~8500 토큰이고 출력(6페이지 full JSON)에 ~6000~8000 토큰 필요
+
+**수정 대상**:
+- `datapipeline/prompts/templates/3_tone_final.md:4`
+  - `max_tokens: 5000` → `max_tokens: 8000`
+
+**추가 방어 (run_tone_final_node)**:
+- `datapipeline/nodes/interface3.py:688-691` — `normalized_pages` 결과 수가 `validated_pages` 수보다 적으면 WARNING 후 `validated_pages` 기반으로 재조립(글로사리 병합만 수행)
+
+```python
+# 라인 688 이후 추가할 로직
+if len(normalized_pages) < len(validated_pages):
+    logger.warning(
+        "  run_tone_final 페이지 손실(%d→%d) → validated_pages + glossary 직접 병합 fallback",
+        len(validated_pages), len(normalized_pages),
+    )
+    glossary_map = {pg["step"]: pg.get("glossary", []) for pg in validated_glossaries}
+    normalized_pages = _normalize_pages([
+        {**p, "glossary": glossary_map.get(p["step"], [])} for p in validated_pages
+    ])
+    normalized_pages = _enforce_story_spine(normalized_pages, state.get("raw_narrative", {}))
+```
+
+---
+
+### Bug B: `get_corp_financials` / `search_web_for_chart_data` 항상 실패 (0 charts)
+
+**현상**: 매 실행마다 모든 차트 툴 호출 실패
+```
+Tool get_corp_financials failed: 'StructuredTool' object is not callable
+```
+**근본 원인**: `chart_agent.py:27-31` AVAILABLE_TOOLS에 `@tool` 데코레이터가 반환한 StructuredTool 객체를 저장하고, `chart_agent.py:320`에서 `(**args)` 직접 호출 — StructuredTool은 직접 callable이 아니며 `.invoke()` 사용 필요
+
+**수정 대상**:
+- `datapipeline/nodes/chart_agent.py:320`
+  - `output = AVAILABLE_TOOLS[tool_name](**args)` → `output = AVAILABLE_TOOLS[tool_name].invoke(args)`
+
+---
+
+## 수정 우선순위
+
+| 우선순위 | 버그 | 파이프라인 영향 | 비고 |
+|----------|------|---------------|------|
+| 1 (즉시) | Bug A: `3_tone_final` max_tokens | 매 실행 JSON 잘림, 페이지 손실 | 현재 3차 실행은 가동 중 - 다음 실행 전 반영 필요 |
+| 2 (즉시) | Bug A: page 손실 방어 로직 | 폴백 없으면 assemble 실패 가능 | Bug A max_tokens 수정과 세트 |
+| 3 (기능) | Bug B: chart tool 호출 | 항상 0 charts 생성됨 (파이프라인은 진행) | 서비스 품질 저하 |
+
+---
+
+## 검증 방법
+
+```bash
+# 1. 3차 실행 완료 확인
+ssh deploy-test "docker exec adelie-backend-api bash -c 'tail -30 /tmp/pipeline_20260224_024750.log'"
+
+# 2. DB 결과 확인 (3차 실행 후)
+docker cp /tmp/check_db.py adelie-backend-api:/tmp/check_db.py
+docker exec adelie-backend-api python /tmp/check_db.py
+
+# 3. API 확인
+curl https://demo.adelie-invest.com/api/v1/keywords/today
+```
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+데이터 수집이 올바르게 이뤄지지 않은 경우, 올바르게 모두 수집되게 진행해야 한다.
+
+---
+
+[Request interrupted by user for tool use]

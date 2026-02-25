@@ -1,0 +1,45 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "234de7d2eb07",
+  "session_id": "0b4da217-d024-4b8f-abfb-93d987ec28ea",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-24T01:23:19.587934444Z",
+  "branch": "feature/canvas-agent-v4",
+  "checkpoints_count": 9,
+  "files_touched": [
+    "fastapi/app/api/routes/tutor.py",
+    "fastapi/app/models/tutor.py",
+    "fastapi/requirements.txt",
+    "frontend/src/components/agent/AgentCanvasSections.jsx",
+    "frontend/src/components/agent/SlashCommandMenu.jsx",
+    "frontend/src/components/narrative/MarkdownBody.jsx",
+    "frontend/src/components/tutor/ChatInput.jsx",
+    "frontend/src/components/tutor/MessageBubble.jsx",
+    "frontend/src/components/tutor/SessionSidebar.jsx",
+    "frontend/src/components/tutor/TutorModal.jsx",
+    "frontend/src/components/tutor/TutorPanel.jsx",
+    "frontend/src/contexts/TutorChatContext.jsx",
+    "frontend/src/contexts/TutorContext.jsx",
+    "frontend/src/contexts/TutorSessionContext.jsx",
+    "frontend/src/contexts/TutorUIContext.jsx",
+    "frontend/src/pages/Profile.jsx",
+    "frontend/src/pages/TutorChat.jsx"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 159,
+    "cache_creation_tokens": 297435,
+    "cache_read_tokens": 11927000,
+    "output_tokens": 29240,
+    "api_call_count": 119
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-24T01:23:19.323402384Z",
+    "agent_lines": 0,
+    "human_added": 3178,
+    "human_modified": 159,
+    "human_removed": 0,
+    "total_committed": 3337,
+    "agent_percentage": 0
+  }
+}

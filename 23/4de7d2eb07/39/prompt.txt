@@ -1,0 +1,527 @@
+Implement the following plan:
+
+# dev-final/* 브랜치 생성 + LXD 서버 동기화 + DB 복제
+
+## Context
+
+deploy-test 서버에 `release/feb20-stable`로 롤백이 완료된 상태.
+이제 팀원들의 각 LXD 개발 서버도 **동일한 feb20-stable 코드 베이스**로 맞추고,
+각 파트별 `dev-final/*` 작업 브랜치를 생성하여 checkout까지 완료해야 한다.
+프로덕션 DB에 최신 파이프라인 데이터가 수집 중이므로, 완료 후 infra-server 공유 DB에도 복제한다.
+
+---
+
+## 현재 LXD 환경 현황
+
+| 서버 | IP | 역할 | 담당자 | 현재 브랜치 |
+|------|-----|------|--------|-------------|
+| dev-yj99son | 10.10.10.14 | 프론트엔드 | YJ99Son | dev/frontend |
+| dev-j2hoon10 | 10.10.10.11 | AI/챗봇 | J2hoon10 | dev/chatbot |
+| dev-jjjh02 | 10.10.10.12 | 백엔드 | jjjh02 | dev/backend |
+| dev-ryejinn | 10.10.10.13 | 파이프라인 QA | ryejinn | dev/pipeline |
+| dev-hj | 10.10.10.15 | 인프라 | dorae222 | dev/infra |
+
+- **접속방법**: `lxc exec dev-{name} -- bash -c "..."` (호스트 머신에서)
+- **프로젝트 경로**: `/home/ubuntu/adelie-investment`
+- **DB**: 모든 서버가 infra-server 공유 DB (`10.10.10.10:5432/narrative_invest`) 공유 사용
+- **docker-compose**: `docker-compose.dev.yml` — frontend/backend-api/ai-pipeline 모두 로컬 빌드 포함
+
+---
+
+## 브랜치 설계
+
+`release/feb20-stable` (HEAD: `091a1bb`)을 베이스로, 각 `dev/X`의 최신 작업을 머지한 `dev-final/X` 5개 생성
+
+```
+release/feb20-stable
+       ├── merge origin/dev/frontend  → dev-final/frontend  (dev-yj99son)
+       ├── merge origin/dev/backend   → dev-final/backend   (dev-jjjh02)
+       ├── merge origin/dev/chatbot   → dev-final/chatbot   (dev-j2hoon10)
+       ├── merge origin/dev/pipeline  → dev-final/pipeline  (dev-ryejinn)
+       └── merge origin/dev/infra     → dev-final/infra     (dev-hj)
+```
+
+| 브랜치 | 담당 서버 | 담당자 | 포함 내용 |
+|--------|----------|--------|---------|
+| `dev-final/frontend` | dev-yj99son | YJ99Son | feb20-stable + dev/frontend 최신 |
+| `dev-final/chatbot` | dev-j2hoon10 | J2hoon10 | feb20-stable + dev/chatbot 최신 |
+| `dev-final/backend` | dev-jjjh02 | jjjh02 | feb20-stable + dev/backend 최신 |
+| `dev-final/pipeline` | dev-ryejinn | ryejinn | feb20-stable + dev/pipeline 최신 |
+| `dev-final/infra` | dev-hj | dorae222 | feb20-stable + dev/infra 최신 |
+
+> ⚠️ **머지 충돌 가능성**: `dev/*`와 `feb20-stable`이 diverge된 파일이 있을 경우 충돌 발생 가능.
+> 충돌 시 해당 팀원과 협의 후 수동 해결 필요.
+
+---
+
+## DB 동기화 전략
+
+```
+deploy-test (prod adelie-postgres)
+         ↓ sync_dev_data.sh
+infra-server (10.10.10.10:5432/narrative_invest)
+         ↑ 모든 LXD 서버가 .env → DATABASE_URL로 연결
+```
+
+- `sync_dev_data.sh` 기본 타겟: infra-server 공유 DB → 한 번만 실행하면 전체 반영
+- 동기화 테이블: stock_listings, daily_briefings, briefing_stocks, historical_cases, case_matches, case_stock_relations, broker_reports
+- **타이밍**: 현재 파이프라인 수집 중 → 완료 확인 후 sync
+
+---
+
+## 실행 계획
+
+### Step 1: dev-final/* 브랜치 생성 (release/feb20-stable + dev/* 머지)
+
+**파일**: `lxd/Makefile`에 `dev-final-branches` 타겟 추가
+
+실행 로직:
+```bash
+CURRENT=$(git branch --show-current)
+
+# 각 파트별 브랜치 생성 + dev/* 머지
+declare -A PARTS=(
+  [frontend]=dev/frontend
+  [chatbot]=dev/chatbot
+  [backend]=dev/backend
+  [pipeline]=dev/pipeline
+  [infra]=dev/infra
+)
+
+for part in "${!PARTS[@]}"; do
+  git checkout release/feb20-stable
+  git checkout -b dev-final/$part 2>/dev/null || git checkout dev-final/$part
+  git fetch origin
+  git merge --no-edit origin/${PARTS[$part]} && \
+    git push origin dev-final/$part && \
+    echo "  ✅ dev-final/$part" || \
+    echo "  ⚠️ dev-final/$part: 충돌 발생 — 수동 해결 필요"
+done
+
+git checkout $CURRENT  # 원래 브랜치 복귀
+```
+
+> 충돌 발생 시 해당 브랜치에서 수동 해결 후 `git push origin dev-final/$part`
+
+### Step 2: 각 LXD 서버에서 dev-final/* checkout
+
+**파일**: `lxd/Makefile`에 `dev-final-checkout` 타겟 추가
+
+실행 로직 (서버당):
+```bash
+lxc exec dev-yj99son -- bash -c "
+  cd /home/ubuntu/adelie-investment
+  git fetch origin
+  git stash 2>/dev/null || true   # 미커밋 변경사항 임시 보관
+  git checkout dev-final/frontend
+  echo '✅ dev-yj99son: dev-final/frontend'
+"
+```
+
+각 서버 → 각 브랜치 매핑으로 동일하게 처리.
+
+### Step 3: Docker 이미지 재빌드 + 서비스 재시작
+
+**파일**: `lxd/Makefile`에 `dev-final-rebuild` 타겟 추가
+
+docker-compose.dev.yml의 frontend/backend-api/ai-pipeline 모두 로컬 빌드 대상이므로
+feb20-stable 코드 기반으로 전체 rebuild 필요:
+```bash
+lxc exec dev-{name} -- bash -c "
+  cd /home/ubuntu/adelie-investment
+  docker compose -f docker-compose.dev.yml build --no-cache frontend backend-api 2>&1 | tail -5
+  docker compose -f docker-compose.dev.yml up -d --remove-orphans
+"
+```
+
+> ai-pipeline은 개발 중 상시 실행 필요 없으므로 frontend + backend-api만 rebuild.
+> ai-pipeline은 필요 시 수동 빌드.
+
+### Step 4: DB sync (사용자 신호 대기 후 별도 실행)
+
+파이프라인 수집 완료 알림을 받은 후 실행:
+```bash
+bash database/scripts/sync_dev_data.sh
+# 또는
+make sync-dev-data
+```
+
+> ⏳ **Step 1~3은 즉시 실행, Step 4는 사용자 알림 후 별도 실행**
+
+---
+
+## 수정 대상 파일
+
+| 파일 | 변경 내용 |
+|------|---------|
+| `lxd/Makefile` | `dev-final-branches`, `dev-final-checkout`, `dev-final-rebuild`, `dev-final-setup` 타겟 추가 |
+
+---
+
+## Makefile 타겟 설계 (`lxd/Makefile`)
+
+```makefile
+# dev-final/* 브랜치 생성 (release/feb20-stable + dev/* 머지)
+dev-final-branches:
+	@echo "=== dev-final/* 브랜치 생성 (feb20-stable + dev/* 머지) ==="
+	@cd $(ROOT) && CURRENT=$$(git branch --show-current); \
+	git fetch origin; \
+	for entry in "frontend:dev/frontend" "chatbot:dev/chatbot" "backend:dev/backend" "pipeline:dev/pipeline" "infra:dev/infra"; do \
+		part=$${entry%%:*}; src=$${entry##*:}; \
+		git checkout release/feb20-stable; \
+		git checkout -b dev-final/$$part 2>/dev/null || git checkout dev-final/$$part; \
+		git merge --no-edit origin/$$src \
+			&& git push origin dev-final/$$part \
+			&& echo "  ✅ dev-final/$$part (← $$src)" \
+			|| echo "  ⚠️ dev-final/$$part: 충돌 발생 — 수동 해결 필요"; \
+	done; \
+	git checkout $$CURRENT
+	@echo "=== 브랜치 생성 완료 ==="
+
+# 각 LXD 서버에서 dev-final/* checkout
+dev-final-checkout:
+    @echo "=== 각 LXD 서버 dev-final/* checkout ==="
+    @lxc exec dev-yj99son  -- bash -c "cd /home/ubuntu/adelie-investment && git fetch origin && git stash 2>/dev/null; git checkout dev-final/frontend  && echo '  ✅ dev-yj99son: dev-final/frontend'"  2>/dev/null || echo "  ❌ dev-yj99son"
+    @lxc exec dev-j2hoon10 -- bash -c "cd /home/ubuntu/adelie-investment && git fetch origin && git stash 2>/dev/null; git checkout dev-final/chatbot   && echo '  ✅ dev-j2hoon10: dev-final/chatbot'"  2>/dev/null || echo "  ❌ dev-j2hoon10"
+    @lxc exec dev-jjjh02   -- bash -c "cd /home/ubuntu/adelie-investment && git fetch origin && git stash 2>/dev/null; git checkout dev-final/backend  && echo '  ✅ dev-jjjh02: dev-final/backend'"   2>/dev/null || echo "  ❌ dev-jjjh02"
+    @lxc exec dev-ryejinn  -- bash -c "cd /home/ubuntu/adelie-investment && git fetch origin && git stash 2>/dev/null; git checkout dev-final/pipeline  && echo '  ✅ dev-ryejinn: dev-final/pipeline'"  2>/dev/null || echo "  ❌ dev-ryejinn"
+    @lxc exec dev-hj       -- bash -c "cd /home/ubuntu/adelie-investment && git fetch origin && git stash 2>/dev/null; git checkout dev-final/infra     && echo '  ✅ dev-hj: dev-final/infra'"        2>/dev/null || echo "  ❌ dev-hj"
+    @echo "=== checkout 완료 ==="
+
+# 각 LXD 서버 Docker 재빌드 + up -d
+dev-final-rebuild:
+    @echo "=== 각 LXD 서버 Docker 재빌드 ==="
+    @for srv in dev-yj99son dev-j2hoon10 dev-jjjh02 dev-ryejinn dev-hj; do \
+        echo "  📦 $$srv 빌드 중..."; \
+        lxc exec $$srv -- bash -c " \
+            cd /home/ubuntu/adelie-investment && \
+            docker compose -f docker-compose.dev.yml build frontend backend-api 2>&1 | tail -3 && \
+            docker compose -f docker-compose.dev.yml up -d --remove-orphans" \
+            && echo "  ✅ $$srv 재시작 완료" || echo "  ❌ $$srv 빌드 실패"; \
+    done
+    @echo "=== 재빌드 완료 ==="
+
+# dev-final 전체 셋업 (브랜치 생성 → checkout → 재빌드)
+dev-final-setup: dev-final-branches dev-final-checkout dev-final-rebuild
+    @echo "✅ dev-final 전체 셋업 완료"
+```
+
+---
+
+## 검증
+
+```bash
+# 1. 브랜치 확인
+git branch -a | grep dev-final
+
+# 2. 각 서버 브랜치 + 컨테이너 상태
+make -f lxd/Makefile health-lxd
+
+# 3. DB sync (파이프라인 완료 후)
+make sync-dev-data
+
+# 4. 개별 서버 접속 테스트
+lxc exec dev-yj99son -- bash -c "
+  cd /home/ubuntu/adelie-investment
+  git branch --show-current            # dev-final/frontend
+  curl -sf http://localhost:8082/api/v1/health && echo 'API ✅'
+  curl -sf http://localhost:3001 && echo 'Frontend ✅'
+"
+```
+
+---
+
+## 리스크 및 주의사항
+
+- **git stash로 인한 변경사항 보관**: 각 서버에 미커밋 변경이 있으면 stash에 보관됨. 팀원에게 `git stash pop` 안내 필요.
+- **Docker 빌드 시간**: 각 서버에서 병렬 실행되지만 순차이므로 5서버 × ~3분 ≒ 15분 소요 가능. `dev-final-rebuild`를 개별로 실행하면 빠름.
+- **DB sync 타이밍**: 파이프라인 수집 완료 후 sync해야 최신 데이터 반영. Discord 알림 확인 또는 `docker logs`로 완료 확인.
+- **담당자 커밋**: `dev-final-branches` 타겟이 브랜치를 push할 때 현재 git config(dorae222)로 진행. 브랜치 생성 push는 커밋이 없으므로 무방.
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+다음 단계를 모두 실행해라. 미커밋 변경사항은 팀원별로 다 백업을 진행 완료했다.
+
+---
+
+<task-notification>
+<task-id>af22106d97da4ebd0</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<status>completed</status>
+<summary>Agent "dev-yj99son Docker 재빌드" completed</summary>
+<result>Full output:
+
+```
+#31 [frontend] resolving provenance for metadata file
+#31 DONE 0.0s
+ Image dorae222/adelie-backend-api:latest Built
+ Image dorae222/adelie-frontend-dev:latest Built
+ Container adelie-investment-backend-api-1 Started
+ Container adelie-investment-backend-api-1 Waiting
+ Container adelie-investment-backend-api-1 Healthy
+ Container adelie-investment-frontend-1 Starting
+ Container adelie-investment-frontend-1 Started
+=== dev-yj99son 완료 ===
+NAME                              STATUS
+adelie-investment-backend-api-1   Up 5 seconds (healthy)
+adelie-investment-frontend-1      Up Less than a second
+adelie-investment-postgres-1      Up 9 hours (healthy)
+adelie-investment-redis-1         Up 9 hours (healthy)
+```
+
+Summary:
+
+- Both `frontend` and `backend-api` images built successfully.
+- All 4 containers are running on `dev-yj99son`:
+  - `adelie-investment-backend-api-1` — Up, healthy
+  - `adelie-investment-frontend-1` — Up
+  - `adelie-investment-postgres-1` — Up 9 hours, healthy
+  - `adelie-investment-redis-1` — Up 9 hours, healthy
+- No errors encountered.</result>
+<usage><total_tokens>16401</total_tokens><tool_uses>1</tool_uses><duration_ms>19718</duration_ms></usage>
+</task-notification>
+Full transcript available at: REDACTED.output
+
+---
+
+<task-notification>
+<task-id>a1bdd803e9fa5531b</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<status>completed</status>
+<summary>Agent "dev-j2hoon10 Docker 재빌드" completed</summary>
+<result>전체 출력 결과입니다.
+
+**빌드 오류 요약:**
+
+1. `backend-api` 빌드 실패
+   - 오류: `"/chatbot": not found`
+   - 원인: `fastapi/Dockerfile`이 빌드 컨텍스트에서 `chatbot/` 디렉토리를 참조하는데, 해당 경로가 존재하지 않음 (dev-j2hoon10의 로컬 저장소에 `chatbot/` 디렉토리가 없거나, worktree 구조 문제)
+
+2. `.env` 파일 없음
+   - `/home/ubuntu/adelie-investment/.env` 파일이 존재하지 않음
+   - `up -d` 실행 시 env 파일을 찾지 못했지만, 기존 컨테이너는 계속 실행 중
+
+**현재 컨테이너 상태:**
+
+| NAME | STATUS |
+|---|---|
+| adelie-investment-backend-api-1 | Up 21 hours (unhealthy) |
+| adelie-investment-frontend-1 | Up 21 hours |
+| adelie-investment-postgres-1 | Up 21 hours (healthy) |
+| adelie-investment-redis-1 | Up 21 hours (healthy) |
+
+빌드가 실패했으므로 컨테이너는 이전 이미지로 계속 실행 중이며, `backend-api`는 `unhealthy` 상태입니다. 해결을 위해 두 가지 조치가 필요합니다:
+- dev-j2hoon10에 `.env` 파일 생성
+- `chatbot/` 디렉토리가 해당 서버의 저장소에 존재하는지 확인 (브랜치 또는 git pull 문제일 수 있음)</result>
+<usage><total_tokens>16549</total_tokens><tool_uses>1</tool_uses><duration_ms>14231</duration_ms></usage>
+</task-notification>
+Full transcript available at: REDACTED.output
+
+---
+
+<task-notification>
+<task-id>a9100ce251aae5268</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<status>completed</status>
+<summary>Agent "dev-jjjh02 Docker 재빌드" completed</summary>
+<result>Full output:
+
+```
+#31 [backend-api] resolving provenance for metadata file
+#31 DONE 0.0s
+ Image dorae222/adelie-frontend-dev:latest Built
+ Image dorae222/adelie-backend-api:latest Built
+ Container adelie-investment-backend-api-1 Started
+ Container adelie-investment-backend-api-1 Waiting
+ Container adelie-investment-backend-api-1 Healthy
+ Container adelie-investment-frontend-1 Starting
+ Container adelie-investment-frontend-1 Started
+=== dev-jjjh02 완료 ===
+NAME                              STATUS
+adelie-investment-backend-api-1   Up 5 seconds (healthy)
+adelie-investment-frontend-1      Up Less than a second
+adelie-investment-postgres-1      Up 20 hours (healthy)
+adelie-investment-redis-1         Up 20 hours (healthy)
+```
+
+Build and startup completed successfully on dev-jjjh02. All 4 containers are running:
+
+- `adelie-investment-backend-api-1` — Up 5 seconds (healthy)
+- `adelie-investment-frontend-1` — Up (just started)
+- `adelie-investment-postgres-1` — Up 20 hours (healthy)
+- `adelie-investment-redis-1` — Up 20 hours (healthy)
+
+Both `dorae222/adelie-frontend-dev:latest` and `dorae222/adelie-backend-api:latest` images were built successfully, with no errors.</result>
+<usage><total_tokens>16441</total_tokens><tool_uses>1</tool_uses><duration_ms>18872</duration_ms></usage>
+</task-notification>
+Full transcript available at: /tmp/claude-1000/-home-hj-2026-project-adelie-investment/tasks/a9100ce251aae5268.output
+
+---
+
+<task-notification>
+<task-id>a487365d901aa838e</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<status>completed</status>
+<summary>Agent "dev-ryejinn Docker 재빌드" completed</summary>
+<result>Full output:
+
+```
+#31 [backend-api] resolving provenance for metadata file
+#31 DONE 0.0s
+ Image dorae222/adelie-backend-api:latest Built
+ Image dorae222/adelie-frontend-dev:latest Built
+ Container adelie-investment-backend-api-1 Started
+ Container adelie-investment-backend-api-1 Waiting
+ Container adelie-investment-backend-api-1 Healthy
+ Container adelie-investment-frontend-1 Starting
+ Container adelie-investment-frontend-1 Started
+=== dev-ryejinn 완료 ===
+NAME                                STATUS
+adelie-investment-backend-api-1     Up 5 seconds (healthy)
+adelie-investment-frontend-1        Up Less than a second
+adelie-investment-postgres-1        Up 11 seconds (healthy)
+adelie-investment-redis-1           Up 11 seconds (healthy)
+```
+
+dev-ryejinn 서버의 빌드 및 배포가 정상적으로 완료되었습니다.
+
+- `dorae222/adelie-backend-api:latest` 빌드 완료
+- `dorae222/adelie-frontend-dev:latest` 빌드 완료
+- 4개 컨테이너 모두 정상 실행 중:
+  - `adelie-investment-backend-api-1`: Up (healthy)
+  - `adelie-investment-frontend-1`: Up
+  - `adelie-investment-postgres-1`: Up (healthy)
+  - `adelie-investment-redis-1`: Up (healthy)</result>
+<usage><total_tokens>16455</total_tokens><tool_uses>1</tool_uses><duration_ms>75794</duration_ms></usage>
+</task-notification>
+Full transcript available at: REDACTED.output
+
+---
+
+<task-notification>
+<task-id>a74bdee3405046821</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<status>completed</status>
+<summary>Agent "dev-hj Docker 재빌드" completed</summary>
+<result>전체 출력 결과입니다:
+
+**빌드 결과 (마지막 5줄)**
+```
+#31 [backend-api] resolving provenance for metadata file
+#31 DONE 0.0s
+ Image dorae222/adelie-frontend-dev:latest Built
+ Image dorae222/adelie-backend-api:latest Built
+```
+
+**컨테이너 기동 결과 (마지막 5줄)**
+```
+ Container adelie-investment-backend-api-1 Started
+ Container adelie-investment-backend-api-1 Waiting
+ Container adelie-investment-backend-api-1 Healthy
+ Container adelie-investment-frontend-1 Starting
+ Container adelie-investment-frontend-1 Started
+```
+
+**=== dev-hj 완료 ===**
+
+**컨테이너 상태**
+
+| NAME | STATUS |
+|------|--------|
+| adelie-investment-backend-api-1 | Up 5 seconds (healthy) |
+| adelie-investment-frontend-1 | Up Less than a second |
+| adelie-investment-postgres-1 | Up 41 hours (healthy) |
+| adelie-investment-redis-1 | Up 4 days (healthy) |
+
+모든 컨테이너가 정상 기동되었습니다. frontend와 backend-api 이미지 빌드가 완료되었고, postgres와 redis는 기존에 이미 실행 중이었습니다. backend-api는 헬스체크까지 통과(healthy)한 상태입니다.</result>
+<usage><total_tokens>16463</total_tokens><tool_uses>1</tool_uses><duration_ms>72057</duration_ms></usage>
+</task-notification>
+Full transcript available at: REDACTED.output
+
+---
+
+<task-notification>
+<task-id>ad2e7b4891f9951b1</task-id>
+<tool-use-id>toolu_01QoBY9JrAUoAPumgNdwiCei</tool-use-id>
+<status>completed</status>
+<summary>Agent "dev-j2hoon10 Docker 재빌드 (수정 후)" completed</summary>
+<result>Full output:
+
+```
+#24 [frontend] exporting to image
+#24 unpacking to docker.io/dorae222/adelie-frontend-dev:latest 5.6s done
+#24 DONE 7.0s
+
+#31 [frontend] resolving provenance for metadata file
+#31 DONE 0.0s
+ Image dorae222/adelie-backend-api:latest Built
+ Image dorae222/adelie-frontend-dev:latest Built
+ Container adelie-investment-backend-api-1 Started
+ Container adelie-investment-backend-api-1 Waiting
+ Container adelie-investment-backend-api-1 Healthy
+ Container adelie-investment-frontend-1 Starting
+ Container adelie-investment-frontend-1 Started
+=== dev-j2hoon10 재빌드 완료 ===
+NAME                              STATUS
+adelie-investment-backend-api-1   Up 5 seconds (healthy)
+adelie-investment-frontend-1      Up Less than a second
+adelie-investment-postgres-1      Up 21 hours (healthy)
+adelie-investment-redis-1         Up 21 hours (healthy)
+```
+
+결과 요약:
+
+- `dorae222/adelie-backend-api:latest` — 빌드 완료
+- `dorae222/adelie-frontend-dev:latest` — 빌드 완료
+- `adelie-investment-backend-api-1` — Up 5 seconds (healthy)
+- `adelie-investment-frontend-1` — Up (실행 중)
+- `adelie-investment-postgres-1` — Up 21 hours (healthy)
+- `adelie-investment-redis-1` — Up 21 hours (healthy)
+
+dev-j2hoon10 컨테이너 재빌드 및 재시작이 정상 완료되었습니다. 4개 서비스 모두 정상 실행 중입니다.</result>
+<usage><total_tokens>16615</total_tokens><tool_uses>1</tool_uses><duration_ms>25899</duration_ms></usage>
+</task-notification>
+Full transcript available at: REDACTED.output
+
+---
+
+이어서 진행해라
+
+---
+
+<task-notification>
+<task-id>a400988f8160bfec2</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<status>completed</status>
+<summary>Agent "jjjh02/ryejinn/hj 올바른 코드로 재빌드" completed</summary>
+<result>세 서버 모두 재빌드 및 재시작 완료입니다.
+
+---
+
+### 결과 요약
+
+| 서버 | 최신 커밋 | frontend | backend-api | postgres | redis |
+|------|-----------|----------|-------------|----------|-------|
+| dev-jjjh02 | `2b3d7b9` chore: staging 서버 인프라 제거 | Up | Up (healthy) | Up 21h (healthy) | Up 21h (healthy) |
+| dev-ryejinn | `7dccb3d` Fix narrative formatting | Up | Up (healthy) | Up 23m (healthy) | Up 23m (healthy) |
+| dev-hj | `2b3d7b9` chore: staging 서버 인프라 제거 | Up | Up (healthy) | Up 41h (healthy) | Up 41h (healthy) |
+
+주목할 점:
+- dev-ryejinn의 최신 커밋이 `7dccb3d`로 다른 두 서버(`2b3d7b9`)와 다릅니다. dev-ryejinn 브랜치가 다른 커밋을 가리키고 있으니, 필요하다면 `git pull` 또는 브랜치 동기화가 필요할 수 있습니다.
+- 세 서버 모두 `--no-cache` 빌드 후 모든 컨테이너가 정상 기동되었습니다.</result>
+<usage><total_tokens>17833</total_tokens><tool_uses>3</tool_uses><duration_ms>211695</duration_ms></usage>
+</task-notification>
+Full transcript available at: REDACTED.output
+
+---
+
+현재 https://demo.adelie-invest.com/의 서버를 체크하고, 아직 데이터가 1건만 모였는데 이를 확인하여 현재 DB에 잘 적재해라.
+그리고 팀원별로 DB를 따로 이미지로 만들고 데이터를 복재해야 한다.
+또한 배포 서버의 코드도 올바르게 업데이트 해야하며, 내부 에러가 발생하는데 파악하고 해당 내용들을 올바르게 작동하도록 수정해라.
+
+---
+
+[Request interrupted by user for tool use]

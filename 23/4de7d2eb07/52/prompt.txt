@@ -1,0 +1,521 @@
+Implement the following plan:
+
+# 남은 작업: 커밋 + 전 환경 동기화 + 문서 업데이트
+
+## Context
+
+이전 세션에서 3개 파트 코드 작업 완료:
+- **Part 1**: `sync_dev_data.sh` + `lxd/Makefile` sync-dev-data 타겟 (unstaged)
+- **Part 2**: `scheduler.py` + `auth.py` 로그 네임스페이스 수정 (unstaged)
+- **Part 3**: `dev-final/pipeline`에 cherry-pick 완료 (`4fc6a05`, pushed)
+
+**남은 것**: prod-final 커밋 → 전 환경 코드 동기화 → deploy-test 배포 → 데이터 싱크 → 문서 업데이트
+
+**핵심 원칙**: 모든 환경(deploy-test + LXD 5대)은 **브랜치명만 다를 뿐 코드 동일**. 유일한 예외는 `dev-final/pipeline`의 례진 커밋(+1).
+
+---
+
+## Step 1: prod-final 커밋 (2건 분리)
+
+담당자: dorae222 — `git config user.name`/`user.email` 확인 후 진행
+
+### 커밋 1: 로그 네임스페이스 수정 (전체 11개 파일)
+```
+fix: 로그 네임스페이스 통일 (narrative_api → narrative)
+```
+- `fastapi/app/core/scheduler.py` (line 11) ← 이미 수정됨
+- `fastapi/app/core/auth.py` (line 15) ← 이미 수정됨
+- `fastapi/app/main.py` (line 60): `narrative_api` → `narrative`
+- `fastapi/app/api/routes/tutor.py` (line 17)
+- `fastapi/app/api/routes/narrative.py` (line 24)
+- `fastapi/app/api/routes/visualization.py` (line 10)
+- `fastapi/app/api/routes/tutor_sessions.py` (line 18)
+- `fastapi/app/api/routes/notification.py` (line 13)
+- `fastapi/app/api/routes/portfolio.py` (line 51)
+- `fastapi/app/services/chart_storage.py` (line 10)
+- `fastapi/app/services/tutor_engine.py` (line 33)
+- `fastapi/app/services/guardrail.py` (line 13)
+- `fastapi/app/services/stock_resolver.py` (line 12)
+
+### 커밋 2: 데이터 동기화 스크립트
+```
+feat: deploy-test → LXD 콘텐츠 데이터 동기화 스크립트 추가
+```
+- `database/scripts/sync_dev_data.sh` (신규)
+- `lxd/Makefile` (sync-dev-data 타겟)
+
+### push
+```bash
+git push origin prod-final
+```
+
+---
+
+## Step 2: lxd/Makefile sync-lxd 타겟 브랜치명 업데이트
+
+현재 `sync-lxd`가 구 `dev/*` 브랜치를 pull하고 있음 → `dev-final/*`로 변경.
+`sync-dev-branches`도 `prod-final` → `dev-final/*` 전략으로 업데이트.
+
+### 수정 파일
+- `lxd/Makefile`
+
+### 변경 내용
+
+**sync-lxd** (line 78~85):
+```makefile
+sync-lxd:
+	@echo "LXD 서버 코드 싱크..."
+	lxc exec dev-yj99son  -- bash -c "cd /home/ubuntu/adelie-investment && git pull origin dev-final/frontend"
+	lxc exec dev-j2hoon10 -- bash -c "cd /home/ubuntu/adelie-investment && git pull origin dev-final/chatbot"
+	lxc exec dev-ryejinn  -- bash -c "cd /home/ubuntu/adelie-investment && git pull origin dev-final/pipeline"
+	lxc exec dev-jjjh02   -- bash -c "cd /home/ubuntu/adelie-investment && git pull origin dev-final/backend"
+	lxc exec dev-hj       -- bash -c "cd /home/ubuntu/adelie-investment && git pull origin dev-final/infra"
+	@echo "완료: 모든 LXD 서버 코드 싱크"
+```
+
+**sync-dev-branches** (line 64~74): prod-final → dev-final/* 머지로 변경
+```makefile
+sync-dev-branches:
+	@echo "prod-final → dev-final/* 브랜치 싱크..."
+	@cd $(ROOT) && CURRENT=$$(git branch --show-current); \
+	for BRANCH in dev-final/frontend dev-final/backend dev-final/chatbot dev-final/pipeline dev-final/infra; do \
+		echo "  -> $$BRANCH"; \
+		git checkout $$BRANCH 2>/dev/null || { echo "  브랜치 없음, 건너뜀: $$BRANCH"; continue; }; \
+		git merge prod-final --no-edit 2>/dev/null || true; \
+		git push origin $$BRANCH; \
+	done; \
+	git checkout $$CURRENT
+	@echo "완료: 모든 dev-final/* 브랜치 싱크"
+```
+
+### 커밋
+```
+chore: lxd/Makefile 싱크 타겟 브랜치명 dev-final/* 전환
+```
+
+---
+
+## Step 3: dev-final/* 브랜치 코드 동기화
+
+Step 1에서 push한 prod-final의 새 커밋 2개를 모든 dev-final/* 브랜치에 merge.
+
+```bash
+make -f lxd/Makefile sync-dev-branches
+```
+
+결과: 5개 dev-final/* 브랜치 모두 prod-final HEAD + 각 브랜치 고유 커밋 포함
+- dev-final/pipeline: prod-final HEAD + 례진 커밋(4fc6a05) — 유일한 차이
+
+---
+
+## Step 4: deploy-test 배포
+
+```bash
+ssh deploy-test 'cd ~/adelie-investment && git pull origin prod-final'
+# 코드만 pull (이미지 리빌드 불필요 — 스케줄러 변경은 이미지에 포함되어야 함)
+```
+
+이미지 리빌드 + 배포:
+```bash
+# 1. 코드 pull
+ssh deploy-test 'cd ~/adelie-investment && git pull origin prod-final'
+
+# 2. 이미지 빌드 + push
+TAG=prod-20260224 make build-api
+docker push dorae222/adelie-backend-api:prod-20260224
+
+# 3. deploy-test에서 이미지 교체
+ssh deploy-test 'cd ~/adelie-investment && TAG=prod-20260224 docker compose -f docker-compose.prod.yml pull backend-api && TAG=prod-20260224 docker compose -f docker-compose.prod.yml up -d backend-api'
+```
+
+---
+
+## Step 5: LXD 서버 코드 싱크
+
+```bash
+make -f lxd/Makefile sync-lxd
+```
+
+각 LXD 서버가 해당 dev-final/* 브랜치 최신 pull.
+
+---
+
+## Step 6: 데이터 싱크 (선택)
+
+```bash
+# 단일 테스트
+make -f lxd/Makefile sync-dev-data SERVER=dev-ryejinn
+
+# 전체
+make -f lxd/Makefile sync-dev-data
+```
+
+---
+
+## Step 7: 문서 업데이트
+
+### 7-1. `infra-ops.md` — deploy-test 현재 상태 섹션 (line 185~191)
+
+변경:
+```
+### deploy-test 현재 상태 (2026-02-24)
+- git 브랜치: `prod-final`
+- 이미지: `dorae222/adelie-backend-api:prod-20260224`, `dorae222/adelie-frontend:prod-20260224`
+- alembic HEAD: `20260223_expires`
+- 개발 기준: `prod-final` → `dev-final/*` 브랜치에서 팀별 개발
+- LXD dev 환경: 각 서버 개인 로컬 postgres (docker-compose.dev.yml)
+```
+
+### 7-2. `infra-ops.md` — Docker 이미지 태깅 규칙 (line 193~203)
+
+`:latest` 사용 중지 반영:
+```
+| 이미지 | 레지스트리 | 태그 정책 |
+|--------|-----------|-----------|
+| `adelie-frontend` | `dorae222/` | `prod-YYYYMMDD` (배포), `feb20-stable` (기준선) |
+| `adelie-backend-api` | `dorae222/` | `prod-YYYYMMDD` (배포), `feb20-stable` (기준선) |
+| `adelie-ai-pipeline` | `dorae222/` | `prod-YYYYMMDD` (배포), `feb20-stable` (기준선) |
+
+- `:latest` 사용 중지 — 명시적 태그만 사용
+- 배포: `TAG=prod-20260224 make build push`
+```
+
+### 7-3. `infra-ops.md` — 데이터 동기화 섹션 (신규, 배포 명령 뒤에 추가)
+
+```markdown
+## deploy-test → LXD 콘텐츠 데이터 동기화
+
+```bash
+# 전체 5대
+make -f lxd/Makefile sync-dev-data
+
+# 단일 서버
+make -f lxd/Makefile sync-dev-data SERVER=dev-ryejinn
+```
+
+대상 테이블 (13개): stock_listings, market_daily_history, stock_daily_history, glossary, company_relations, broker_reports, daily_briefings, daily_narratives, historical_cases, briefing_stocks, narrative_scenarios, case_stock_relations, case_matches
+```
+
+### 7-4. MEMORY.md — 간결한 업데이트
+
+추가/수정할 내용:
+- 로그 네임스페이스: `narrative_api.*` → `narrative.*` 수정 (scheduler, auth 완료, 나머지 9개 미완)
+- `database/scripts/sync_dev_data.sh` 신규 경로
+- `lxd/Makefile sync-lxd` 브랜치명 `dev-final/*` 전환
+- 례진 커밋 반영 기록: `dev-final/pipeline` = prod-final + `4fc6a05`
+
+### 7-5. `changes/ryejinn.md` — Phase 5 추가
+
+```markdown
+## Phase 5: 텍스트 포맷팅 파이프라인 고도화 (02-24)
+
+### Situation
+Interface 2/3 단계에서 LLM이 생성한 텍스트에 전문 용어 과다 사용, 중복 문장, 불완전한 마크다운 포맷 등의 품질 이슈가 발생.
+
+### Task
+- Interface 2: LLM 불완전 출력 보정 fallback 추가
+- Interface 3: 텍스트 포맷팅 전면 재설계 (jargon 치환, 문장 압축, 중복 제거, 마크다운 정리)
+- 프롬프트 템플릿 5종 보강
+- 테스트 코드 추가
+
+### Action
+interface2.py에 `_normalize_validated_interface2()` fallback 함수를 추가하여 LLM 불완전 출력 시 구조를 자동 보정하도록 하였다(+70라인). interface3.py를 전면 재설계하여 jargon 치환, 문장 단위 압축, 중복 제거, 마크다운 정리 로직을 구현하였다(+232라인). 프롬프트 템플릿 5종(3_pages, 3_tone_final, _tone_guide, narrative_body, page_purpose)을 보강하고, story spine 테스트(+46라인)를 추가하였다.
+
+### Result
+- 커밋 1건, 코드 변경량 +400라인
+- LLM 출력 자동 보정으로 파이프라인 안정성 향상
+- 텍스트 품질 가이드라인 프롬프트화로 일관된 출력 확보
+```
+
+### 7-6. `changes/dorae222.md` — Phase 5 추가
+
+```markdown
+## Phase 5: 인프라 운영 자동화 — 데이터 싱크·로그·브랜치 관리 (02-24)
+
+### Situation
+prod-final 브랜치 리셋 후 코드는 전 환경 동기화 완료되었으나, DB 콘텐츠 데이터를 deploy-test에서 LXD 개발 서버로 가져오는 메커니즘이 없었다. 스케줄러/인증 로그가 네임스페이스 불일치(`narrative_api` ≠ `narrative`)로 출력되지 않아 동작 여부를 확인할 수 없었다. lxd/Makefile의 싱크 타겟이 구 브랜치(`dev/*`)를 참조하여 `dev-final/*` 전략과 불일치하였다.
+
+### Task
+- deploy-test → LXD 데이터 동기화 스크립트 개발
+- 스케줄러/인증 로그 네임스페이스 수정
+- lxd/Makefile 싱크 타겟 브랜치명 전환 (dev/* → dev-final/*)
+- 전 환경 코드·데이터 동기화 실행
+- 참조 문서 업데이트
+
+### Action
+`database/scripts/sync_dev_data.sh`(170라인)를 개발하여 deploy-test postgres에서 13개 콘텐츠 테이블을 pg_dump하고, lxc file push → psql 복원하는 3단계 자동화 스크립트를 구축하였다. FK 트리거 비활성화(`session_replication_role=replica`), 시퀀스 자동 리셋, postgres 컨테이너 자동탐지를 포함하며, 단일 서버/전체 5대 모드를 지원한다.
+
+FastAPI 전체(core 2개 + routes 6개 + services 4개, 총 13개 파일)의 로그 네임스페이스를 `narrative_api.*` → `narrative.*`로 일괄 수정하여 `setup_logging()`의 `narrative` 루트 로거와 일치시켰다. 이를 통해 스케줄러, 인증, 라우트, 서비스 전체의 로그가 정상 출력되도록 복원하였다.
+
+lxd/Makefile의 `sync-lxd`와 `sync-dev-branches` 타겟을 `dev-final/*` 브랜치로 전환하고, `sync-dev-data` 타겟을 추가하였다.
+
+### Result
+- 커밋 3건
+- LXD 데이터 동기화 자동화 (13개 테이블, 단일/전체 서버 지원)
+- 스케줄러 로그 정상 출력 복원
+- Makefile 싱크 타겟 dev-final/* 전환으로 브랜치 전략 일치
+```
+
+---
+
+## 커밋 전략 (총 3건, prod-final)
+
+| # | 메시지 | 파일 | 담당자 |
+|---|--------|------|--------|
+| 1 | `fix: 로그 네임스페이스 통일 (narrative_api → narrative)` | 11개 파일 (core 2 + routes 6 + services 4) | dorae222 |
+| 2 | `feat: deploy-test → LXD 콘텐츠 데이터 동기화 스크립트 추가` | sync_dev_data.sh, lxd/Makefile | dorae222 |
+| 3 | `chore: lxd/Makefile 싱크 타겟 브랜치명 dev-final/* 전환` | lxd/Makefile | dorae222 |
+
+커밋 후 push → sync-dev-branches → deploy-test 배포 → sync-lxd → sync-dev-data
+
+---
+
+## 검증
+
+```bash
+# 1. 브랜치 상태 확인 (전원 prod-final 커밋 포함)
+for b in dev-final/frontend dev-final/backend dev-final/chatbot dev-final/infra; do
+  echo "$b: $(git log --oneline -1 origin/$b)"
+done
+echo "dev-final/pipeline: $(git log --oneline -1 origin/dev-final/pipeline)"
+# pipeline만 +1 커밋 (4fc6a05)
+
+# 2. deploy-test 스케줄러 로그
+ssh deploy-test "docker logs adelie-backend-api 2>&1 | grep scheduler"
+
+# 3. 데이터 싱크 검증
+make -f lxd/Makefile sync-dev-data SERVER=dev-ryejinn
+```
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+각자 계정으로 git push나 pull이나 정상적으로 되는지 점검해라
+
+---
+
+어느 브랜치로 merge하고 pull하는지, PR 등 관련 문서를 최상단 위치에 작성해놔라
+
+---
+
+모든 브랜치에 반영하고 각각 push해라
+
+---
+
+각 LXD에 pull해서 올바르게 맞춰라
+
+---
+
+배포 서버에서 데이터 파이프라인이 정상적으로 작동 중인지 확인해라.
+작동 중이 아니라면 올바르게 수정해야 한다. 그리고 git에 push까지 하여 반영해놔야 한다. 도커 이미지도 물론이고.
+
+---
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Analysis:
+Let me chronologically analyze the entire conversation:
+
+1. **Initial Request**: User provided a detailed plan with 7 steps for committing code, syncing environments, deploying, and updating documentation for the Adelie Investment project.
+
+2. **Step 1 - Commit 1 (Log Namespace Fix)**: 
+   - Changed `narrative_api` → `narrative` in 13 FastAPI files
+   - Files: main.py, 6 routes, 4 services, 2 core files (scheduler.py, auth.py already modified)
+   - First attempt to edit failed because files weren't read first
+   - Read all 11 files in parallel, then edited all 11 successfully
+   - Verified no remaining `narrative_api` references
+   - Committed as `fix: 로그 네임스페이스 통일 (narrative_api → narrative)` → 0a9c492
+
+3. **Commit 2 (Data Sync Script)**:
+   - Staged `database/scripts/sync_dev_data.sh` and `lxd/Makefile`
+   - Verified only sync-dev-data target changes in Makefile
+   - Committed as `feat: deploy-test → LXD 콘텐츠 데이터 동기화 스크립트 추가` → f75d752
+
+4. **Step 2 + Commit 3 (Makefile Branch Names)**:
+   - Updated `sync-dev-branches`: `dev/*` → `dev-final/*`, `develop` → `prod-final`
+   - Updated `sync-lxd`: `dev/*` → `dev-final/*`
+   - Updated `deploy-test` and `deploy-test-service`: `develop` → `prod-final`
+   - Committed as `chore: lxd/Makefile 싱크 타겟 브랜치명 dev-final/* 전환` → 77921fe
+
+5. **Push + Branch Sync**:
+   - Pushed prod-final
+   - `make -f lxd/Makefile sync-dev-branches` → all 5 dev-final/* branches synced
+   - dev-final/pipeline got merge commit (2cd4401) due to 례진's existing commit
+
+6. **Deploy-test Deployment**:
+   - User chose "로컬 빌드 + push + 원격 pull"
+   - Built `TAG=prod-20260224 make build-api`
+   - Pushed to Docker Hub
+   - Pulled and restarted on deploy-test
+   - Health check confirmed healthy
+
+7. **LXD Sync**:
+   - `make -f lxd/Makefile sync-lxd` → all 5 servers pulled latest
+
+8. **Verification**:
+   - All branches confirmed at correct commits
+   - Scheduler logs showing `narrative.scheduler` (not `narrative_api.scheduler`)
+
+9. **Step 7 - Documentation**:
+   - Updated `infra-ops.md`: deploy-test state, Docker tagging rules, data sync section, dashboard deploy branch
+   - Updated `MEMORY.md`: branch strategy section rewritten
+   - Updated `changes/ryejinn.md`: Added Phase 5
+   - Updated `changes/dorae222.md`: Added Phase 5
+
+10. **User Request 2**: "각자 계정으로 git push나 pull이나 정상적으로 되는지 점검해라"
+    - Checked git config on all 5 LXD servers (initially got host env contamination, fixed by using `su - ubuntu`)
+    - All configs correct
+    - Pull test: all 5 OK
+    - Push dry-run: dev-j2hoon10 FAILED (no token in remote URL)
+    - User provided token: `REDACTED`
+    - Fixed j2hoon10's remote URL
+    - Final verification: all 5 pull OK, push OK
+
+11. **User Request 3**: "어느 브랜치로 merge하고 pull하는지, PR 등 관련 문서를 최상단 위치에 작성해놔라"
+    - Read existing `docs/getting-started/workflow.md` (completely outdated, referenced `develop` → `dev/*`)
+    - Rewrote entirely with current `prod-final` → `dev-final/*` strategy
+    - Updated `docs/README.md` to highlight workflow doc at top
+    - Committed as `docs: 브랜치 전략 & 개발 워크플로우 문서 전면 재작성` → 7464814
+
+12. **User Request 4**: "모든 브랜치에 반영하고 각각 push해라"
+    - Pushed prod-final → 7464814
+    - `make -f lxd/Makefile sync-dev-branches` → all 5 branches pushed
+    - Results: 4 fast-forward to 7464814, pipeline merge commit to 604cad9
+
+13. **User Request 5**: "각 LXD에 pull해서 올바르게 맞춰라"
+    - `make -f lxd/Makefile sync-lxd` → all 5 servers pulled
+
+14. **User Request 6**: "배포 서버에서 데이터 파이프라인이 정상적으로 작동 중인지 확인해라. 작동 중이 아니라면 올바르게 수정해야 한다. 그리고 git에 push까지 하여 반영해놔야 한다. 도커 이미지도 물론이고."
+    - Checked scheduler logs: scheduler running but skipping pipelines as "휴장일" on 2026-02-25 (Tuesday)
+    - Explored market_calendar.py and scheduler.py
+    - Tested pykrx inside Docker container → returned True for 20260225
+    - Discovered root causes:
+      1. **pykrx timing + lru_cache**: At 09:00 KST, OHLCV data not yet finalized → False cached permanently by lru_cache
+      2. **4 uvicorn workers**: Each worker starts own scheduler → 4x pipeline execution
+    - Entered plan mode and wrote fix plan:
+      - `market_calendar.py`: Replace lru_cache with True-only cache, don't cache False before market close
+      - `scheduler.py`: Add 15-minute retry for morning pipeline
+      - `docker-compose.prod.yml`: Add `WEB_CONCURRENCY: "1"` to limit to single worker
+
+The plan was written and is awaiting ExitPlanMode approval. The user then requested this summary.
+
+Summary:
+1. Primary Request and Intent:
+   The user had a multi-phase request across the session:
+   - **Phase 1**: Execute a detailed 7-step plan: commit 3 code changes to prod-final, push, sync all dev-final/* branches, deploy to deploy-test server, sync LXD servers, and update documentation (MEMORY.md, infra-ops.md, changes/ryejinn.md, changes/dorae222.md).
+   - **Phase 2**: Verify git push/pull works for all 5 LXD servers with their respective GitHub accounts.
+   - **Phase 3**: Write comprehensive branch strategy & workflow documentation at a top-level location, covering merge directions, PR rules, and deployment procedures.
+   - **Phase 4**: Push the workflow docs to all branches and pull on all LXD servers.
+   - **Phase 5 (Current)**: Investigate whether the data pipeline scheduler is working correctly on deploy-test. If not, fix it, commit, push, rebuild Docker image, and deploy. This is currently **in plan mode awaiting approval**.
+
+2. Key Technical Concepts:
+   - **Branch strategy**: `prod-final` → `dev-final/*` (5 branches, one per team member). Legacy `main`, `develop`, `dev/*` are unused.
+   - **pykrx timing issue**: `get_nearest_business_day_in_a_week()` uses OHLCV data which isn't available at market open (09:00 KST), causing false "non-trading day" results.
+   - **lru_cache permanent caching**: `@lru_cache(maxsize=32)` caches False results permanently within a process, preventing re-checks later in the day.
+   - **uvicorn multi-worker scheduler duplication**: `--workers 4` creates 4 separate scheduler instances, each running the pipeline independently.
+   - **LXD container management**: 5 dev servers (dev-yj99son, dev-j2hoon10, dev-ryejinn, dev-jjjh02, dev-hj) managed via `lxc exec` commands.
+   - **Docker image tagging**: `:latest` discontinued, using `prod-YYYYMMDD` explicit tags.
+   - **Git credential management**: Tokens embedded in remote URLs for HTTPS auth.
+
+3. Files and Code Sections:
+
+   - **`fastapi/app/services/market_calendar.py`** (critical bug file)
+     - Root cause of pipeline not running: `@lru_cache` permanently caches False when pykrx can't confirm today as trading day at market open
+     - Current code:
+     ```python
+     @lru_cache(maxsize=32)
+     def _check_business_day(date_str: str) -> bool:
+         try:
+             from pykrx.stock import get_nearest_business_day_in_a_week
+             nearest = get_nearest_business_day_in_a_week(date_str)
+             return nearest == date_str
+         except Exception as e:
+             logger.warning("pykrx 영업일 조회 실패 (평일 fallback): %s", e)
+             d = datetime.strptime(date_str, "%Y%m%d").date()
+             return d.weekday() < 5
+     ```
+     - **Planned fix**: Remove `@lru_cache`, use `_confirmed_trading_days` set (cache True only), don't cache False before 16:00 KST
+
+   - **`fastapi/app/core/scheduler.py`** (scheduler logic)
+     - 203 lines, contains `run_morning_pipeline()` (09:00 KST), `run_daily_pipeline()` (16:10 KST)
+     - `_is_trading_day()` calls `market_calendar.is_kr_market_open_today()`
+     - `start_scheduler()` has guard `if _scheduler is not None: return` but this is per-process (ineffective with 4 workers)
+     - **Planned fix**: Add 15-minute retry in `run_morning_pipeline()` when first `_is_trading_day()` returns False
+
+   - **`docker-compose.prod.yml`** (line 103-139, backend-api service)
+     - No `WEB_CONCURRENCY` set → Dockerfile defaults to 4 workers
+     - **Planned fix**: Add `WEB_CONCURRENCY: "1"` to environment
+
+   - **`fastapi/Dockerfile`** (line 31)
+     - `CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port 8082 --workers ${WEB_CONCURRENCY:-4}"]`
+     - This is why 4 workers spawn by default
+
+   - **13 FastAPI files** (log namespace fix - COMPLETED)
+     - All `narrative_api` → `narrative` changes committed (0a9c492)
+     - Files: main.py, tutor.py, narrative.py, visualization.py, tutor_sessions.py, notification.py, portfolio.py, chart_storage.py, tutor_engine.py, guardrail.py, stock_resolver.py, scheduler.py, auth.py
+
+   - **`database/scripts/sync_dev_data.sh`** (new, 169 lines) - COMMITTED (f75d752)
+
+   - **`lxd/Makefile`** - Updated sync targets to `dev-final/*`, added `sync-dev-data` - COMMITTED (77921fe)
+
+   - **`docs/getting-started/workflow.md`** - Complete rewrite with current branch strategy - COMMITTED (7464814)
+
+   - **`docs/README.md`** - Added workflow doc link at top - COMMITTED (7464814)
+
+   - **`changes/ryejinn.md`** - Added Phase 5 (텍스트 포맷팅 파이프라인 고도화) - COMMITTED (earlier, in unstaged state from previous plan)
+
+   - **`changes/dorae222.md`** - Added Phase 5 (인프라 운영 자동화) - COMMITTED (earlier, in unstaged state from previous plan)
+
+   - **Memory files updated**: `MEMORY.md` and `infra-ops.md` with current branch/deploy state
+
+4. Errors and Fixes:
+   - **Edit tool "File has not been read yet" error**: Tried to edit 11 files without reading them first. Fixed by reading all 11 files in parallel, then editing.
+   - **dev-j2hoon10 git push failure**: `fatal: could not read Username for 'https://github.com': No such device or address`. Remote URL had no token: `https://github.com/404-NFYet/adelie-investment.git`. Fixed by setting URL with token: `git remote set-url origin https:REDACTED@github.com/404-NFYet/adelie-investment.git`
+   - **lxc exec environment contamination**: Initial git config check showed host's dorae222 config for all servers. Fixed by using `lxc exec $server -- su - ubuntu -c "..."` to properly enter the ubuntu user's environment.
+   - **Pipeline "휴장일" false positive**: Scheduler logs showed 2026-02-25 (Tuesday) skipped as non-trading day. Root cause: pykrx OHLCV data unavailable at 09:00 KST + lru_cache permanently caching False result. Plan written but not yet implemented.
+
+5. Problem Solving:
+   - **Completed**: Log namespace fix (13 files), data sync script, Makefile branch name update, branch synchronization, deploy-test deployment, LXD server sync, documentation overhaul, git credential fix for j2hoon10, workflow documentation rewrite.
+   - **In Progress**: Pipeline scheduler fix (in plan mode). Diagnosed two root causes: (1) pykrx timing + lru_cache, (2) 4-worker scheduler duplication. Plan written covering 3 file changes.
+
+6. All User Messages:
+   - "Implement the following plan: [detailed 7-step plan for commits, sync, deploy, docs]"
+   - (Chose "로컬 빌드 + push + 원격 pull" for deploy-test image rebuild)
+   - "각자 계정으로 git push나 pull이나 정상적으로 되는지 점검해라"
+   - (Provided token "REDACTED" for j2hoon10)
+   - "어느 브랜치로 merge하고 pull하는지, PR 등 관련 문서를 최상단 위치에 작성해놔라"
+   - "모든 브랜치에 반영하고 각각 push해라"
+   - "각 LXD에 pull해서 올바르게 맞춰라"
+   - "배포 서버에서 데이터 파이프라인이 정상적으로 작동 중인지 확인해라. 작동 중이 아니라면 올바르게 수정해야 한다. 그리고 git에 push까지 하여 반영해놔야 한다. 도커 이미지도 물론이고."
+
+7. Pending Tasks:
+   - **Execute the scheduler fix plan** (awaiting plan mode approval):
+     1. Modify `fastapi/app/services/market_calendar.py` — replace lru_cache with True-only cache
+     2. Modify `fastapi/app/core/scheduler.py` — add 15-minute retry for morning pipeline
+     3. Modify `docker-compose.prod.yml` — add `WEB_CONCURRENCY: "1"`
+     4. Commit as `fix: 스케줄러 영업일 오판 수정 (pykrx 캐시 + 재시도 + 단일 워커)`
+     5. Push to prod-final
+     6. Build Docker image with new tag (e.g., `prod-20260225`)
+     7. Deploy to deploy-test
+     8. Sync all dev-final/* branches
+     9. Sync all LXD servers
+
+8. Current Work:
+   Currently in **plan mode** for fixing the data pipeline scheduler. The plan file has been written at `/home/hj/.claude/plans/synthetic-weaving-toucan.md` and covers 3 file changes to fix:
+   1. pykrx lru_cache permanent False caching → True-only cache with timing awareness
+   2. No retry mechanism when morning check fails → 15-minute retry
+   3. 4 uvicorn workers each running scheduler → `WEB_CONCURRENCY=1`
+   
+   The plan was written but `ExitPlanMode` was NOT yet called (the summary request came before plan approval).
+
+9. Optional Next Step:
+   Call `ExitPlanMode` to get user approval for the scheduler fix plan, then implement the 3 file changes, commit, push, rebuild Docker image, deploy to deploy-test, and sync all branches/LXD servers. This directly fulfills the user's request: "배포 서버에서 데이터 파이프라인이 정상적으로 작동 중인지 확인해라. 작동 중이 아니라면 올바르게 수정해야 한다. 그리고 git에 push까지 하여 반영해놔야 한다. 도커 이미지도 물론이고."
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+Please continue the conversation from where we left off without asking the user any further questions. Continue with the last task that you were asked to work on.
+
+---
+
+[Request interrupted by user for tool use]

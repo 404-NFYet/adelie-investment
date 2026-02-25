@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "234de7d2eb07",
+  "session_id": "46345696-ac27-41e6-b852-54aadd61d386",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-22T11:16:09.050273062Z",
+  "branch": "develop",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "README.md",
+    "changes/dorae222.md",
+    "docs/team-guides/E_인프라_도형준.md",
+    "lxd/Makefile"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 88,
+    "cache_creation_tokens": 122848,
+    "cache_read_tokens": 6880558,
+    "output_tokens": 32407,
+    "api_call_count": 84
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-22T11:16:08.98606523Z",
+    "agent_lines": 0,
+    "human_added": 196,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 196,
+    "agent_percentage": 0
+  }
+}

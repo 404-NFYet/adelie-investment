@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "234de7d2eb07",
+  "session_id": "c0f6cd05-66e6-4c9c-91b2-c0bdc6492ac9",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-24T08:38:33.495975042Z",
+  "branch": "dev-final/frontend",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "fastapi/app/models/__init__.py",
+    "frontend/src/App.jsx",
+    "frontend/src/components/index.js",
+    "frontend/src/components/tutor/MessageBubble.jsx"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 53,
+    "cache_creation_tokens": 57190,
+    "cache_read_tokens": 2260914,
+    "output_tokens": 7904,
+    "api_call_count": 47
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-24T08:38:33.458316399Z",
+    "agent_lines": 0,
+    "human_added": 92,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 92,
+    "agent_percentage": 0
+  }
+}

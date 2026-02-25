@@ -1,0 +1,76 @@
+Implement the following plan:
+
+# DB 운영 가이드 문서 추가 (2026-02-21)
+
+## Context
+
+팀원들이 개발 DB를 어떻게 설정하고 동기화하는지 설명하는 문서가 없다.
+`sync_dev_data.sh`, infra-server 공유 dev DB, Alembic 협업 규칙 등이 코드에만 있고
+팀원 누구도 참조할 문서가 없는 상태.
+
+---
+
+## 작업 목표
+
+`docs/getting-started/database-guide.md` 신규 작성 + `docs/README.md` 링크 추가
+
+---
+
+## 문서 구조
+
+### 1. DB 환경 구조
+세 가지 환경 비교 표:
+
+| 환경 | 호스트 | 용도 |
+|------|--------|------|
+| 공유 dev DB | `infra-server` (10.10.10.10:5432) | 팀 공유 개발 |
+| 로컬 Docker DB | `localhost:5433` (docker-compose.dev.yml) | 개인 격리 테스트 |
+| 프로덕션 DB | `deploy-test` 내부 (직접 접근 금지) | 서비스 운영 |
+
+### 2. .env DATABASE_URL 설정
+- 공유 dev DB 사용 시 → `@10.10.10.10:5432/narrative_invest`
+- 로컬 Docker DB 사용 시 → `@localhost:5433/narrative_invest`
+
+### 3. Alembic 마이그레이션 협업 규칙
+- 작성 전 `#migration` 채널 공지 → 1명씩 순차 작성 (head revision 충돌 방지)
+- 적용 방법: 로컬 venv / docker-compose run / deploy-test remote
+- 충돌 발생 시 해결법 (`alembic merge heads`)
+
+### 4. 콘텐츠 데이터 동기화 (prod → dev)
+- `make sync-dev-data` — prod 콘텐츠 → infra-server dev DB 동기화
+- 동기화 대상 테이블 목록 (7개)
+- 실행 주기 및 주의사항 (스키마 선행 적용 필요)
+
+### 5. 원격 DB 직접 접속
+- psql 직접 접속 (infra-server dev DB)
+- psql 직접 접속 (deploy-test prod — 읽기 전용)
+
+---
+
+## 수정 파일
+
+| 파일 | 작업 |
+|------|------|
+| `docs/getting-started/database-guide.md` | 신규 작성 |
+| `docs/README.md` | Getting Started 표에 링크 추가 |
+
+---
+
+## 커밋
+
+```
+docs: DB 운영 및 sync 가이드 추가
+```
+담당자: dorae222 (현재 git config 기준)
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+push까지 모두 완료했나?
+추가로 배포 서버의 링크로 접속시 모의 투자 페이지가 안나오는데 올바르게 수정해야 한다.
+
+---
+
+[Request interrupted by user for tool use]

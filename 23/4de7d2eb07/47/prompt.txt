@@ -1,0 +1,132 @@
+Implement the following plan:
+
+# AgentDock 화면 수정 + 전 LXD 서버 이미지 동기화 계획
+
+## Context
+
+dev 서버들의 `dorae222/adelie-frontend-dev:latest` 이미지 빌드 시각이 서로 불일치.
+AgentDock 채팅 모드 제거(08:12 UTC) 이후 재빌드되지 않은 서버에서 구버전 UI 노출.
+dev-hj 포함 5대 모두 이미지가 제각각이므로, 호스트(현재 dev-final/frontend 브랜치)에서
+단일 이미지를 빌드하여 전 LXD 서버에 배포한다.
+
+### 배포 서버 이미지 현황 (참고용)
+- deploy-test: `dorae222/adelie-frontend:feb20-stable` (Nginx 프로덕션, 179MB)
+- deploy-test에는 Vite dev 이미지 없음 → 배포 서버에서 직접 가져올 수 없음
+- **기준 소스**: 호스트의 `dev-final/frontend` 브랜치 (AgentDock fix 포함)
+
+---
+
+## 실행 계획
+
+### Step 1. 호스트에서 frontend-dev 이미지 빌드
+
+현재 호스트는 `dev-final/frontend` 브랜치 → AgentDock fix가 반영된 최신 소스.
+
+```bash
+cd /home/hj/2026/project/adelie-investment
+docker build -f frontend/Dockerfile.dev -t dorae222/adelie-frontend-dev:latest frontend/
+```
+
+> 빌드 결과 이미지를 기준으로 전 LXD 서버에 동일하게 배포한다.
+
+---
+
+### Step 2. 이미지를 각 LXD 서버에 배포 (docker save → lxc | docker load)
+
+Docker Hub 푸시 없이 직접 전송.
+
+```bash
+# 이미지를 스트림으로 각 서버에 로드 (tar 임시 파일 불필요)
+for srv in dev-yj99son dev-j2hoon10 dev-jjjh02 dev-ryejinn dev-hj; do
+  echo "→ $srv 이미지 전송 중..."
+  docker save dorae222/adelie-frontend-dev:latest \
+    | lxc exec "$srv" -- docker load \
+    && echo "✅ $srv" || echo "❌ $srv"
+done
+```
+
+---
+
+### Step 3. 각 서버 frontend 컨테이너 재시작
+
+새 이미지로 컨테이너를 교체한다.
+
+```bash
+for srv in dev-yj99son dev-j2hoon10 dev-jjjh02 dev-ryejinn dev-hj; do
+  lxc exec "$srv" -- bash -c "
+    cd /home/ubuntu/adelie-investment
+    docker compose -f docker-compose.dev.yml up -d --no-build frontend
+  " && echo "✅ $srv" || echo "❌ $srv"
+done
+```
+
+---
+
+### Step 4. `lxd/Makefile` `sync-lxd` 브랜치 업데이트
+
+`sync-lxd` 타겟이 구버전(`dev/*`) 브랜치를 가리키고 있어, 향후 재사용을 위해 `dev-final/*`로 갱신.
+
+**변경 파일:** `lxd/Makefile`
+**변경 내용:** pull 브랜치 `dev/frontend`, `dev/chatbot`, `dev/pipeline`, `dev/backend`, `dev/infra`
+→ `dev-final/frontend`, `dev-final/chatbot`, `dev-final/pipeline`, `dev-final/backend`, `dev-final/infra`
+
+커밋 메시지: `chore: sync-lxd 브랜치 dev/* → dev-final/* 갱신`
+담당: dorae222 (git config 현재 설정 그대로)
+
+---
+
+### Step 5. 최종 검증
+
+```bash
+for srv in dev-yj99son dev-j2hoon10 dev-jjjh02 dev-ryejinn dev-hj; do
+  echo -n "$srv: "
+  lxc exec "$srv" -- docker inspect adelie-investment-frontend-1 \
+    --format '{{.Config.Image}} | Created: {{.Created}}' 2>/dev/null
+done
+```
+
+모든 서버의 이미지 Created 시각이 동일해야 한다.
+
+---
+
+## 수정 파일
+
+| 파일 | 변경 내용 |
+|------|---------|
+| `lxd/Makefile` | `sync-lxd` 브랜치 `dev/*` → `dev-final/*` (1줄씩 5개) |
+
+## 실행 순서
+
+| 순서 | 작업 | 예상 시간 |
+|------|------|---------|
+| 1 | 호스트에서 `docker build` (frontend-dev 이미지) | ~3분 |
+| 2 | `docker save \| lxc exec \| docker load` × 5대 | ~2분/대 = 10분 |
+| 3 | 전 서버 `docker compose up -d frontend` | ~1분 |
+| 4 | `lxd/Makefile` sync-lxd 브랜치 수정 + 커밋 + push | ~1분 |
+| 5 | 최종 이미지 시각 검증 | ~1분 |
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+<task-notification>
+<task-id>bb487e5</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>REDACTED.output</output-file>
+<status>completed</status>
+<summary>Background command "frontend-dev 이미지 빌드" completed (exit code 0)</summary>
+</task-notification>
+Read the output file to retrieve the result: REDACTED.output
+
+---
+
+해당 이미지가 올바르지 않다. 그냥 코드를 더 과거 버전으로 돌아가거나 해야 될 것 같다.
+
+---
+
+latest가 아니라 다른 버전으로 해야되는 것 아닌가?
+
+---
+
+[Request interrupted by user for tool use]

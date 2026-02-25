@@ -1,0 +1,369 @@
+Implement the following plan:
+
+# 배포 + LXD git push 검증 + 팀 개발 DB 워크플로우 설계 (2026-02-21)
+
+## Context
+
+코드 품질 개선 및 bcrypt 긴급 수정 4개 커밋이 `develop` 브랜치에 쌓였다.
+이 커밋들을 deploy-test에 배포하고, LXD 개발 서버에서 git push가 올바르게 되는지 검증해야 한다.
+
+아울러 아직 개발 단계이므로, 5명의 팀원이 각 LXD 서버에서 개발 시 DB를 어떻게 운영할지 설계가 필요하다:
+- 현재 팀원들은 `infra-server(10.10.10.10:5432)` 공유 DB 1개를 사용 중
+- 데이터 파이프라인이 deploy-test에서만 실행되어 실제 브리핑 데이터는 프로덕션에만 쌓임
+- 챗봇/파이프라인 수정 시 스키마 변경이 필요한데 공유 DB여서 충돌 위험 있음
+
+---
+
+## Part 1 — 배포 (deploy-test)
+
+### 1-1. 이미지 빌드 및 push
+
+bcrypt<4.0.0 핀이 반영된 새 backend-api 이미지를 빌드한다.
+`fastapi/Dockerfile`은 context=. (프로젝트 루트)로 빌드.
+
+```bash
+# backend-api만 재빌드 (bcrypt 수정 반영)
+make build-api
+
+# Docker Hub push
+make -f lxd/Makefile push   # 또는 docker push dorae222/adelie-backend-api:latest
+```
+
+### 1-2. deploy-test 배포
+
+```bash
+ssh deploy-test 'cd ~/adelie-investment && \
+  git pull origin develop && \
+  docker compose -f docker-compose.prod.yml pull backend-api && \
+  docker compose -f docker-compose.prod.yml up -d --remove-orphans backend-api'
+```
+
+> ⚠️ **마이그레이션 필요 여부 확인**: 이번 커밋들엔 스키마 변경 없음 → 마이그레이션 불필요
+
+### 1-3. 배포 검증
+
+```bash
+# 헬스체크
+curl -s https://demo.adelie-invest.com/api/v1/health | jq .status
+
+# bcrypt 버전 확인 (3.x.x 출력돼야 함)
+ssh deploy-test 'docker exec adelie-backend-api python -c "import bcrypt; print(bcrypt.__version__)"'
+
+# 로그인 테스트
+curl -s -X POST https://demo.adelie-invest.com/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"password"}' | jq .
+
+# 최근 에러 로그 확인
+ssh deploy-test 'docker logs adelie-backend-api --tail 30 2>&1 | grep -iE "error|exception"'
+```
+
+---
+
+## Part 2 — LXD 서버 git push 검증
+
+### 현황
+
+| LXD 서버 | 담당자 | git user | 동기 브랜치 |
+|----------|--------|----------|-----------|
+| `dev-yj99son` | 손영진 | YJ99Son / syjin2008@naver.com | dev/frontend |
+| `dev-j2hoon10` | 정지훈 | J2hoon10 / myhome559755@naver.com | dev/chatbot |
+| `dev-jjjh02` | 허진서 | jjjh02 / jinnyshur0104@gmail.com | dev/backend |
+| `dev-ryejinn` | 안례진 | ryejinn / arj1018@ewhain.net | dev/pipeline |
+| `dev-hj` | 도형준 | dorae222 / dhj9842@gmail.com | dev/infra |
+
+현재 `sync-lxd` 타겟은 **pull만** 한다. 팀원이 LXD에서 코드를 작성하고 push하려면 SSH 인증이 필요하다.
+
+### 2-1. 각 LXD 서버 git 상태 일괄 점검
+
+```bash
+# 각 서버에서 git remote + user 설정 확인
+for srv in dev-yj99son dev-j2hoon10 dev-jjjh02 dev-ryejinn dev-hj; do
+  echo "=== $srv ==="
+  lxc exec $srv -- bash -c "
+    cd /home/ubuntu/adelie-investment && \
+    git remote -v && echo '---' && \
+    git config user.name && git config user.email && echo '---' && \
+    ssh -T git@github.com 2>&1 | head -1
+  "
+done
+```
+
+### 2-2. SSH 키 미설정 서버 처리
+
+**각 LXD 서버에서 한 번씩 실행** (담당자가 직접 or 인프라가 대행):
+
+```bash
+lxc exec dev-{서버명} -- bash -c "
+  # SSH 키 생성 (없으면)
+  [ -f /home/ubuntu/.ssh/id_ed25519 ] || \
+    ssh-keygen -t ed25519 -C '{담당자이메일}' -f /home/ubuntu/.ssh/id_ed25519 -N '' && \
+  # 공개키 출력 → GitHub에 등록
+  cat /home/ubuntu/.ssh/id_ed25519.pub
+"
+```
+
+출력된 공개키를 해당 담당자 GitHub 계정 → Settings → SSH Keys에 등록.
+
+**git user 설정 (이미 없으면):**
+```bash
+lxc exec dev-{서버명} -- bash -c "
+  cd /home/ubuntu/adelie-investment && \
+  git config user.name '{YJ99Son}' && \
+  git config user.email '{syjin2008@naver.com}'
+"
+```
+
+**remote를 SSH 방식으로 변경 (HTTPS로 돼있으면):**
+```bash
+lxc exec dev-{서버명} -- bash -c "
+  cd /home/ubuntu/adelie-investment && \
+  git remote set-url origin git@github.com:404-NFYet/adelie-investment.git
+"
+```
+
+### 2-3. lxd/Makefile에 setup-lxd-git 타겟 추가
+
+각 서버의 git user/email/remote를 한 번에 검증하는 타겟을 추가한다.
+
+**파일:** `lxd/Makefile`에 추가:
+
+```makefile
+check-lxd-git:
+	@echo "=== LXD 서버 git 설정 점검 ==="
+	@for srv in dev-yj99son dev-j2hoon10 dev-jjjh02 dev-ryejinn dev-hj; do \
+		echo "\n### $$srv ###"; \
+		lxc exec $$srv -- bash -c "cd /home/ubuntu/adelie-investment && \
+			git remote get-url origin && \
+			git config user.name && \
+			git config user.email && \
+			ssh -T git@github.com 2>&1 | head -1" 2>/dev/null || echo "연결 실패"; \
+	done
+```
+
+---
+
+## Part 3 — 팀 개발 DB 워크플로우 설계
+
+### 문제 인식
+
+| 문제 | 현황 | 영향 |
+|------|------|------|
+| 공유 DB 오염 | 5명이 infra-server DB 공유 | 한 명의 reset_db가 전체 파괴 |
+| 데이터 부재 | 파이프라인은 deploy-test에서만 실행 | LXD 서버에 브리핑/키워드 데이터 없음 |
+| 마이그레이션 충돌 | 2명이 동시에 migration 작성 시 | 공유 DB에서 head 충돌 |
+| 스키마 없음 | 신규 LXD 서버 세팅 시 | Alembic migrate부터 해야 함 |
+
+### 3-1. 설계 원칙
+
+```
+[deploy-test 프로덕션 DB] ← 파이프라인이 유일하게 데이터를 생성
+        ↓ 주기적 pg_dump (콘텐츠 테이블만)
+[infra-server dev DB] ← 팀 개발 기준 (alembic HEAD 유지)
+        ↓ 스키마 동기화
+[각 LXD 서버 로컬 Docker DB] ← 개발자 개인 격리 환경
+```
+
+### 3-2. 개발자별 격리 DB → 로컬 Docker (선택 확정)
+
+각 LXD 서버에서 **로컬 PostgreSQL 컨테이너**를 실행한다.
+`docker-compose.dev.yml`이 이미 준비되어 있으므로 `make dev`만 실행하면 즉시 사용 가능.
+
+```
+각 LXD 서버
+└─ docker-compose.dev.yml up
+   ├─ postgres:5433 (완전 격리 dev DB)
+   ├─ redis:6379
+   └─ backend-api:8082 (볼륨마운트 HMR)
+```
+
+**✅ 완전 격리**: 본인이 reset_db 해도 타인 영향 없음
+**✅ 기존 설정 재사용**: docker-compose.dev.yml 그대로 사용
+**⚠️ 데이터 없음**: 실제 브리핑 데이터가 없으므로 동기화 필요
+
+### 3-3. 데이터 동기화 전략
+
+**스크립트:** `database/scripts/sync_dev_data.sh` 신규 작성
+
+```bash
+#!/bin/bash
+# deploy-test 콘텐츠 테이블 → infra-server dev DB 동기화
+# 사용: bash database/scripts/sync_dev_data.sh [target_db_url]
+
+TARGET_URL="${1:-postgresql://narative:password@10.10.10.10:5432/narrative_invest}"
+
+PROD_HOST="deploy-test"
+CONTENT_TABLES=(
+  "daily_briefings"
+  "briefing_stocks"
+  "historical_cases"
+  "case_matches"
+  "case_stock_relations"
+  "stock_listings"
+  "broker_reports"
+)
+
+echo "=== 프로덕션 → 개발 DB 콘텐츠 동기화 ==="
+
+for tbl in "${CONTENT_TABLES[@]}"; do
+  ssh $PROD_HOST "docker exec adelie-postgres pg_dump \
+    -U narative -d narrative_invest -t $tbl \
+    --data-only --disable-triggers 2>/dev/null" | \
+  psql "$TARGET_URL" -c "TRUNCATE $tbl CASCADE;" > /dev/null 2>&1
+  ssh $PROD_HOST "docker exec adelie-postgres pg_dump \
+    -U narative -d narrative_invest -t $tbl \
+    --data-only --disable-triggers 2>/dev/null" | \
+  psql "$TARGET_URL"
+  echo "✅ $tbl 동기화 완료"
+done
+
+echo "=== 동기화 완료 ==="
+```
+
+**Makefile 타겟 추가 (루트 Makefile):**
+```makefile
+sync-dev-data:
+    bash database/scripts/sync_dev_data.sh
+    @echo "프로덕션 콘텐츠 데이터가 dev DB로 복사됨"
+```
+
+**lxd/Makefile 타겟 추가:**
+```makefile
+# HOST(dev-hj)에서 실행: prod 덤프 → 각 LXD 로컬 DB에 적용
+sync-dev-data:
+	@echo "=== deploy-test → 각 LXD 로컬 DB 콘텐츠 동기화 ==="
+	@bash database/scripts/sync_dev_data.sh   # host에서 덤프 생성
+	@for srv in dev-yj99son dev-j2hoon10 dev-jjjh02 dev-ryejinn dev-hj; do \
+		echo "$$srv에 적용 중..."; \
+		lxc exec $$srv -- bash -c "
+			cd /home/ubuntu/adelie-investment && \
+			docker compose -f docker-compose.dev.yml ps postgres | grep -q Up || \
+			docker compose -f docker-compose.dev.yml up -d postgres && \
+			sleep 2 && \
+			docker exec adelie-dev-postgres psql -U narative -d narrative_invest \
+			  -f /tmp/prod_content_dump.sql" 2>/dev/null && \
+		echo "✅ $$srv 완료" || echo "❌ $$srv 실패"; \
+	done
+```
+
+> **구현 단순화 옵션**: 초기에는 HOST에서 dump SQL 파일 생성 → 각 팀원이 직접 `psql -f dump.sql` 실행하는 방식도 충분함 (스크립트 복잡도 낮춤)
+
+### 3-4. 각 LXD 서버에서의 개발 표준 워크플로우
+
+**최초 세팅 (서버 1회):**
+```bash
+# 1. 코드 pull
+cd /home/ubuntu/adelie-investment && git pull
+
+# 2. .env 복사 (API 키 포함)
+scp deploy-test:~/adelie-investment/.env .env
+# DATABASE_URL을 로컬로 수정
+sed -i 's|@10.10.10.10:5432|@localhost:5432|' .env  # docker-compose.dev.yml 내부 postgres
+
+# 3. 개발 환경 실행 (로컬 PostgreSQL + Redis)
+make dev   # 또는 docker compose -f docker-compose.dev.yml up -d
+
+# 4. 마이그레이션 적용
+docker compose -f docker-compose.dev.yml run --rm db-migrate
+
+# 5. 프로덕션 데이터 동기화
+bash database/scripts/sync_dev_data.sh postgresql+asyncpg://narative:password@localhost:5433/narrative_invest
+
+# 6. 종목 데이터 초기화 (선택)
+.venv/bin/python database/scripts/init_stock_listings.py
+```
+
+**일상 개발:**
+```bash
+# 코드 수정 후 서버 자동 재시작 (HMR/reload)
+# DB 초기화 (본인 DB만 영향)
+.venv/bin/python database/scripts/reset_db.py --content-only --force
+
+# 새 마이그레이션 생성 시
+cd database && ../.venv/bin/alembic revision --autogenerate -m "설명"
+# 직접 적용 후 PR — 팀 공지 필요
+```
+
+**마이그레이션 충돌 방지 규칙:**
+1. 새 마이그레이션 작성 전 → `#migration` Slack/Discord 채널에 알림
+2. 한 번에 1명만 마이그레이션 작성 (순차)
+3. PR merge 후 → `make -f lxd/Makefile sync-lxd` 로 전체 LXD 코드 업데이트
+4. 마이그레이션 포함 PR merge 후 → 팀 전체 `docker compose run --rm db-migrate` 실행
+
+### 3-5. 개발 DB 환경 요약
+
+| 환경 | DB 위치 | 포트 | 목적 | 데이터 |
+|------|---------|------|------|--------|
+| 각 LXD 로컬 docker | `postgres` (컨테이너) | 5433 | 개인 개발 격리 | sync_dev_data.sh로 채움 |
+| infra-server 공유 | `10.10.10.10:5432` | 5432 | 팀 기준 HEAD (fallback) | 동일 sync |
+| staging | `staging-postgres` | 5432 | develop 브랜치 통합 검증 | 실제 파이프라인 실행 |
+| deploy-test prod | `adelie-postgres` | 5432 | 프로덕션 | 실제 데이터 원천 |
+
+---
+
+## 수정/신규 파일 목록
+
+| 파일 | 변경 | 담당 |
+|------|------|------|
+| `lxd/Makefile` | `check-lxd-git`, `sync-dev-data` 타겟 추가 | dorae222 |
+| `Makefile` | `sync-dev-data` 타겟 추가 | dorae222 |
+| `database/scripts/sync_dev_data.sh` | 신규 — prod→dev 콘텐츠 동기화 | dorae222 |
+
+---
+
+## 실행 순서
+
+### Phase A: 즉시 (오늘)
+1. `make build-api` → `make -f lxd/Makefile push` → deploy-test 배포
+2. 배포 검증 (bcrypt 버전, 로그인 테스트)
+3. `make -f lxd/Makefile check-lxd-git` 실행 → SSH 미설정 서버 파악
+
+### Phase B: 이번 주
+4. 미설정 LXD 서버 SSH 키 생성 + GitHub 등록 (각 담당자)
+5. `sync_dev_data.sh` 작성 및 테스트
+6. 각 LXD 서버에서 `make dev` + `sync_dev_data.sh` 실행하여 개발 환경 정상화
+
+### Phase C: 팀 공지
+7. 개발 DB 워크플로우 문서화 (CLAUDE.md 또는 docs/ wiki)
+8. `#migration` 알림 규칙 팀 합의
+
+---
+
+## 검증 완료 기준
+
+```bash
+# 1. 배포 성공
+curl https://demo.adelie-invest.com/api/v1/health   # → {"status":"success"}
+ssh deploy-test 'docker exec adelie-backend-api python -c "import bcrypt; print(bcrypt.__version__)"'
+# → 3.x.x
+
+# 2. LXD git push 가능
+lxc exec dev-yj99son -- bash -c "cd /home/ubuntu/adelie-investment && \
+  git push origin dev/frontend --dry-run"   # → Everything up-to-date
+
+# 3. 개발 DB 데이터 있음
+lxc exec dev-j2hoon10 -- bash -c "
+  cd /home/ubuntu/adelie-investment && \
+  docker exec adelie-dev-postgres psql -U narative -d narrative_invest \
+  -c 'SELECT count(*) FROM daily_briefings'"   # → count > 0
+```
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+너가 알아서 진행해라
+
+---
+
+공개키를 등록하지 않을 경우 문제가 있나?
+
+---
+
+PAT는 팀원들에게 발급해달라고 해놓은 상태인데, 이제 더 해야될 것은 없는지 체크해라.
+각 팀원들의 로컬에서 수정되거나 업데이트된 내용이 있는지 체크해야 한다.
+
+---
+
+[Request interrupted by user for tool use]

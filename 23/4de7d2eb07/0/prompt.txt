@@ -1,0 +1,231 @@
+Implement the following plan:
+
+# 통합 배포 동기화 계획: Git/Docker/LXD + 모니터링 개선
+
+## 현황 요약 (2026-02-20 진단 결과)
+
+### ✅ 이미 완료된 dashboard 수정
+- Cloudflare Tunnel: `dashboard.adelie-invest.com` → `localhost:8501` (nginx) ✓
+- `adelie-dashboard-nginx` 컨테이너 실행 중 (Up 7 hours) ✓
+- `config.toml` `[theme.sidebar]` 추가 완료 ✓
+- `infra/monitoring/docker-compose.yml` + `nginx-dashboard.conf` 업데이트 완료 ✓
+  - 단, deploy-test에서 staged 상태 (origin에 미push) → Step 4에서 해결
+
+### ⚠️ 동기화 필요 항목
+
+| 항목 | 현재 상태 | 목표 |
+|------|-----------|------|
+| 로컬 frontend 변경 | ChatFAB.jsx, TutorChat.jsx 수정 (미커밋) | develop에 커밋 + push |
+| develop vs prod | develop이 20 commits 앞섬 (PR #19-28) | prod 업데이트 |
+| deploy-test git | `prod` 브랜치, 2개 extra "apply" commits | `develop`으로 전환 + 최신화 |
+| Docker 이미지 | frontend/backend: Feb 19 09:25 UTC 빌드 (PR #19-28 전체 누락!), pipeline: Feb 13 | 3개 모두 재빌드 + push |
+| DB 마이그레이션 | 3개 미적용 (trading_tables, total_rewards, unique_portfolio) | alembic upgrade head |
+| dev/* 브랜치 | 모두 구 checkpoint(1382b32)에 고정 | develop 반영 + push |
+| LXD 서버 | 각 dev 서버의 코드 미동기화 | git pull |
+
+### ℹ️ Prometheus 상태 (문제 없음)
+- 현재 모든 타겟 UP: cadvisor×2, fastapi, node×6 (10.10.10.10-15, .20) ✓
+- Part B (infra-server 이전)는 infra-server SSH 접근 복구 후 별도 진행
+
+---
+
+## Step 1: 로컬 frontend 변경 커밋 (손영진)
+
+**변경 내용:**
+- `frontend/src/components/layout/ChatFAB.jsx`: 임시 비활성화 → `useTutor().openTutor()` 실제 연결
+- `frontend/src/pages/TutorChat.jsx`: "준비 중" 안내 → TutorModal 자동 오픈
+
+**커밋:**
+```bash
+# git config 확인 (손영진 계정이어야 함)
+git config user.name   # → YJ99Son
+git config user.email  # → syjin2008@naver.com
+
+git add frontend/src/components/layout/ChatFAB.jsx frontend/src/pages/TutorChat.jsx
+git commit -m "feat(frontend): AI 튜터 FAB 활성화 및 /tutor 자동 오픈"
+git push origin develop
+```
+
+---
+
+## Step 2: Docker 이미지 빌드 + Push
+
+현재 이미지 빌드 시각: **Feb 19 09:25 UTC** — 이후 추가된 내용 기준으로 **3개 이미지 모두 재빌드 필요:**
+
+| 이미지 | 현재 빌드 | 누락된 커밋 (미반영 변경) |
+|--------|-----------|-------------------------|
+| `adelie-frontend` | Feb 19 09:25 | PR #19-22 (활동캘린더, 보상흐름 전면 개편), PR #27 (TutorModal, SessionSidebar, 토큰갱신), PR #28 (가드레일), ChatFAB/TutorChat (Step 1) |
+| `adelie-backend-api` | Feb 19 09:26 | PR #23-25 (챗봇 guardrail, 브리핑 질문, 시스템 프롬프트 개편), PR #24 (tutor_sessions 신규), PR #26 (narrative TDZ), PR #28 (guardrail 업데이트) |
+| `adelie-ai-pipeline` | **Feb 13** | PR #18 (KST 날짜 통일) + 그 이후 **모든 datapipeline 변경** (graph.py, run.py, 프롬프트 14개, LLM observability/cache) |
+
+**커밋 시간대 요약 (KST 기준 오늘 Feb 20에만 PR #19-28 전체 반영됨):**
+```
+Feb 19 10:15 UTC  38464991 feat: stabilize keyword card icon mapping  ← 이미지 AFTER
+Feb 19 16:04 UTC  7b43b7c  feat(frontend): redesign reward flow       ← 이미지 AFTER
+Feb 20 전일        PR #22-28 전체 (chatbot, frontend, backend 개선)  ← 이미지 AFTER
+```
+
+```bash
+# Step 1 커밋 후, develop 최신 코드 기준으로 빌드
+make build-frontend
+make build-api
+make build-pipeline
+
+# Docker Hub push (dorae222/adelie-*:latest)
+make -f lxd/Makefile push
+```
+
+---
+
+## Step 3: deploy-test 동기화
+
+deploy-test는 현재 `prod` 브랜치 (+ 2개 apply 커밋)에 있고, staging area에 monitoring 파일 3개 존재.
+`develop` 브랜치로 전환하면 모든 파일(monitoring 포함)이 origin/develop 기준으로 정리됨.
+
+```bash
+ssh deploy-test 'cd ~/adelie-investment && \
+  git fetch origin && \
+  git stash && \
+  git checkout develop && \
+  git reset --hard origin/develop'
+```
+
+그 다음 앱 스택 업데이트:
+```bash
+ssh deploy-test 'cd ~/adelie-investment && \
+  docker compose -f docker-compose.prod.yml pull && \
+  docker compose -f docker-compose.prod.yml up -d --remove-orphans'
+```
+
+DB 마이그레이션 (3개 미적용):
+```bash
+ssh deploy-test 'docker exec adelie-backend-api sh -c "cd /app/database && alembic upgrade head"'
+# → 20260213_trading_tables, 20260217_add_total_rewards_received, 20260218_unique_user_portfolio 적용
+```
+
+monitoring 스택 재시작 (nginx + dashboard 이미지 최신화):
+```bash
+ssh deploy-test 'cd ~/adelie-investment/infra/monitoring && docker compose up -d --build'
+```
+
+---
+
+## Step 4: dev/* 브랜치 + LXD 서버 동기화
+
+```bash
+# dev/* 브랜치에 develop 머지 후 push
+make -f lxd/Makefile sync-dev-branches
+
+# 각 LXD 서버에서 git pull (lxc 명령, 호스트에서 실행)
+make -f lxd/Makefile sync-lxd
+```
+
+**LXD 브랜치 매핑:**
+| LXD 컨테이너 | 담당자 | 브랜치 |
+|---|---|---|
+| dev-yj99son | 손영진 | dev/frontend |
+| dev-j2hoon10 | 정지훈 | dev/chatbot |
+| dev-ryejinn | 안례진 | dev/pipeline |
+| dev-jjjh02 | 허진서 | dev/backend |
+| dev-hj | 도형준 | dev/infra |
+
+> **주의**: `sync-dev-branches`는 현재 `git config user.name/email` 계정으로 머지 커밋 생성.
+> 실행 전 git config 계정 확인 필요 (또는 merge 없이 fast-forward만 되도록 `--ff-only` 옵션 권장).
+
+---
+
+## Step 5: 로컬 레지스트리 동기화 (선택)
+
+```bash
+# 10.10.10.10:5000에 이미지 동기화 (LXD 개발환경에서 활용)
+make -f lxd/Makefile push-local
+```
+
+---
+
+## Part B: 모니터링 infra-server 이전 (별도 이슈, 현재 SSH 불가)
+
+현재 상태:
+- **Prometheus: 모든 타겟 UP** (cadvisor×2, fastapi, node-exporter×6) → 즉각 수정 불필요
+- infra-server(10.10.10.10) SSH 접속 불가 → 이전 작업 대기 중
+
+아키텍처 목표:
+```
+infra-server (10.10.10.10)          deploy-test (10.10.10.20)
+┌─────────────────────────────┐     ┌───────────────────────────┐
+│ prometheus   :9090          │◄────│ node-exporter     :9100   │
+│ grafana      :3000          │◄────│ FastAPI metrics   :8082   │
+│ dashboard-nginx :8501       │◄────│ cadvisor          :8080   │
+│ dashboard    (내부)         │     │ (앱 스택만 유지)          │
+│ cloudflared (새 터널)       │     │ cloudflared: demo만       │
+└─────────────────────────────┘
+└─────────────────────────────┘
+```
+
+필요 파일 (infra-server SSH 복구 후 진행):
+- `infra/monitoring/docker-compose.infra.yml` (신규, cadvisor 제외)
+- `infra/monitoring/docker-compose.deploy.yml` (신규, cadvisor only)
+- `infra/monitoring/.env.infra.example` (신규)
+- `infra/setup-cloudflare-tunnel-infra.sh` (신규)
+
+---
+
+## 검증
+
+```bash
+# 1. deploy-test 컨테이너 상태
+ssh deploy-test 'docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Image}}"'
+
+# 2. DB 마이그레이션 버전 확인
+ssh deploy-test 'docker exec adelie-backend-api sh -c "cd /app/database && alembic current"'
+
+# 3. Prometheus 타겟 확인
+ssh deploy-test 'curl -s "http://localhost:9090/api/v1/targets" | python3 -c "
+import json,sys; d=json.load(sys.stdin)
+for t in d[\"data\"][\"activeTargets\"]:
+    print(t[\"labels\"][\"job\"], t[\"labels\"][\"instance\"], \"→\", t[\"health\"])
+"'
+
+# 4. 서비스 접근 확인
+curl -s -o /dev/null -w "%{http_code}" https://demo.adelie-invest.com
+curl -s -o /dev/null -w "%{http_code}" https://dashboard.adelie-invest.com/_stcore/health
+curl -s -o /dev/null -w "%{http_code}" https://monitoring.adelie-invest.com/api/health
+
+# 5. LXD 서버 싱크 결과 확인
+lxc exec dev-yj99son -- bash -c "cd /home/ubuntu/adelie-investment && git log --oneline -2"
+```
+
+---
+
+## 담당자 및 실행 순서
+
+| 순서 | 작업 | 담당 계정 |
+|------|------|-----------|
+| 1 | ChatFAB/TutorChat 커밋 → push | YJ99Son (손영진) |
+| 2 | `make build-frontend build-api build-pipeline` | dorae222 (도형준) |
+| 3 | `make -f lxd/Makefile push` | dorae222 |
+| 4 | deploy-test git + docker 업데이트 | dorae222 |
+| 5 | DB 마이그레이션 | dorae222 |
+| 6 | `make -f lxd/Makefile sync-dev-branches sync-lxd` | dorae222 |
+| 7 | push-local (선택) | dorae222 |
+
+## 주의사항
+- deploy-test git stash: staging area의 3개 파일(nginx-dashboard.conf, docker-compose.yml, config.toml)은 origin/develop에 이미 있으므로, `git checkout develop && git reset --hard origin/develop` 후 자동 적용됨 (stash 불필요할 수도 있음)
+- `deploy-test-service` 대신 전체 `docker compose pull + up -d`를 권장 (3개 이미지 모두 교체)
+- ai-pipeline 이미지 재빌드 시 datapipeline 의존성 설치 시간 고려 (~5분)
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+Continue from where you left off.
+
+---
+
+다시 상태들을 점검하고 올바르게 계획을 업데이트해라.
+그리고 진행되지 않은 계획들을 파악해라.
+
+---
+
+[Request interrupted by user for tool use]

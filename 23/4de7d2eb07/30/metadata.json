@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "234de7d2eb07",
+  "session_id": "ad4dbae9-36ea-49f6-9eb3-01fd37912564",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-24T01:23:21.921707787Z",
+  "branch": "feature/canvas-agent-v4",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "frontend/src/components/agent/AgentCanvasSections.jsx",
+    "frontend/src/components/tutor/ChatInput.jsx",
+    "frontend/src/components/tutor/MessageBubble.jsx",
+    "frontend/src/components/tutor/SessionSidebar.jsx",
+    "frontend/src/components/tutor/TutorModal.jsx",
+    "frontend/src/components/tutor/TutorPanel.jsx",
+    "frontend/src/contexts/TutorChatContext.jsx",
+    "frontend/src/contexts/TutorContext.jsx",
+    "frontend/src/contexts/TutorSessionContext.jsx",
+    "frontend/src/contexts/TutorUIContext.jsx",
+    "frontend/src/pages/TutorChat.jsx"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 42,
+    "cache_creation_tokens": 54559,
+    "cache_read_tokens": 1723272,
+    "output_tokens": 7951,
+    "api_call_count": 36
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-24T01:23:21.898472098Z",
+    "agent_lines": 0,
+    "human_added": 3298,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 3298,
+    "agent_percentage": 0
+  }
+}

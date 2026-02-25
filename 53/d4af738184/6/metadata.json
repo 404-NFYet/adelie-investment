@@ -1,0 +1,35 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "53d4af738184",
+  "session_id": "349fd7ec-2185-4445-b36a-75db309cee3a",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-18T17:22:43.766179257Z",
+  "branch": "develop",
+  "checkpoints_count": 6,
+  "files_touched": [
+    "fastapi/app/api/routes/tutor.py",
+    "fastapi/app/services/stock_resolver.py",
+    "fastapi/app/services/tutor_engine.py",
+    "frontend/src/components/domain/HighlightedText.jsx",
+    "frontend/src/pages/Home.jsx",
+    "frontend/src/utils/markdown.js"
+  ],
+  "agent": "Claude Code",
+  "transcript_identifier_at_start": "116ea4f8-45fd-4dba-97ca-e78395a2c5f0",
+  "token_usage": {
+    "input_tokens": 830,
+    "cache_creation_tokens": 113221,
+    "cache_read_tokens": 3053302,
+    "output_tokens": 10086,
+    "api_call_count": 43
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-18T17:22:43.679537616Z",
+    "agent_lines": 0,
+    "human_added": 13,
+    "human_modified": 61,
+    "human_removed": 0,
+    "total_committed": 14,
+    "agent_percentage": 0
+  }
+}

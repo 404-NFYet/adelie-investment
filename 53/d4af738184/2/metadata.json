@@ -1,0 +1,34 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "53d4af738184",
+  "session_id": "2223cf46-3ef2-4af2-8d00-16608f68ecb1",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-17T03:35:28.243441561Z",
+  "branch": "develop",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "Makefile",
+    "docs/aws/aws-iam-permissions.md",
+    "infra/terraform/environments/localstack/main.tf",
+    "infra/terraform/modules/s3/main.tf",
+    "infra/terraform/modules/secrets/variables.tf",
+    "lxd/inventory.md"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 92,
+    "cache_creation_tokens": 108632,
+    "cache_read_tokens": 7231221,
+    "output_tokens": 6765,
+    "api_call_count": 88
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-17T03:35:27.882489843Z",
+    "agent_lines": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 0,
+    "agent_percentage": 0
+  }
+}

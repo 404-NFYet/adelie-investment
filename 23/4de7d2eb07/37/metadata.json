@@ -1,0 +1,41 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "234de7d2eb07",
+  "session_id": "7891a76b-f649-42f9-a13d-62f5cba63c3d",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-24T05:19:23.052212904Z",
+  "branch": "dev-final/frontend",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".github/workflows/deploy.yml",
+    "frontend/src/components/agent/AgentCanvasSections.jsx",
+    "frontend/src/components/tutor/ChatInput.jsx",
+    "frontend/src/components/tutor/MessageBubble.jsx",
+    "frontend/src/components/tutor/SessionSidebar.jsx",
+    "frontend/src/components/tutor/TutorModal.jsx",
+    "frontend/src/components/tutor/TutorPanel.jsx",
+    "frontend/src/contexts/TutorChatContext.jsx",
+    "frontend/src/contexts/TutorContext.jsx",
+    "frontend/src/contexts/TutorSessionContext.jsx",
+    "frontend/src/contexts/TutorUIContext.jsx",
+    "frontend/src/pages/TutorChat.jsx",
+    "lxd/Makefile"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 36,
+    "cache_creation_tokens": 70785,
+    "cache_read_tokens": 1879370,
+    "output_tokens": 14725,
+    "api_call_count": 32
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-24T05:19:23.016235912Z",
+    "agent_lines": 0,
+    "human_added": 9790,
+    "human_modified": 102,
+    "human_removed": 0,
+    "total_committed": 9855,
+    "agent_percentage": 0
+  }
+}

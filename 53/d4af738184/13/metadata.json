@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "53d4af738184",
+  "session_id": "ea2354aa-cb38-4aec-83d3-d1021685c261",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-19T10:51:17.883548024Z",
+  "branch": "develop",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "frontend/src/components/layout/BottomNav.jsx",
+    "frontend/src/pages/TutorChat.jsx"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 13,
+    "cache_creation_tokens": 22084,
+    "cache_read_tokens": 295285,
+    "output_tokens": 1903,
+    "api_call_count": 9
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-19T10:51:17.876503999Z",
+    "agent_lines": 0,
+    "human_added": 0,
+    "human_modified": 33,
+    "human_removed": 11,
+    "total_committed": 33,
+    "agent_percentage": 0
+  }
+}

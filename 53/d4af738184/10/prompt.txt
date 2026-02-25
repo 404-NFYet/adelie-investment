@@ -1,0 +1,142 @@
+Implement the following plan:
+
+# 매수/매도 기능 오동작 수정
+
+## Context
+
+사용자가 "시장이 개장됐는데 매수/매도가 안 된다"고 보고. 조사 결과 두 가지 독립적 원인 발견:
+
+1. **Primary**: DB 마이그레이션 미적용 → `total_rewards_received` 컬럼이 DB에 없음
+   → 배포된 Docker 이미지는 신규 모델(해당 컬럼 포함)인데 DB에 컬럼이 없으면
+   `ProgrammingError: column user_portfolios.total_rewards_received does not exist`
+   → 모든 포트폴리오 쿼리 실패 → 500 에러 → 거래 불가
+
+2. **Secondary**: `market_calendar.py`에서 `date.today()` (UTC) 사용
+   → MEMORY.md 규칙 위반 (KST 날짜 사용 필수)
+   → 서버 UTC 날짜 ≠ KST 날짜인 시간대(예: 자정 전후)에 "휴장일" 오판 가능
+
+---
+
+## 원인 상세
+
+### Issue 1: 마이그레이션 미적용
+
+| 항목 | 상태 |
+|------|------|
+| `20260217_add_total_rewards_received.py` | git에 커밋됨 (untracked 아님) |
+| `20260218_unique_user_portfolio.py` | `??` (untracked, 미커밋) |
+| 배포된 Docker 이미지 | `portfolio.py` 신규 모델 포함 (로컬 미커밋이지만 build 시 포함됨) |
+| Production DB | `alembic upgrade head` 미실행 → 두 마이그레이션 모두 미적용 가능성 |
+
+`get_or_create_portfolio()` → `SELECT ... total_rewards_received ... FROM user_portfolios` → DB 에러 → `execute_trade` 호출 전에 실패
+
+### Issue 2: KST 버그
+
+```python
+# fastapi/app/services/market_calendar.py:36 (현재)
+today_str = date.today().strftime("%Y%m%d")   # UTC 날짜!
+
+# 예: KST 09:00 = UTC 00:00 → 날짜 동일 (무관)
+# 예: KST 23:30 = UTC 14:30 → 날짜 동일 (무관)
+# 예: 다음날 KST 00:30 = UTC 15:30 (전날) → KST 날짜 ≠ UTC 날짜 → 영업일 잘못 판단 가능
+```
+
+---
+
+## 수정 계획
+
+### Step 1: 마이그레이션 즉시 적용 (코드 변경 없음, deploy-test)
+
+```bash
+ssh deploy-test 'docker exec adelie-backend-api sh -c "cd /app/database && alembic upgrade head"'
+```
+
+예상 결과: `20260217_rewards` → `20260218_unique_portfolio` 두 마이그레이션 순차 적용
+(이미 적용됐다면 "Already up to date" 출력)
+
+### Step 2: `market_calendar.py` KST 날짜 수정
+
+**파일**: `fastapi/app/services/market_calendar.py`
+
+```python
+# 변경 전 (line 36):
+today_str = date.today().strftime("%Y%m%d")
+
+# 변경 후:
+from datetime import datetime, timezone, timedelta
+KST = timezone(timedelta(hours=9))
+today_str = datetime.now(KST).strftime("%Y%m%d")
+```
+
+`from datetime import date, datetime` import 라인도 수정 필요 (`date` 제거 또는 유지)
+
+### Step 3: 미커밋 변경사항 커밋 (논리적 단위로 분리)
+
+git status에 남아있는 미커밋 파일들을 담당자별/주제별로 커밋:
+
+| 커밋 | 파일 | 담당 |
+|------|------|------|
+| `feat: 포트폴리오 모델 total_rewards_received 추가` | `fastapi/app/models/portfolio.py`, `fastapi/app/schemas/portfolio.py` | 허진서 |
+| `feat: 포트폴리오 서비스 보상 수익률 분리 계산` | `fastapi/app/services/portfolio_service.py` | 허진서 |
+| `fix: market_calendar KST 날짜 적용` | `fastapi/app/services/market_calendar.py` | 정지훈 |
+| `fix: quiz_reward, tutor 라우트 수정` | `fastapi/app/api/routes/quiz_reward.py`, `fastapi/app/api/routes/tutor.py` | 정지훈 |
+| `chore: Alembic 유니크 인덱스 마이그레이션` | `database/alembic/versions/20260218_unique_user_portfolio.py` | 허진서 |
+| datapipeline 관련 커밋 | `datapipeline/graph.py`, `datapipeline/nodes/`, `datapipeline/prompts/` | 정지훈 |
+| frontend 관련 커밋 | `frontend/src/pages/Portfolio.jsx`, `frontend/src/api/portfolio.js`, 등 | 손영진 |
+
+### Step 4: 재빌드 & 재배포
+
+```bash
+# 로컬: FastAPI 이미지 재빌드 (market_calendar.py KST fix 포함)
+make build-api && make push
+
+# deploy-test: backend-api 교체
+ssh deploy-test 'cd ~/adelie-investment && git pull origin develop && \
+  docker compose -f docker-compose.prod.yml pull backend-api && \
+  docker compose -f docker-compose.prod.yml up -d backend-api'
+```
+
+---
+
+## 핵심 수정 파일
+
+| 파일 | 변경 내용 |
+|------|---------|
+| `fastapi/app/services/market_calendar.py:36` | `date.today()` → `datetime.now(KST).strftime(...)` |
+
+(마이그레이션은 코드 변경 없이 `alembic upgrade head` 실행으로 처리)
+
+---
+
+## 검증
+
+| 항목 | 검증 방법 |
+|------|---------|
+| 마이그레이션 적용 | `docker exec adelie-backend-api sh -c "cd /app/database && alembic current"` → `20260218_unique_portfolio (head)` |
+| 포트폴리오 조회 | `curl -H "Authorization: Bearer <token>" http://10.10.10.20:8082/api/v1/portfolio` → 200 OK |
+| 시장 상태 | `curl http://10.10.10.20:8082/api/v1/trading/market-status` → `{"is_trading_day": true}` |
+| 매수 테스트 | 프론트엔드에서 삼성전자(005930) 1주 매수 → 성공 |
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/hj/.REDACTED.jsonl
+
+---
+
+정지훈, test0208, user4@gmail.com, 가나다 5개의 계정을 제외하고, 모두 제거해라.
+
+---
+
+[Request interrupted by user]
+
+---
+
+4개의 계정을 제외하고 제거해라
+
+---
+
+도커 파일과 개별 LXD 서버에서 올바르게 동작하도록 업데이트해라.
+그리고 develop 브랜치에서 개별 dev/~ 로 코드 싱크를 맞추는 방법도 문서로 작성해야 한다.
+
+---
+
+[Request interrupted by user for tool use]

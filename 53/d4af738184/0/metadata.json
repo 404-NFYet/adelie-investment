@@ -1,0 +1,38 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "53d4af738184",
+  "session_id": "c08acf15-5534-44ef-b9cf-9f375ffa7208",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-17T03:01:29.662498742Z",
+  "branch": "develop",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "database/alembic/versions/20260217_add_total_rewards_received.py",
+    "fastapi/app/api/routes/portfolio.py",
+    "fastapi/app/api/routes/quiz_reward.py",
+    "fastapi/app/api/routes/tutor.py",
+    "fastapi/app/core/config.py",
+    "fastapi/app/models/portfolio.py",
+    "fastapi/app/schemas/portfolio.py",
+    "fastapi/app/services/portfolio_service.py",
+    "fastapi/app/services/tutor_engine.py",
+    "frontend/src/contexts/TutorContext.jsx"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 30,
+    "cache_creation_tokens": 69527,
+    "cache_read_tokens": 2076260,
+    "output_tokens": 7178,
+    "api_call_count": 28
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-17T03:01:29.628560698Z",
+    "agent_lines": 61,
+    "human_added": 0,
+    "human_modified": 77,
+    "human_removed": 86,
+    "total_committed": 138,
+    "agent_percentage": 44.20289855072464
+  }
+}
