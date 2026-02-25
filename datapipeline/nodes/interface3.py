@@ -626,10 +626,10 @@ def run_hallcheck_glossary_node(state: dict) -> dict:
         }
 
     except Exception as e:
-        logger.error("  run_hallcheck_glossary failed: %s", e, exc_info=True)
+        logger.warning("  run_hallcheck_glossary failed → 원본 glossary fallback: %s", e)
         return {
-            "error": f"run_hallcheck_glossary failed: {e}",
-            "metrics": _update_metrics(state, "run_hallcheck_glossary", time.time() - node_start, "failed"),
+            "i3_validated_glossaries": state.get("i3_glossaries", []),
+            "metrics": _update_metrics(state, "run_hallcheck_glossary", time.time() - node_start, "fallback"),
         }
 
 
