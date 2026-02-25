@@ -14,6 +14,7 @@ from app.schemas.auth import (
     RefreshRequest,
     RegisterRequest,
 )
+from app.metrics import AUTH_LOGIN_TOTAL, AUTH_REFRESH_TOTAL
 from app.services.auth_service import login_user, refresh_tokens, register_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -125,7 +126,12 @@ async def login(
     response: Response,
     db: AsyncSession = Depends(get_db),
 ) -> AuthResponse:
-    auth = await login_user(db, email=payload.email, password=payload.password)
+    try:
+        auth = await login_user(db, email=payload.email, password=payload.password)
+        AUTH_LOGIN_TOTAL.labels("success").inc()
+    except Exception:
+        AUTH_LOGIN_TOTAL.labels("fail").inc()
+        raise
     if auth.get("accessToken"):
         _set_access_cookie(response, auth["accessToken"])
         auth.pop("accessToken", None)
@@ -152,7 +158,12 @@ async def refresh(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="refreshToken is required",
         )
-    auth = await refresh_tokens(db, refresh_token=refresh_token)
+    try:
+        auth = await refresh_tokens(db, refresh_token=refresh_token)
+        AUTH_REFRESH_TOTAL.labels("success").inc()
+    except Exception:
+        AUTH_REFRESH_TOTAL.labels("fail").inc()
+        raise
     if auth.get("accessToken"):
         _set_access_cookie(response, auth["accessToken"])
         auth.pop("accessToken", None)
