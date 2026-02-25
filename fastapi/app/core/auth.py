@@ -3,7 +3,7 @@
 import logging
 from typing import Optional
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
 from sqlalchemy import select
@@ -82,22 +82,27 @@ async def _resolve_user_from_payload(payload: dict, db: AsyncSession) -> dict:
 
 
 async def get_current_user_optional(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: AsyncSession = Depends(get_db),
 ) -> Optional[dict]:
     """선택적 인증 - 토큰이 있으면 검증 후 사용자 정보 반환, 없으면 None."""
-    if not credentials:
-        return None
-
     settings = get_settings()
     if not settings.JWT_SECRET:
         return None
 
-    payload = _decode_token(credentials.credentials)
+    token = credentials.credentials if credentials else None
+    if not token and request:
+        token = request.cookies.get(settings.AUTH_ACCESS_COOKIE_NAME)
+    if not token:
+        return None
+
+    payload = _decode_token(token)
     return await _resolve_user_from_payload(payload, db)
 
 
 async def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
@@ -106,11 +111,15 @@ async def get_current_user(
     Returns:
         {"id": int, "email": str, "username": str}
     """
-    if not credentials:
+    settings = get_settings()
+    token = credentials.credentials if credentials else None
+    if not token and request:
+        token = request.cookies.get(settings.AUTH_ACCESS_COOKIE_NAME)
+    if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication required",
         )
 
-    payload = _decode_token(credentials.credentials)
+    payload = _decode_token(token)
     return await _resolve_user_from_payload(payload, db)
