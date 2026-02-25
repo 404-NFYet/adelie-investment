@@ -144,7 +144,7 @@ class PlotlyChart(BaseModel):
 class GlossaryItem(BaseModel):
     term: str
     definition: str
-    domain: str
+    domain: str = ""
 
 
 class Page(BaseModel):
