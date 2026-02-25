@@ -13,6 +13,7 @@ import { learningApi, narrativeApi } from '../api';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import { useTermContext } from '../contexts/TermContext';
 import { useTutor } from '../contexts';
+import { useUser } from '../contexts/UserContext';
 import { buildNarrativePlot } from '../utils/narrativeChartAdapter';
 import ResponsiveEChart from '../components/charts/ResponsiveEChart';
 import ResponsivePlotly from '../components/charts/ResponsivePlotly';
@@ -83,7 +84,7 @@ const SWIPE_THRESHOLD = 70;
 const SWIPE_VELOCITY = 420;
 const RESUME_STORAGE_PREFIX = 'adelie:narrative:resume:';
 const RESUME_TTL_MS = 24 * 60 * 60 * 1000;
-const CTA_GUARD_SELECTOR = '#tutor-selection-btn';
+const CTA_GUARD_SELECTOR = '#tutor-selection-btn, #narrative-selection-cta';
 const SELECTION_IGNORE_SELECTOR = '#tutor-selection-btn, button, [role="button"], nav, input, textarea, select, option';
 
 const getResumeStorageKey = (caseId) => `${RESUME_STORAGE_PREFIX}${caseId}`;
@@ -332,7 +333,15 @@ export default function Narrative() {
   const navigate = useNavigate();
   const { claimReward } = usePortfolio();
   const { openTermSheet } = useTermContext();
-  const { setContextInfo, updateSelectionCtaState, clearSelectionCtaState, selectionCtaState } = useTutor();
+  const {
+    setContextInfo,
+    updateSelectionCtaState,
+    clearSelectionCtaState,
+    selectionCtaState,
+    askTutorFromSelection,
+    isLoading: isTutorLoading,
+  } = useTutor();
+  const { settings } = useUser();
 
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -346,6 +355,7 @@ export default function Narrative() {
   const [rewardError, setRewardError] = useState('');
   const [pendingResumeState, setPendingResumeState] = useState(null);
   const [isResumeDialogOpen, setIsResumeDialogOpen] = useState(false);
+  const [selectionPopupPos, setSelectionPopupPos] = useState({ x: 0, y: 0, placement: 'above' });
 
   const hasRestoredResumeRef = useRef(false);
   const scrollThrottleTimerRef = useRef(null);
@@ -707,6 +717,7 @@ export default function Narrative() {
   // ──────────────────────────────────────────────
   const clearNarrativeSelection = useCallback(() => {
     clearSelectionCtaState();
+    setSelectionPopupPos({ x: 0, y: 0, placement: 'above' });
     try {
       window.getSelection()?.removeAllRanges();
     } catch {
@@ -740,6 +751,21 @@ export default function Narrative() {
     if (anchorEl?.closest(SELECTION_IGNORE_SELECTOR) && focusEl?.closest(SELECTION_IGNORE_SELECTOR)) {
       clearSelectionCtaState();
       return;
+    }
+
+    const rect = range.getBoundingClientRect();
+    if (rect && (rect.width > 0 || rect.height > 0)) {
+      const centerX = rect.left + (rect.width || 0) / 2;
+      const popupHalfWidth = 130;
+      const clampedX = Math.max(16 + popupHalfWidth, Math.min(window.innerWidth - 16 - popupHalfWidth, centerX));
+      const aboveY = rect.top - 10;
+      const belowY = rect.bottom + 10;
+      const placement = aboveY >= 84 ? 'above' : 'below';
+      setSelectionPopupPos({
+        x: clampedX,
+        y: placement === 'above' ? aboveY : belowY,
+        placement,
+      });
     }
 
     updateSelectionCtaState({
@@ -830,7 +856,7 @@ export default function Narrative() {
   if (!data) return null;
 
   return (
-    <div className={`min-h-screen bg-background ${selectionCtaState.active ? 'pb-40' : 'pb-28'}`}>
+    <div className="min-h-screen bg-background pb-28">
       <header className="sticky top-0 z-30 border-b border-white/60 bg-white/80 backdrop-blur-md">
         <div className="mx-auto w-full max-w-mobile px-4 pb-3 pt-4">
           <div className="mb-3 flex items-center justify-between">
@@ -897,26 +923,58 @@ export default function Narrative() {
               {isLastStep ? <NarrativeSources sources={data.sources} /> : null}
             </div>
 
-            <div className="mt-6 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={goPrev}
-                disabled={currentStep === 0}
-                className="h-12 min-w-[96px] rounded-2xl border border-border bg-white px-4 text-sm font-semibold text-text-secondary transition disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                이전
-              </button>
-              <button
-                type="button"
-                onClick={goNext}
-                className="h-12 flex-1 rounded-2xl bg-primary px-4 text-sm font-semibold text-white transition hover:bg-primary-hover"
-              >
-                {isLastStep ? '보상 받기' : '다음'}
-              </button>
+            <div className="mt-6">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={goPrev}
+                  disabled={currentStep === 0}
+                  className="h-12 min-w-[96px] rounded-xl border border-border bg-white px-4 text-sm font-semibold text-text-secondary transition disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  이전
+                </button>
+                <button
+                  type="button"
+                  onClick={goNext}
+                  className="h-12 flex-1 rounded-xl bg-primary px-4 text-sm font-semibold text-white transition hover:bg-primary-hover"
+                >
+                  {isLastStep ? '보상 받기' : '다음'}
+                </button>
+              </div>
             </div>
           </motion.section>
         </AnimatePresence>
       </main>
+
+      {selectionCtaState.active && selectionPopupPos.x > 0 ? (
+        <div
+          id="narrative-selection-cta"
+          className="fixed z-50"
+          style={{
+            left: `${selectionPopupPos.x}px`,
+            top: `${selectionPopupPos.y}px`,
+            transform: selectionPopupPos.placement === 'above' ? 'translate(-50%, -100%)' : 'translate(-50%, 0%)',
+          }}
+        >
+          <div className="flex items-center gap-2 rounded-full border border-primary/20 bg-white/95 px-2 py-1 shadow-lg backdrop-blur-sm">
+            <button
+              type="button"
+              onClick={clearNarrativeSelection}
+              className="h-8 rounded-full border border-border bg-white px-3 text-xs font-semibold text-text-secondary transition hover:bg-surface"
+            >
+              해제
+            </button>
+            <button
+              type="button"
+              onClick={() => askTutorFromSelection(settings?.difficulty || 'beginner')}
+              disabled={isTutorLoading}
+              className="h-8 rounded-full bg-primary px-3 text-xs font-semibold text-white transition hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              AI 튜터에게 질문
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {rewardError && rewardViewState === 'none' ? (
         <div className="fixed bottom-20 left-0 right-0 z-40 px-4">

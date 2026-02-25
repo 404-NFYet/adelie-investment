@@ -12,10 +12,13 @@ export default function ChatFAB() {
   const location = useLocation();
   const { isOpen, isLoading, openTutor, selectionCtaState, askTutorFromSelection } = useTutor();
   const { settings } = useUser();
+  const isNarrative = location.pathname.startsWith('/narrative/');
+  const shouldUseInlineSelectionCta = isNarrative;
   const isSelectionMode = selectionCtaState.active;
 
   const shouldHide =
     isOpen ||
+    (shouldUseInlineSelectionCta && selectionCtaState.active) ||
     HIDDEN_EXACT.includes(location.pathname) ||
     HIDDEN_PREFIXES.some((prefix) => location.pathname.startsWith(prefix));
 
