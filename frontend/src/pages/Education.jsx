@@ -199,11 +199,6 @@ export default function Education() {
                       <h3 className="line-limit-2 text-[16px] font-bold leading-[1.35] text-black break-keep">
                         {keyword.title}
                       </h3>
-                      {keyword.description && (
-                        <p className="mt-1.5 line-limit-2 text-[13px] leading-relaxed text-[#6b7280]">
-                          {keyword.description}
-                        </p>
-                      )}
                       <button
                         type="button"
                         className="mt-4 h-[35px] rounded-[10px] bg-primary px-5 text-sm font-semibold text-white disabled:opacity-40"
@@ -222,29 +217,6 @@ export default function Education() {
                       className="h-20 w-20 flex-shrink-0 object-contain"
                     />
                   </div>
-
-                  {(keyword.sector || keyword.mirroring_hint || (keyword.stocks?.length > 0)) && (
-                    <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-gray-100 pt-3">
-                      {keyword.sector && (
-                        <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[11px] font-medium text-gray-600">
-                          {keyword.sector}
-                        </span>
-                      )}
-                      {keyword.mirroring_hint && (
-                        <span className="rounded bg-[#f5f3ff] px-1.5 py-0.5 text-[11px] font-medium text-[#4338ca]">
-                          {keyword.mirroring_hint}
-                        </span>
-                      )}
-                      {keyword.stocks?.slice(0, 3).map((stock, idx) => (
-                        <span key={stock.stock_code || idx} className="rounded bg-white px-1.5 py-0.5 text-[11px] text-gray-700 shadow-sm border border-gray-100">
-                          {stock.stock_name}
-                        </span>
-                      ))}
-                      {keyword.stocks?.length > 3 && (
-                        <span className="text-[11px] text-gray-500">외 {keyword.stocks.length - 3}개</span>
-                      )}
-                    </div>
-                  )}
                 </article>
               ))}
             </div>
