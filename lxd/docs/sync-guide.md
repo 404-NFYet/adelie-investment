@@ -4,6 +4,21 @@ develop → dev/* 브랜치 싱크 및 LXD 서버 업데이트 워크플로우
 
 ---
 
+## Frontend 기준 브랜치 (2026-02-26 업데이트)
+
+- 기준 브랜치(Base): `prod-final`
+- 프론트 담당 브랜치: `dev-final/frontend`
+
+프론트 작업 시작 전 기본 동기화 명령:
+
+```bash
+git fetch origin
+git checkout dev-final/frontend
+git merge origin/prod-final --no-edit
+```
+
+---
+
 ## 브랜치 계층 구조
 
 ```
