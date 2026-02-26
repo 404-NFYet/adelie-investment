@@ -32,7 +32,10 @@ async def classify_chart_request(user_request: str, assistant_response_context: 
         "[관련 데이터/문맥]\n" f"{assistant_response_context[:1000]}\n\n"
         "지원하는 차트 유형 (ChartType):\n"
         "line (주가 추이 등), bar (항목별 비교 등), pie (비율 등), area, scatter, heatmap, candlestick (봉차트), radar, bubble, combo_line_bar, funnel.\n"
-        "질문이 위 11가지 형태에 전혀 맞지 않거나 3D 모델링, 비디오 생성 등 시각화 불가능한 내용일 경우 'unsupported'로 분류하세요.\n\n"
+        "다음 경우 반드시 'unsupported'로 분류하세요:\n"
+        "1) 3D 차트, 입체 그래프, 3차원 시각화 요청 (3D 수식어가 있으면 무조건 unsupported)\n"
+        "2) 애니메이션, 동영상, VR/AR 생성 요청\n"
+        "3) 위 11가지 차트 유형으로 표현 불가능한 내용\n\n"
         "반드시 다음 JSON 형식을 엄수하세요:\n"
         "{\n"
         '  "reasoning": "선택한 차트 유형에 대한 논리적 근거",\n'
@@ -70,7 +73,8 @@ async def generate_chart_json(context: str, chart_type: ChartType) -> Optional[D
     prompt = (
         f"다음 내용과 데이터를 기반으로 Plotly.js **{chart_type.value}** 차트 JSON을 생성하세요.\n\n"
         "반드시 요구되는 JSON 스키마 형식: {\"data\": [트레이스 객체들], \"layout\": {레이아웃 옵션}}\n"
-        "단위가 명확하지 않다면 가상의 데이터를 생성해서라도 차트 구조를 렌더링하세요.\n\n"
+        "반드시 제공된 실제 데이터의 날짜와 수치만 사용하세요. 데이터가 없으면 빈 차트 구조를 반환하세요.\n"
+        "layout에는 반드시 한글 title을 포함하세요. 예: \"layout\": {\"title\": {\"text\": \"삼성전자 최근 주가 추이\"}, ...}\n\n"
         f"제공된 내용:\n{context[:1500]}\n"
     )
 

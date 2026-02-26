@@ -121,6 +121,7 @@ export function TutorProvider({ children }) {
 
       const assistantMsgId = Date.now() + 1;
       let assistantMsgCreated = false;
+      let vizMsgId = null;
       let pendingSources = null;
 
       try {
@@ -200,7 +201,8 @@ export function TutorProvider({ children }) {
                 continue;
               }
 
-              if (data.type === 'text_delta' && data.content) {
+              // Backend text chunks may come without an explicit type field.
+              if ((data.type === 'text_delta' || (!data.type && data.content)) && data.content) {
                 if (!fullContent) {
                   setAgentStatus({
                     phase: 'answering',
@@ -238,9 +240,11 @@ export function TutorProvider({ children }) {
                   content: data.content || null,
                   format: data.format || 'html',
                   chartData: data.chartData || null,
+                  title: data.title || '',
                   executionTime: data.execution_time_ms,
                   timestamp: new Date().toISOString(),
                 };
+                vizMsgId = vizMessage.id;
                 // Insert BEFORE the current assistant text bubble (chart-first ordering)
                 setMessages((prev) => {
                   if (!assistantMsgCreated) return [...prev, vizMessage];
@@ -255,24 +259,24 @@ export function TutorProvider({ children }) {
 
               if (data.type === 'done' && data.sources) {
                 pendingSources = data.sources;
-                if (assistantMsgCreated) {
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === assistantMsgId ? { ...m, sources: data.sources } : m
-                    )
-                  );
-                }
+                setMessages((prev) =>
+                  prev.map((m) => (
+                    m.id === assistantMsgId || m.id === vizMsgId
+                      ? { ...m, sources: data.sources }
+                      : m
+                  ))
+                );
               }
 
               if (data.type === 'sources' && data.sources) {
                 pendingSources = data.sources;
-                if (assistantMsgCreated) {
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === assistantMsgId ? { ...m, sources: data.sources } : m
-                    )
-                  );
-                }
+                setMessages((prev) =>
+                  prev.map((m) => (
+                    m.id === assistantMsgId || m.id === vizMsgId
+                      ? { ...m, sources: data.sources }
+                      : m
+                  ))
+                );
               }
 
               if (data.type === 'error' && data.error) {

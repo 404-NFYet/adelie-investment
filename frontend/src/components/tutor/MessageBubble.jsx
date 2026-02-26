@@ -138,13 +138,17 @@ function VisualizationMessage({ message }) {
   const hasChart = normalizedData.length > 0;
   const hasPie = normalizedData.some((trace) => trace.type === 'pie');
   const normalizedLayout = normalizeLayout(chartData?.layout || {}, { hasPie, clearTitle: false });
+  const dynamicTitle = message.title
+    || chartData?.layout?.title?.text
+    || chartData?.layout?.title
+    || '차트';
   const fixedHeight = expanded ? 440 : 280;
 
   return (
     <motion.div className="mb-4" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
       <div className="flex items-center gap-1.5 mb-1.5">
         <img src="/images/penguin-3d.png" alt="" className="w-5 h-5 rounded-full object-cover" />
-        <span className="text-xs text-text-secondary">차트</span>
+        <span className="text-xs text-text-secondary">{dynamicTitle}</span>
         {message.executionTime && <span className="text-[10px] text-text-secondary ml-auto">{message.executionTime}ms</span>}
       </div>
       <div className="max-w-[480px] overflow-hidden rounded-2xl border border-border bg-white p-2 transition-all">
@@ -170,6 +174,7 @@ function VisualizationMessage({ message }) {
           {expanded ? '축소' : '확대'}
         </button>
       )}
+      {message.sources && message.sources.length > 0 && <SourceBadge sources={message.sources} />}
     </motion.div>
   );
 }

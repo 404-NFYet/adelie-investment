@@ -424,3 +424,166 @@ if (data.type === 'done' && data.sources) {
 |---|---|
 | `frontend/src/contexts/TutorContext.jsx` | viz 메시지 ID 추적 + `done` 이벤트 시 sources 부착 |
 | `frontend/src/components/tutor/MessageBubble.jsx` | `VisualizationMessage`에 `SourceBadge` 렌더링 추가 |
+
+---
+
+## 버그 픽스 2차
+
+> 추가일: 2026-02-26
+
+### BF-4: 차트에 2018년 등 과거 가상 데이터가 표시되는 버그
+
+**재현 입력 예시**: "삼성전자 최근 흐름 차트로 보여줘"
+
+**기대 동작**: pykrx로 조회한 최근 실제 날짜/종가 데이터가 차트에 표시됨
+
+**실제 동작**: 2018년 등 과거 날짜의 가상 데이터가 차트에 표시됨
+
+#### 근본 원인
+
+`generate_chart_json` 프롬프트에 **"단위가 명확하지 않다면 가상의 데이터를 생성해서라도 차트 구조를 렌더링하세요"** 지시가 있음.
+실제 pykrx 조회 데이터(`chart_data`)가 `viz_context`에 구조화된 형태로 포함되지 않아, LLM이 컨텍스트를 제대로 활용하지 못하고 **학습 데이터 기반의 가상 날짜(2018년 등)를 생성**함.
+
+```python
+# 현재 (tutor_engine.py): 실제 데이터가 잘려나간 문자열로만 전달됨
+viz_context = f"사용자 질문: {request.message}\n조회된 데이터: {dynamic_context[:1000]}"
+chart_json = await generate_chart_json(viz_context, classification.chart_type)
+# ↑ chart_data(pykrx 원본 딕셔너리)는 전혀 전달되지 않음
+```
+
+#### 수정 계획
+
+**A. `chatbot/services/tutor_engine.py` — pykrx 실제 데이터를 viz_context에 명시적 주입**
+
+```python
+# 변경 전
+viz_context = f"사용자 질문: {request.message}\n조회된 데이터: {dynamic_context[:1000]}"
+
+# 변경 후: chart_data(실제 pykrx 딕셔너리)를 JSON으로 직렬화하여 명시적 포함
+import json as _json
+real_data_block = ""
+if chart_data:
+    real_data_block = f"\n\n[실제 조회된 주가 데이터 — 반드시 이 날짜/수치만 사용]\n{_json.dumps(chart_data, ensure_ascii=False)[:2000]}"
+viz_context = f"사용자 질문: {request.message}\n조회된 데이터: {dynamic_context[:800]}{real_data_block}"
+```
+
+**B. `chatbot/services/tutor_chart_generator.py` — 가상 데이터 생성 지시 제거**
+
+```python
+# 변경 전
+"단위가 명확하지 않다면 가상의 데이터를 생성해서라도 차트 구조를 렌더링하세요.\n\n"
+
+# 변경 후
+"반드시 제공된 실제 데이터의 날짜와 수치만 사용하세요. 데이터가 없으면 빈 차트 구조를 반환하세요.\n\n"
+```
+
+#### 변경 파일
+
+| 파일 | 변경 내용 |
+|---|---|
+| `chatbot/services/tutor_engine.py` | `chart_data`(pykrx 원본)를 `viz_context`에 JSON 형태로 명시적 포함 |
+| `chatbot/services/tutor_chart_generator.py` | 가상 데이터 생성 허용 지시 제거 → 실제 데이터 사용 강제 |
+
+---
+
+### BF-5: 차트가 텍스트 위에 있음에도 "아래의 시각화를 보면" 표현이 출력되는 버그
+
+**재현 상황**: 차트가 텍스트 답변 위에 렌더링됨에도 LLM이 "아래의 시각화를 보면", "다음 차트에서", "위 그래프처럼" 등 위치 지칭 표현을 사용
+
+**기대 동작**: 차트를 직접 지칭하지 않고 데이터/수치 중심으로 서술
+
+#### 근본 원인
+
+기존 `chart_system_prompt`가 ASCII 기호 및 "아래는 차트입니다" 같은 중복 멘트만 금지하고, **"아래의 시각화를", "다음 차트를", "위 그래프에서"** 같은 방향성 지칭 표현은 명시적으로 금지하지 않음.
+
+```python
+# 현재 (tutor_engine.py): 위치 지칭 표현 금지 누락
+"따라서 텍스트 답변에는 '아래는 차트입니다' 같은 중복된 멘트나, 텍스트 기호(|, *, ─, _, 공백 등)를 사용해
+시각적으로 차트/그래프를 묘사하려는 시도를 **절대로** 하지 마세요."
+# ↑ "아래의 시각화를 보면" 등은 허용된 상태
+```
+
+#### 수정 계획
+
+**`chatbot/services/tutor_engine.py` — `chart_system_prompt` 위치 지칭 금지 구문 추가**
+
+```python
+# BF-2 수정안의 chart_system_prompt에 아래 항목 추가
+"- '아래의 시각화', '위 차트', '다음 그래프', '이 차트를 보면' 등 차트의 위치를 지칭하는 표현을 사용하지 마세요.\n"
+"- 차트를 직접 가리키는 대신 '데이터에 따르면', '수치를 보면', '최근 흐름을 분석하면' 등 데이터 중심 표현을 사용하세요.\n"
+```
+
+#### 변경 파일
+
+| 파일 | 변경 내용 |
+|---|---|
+| `chatbot/services/tutor_engine.py` | `chart_system_prompt`에 위치 지칭 표현 금지 구문 추가 |
+
+---
+
+### BF-6: 시각화 차트에 제목(title)이 표시되지 않는 문제
+
+**재현 상황**: 차트가 렌더링될 때 어떤 데이터/종목에 대한 차트인지 제목이 없어 맥락 파악이 어려움
+
+**기대 동작**: 차트 버블 상단에 "삼성전자(005930) 최근 주가 추이" 등 의미 있는 제목 표시
+
+#### 근본 원인
+
+- `tutor_chart_generator.py`의 차트 생성 프롬프트가 `layout.title`을 필수 항목으로 명시하지 않아, LLM이 제목을 생략하거나 영문으로 생성하는 경우 발생
+- `MessageBubble.jsx`의 `VisualizationMessage`가 `chartData.layout.title`을 읽어서 표시하는 로직이 없고, 항상 "차트"라는 고정 텍스트만 표시
+
+#### 수정 계획
+
+**A. `chatbot/services/tutor_chart_generator.py` — 레이아웃 title 필수 생성 명시**
+
+```python
+# 생성 프롬프트에 title 요구사항 추가
+"layout에는 반드시 한글 title을 포함하세요. 예: \"layout\": {\"title\": {\"text\": \"삼성전자 최근 주가 추이\"}, ...}"
+```
+
+**B. `chatbot/services/tutor_engine.py` — visualization 이벤트에 title 필드 추출 및 포함**
+
+```python
+# chart_json에서 title 추출하여 이벤트에 포함
+chart_title = (
+    chart_json.get("layout", {}).get("title", {}).get("text")
+    or chart_json.get("layout", {}).get("title")
+    or ""
+)
+yield f"event: visualization\ndata: {json.dumps({'type': 'visualization', 'format': 'json', 'chartData': chart_json, 'title': chart_title})}\n\n"
+```
+
+**C. `frontend/src/contexts/TutorContext.jsx` — vizMessage에 title 저장**
+
+```js
+if (data.type === 'visualization' && ...) {
+  const vizMessage = {
+    // ...기존 필드
+    title: data.title || '',  // 추가
+  };
+}
+```
+
+**D. `frontend/src/components/tutor/MessageBubble.jsx` — 차트 버블 상단에 title 표시**
+
+```jsx
+// VisualizationMessage 헤더 영역 수정
+<div className="flex items-center gap-1.5 mb-1.5">
+  <img src="/images/penguin-3d.png" alt="" className="w-5 h-5 rounded-full object-cover" />
+  <span className="text-xs text-text-secondary">
+    {message.title || chartData?.layout?.title?.text || chartData?.layout?.title || '차트'}
+  </span>
+  {message.executionTime && (
+    <span className="text-[10px] text-text-secondary ml-auto">{message.executionTime}ms</span>
+  )}
+</div>
+```
+
+#### 변경 파일
+
+| 파일 | 변경 내용 |
+|---|---|
+| `chatbot/services/tutor_chart_generator.py` | 차트 생성 프롬프트에 한글 `layout.title` 필수 생성 명시 |
+| `chatbot/services/tutor_engine.py` | `visualization` 이벤트에 `title` 필드 추출 및 포함 |
+| `frontend/src/contexts/TutorContext.jsx` | `vizMessage`에 `title` 필드 저장 |
+| `frontend/src/components/tutor/MessageBubble.jsx` | `VisualizationMessage` 헤더에 동적 title 표시 |
