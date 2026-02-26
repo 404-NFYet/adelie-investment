@@ -1,0 +1,15 @@
+{
+  "sample_size": 1,
+  "cases_attempted": 1,
+  "success_rate": 1.0,
+  "renderable_rate": 1.0,
+  "avg_chart_count": 0.0,
+  "chart_policy_compliance_rate": 0.0,
+  "avg_sentence_len": 43.17,
+  "avg_long_sentence_ratio": 0.0286,
+  "prompt_tokens_total": 133765,
+  "completion_tokens_total": 38383,
+  "llm_elapsed_total_s": 734.0945,
+  "failure_count": 0,
+  "failure_by_code": {}
+}

@@ -1,0 +1,17 @@
+{
+  "sample_size": 12,
+  "cases_attempted": 1,
+  "success_rate": 0.0,
+  "renderable_rate": 0.0,
+  "avg_chart_count": 0.0,
+  "chart_policy_compliance_rate": 0.0,
+  "avg_sentence_len": 0.0,
+  "avg_long_sentence_ratio": 0.0,
+  "prompt_tokens_total": 0,
+  "completion_tokens_total": 0,
+  "llm_elapsed_total_s": 0.022,
+  "failure_count": 1,
+  "failure_by_code": {
+    "LLM_CALL_FAIL": 1
+  }
+}

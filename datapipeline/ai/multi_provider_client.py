@@ -22,6 +22,7 @@ LOGGER = logging.getLogger(__name__)
 
 OPENAI_TIMEOUT_SECONDS = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "180"))
 PERPLEXITY_TIMEOUT_SECONDS = float(os.getenv("PERPLEXITY_TIMEOUT_SECONDS", "60"))
+ANTHROPIC_TIMEOUT_SECONDS = float(os.getenv("ANTHROPIC_TIMEOUT_SECONDS", "180"))
 LLM_MAX_CONCURRENCY = max(1, int(os.getenv("LLM_MAX_CONCURRENCY", "6")))
 OPENAI_MAX_CONCURRENCY = max(1, int(os.getenv("OPENAI_MAX_CONCURRENCY", "4")))
 PERPLEXITY_MAX_CONCURRENCY = max(1, int(os.getenv("PERPLEXITY_MAX_CONCURRENCY", "2")))
@@ -88,7 +89,10 @@ class MultiProviderClient:
         if anthropic_key:
             try:
                 from anthropic import Anthropic
-                self._anthropic_client = Anthropic(api_key=anthropic_key)
+                self._anthropic_client = Anthropic(
+                    api_key=anthropic_key,
+                    timeout=ANTHROPIC_TIMEOUT_SECONDS,
+                )
                 self.providers["anthropic"] = self._anthropic_client
                 LOGGER.info("Anthropic provider initialized")
             except ImportError:

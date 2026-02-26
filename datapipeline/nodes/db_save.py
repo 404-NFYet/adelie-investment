@@ -19,6 +19,15 @@ def save_to_db_node(state: dict[str, Any]) -> dict[str, Any]:
     started = time.time()
 
     full_output = state.get("full_output")
+    if bool(state.get("no_db_save")):
+        logger.info("no_db_save=true: DB 저장을 건너뜁니다.")
+        return {
+            "db_result": {"skipped": True, "reason": "no_db_save"},
+            "metrics": {
+                "save_to_db": {"elapsed_s": time.time() - started, "status": "skipped"},
+            },
+        }
+
     if not full_output:
         logger.warning("full_output이 없어 DB 저장을 건너뜁니다.")
         return {

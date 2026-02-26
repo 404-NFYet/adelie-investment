@@ -1,0 +1,10 @@
+{
+  "hits": 0,
+  "misses": 0,
+  "hit_rate": 0.0,
+  "avg_age_s": 0.0,
+  "ttl_s": 900,
+  "max_entries": 512,
+  "enabled": true,
+  "entries": 0
+}

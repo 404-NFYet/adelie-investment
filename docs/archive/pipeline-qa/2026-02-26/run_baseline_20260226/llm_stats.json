@@ -1,0 +1,25 @@
+{
+  "aggregate": {
+    "totals": {
+      "calls": 0,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "elapsed_s": 0.0
+    },
+    "by_prompt": {}
+  },
+  "cases": [
+    {
+      "sample_id": "sample_001",
+      "stats": {
+        "totals": {
+          "calls": 0,
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "elapsed_s": 0.0
+        },
+        "by_prompt": {}
+      }
+    }
+  ]
+}

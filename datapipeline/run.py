@@ -30,7 +30,15 @@ from pathlib import Path
 from uuid import uuid4
 
 from .ai.llm_observability import reset_llm_stats, snapshot_llm_stats
+from .ai.llm_response_cache import reset_llm_cache, snapshot_llm_cache_stats
 from .config import kst_today
+from .qa_artifacts import (
+    QARunArtifacts,
+    build_case_metrics,
+    build_input_sample,
+    kst_now_iso,
+    map_error_code,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -73,9 +81,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--topic-count",
         type=int,
-        default=3,
-        help="생성할 카드(토픽) 수 (기본: 3)",
+        default=None,
+        help="생성할 카드(토픽) 수 (일반 기본: 3, QA 기본: 12)",
     )
+    parser.add_argument("--qa-run-id", type=str, default="", help="QA 실행 ID")
+    parser.add_argument(
+        "--qa-log-dir",
+        type=Path,
+        default=None,
+        help="QA 아티팩트 저장 루트 (기본: docs/archive/pipeline-qa)",
+    )
+    parser.add_argument("--no-db-save", action="store_true", help="DB 저장 스킵 (측정 전용)")
+    parser.add_argument("--emit-case-metrics-jsonl", action="store_true", help="케이스 메트릭 JSONL 기록")
+    parser.add_argument("--cache-bust", action="store_true", help="실행 전 LLM 캐시 초기화")
     return parser.parse_args()
 
 
@@ -96,6 +114,7 @@ def _build_initial_state(
     topic_index: int,
     backend: str,
     market: str,
+    no_db_save: bool,
 ) -> dict:
     """파이프라인 초기 상태를 생성."""
     return {
@@ -104,6 +123,7 @@ def _build_initial_state(
         "topic_index": topic_index,
         "backend": backend,
         "market": market,
+        "no_db_save": no_db_save,
         # Data Collection 중간 결과
         "raw_news": None,
         "raw_reports": None,
@@ -238,11 +258,47 @@ async def async_main() -> int:
     logger.info("Pipeline run_id: %s", run_id)
 
     args = parse_args()
+    qa_enabled = any([
+        bool(args.qa_run_id),
+        bool(args.qa_log_dir),
+        bool(args.no_db_save),
+        bool(args.emit_case_metrics_jsonl),
+        bool(args.cache_bust),
+    ])
+    topic_count = args.topic_count if args.topic_count is not None else (12 if qa_enabled else 3)
     backend = pick_backend(args.backend)
+    qa_artifacts: QARunArtifacts | None = None
+
+    if args.cache_bust:
+        reset_llm_cache()
+        logger.info("LLM cache reset (--cache-bust)")
+
+    if qa_enabled:
+        qa_log_root = (
+            args.qa_log_dir.resolve()
+            if args.qa_log_dir
+            else Path(__file__).resolve().parent.parent / "docs" / "archive" / "pipeline-qa"
+        )
+        qa_run_id = args.qa_run_id.strip() or f"qa_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        qa_artifacts = QARunArtifacts(
+            run_id=qa_run_id,
+            sample_size=topic_count,
+            qa_log_dir=qa_log_root,
+        )
 
     # 파일 모드에서 경로 확인
     if args.input and not args.input.exists():
         logger.error("입력 파일을 찾을 수 없습니다: %s", args.input)
+        if qa_artifacts:
+            qa_artifacts.record_failure({
+                "sample_id": "sample_001",
+                "stage": "input_validation",
+                "error_code": "LLM_CALL_FAIL",
+                "message": f"입력 파일 없음: {args.input}",
+                "raw_excerpt": str(args.input),
+                "stacktrace_hash": "",
+            })
+            qa_artifacts.finalize(snapshot_llm_cache_stats(), exit_code=1)
         return 1
 
     mode = "파일 로드" if args.input else "실시간 데이터 수집"
@@ -254,7 +310,8 @@ async def async_main() -> int:
     else:
         logger.info("Market: %s", args.market)
     logger.info("Backend: %s", backend)
-    logger.info("Topic Count: %d", args.topic_count)
+    logger.info("Topic Count: %d", topic_count)
+    logger.info("no_db_save: %s", bool(args.no_db_save))
 
     # LangGraph 빌드
     from .graph import build_graph
@@ -274,6 +331,7 @@ async def async_main() -> int:
             topic_index=args.topic_index,
             backend=backend,
             market=args.market,
+            no_db_save=bool(args.no_db_save),
         )
 
         started = time.time()
@@ -282,8 +340,38 @@ async def async_main() -> int:
         final_state = await graph.ainvoke(initial_state, config=run_config)
         elapsed = time.time() - started
 
+        llm_stats = snapshot_llm_stats()
+        if qa_artifacts:
+            sample_id = f"sample_{args.topic_index + 1:03d}"
+            qa_artifacts.record_llm_case_stats(sample_id, llm_stats)
+            qa_artifacts.record_case_metrics(
+                build_case_metrics(sample_id=sample_id, final_state=final_state, llm_stats=llm_stats)
+            )
+            qa_artifacts.record_input_sample({
+                "sample_id": sample_id,
+                "keyword": str((final_state.get("curated_context") or {}).get("theme") or ""),
+                "category": "",
+                "stock_codes": [
+                    str(x.get("ticker") or "")
+                    for x in ((final_state.get("curated_context") or {}).get("selected_stocks") or [])
+                    if isinstance(x, dict) and (x.get("ticker") or "")
+                ],
+                "briefing_id": None,
+                "briefing_date": (final_state.get("curated_context") or {}).get("date"),
+            })
+
         if final_state.get("error"):
             logger.error("파이프라인 실패: %s", final_state["error"])
+            if qa_artifacts:
+                qa_artifacts.record_failure({
+                    "sample_id": f"sample_{args.topic_index + 1:03d}",
+                    "stage": "pipeline_execution",
+                    "error_code": map_error_code("pipeline_execution", str(final_state["error"])),
+                    "message": str(final_state["error"]),
+                    "raw_excerpt": str(final_state.get("error")),
+                    "stacktrace_hash": "",
+                })
+                qa_artifacts.finalize(snapshot_llm_cache_stats(), exit_code=1)
             return 1
 
         logger.info("=== 완료 ===")
@@ -291,15 +379,17 @@ async def async_main() -> int:
         logger.info("총 소요시간: %.2fs", elapsed)
         _log_crawl_status(final_state)
         _log_metrics(final_state.get("metrics", {}))
-        _log_llm_stats(snapshot_llm_stats())
+        _log_llm_stats(llm_stats)
+        if qa_artifacts:
+            qa_artifacts.finalize(snapshot_llm_cache_stats(), exit_code=0)
         return 0
 
     # ── 데이터 수집 모드: 멀티 토픽 루프 ──
-    topic_count = args.topic_count
     curated_all_path: Path | None = None
 
     for idx in range(topic_count):
         logger.info("=== Topic %d/%d ===", idx + 1, topic_count)
+        sample_id = f"sample_{idx + 1:03d}"
 
         if idx == 0:
             # 1차: 전체 파이프라인 (데이터 수집 → Interface 2/3 → DB)
@@ -309,27 +399,69 @@ async def async_main() -> int:
                 topic_index=0,
                 backend=backend,
                 market=args.market,
+                no_db_save=bool(args.no_db_save),
             )
 
             started = time.time()
             thread_id = f"pipeline-{kst_today()}-0"
             run_config = {"configurable": {"thread_id": thread_id}}
-            final_state = await graph.ainvoke(initial_state, config=run_config)
-            elapsed = time.time() - started
+            try:
+                final_state = await graph.ainvoke(initial_state, config=run_config)
+                elapsed = time.time() - started
+            except Exception as e:
+                elapsed = time.time() - started
+                logger.error("Topic 1/%d 예외: %s (%.2fs)", topic_count, e, elapsed)
+                fail_count += 1
+                llm_stats = snapshot_llm_stats()
+                if qa_artifacts:
+                    qa_artifacts.record_llm_case_stats(sample_id, llm_stats)
+                    qa_artifacts.record_case_metrics(
+                        build_case_metrics(sample_id=sample_id, final_state={"error": str(e)}, llm_stats=llm_stats)
+                    )
+                    qa_artifacts.record_failure({
+                        "sample_id": sample_id,
+                        "stage": "pipeline_execution",
+                        "error_code": map_error_code("pipeline_execution", str(e)),
+                        "message": str(e),
+                        "raw_excerpt": str(e),
+                        "stacktrace_hash": str(abs(hash(str(e)))),
+                    })
+                break
+
+            llm_stats = snapshot_llm_stats()
+            if qa_artifacts:
+                qa_artifacts.record_llm_case_stats(sample_id, llm_stats)
+                qa_artifacts.record_case_metrics(
+                    build_case_metrics(sample_id=sample_id, final_state=final_state, llm_stats=llm_stats)
+                )
 
             if final_state.get("error"):
                 logger.error("Topic 1/%d 실패: %s", topic_count, final_state["error"])
                 fail_count += 1
+                if qa_artifacts:
+                    qa_artifacts.record_failure({
+                        "sample_id": sample_id,
+                        "stage": "pipeline_execution",
+                        "error_code": map_error_code("pipeline_execution", str(final_state["error"])),
+                        "message": str(final_state["error"]),
+                        "raw_excerpt": str(final_state["error"]),
+                        "stacktrace_hash": str(abs(hash(str(final_state["error"])))),
+                    })
                 break  # 1차 실패 시 중단 (curated_topics 없음)
 
             logger.info("Topic 1/%d 완료: %s (%.2fs)", topic_count, final_state.get("output_path", ""), elapsed)
             _log_crawl_status(final_state)
             _log_metrics(final_state.get("metrics", {}))
-            _log_llm_stats(snapshot_llm_stats())
+            _log_llm_stats(llm_stats)
             success_count += 1
 
             # curated_topics 저장 (2차+ 재활용)
             curated_topics = final_state.get("curated_topics")
+            if qa_artifacts and isinstance(curated_topics, list):
+                for sample_idx in range(min(topic_count, len(curated_topics))):
+                    qa_artifacts.record_input_sample(
+                        build_input_sample(f"sample_{sample_idx + 1:03d}", curated_topics[sample_idx])
+                    )
             if curated_topics and len(curated_topics) > 1:
                 curated_all_path = _save_curated_topics(curated_topics)
             else:
@@ -340,6 +472,24 @@ async def async_main() -> int:
             if not curated_all_path:
                 logger.warning("curated_ALL 파일 없음, Topic %d/%d 건너뜀", idx + 1, topic_count)
                 fail_count += 1
+                if qa_artifacts:
+                    llm_stats = snapshot_llm_stats()
+                    qa_artifacts.record_llm_case_stats(sample_id, llm_stats)
+                    qa_artifacts.record_case_metrics(
+                        build_case_metrics(
+                            sample_id=sample_id,
+                            final_state={"error": "curated_ALL 파일 없음"},
+                            llm_stats=llm_stats,
+                        )
+                    )
+                    qa_artifacts.record_failure({
+                        "sample_id": sample_id,
+                        "stage": "pipeline_execution",
+                        "error_code": "LLM_CALL_FAIL",
+                        "message": "curated_ALL 파일 없음",
+                        "raw_excerpt": "curated_ALL path missing",
+                        "stacktrace_hash": "",
+                    })
                 continue
 
             initial_state = _build_initial_state(
@@ -347,6 +497,7 @@ async def async_main() -> int:
                 topic_index=idx,
                 backend=backend,
                 market=args.market,
+                no_db_save=bool(args.no_db_save),
             )
 
             started = time.time()
@@ -360,24 +511,71 @@ async def async_main() -> int:
                 if final_state.get("error"):
                     logger.error("Topic %d/%d 실패: %s", idx + 1, topic_count, final_state["error"])
                     fail_count += 1
+                    llm_stats = snapshot_llm_stats()
+                    if qa_artifacts:
+                        qa_artifacts.record_llm_case_stats(sample_id, llm_stats)
+                        qa_artifacts.record_case_metrics(
+                            build_case_metrics(sample_id=sample_id, final_state=final_state, llm_stats=llm_stats)
+                        )
+                        qa_artifacts.record_failure({
+                            "sample_id": sample_id,
+                            "stage": "pipeline_execution",
+                            "error_code": map_error_code("pipeline_execution", str(final_state["error"])),
+                            "message": str(final_state["error"]),
+                            "raw_excerpt": str(final_state["error"]),
+                            "stacktrace_hash": str(abs(hash(str(final_state["error"])))),
+                        })
                     continue  # 실패해도 다음 토픽 진행
 
                 logger.info("Topic %d/%d 완료: %s (%.2fs)", idx + 1, topic_count, final_state.get("output_path", ""), elapsed)
                 _log_crawl_status(final_state)
                 _log_metrics(final_state.get("metrics", {}))
-                _log_llm_stats(snapshot_llm_stats())
+                llm_stats = snapshot_llm_stats()
+                _log_llm_stats(llm_stats)
+                if qa_artifacts:
+                    qa_artifacts.record_llm_case_stats(sample_id, llm_stats)
+                    qa_artifacts.record_case_metrics(
+                        build_case_metrics(sample_id=sample_id, final_state=final_state, llm_stats=llm_stats)
+                    )
                 success_count += 1
             except Exception as e:
                 elapsed = time.time() - started
                 logger.error("Topic %d/%d 예외: %s (%.2fs)", idx + 1, topic_count, e, elapsed)
                 fail_count += 1
+                llm_stats = snapshot_llm_stats()
+                if qa_artifacts:
+                    qa_artifacts.record_llm_case_stats(sample_id, llm_stats)
+                    qa_artifacts.record_case_metrics(
+                        build_case_metrics(sample_id=sample_id, final_state={"error": str(e)}, llm_stats=llm_stats)
+                    )
+                    qa_artifacts.record_failure({
+                        "sample_id": sample_id,
+                        "stage": "pipeline_execution",
+                        "error_code": map_error_code("pipeline_execution", str(e)),
+                        "message": str(e),
+                        "raw_excerpt": str(e),
+                        "stacktrace_hash": str(abs(hash(str(e)))),
+                    })
                 continue
 
     total_elapsed = time.time() - total_started
     logger.info("=== 전체 완료 ===")
     logger.info("성공: %d, 실패: %d, 총 소요시간: %.2fs", success_count, fail_count, total_elapsed)
-
-    return 0 if success_count > 0 else 1
+    exit_code = 0 if success_count > 0 else 1
+    if qa_artifacts:
+        while len(qa_artifacts.input_samples) < topic_count:
+            idx = len(qa_artifacts.input_samples) + 1
+            qa_artifacts.record_input_sample({
+                "sample_id": f"sample_{idx:03d}",
+                "keyword": "",
+                "category": "",
+                "stock_codes": [],
+                "briefing_id": None,
+                "briefing_date": None,
+            })
+        qa_artifacts.finalize(snapshot_llm_cache_stats(), exit_code=exit_code)
+        logger.info("QA artifacts saved: %s", qa_artifacts.run_dir)
+    return exit_code
 
 
 def main() -> int:

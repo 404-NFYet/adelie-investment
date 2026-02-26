@@ -1,0 +1,55 @@
+{
+  "run_id": "baseline_live_t1_fast_20260226",
+  "started_at_kst": "2026-02-26T23:00:22+09:00",
+  "ended_at_kst": "2026-02-26T23:17:13+09:00",
+  "git_sha": "e7703ccd34261c56d8ed313f09501693c8a64824",
+  "branch": "dev-final/frontend",
+  "pipeline_source_ref": "origin/dev-final/pipeline",
+  "mode": "measurement_only",
+  "sample_size": 1,
+  "chart_policy": "2-4",
+  "quality_priority": "readability_first",
+  "cache_scope": "step1_summary_only",
+  "env_fingerprint": {
+    "python": "3.12.3",
+    "cache_enabled": "true",
+    "cache_ttl_s": "900",
+    "cache_max_entries": "512",
+    "OPENAI_API_KEY": {
+      "set": true,
+      "sha256_12": "e666824d9a5e",
+      "length": 164
+    },
+    "CLAUDE_API_KEY": {
+      "set": true,
+      "sha256_12": "dcd306cdcf3d",
+      "length": 108
+    },
+    "PERPLEXITY_API_KEY": {
+      "set": true,
+      "sha256_12": "4d76797bb6b5",
+      "length": 53
+    },
+    "DATABASE_URL": {
+      "set": true,
+      "sha256_12": "3e88f04a3279",
+      "length": 72
+    },
+    "REDIS_URL": {
+      "set": true,
+      "sha256_12": "886d3685dfc3",
+      "length": 26
+    },
+    "LANGCHAIN_API_KEY": {
+      "set": true,
+      "sha256_12": "30ead9f97b51",
+      "length": 51
+    },
+    "LANGSMITH_API_KEY": {
+      "set": false
+    }
+  },
+  "cases_attempted": 1,
+  "failures_count": 0,
+  "exit_code": 0
+}

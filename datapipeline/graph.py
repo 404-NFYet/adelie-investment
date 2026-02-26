@@ -71,6 +71,7 @@ class BriefingPipelineState(TypedDict):
     topic_index: int
     backend: str                  # "live" | "mock"
     market: str                   # "KR" | "US" | "ALL"
+    no_db_save: bool              # True면 DB 저장 생략(측정 모드)
 
     # Data Collection 중간 결과
     raw_news: Optional[list]

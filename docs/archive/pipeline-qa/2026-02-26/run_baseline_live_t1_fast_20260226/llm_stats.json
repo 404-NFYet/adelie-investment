@@ -1,0 +1,287 @@
+{
+  "aggregate": {
+    "totals": {
+      "calls": 25,
+      "prompt_tokens": 133765,
+      "completion_tokens": 38383,
+      "elapsed_s": 734.0945
+    }
+  },
+  "cases": [
+    {
+      "sample_id": "sample_001",
+      "stats": {
+        "totals": {
+          "calls": 25,
+          "prompt_tokens": 133765,
+          "completion_tokens": 38383,
+          "elapsed_s": 734.0945
+        },
+        "by_prompt": {
+          "phase1_news_map": {
+            "calls": 1,
+            "prompt_tokens": 3145,
+            "completion_tokens": 1745,
+            "elapsed_s": 33.0859,
+            "events": {
+              "input_truncated": 1
+            },
+            "providers": {
+              "openai": 1
+            },
+            "models": {
+              "gpt-5-mini": 1
+            }
+          },
+          "phase1_reports_map": {
+            "calls": 1,
+            "prompt_tokens": 773,
+            "completion_tokens": 1659,
+            "elapsed_s": 30.7428,
+            "events": {},
+            "providers": {
+              "openai": 1
+            },
+            "models": {
+              "gpt-5-mini": 1
+            }
+          },
+          "phase1_reports_reduce": {
+            "calls": 1,
+            "prompt_tokens": 637,
+            "completion_tokens": 901,
+            "elapsed_s": 16.1629,
+            "events": {},
+            "providers": {
+              "openai": 1
+            },
+            "models": {
+              "gpt-5-mini": 1
+            }
+          },
+          "phase1_news_reduce": {
+            "calls": 1,
+            "prompt_tokens": 847,
+            "completion_tokens": 948,
+            "elapsed_s": 15.1414,
+            "events": {},
+            "providers": {
+              "openai": 1
+            },
+            "models": {
+              "gpt-5-mini": 1
+            }
+          },
+          "phase2_curate_with_websearch": {
+            "calls": 2,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "elapsed_s": 60.0952,
+            "events": {},
+            "providers": {
+              "openai": 2
+            },
+            "models": {
+              "gpt-5.2": 2
+            }
+          },
+          "page_purpose": {
+            "calls": 1,
+            "prompt_tokens": 2334,
+            "completion_tokens": 451,
+            "elapsed_s": 9.5045,
+            "events": {
+              "cache_store": 1
+            },
+            "providers": {
+              "anthropic": 1
+            },
+            "models": {
+              "claude-sonnet-4-6": 1
+            }
+          },
+          "historical_case": {
+            "calls": 1,
+            "prompt_tokens": 3301,
+            "completion_tokens": 1408,
+            "elapsed_s": 30.4506,
+            "events": {
+              "cache_store": 1
+            },
+            "providers": {
+              "anthropic": 1
+            },
+            "models": {
+              "claude-sonnet-4-6": 1
+            }
+          },
+          "narrative_body": {
+            "calls": 1,
+            "prompt_tokens": 5775,
+            "completion_tokens": 3325,
+            "elapsed_s": 58.458,
+            "events": {
+              "cache_store": 1
+            },
+            "providers": {
+              "anthropic": 1
+            },
+            "models": {
+              "claude-sonnet-4-6": 1
+            }
+          },
+          "hallucination_check": {
+            "calls": 1,
+            "prompt_tokens": 7757,
+            "completion_tokens": 6057,
+            "elapsed_s": 100.4491,
+            "events": {
+              "cache_store": 1
+            },
+            "providers": {
+              "anthropic": 1
+            },
+            "models": {
+              "claude-sonnet-4-6": 1
+            }
+          },
+          "3_theme": {
+            "calls": 1,
+            "prompt_tokens": 5510,
+            "completion_tokens": 210,
+            "elapsed_s": 5.0499,
+            "events": {
+              "cache_store": 1
+            },
+            "providers": {
+              "anthropic": 1
+            },
+            "models": {
+              "claude-sonnet-4-6": 1
+            }
+          },
+          "3_pages": {
+            "calls": 1,
+            "prompt_tokens": 10530,
+            "completion_tokens": 4060,
+            "elapsed_s": 64.5794,
+            "events": {
+              "cache_store": 1
+            },
+            "providers": {
+              "anthropic": 1
+            },
+            "models": {
+              "claude-sonnet-4-6": 1
+            }
+          },
+          "3_chart_reasoning": {
+            "calls": 4,
+            "prompt_tokens": 10706,
+            "completion_tokens": 1002,
+            "elapsed_s": 23.8619,
+            "events": {
+              "cache_store": 4
+            },
+            "providers": {
+              "openai": 4
+            },
+            "models": {
+              "gpt-4o-mini": 4
+            }
+          },
+          "3_chart_generation": {
+            "calls": 4,
+            "prompt_tokens": 7610,
+            "completion_tokens": 49,
+            "elapsed_s": 4.8546,
+            "events": {
+              "cache_store": 4
+            },
+            "providers": {
+              "openai": 4
+            },
+            "models": {
+              "gpt-4o-mini": 4
+            }
+          },
+          "3_glossary_term_extraction": {
+            "calls": 1,
+            "prompt_tokens": 5128,
+            "completion_tokens": 1876,
+            "elapsed_s": 26.0679,
+            "events": {
+              "cache_store": 1
+            },
+            "providers": {
+              "anthropic": 1
+            },
+            "models": {
+              "claude-sonnet-4-6": 1
+            }
+          },
+          "3_glossary": {
+            "calls": 1,
+            "prompt_tokens": 28043,
+            "completion_tokens": 3031,
+            "elapsed_s": 58.0357,
+            "events": {
+              "cache_store": 1
+            },
+            "providers": {
+              "anthropic": 1
+            },
+            "models": {
+              "claude-sonnet-4-6": 1
+            }
+          },
+          "3_hallcheck_glossary": {
+            "calls": 1,
+            "prompt_tokens": 31019,
+            "completion_tokens": 4172,
+            "elapsed_s": 74.271,
+            "events": {
+              "cache_store": 1
+            },
+            "providers": {
+              "anthropic": 1
+            },
+            "models": {
+              "claude-sonnet-4-6": 1
+            }
+          },
+          "3_tone_final": {
+            "calls": 1,
+            "prompt_tokens": 9883,
+            "completion_tokens": 7279,
+            "elapsed_s": 119.6717,
+            "events": {
+              "cache_store": 1
+            },
+            "providers": {
+              "anthropic": 1
+            },
+            "models": {
+              "claude-sonnet-4-6": 1
+            }
+          },
+          "3_home_icon_map": {
+            "calls": 1,
+            "prompt_tokens": 767,
+            "completion_tokens": 210,
+            "elapsed_s": 3.612,
+            "events": {
+              "cache_store": 1
+            },
+            "providers": {
+              "openai": 1
+            },
+            "models": {
+              "gpt-5-mini": 1
+            }
+          }
+        }
+      }
+    }
+  ]
+}

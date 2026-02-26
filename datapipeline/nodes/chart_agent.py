@@ -317,7 +317,14 @@ def _execute_tools(tool_calls: list[dict]) -> list[dict]:
         if tool_name in AVAILABLE_TOOLS:
             try:
                 logger.info(f"    Executing {tool_name} with {args}")
-                output = AVAILABLE_TOOLS[tool_name](**args)
+                tool_obj = AVAILABLE_TOOLS[tool_name]
+                invoke_fn = getattr(tool_obj, "invoke", None)
+                if callable(invoke_fn):
+                    output = invoke_fn(args or {})
+                elif callable(tool_obj):
+                    output = tool_obj(**(args or {}))
+                else:
+                    raise TypeError(f"Tool {tool_name} is not callable and has no invoke()")
                 tool_outputs.append({
                     "tool": tool_name,
                     "args": args,
@@ -620,9 +627,16 @@ def run_hallcheck_chart_node(state: dict) -> dict:
 
             new_items = result.get("hallucination_checklist", []) or []
             max_risk = _max_risk_label(new_items)
-            if max_risk in {"중간", "높음"}:
+            if max_risk == "높음":
                 charts[section_key] = None
                 _append_gate_item(checklist, section_key, f"팩트체크 위험도({max_risk})로 차트를 숨겼어요.", risk=max_risk)
+            elif max_risk == "중간":
+                _append_gate_item(
+                    checklist,
+                    section_key,
+                    "팩트체크 위험도(중간) 경고: 차트는 유지하되 주의 문구를 남겼어요.",
+                    risk=max_risk,
+                )
 
             logger.info(f"  {section_key}: Found {len(new_items)} verification items. max_risk={max_risk}")
             checklist.extend(new_items)

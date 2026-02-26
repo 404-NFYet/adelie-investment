@@ -1,0 +1,1 @@
+{"timestamp_kst": "2026-02-26T21:59:45+09:00", "sample_id": "sample_001", "stage": "pipeline_execution", "error_code": "LLM_CALL_FAIL", "message": "No module named 'feedparser'", "raw_excerpt": "{'error': \"No module named 'feedparser'\"}", "stacktrace_hash": "3e908414b57f36ee"}

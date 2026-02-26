@@ -18,7 +18,10 @@ import requests
 from ..ai.llm_observability import record_llm_call, record_llm_event
 from ..config import (
     OPENAI_PHASE1_CHUNK_TARGET_INPUT_TOKENS,
+    OPENAI_PHASE1_MAP_REDUCE_BUDGET_S,
+    OPENAI_PHASE1_MAX_ITEMS_PER_KIND,
     OPENAI_PHASE1_MAX_COMPLETION_TOKENS,
+    OPENAI_PHASE1_REQUEST_TIMEOUT_S,
     OPENAI_PHASE1_MODEL,
     OPENAI_PHASE1_SUMMARY_MAX_RETRIES,
     OPENAI_PHASE1_TEMPERATURE,
@@ -103,6 +106,7 @@ def _call_chat_summary(
     api_key: str,
     max_retries: int,
     prompt_name: str,
+    timeout_s: int,
 ) -> dict:
     """요약 호출. 빈 content/length 종료 시 재시도."""
     retries = max(0, max_retries)
@@ -116,7 +120,7 @@ def _call_chat_summary(
                 OPENAI_API_URL,
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                 json=payload,
-                timeout=90,
+                timeout=max(1, int(timeout_s)),
             )
         except requests.exceptions.RequestException as e:
             record_llm_event(prompt_name=prompt_name, event="request_error_retry")
@@ -134,7 +138,7 @@ def _call_chat_summary(
                     OPENAI_API_URL,
                     headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                     json=payload,
-                    timeout=90,
+                    timeout=max(1, int(timeout_s)),
                 )
                 if retry_resp.ok:
                     resp = retry_resp
@@ -231,8 +235,18 @@ def _summarize_with_map_reduce(
     if not api_key:
         return f"(OPENAI_API_KEY 미설정) {kind} {len(blocks)}건"
 
+    max_items = max(1, int(OPENAI_PHASE1_MAX_ITEMS_PER_KIND))
+    original_count = len(blocks)
+    if original_count > max_items:
+        blocks = blocks[:max_items]
+        logger.info("[%s 요약] 입력 %d건 -> 상위 %d건으로 제한", kind, original_count, len(blocks))
+        record_llm_event(prompt_name=f"phase1_{kind}_map", event="input_truncated")
+
     chunks = _chunk_blocks(blocks, OPENAI_PHASE1_CHUNK_TARGET_INPUT_TOKENS)
     retries = OPENAI_PHASE1_SUMMARY_MAX_RETRIES
+    timeout_s = OPENAI_PHASE1_REQUEST_TIMEOUT_S
+    budget_s = max(30, int(OPENAI_PHASE1_MAP_REDUCE_BUDGET_S))
+    budget_start = time.perf_counter()
 
     logger.info("[%s 요약] Map/Reduce 시작: %d건 → %d 청크", kind, len(blocks), len(chunks))
 
@@ -240,6 +254,13 @@ def _summarize_with_map_reduce(
     failed_chunks = 0
 
     for chunk_index, chunk in enumerate(chunks, start=1):
+        elapsed = time.perf_counter() - budget_start
+        if elapsed > budget_s:
+            failed_chunks += (len(chunks) - chunk_index + 1)
+            logger.warning("[%s 요약] 시간 예산 초과: %.1fs > %ds (남은 청크 생략)", kind, elapsed, budget_s)
+            record_llm_event(prompt_name=f"phase1_{kind}_map", event="map_reduce_budget_exceeded")
+            break
+
         chunk_text = "\n\n".join(t for _, t in chunk)
         prompt = prompt_template.replace(f"{{{prompt_key}}}", chunk_text)
 
@@ -249,6 +270,7 @@ def _summarize_with_map_reduce(
                 api_key,
                 retries,
                 prompt_name=f"phase1_{kind}_map",
+                timeout_s=timeout_s,
             )
             successful_chunks.append({
                 "chunk_index": chunk_index,
@@ -267,15 +289,24 @@ def _summarize_with_map_reduce(
     reduce_prompt = _build_reduce_prompt(kind, merged_input)
 
     try:
+        if (time.perf_counter() - budget_start) > budget_s:
+            raise TimeoutError(f"{kind} reduce skipped by budget")
         reduced = _call_chat_summary(
             reduce_prompt,
             api_key,
             retries,
             prompt_name=f"phase1_{kind}_reduce",
+            timeout_s=timeout_s,
         )
         final_summary = reduced["summary"]
     except Exception:
         final_summary = "\n\n".join(c["summary"] for c in successful_chunks)
+
+    if failed_chunks > 0 or original_count > len(blocks):
+        final_summary = (
+            f"{final_summary}\n\n(요약 참고: 처리된 입력 {len(blocks)}/{original_count}건, "
+            f"실패 청크 {failed_chunks}개)"
+        )
 
     logger.info("[%s 요약] 완료 (성공 %d/%d 청크)", kind, len(successful_chunks), len(chunks))
     return final_summary
