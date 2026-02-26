@@ -21,6 +21,7 @@ import ResponsiveEChart from '../components/charts/ResponsiveEChart';
 import ResponsivePlotly from '../components/charts/ResponsivePlotly';
 import { convertPlotlyToECharts } from '../utils/charts/plotlyToEcharts';
 import RewardResultScreen from '../components/narrative/RewardResultScreen';
+import { trackEvent } from '../utils/analytics';
 
 const STEP_CONFIGS = [
   {
@@ -533,6 +534,7 @@ export default function Narrative() {
   const hasLoggedInProgressRef = useRef(false);
   const selectionScopeRef = useRef(null);
   const swipeTouchRef = useRef(null);
+  const lastSelectionTrackRef = useRef({ key: '', ts: 0 });
   const totalSteps = STEP_CONFIGS.length;
 
   // ──────────────────────────────────────────────
@@ -924,6 +926,20 @@ export default function Narrative() {
       return;
     }
 
+    const normalizedCaseId = Number(caseId);
+    const safeCaseId = Number.isFinite(normalizedCaseId) ? normalizedCaseId : null;
+    const selectionKey = `${safeCaseId ?? 'na'}:${stepConfig.key}:${text}`;
+    const now = Date.now();
+    if (lastSelectionTrackRef.current.key !== selectionKey || now - lastSelectionTrackRef.current.ts > 1500) {
+      trackEvent('narrative_selection_cta_exposed', {
+        case_id: safeCaseId,
+        step_key: stepConfig.key,
+        step_index: currentStep,
+        selected_text_len: text.length,
+      });
+      lastSelectionTrackRef.current = { key: selectionKey, ts: now };
+    }
+
     const rect = range.getBoundingClientRect();
     if (rect && (rect.width > 0 || rect.height > 0)) {
       const centerX = rect.left + (rect.width || 0) / 2;
@@ -952,7 +968,21 @@ export default function Narrative() {
         sourcePage: 'narrative',
       },
     });
-  }, [caseId, stepConfig.key, stepConfig.title, stepData?.title, updateSelectionCtaState, clearSelectionCtaState]);
+  }, [caseId, currentStep, stepConfig.key, stepConfig.title, stepData?.title, updateSelectionCtaState, clearSelectionCtaState]);
+
+  const handleAskTutorFromSelection = useCallback(() => {
+    const difficulty = settings?.difficulty || 'beginner';
+    const normalizedCaseId = Number(caseId);
+    const safeCaseId = Number.isFinite(normalizedCaseId) ? normalizedCaseId : null;
+    trackEvent('narrative_selection_ask_click', {
+      case_id: safeCaseId,
+      step_key: stepConfig.key,
+      step_index: currentStep,
+      selected_text_len: selectionCtaState.text?.trim()?.length || 0,
+      difficulty,
+    });
+    askTutorFromSelection(difficulty);
+  }, [askTutorFromSelection, caseId, currentStep, selectionCtaState.text, settings?.difficulty, stepConfig.key]);
 
   // 단계 변경 시 선택 초기화
   useEffect(() => {
@@ -1138,7 +1168,7 @@ export default function Narrative() {
             </button>
             <button
               type="button"
-              onClick={() => askTutorFromSelection(settings?.difficulty || 'beginner')}
+              onClick={handleAskTutorFromSelection}
               disabled={isTutorLoading}
               className="h-8 rounded-full bg-primary px-3 text-xs font-semibold text-white transition hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-70"
             >

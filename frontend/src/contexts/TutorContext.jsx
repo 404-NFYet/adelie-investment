@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { API_BASE_URL, authFetch, fetchJson, postJson, deleteJson } from '../api/client';
+import { trackEvent } from '../utils/analytics';
 
 const TutorContext = createContext(null);
 const SESSION_KEY = 'adelie_tutor_session';
@@ -111,8 +112,9 @@ export function TutorProvider({ children }) {
 
   const sendMessage = useCallback(
     async (message, difficulty = 'beginner', options = {}) => {
-      const { appendUser = true, contextOverride = null } = options;
+      const { appendUser = true, contextOverride = null, analytics = null } = options;
       if (!message.trim()) return;
+      const requestStartAt = Date.now();
 
       if (appendUser) {
         const userMessage = {
@@ -307,6 +309,16 @@ export function TutorProvider({ children }) {
         setMessages((prev) =>
           prev.map((m) => (m.id === assistantMessage.id ? { ...m, content: fullContent, isStreaming: false } : m))
         );
+        if (analytics?.source === 'selection_cta') {
+          trackEvent('tutor_selection_success', {
+            case_id: analytics.caseId ?? null,
+            step_key: analytics.stepKey || null,
+            selected_text_len: analytics.selectedTextLen || 0,
+            difficulty: analytics.difficulty || difficulty,
+            latency_ms: Date.now() - requestStartAt,
+            response_len: fullContent.trim().length,
+          });
+        }
       } catch (error) {
         if (error?.name === 'AbortError') {
           setMessages((prev) =>
@@ -320,6 +332,16 @@ export function TutorProvider({ children }) {
         }
         console.error('Tutor error:', error);
         const visibleErrorMessage = error?.message?.trim() || '죄송합니다. 오류가 발생했습니다.';
+        if (analytics?.source === 'selection_cta') {
+          trackEvent('tutor_selection_error', {
+            case_id: analytics.caseId ?? null,
+            step_key: analytics.stepKey || null,
+            selected_text_len: analytics.selectedTextLen || 0,
+            difficulty: analytics.difficulty || difficulty,
+            latency_ms: Date.now() - requestStartAt,
+            error_message: visibleErrorMessage.slice(0, 120),
+          });
+        }
         setAgentStatus({
           phase: 'idle',
           text: '응답 대기 중',
@@ -384,11 +406,31 @@ export function TutorProvider({ children }) {
 
     isSubmittingSelectionRef.current = true;
     try {
-      openTutor(selectionCtaState.context || null);
+      const selectionContext = selectionCtaState.context || null;
+      const selectedTextLen = selectionCtaState.text?.trim()?.length || 0;
+      const normalizedCaseId = Number(selectionContext?.id);
+      const safeCaseId = Number.isFinite(normalizedCaseId) ? normalizedCaseId : null;
+      trackEvent('tutor_selection_submit', {
+        case_id: safeCaseId,
+        step_key: selectionContext?.stepKey || null,
+        selected_text_len: selectedTextLen,
+        difficulty,
+      });
+
+      openTutor(selectionContext);
       await sendMessage(
         prompt,
         difficulty,
-        { contextOverride: selectionCtaState.context || null },
+        {
+          contextOverride: selectionContext,
+          analytics: {
+            source: 'selection_cta',
+            caseId: safeCaseId,
+            stepKey: selectionContext?.stepKey || null,
+            selectedTextLen,
+            difficulty,
+          },
+        },
       );
     } finally {
       isSubmittingSelectionRef.current = false;
