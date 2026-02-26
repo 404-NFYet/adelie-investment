@@ -17,6 +17,7 @@ from typing import Any, Optional
 import redis.asyncio as redis
 
 from ..core.config import settings
+from app.metrics import CACHE_HIT_TOTAL
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +76,9 @@ class RedisCacheService:
             return None
         key = f"term:{difficulty}:{term.lower()}"
         try:
-            return await self._client.get(key)
+            data = await self._client.get(key)
+            CACHE_HIT_TOTAL.labels("term_explanation", "true" if data else "false").inc()
+            return data
         except Exception as e:
             logger.warning(f"Redis get_term_explanation error: {e}")
             return None
@@ -103,6 +106,7 @@ class RedisCacheService:
         key = f"glossary:{term_id}"
         try:
             data = await self._client.get(key)
+            CACHE_HIT_TOTAL.labels("glossary", "true" if data else "false").inc()
             return json.loads(data) if data else None
         except Exception as e:
             logger.warning(f"Redis get_glossary error: {e}")
@@ -127,6 +131,7 @@ class RedisCacheService:
         key = f"glossary:name:{term_name.lower()}"
         try:
             data = await self._client.get(key)
+            CACHE_HIT_TOTAL.labels("glossary_by_term", "true" if data else "false").inc()
             return json.loads(data) if data else None
         except Exception as e:
             logger.warning(f"Redis get_glossary_by_term error: {e}")
@@ -153,6 +158,7 @@ class RedisCacheService:
         key = f"user_settings:{user_id}"
         try:
             data = await self._client.get(key)
+            CACHE_HIT_TOTAL.labels("user_settings", "true" if data else "false").inc()
             return json.loads(data) if data else None
         except Exception as e:
             logger.warning(f"Redis get_user_settings error: {e}")
@@ -190,7 +196,9 @@ class RedisCacheService:
             return None
         key = f"chat_messages:{session_id}"
         try:
-            return await self._client.get(key)
+            data = await self._client.get(key)
+            CACHE_HIT_TOTAL.labels("chat_messages", "true" if data else "false").inc()
+            return data
         except Exception as e:
             logger.warning(f"Redis get_chat_messages error: {e}")
             return None

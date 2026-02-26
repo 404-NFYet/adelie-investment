@@ -17,6 +17,7 @@ from typing import Any
 import httpx
 
 from app.core.config import settings
+from app.metrics import EXTERNAL_API_REQUEST_TOTAL, EXTERNAL_API_LATENCY_SECONDS
 
 LOGGER = logging.getLogger(__name__)
 
@@ -251,9 +252,9 @@ class LLMClient:
         last_error: Exception | None = None
 
         for attempt in range(self.max_retries):
+            started = time.perf_counter()
             try:
                 async with httpx.AsyncClient(timeout=self.timeout) as client:
-                    started = time.perf_counter()
                     LOGGER.info(
                         "[%s] request start model=%s msgs=%d attempt=%d/%d",
                         provider,
@@ -264,6 +265,8 @@ class LLMClient:
                     )
                     response = await client.post(url, headers=headers, json=payload)
                     elapsed = time.perf_counter() - started
+                    provider_label = provider.lower()
+                    EXTERNAL_API_LATENCY_SECONDS.labels(provider_label).observe(elapsed)
 
                 if response.status_code >= 400:
                     body_preview = response.text[:500]
@@ -275,6 +278,7 @@ class LLMClient:
                         elapsed,
                         body_preview,
                     )
+                    EXTERNAL_API_REQUEST_TOTAL.labels(provider_label, "fail").inc()
                     if response.status_code in RETRYABLE_STATUS_CODES and attempt < self.max_retries - 1:
                         wait = (2 ** attempt) + random.uniform(0, 1)
                         LOGGER.info("[%s] retrying in %.1fs...", provider, wait)
@@ -293,10 +297,15 @@ class LLMClient:
                     response.status_code,
                     elapsed,
                 )
+                EXTERNAL_API_REQUEST_TOTAL.labels(provider_label, "success").inc()
                 return response.json()
 
             except httpx.TimeoutException as exc:
                 last_error = exc
+                elapsed = time.perf_counter() - started
+                provider_label = provider.lower()
+                EXTERNAL_API_LATENCY_SECONDS.labels(provider_label).observe(elapsed)
+                EXTERNAL_API_REQUEST_TOTAL.labels(provider_label, "fail").inc()
                 LOGGER.warning(
                     "[%s] timeout model=%s attempt=%d/%d",
                     provider, model, attempt + 1, self.max_retries,
@@ -313,6 +322,10 @@ class LLMClient:
 
             except Exception as exc:
                 last_error = exc
+                elapsed = time.perf_counter() - started
+                provider_label = provider.lower()
+                EXTERNAL_API_LATENCY_SECONDS.labels(provider_label).observe(elapsed)
+                EXTERNAL_API_REQUEST_TOTAL.labels(provider_label, "fail").inc()
                 LOGGER.error("[%s] unexpected error: %s", provider, exc, exc_info=True)
                 if attempt < self.max_retries - 1:
                     wait = (2 ** attempt) + random.uniform(0, 1)

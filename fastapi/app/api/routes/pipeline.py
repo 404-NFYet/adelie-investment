@@ -19,6 +19,7 @@ from app.schemas.pipeline import (
     PipelineResult,
     PipelineTriggerResponse,
 )
+from app.metrics import PIPELINE_JOB_TOTAL
 
 router = APIRouter(prefix="/pipeline", tags=["pipeline"])
 
@@ -46,6 +47,7 @@ async def trigger_pipeline(
     for task in request.tasks:
         task_start = time.time()
         result = PipelineResult(task=task, status="pending", records_processed=0)
+        PIPELINE_JOB_TOTAL.labels(task, "triggered").inc()
         
         try:
             if task == "stock":
@@ -89,6 +91,7 @@ async def trigger_pipeline(
             result.error = str(e)
         
         result.duration_seconds = time.time() - task_start
+        PIPELINE_JOB_TOTAL.labels(task, result.status).inc()
         results.append(result)
     
     total_duration = time.time() - total_start

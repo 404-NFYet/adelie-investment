@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent.pare
 from app.core.database import get_db
 from app.models.briefing import DailyBriefing, BriefingStock
 from app.schemas.briefing import BriefingResponse, BriefingStock as BriefingStockSchema
+from app.metrics import BRIEFING_TODAY_TOTAL
 
 router = APIRouter(prefix="/briefing", tags=["briefing"])
 
@@ -36,6 +37,7 @@ async def get_today_briefing(
         try:
             briefing_date = datetime.strptime(date.replace("-", ""), "%Y%m%d").date()
         except ValueError:
+            BRIEFING_TODAY_TOTAL.labels("fail").inc()
             raise HTTPException(status_code=400, detail="Invalid date format. Use YYYYMMDD.")
     else:
         briefing_date = datetime.now(KST).date()
@@ -72,6 +74,7 @@ async def get_today_briefing(
             elif stock.selection_reason == "high_volume":
                 high_volume.append(stock_data)
         
+        BRIEFING_TODAY_TOTAL.labels("success").inc()
         return BriefingResponse(
             date=briefing_date.strftime("%Y%m%d"),
             market_summary=briefing.market_summary or "시장 요약이 없습니다.",
@@ -165,6 +168,7 @@ async def get_today_briefing(
         if actual_date_str != date_str:
             summary = f"최근 거래일 시장 현황입니다."
         
+        BRIEFING_TODAY_TOTAL.labels("success").inc()
         return BriefingResponse(
             date=actual_date_str,
             market_summary=summary,
@@ -177,8 +181,10 @@ async def get_today_briefing(
         )
         
     except HTTPException:
+        BRIEFING_TODAY_TOTAL.labels("fail").inc()
         raise
     except Exception as e:
+        BRIEFING_TODAY_TOTAL.labels("fail").inc()
         raise HTTPException(
             status_code=503,
             detail=f"Unable to fetch briefing data: {str(e)}"

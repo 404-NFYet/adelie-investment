@@ -43,6 +43,7 @@ from app.services.portfolio_service import (
     complete_briefing_reward,
     check_and_apply_multiplier,
 )
+from app.metrics import PORTFOLIO_REFRESH_TOTAL
 from app.services.stock_price_service import get_current_price, get_batch_prices
 from app.api.routes.notification import create_notification
 from app.models.user import User
@@ -322,12 +323,17 @@ async def refresh_portfolio(
     started_at = perf_counter()
 
     if req.invalidate_scope != "summary_and_holdings":
+        PORTFOLIO_REFRESH_TOTAL.labels("fail").inc()
         raise HTTPException(status_code=400, detail="지원하지 않는 invalidate_scope")
 
-    invalidated = await invalidate_user_stock_price_caches(user_id, db)
-    portfolio, price_map = await _load_portfolio_price_map(db, user_id)
-    portfolio_response = _build_portfolio_response(portfolio, price_map)
-    summary = _build_portfolio_summary(portfolio, price_map)
+    try:
+        invalidated = await invalidate_user_stock_price_caches(user_id, db)
+        portfolio, price_map = await _load_portfolio_price_map(db, user_id)
+        portfolio_response = _build_portfolio_response(portfolio, price_map)
+        summary = _build_portfolio_summary(portfolio, price_map)
+    except Exception:
+        PORTFOLIO_REFRESH_TOTAL.labels("fail").inc()
+        raise
 
     # 최신 summary를 다시 캐싱해 이후 조회 지연을 줄인다.
     try:
@@ -346,6 +352,7 @@ async def refresh_portfolio(
         duration_ms,
     )
 
+    PORTFOLIO_REFRESH_TOTAL.labels("success").inc()
     return RefreshPortfolioResponse(
         portfolio=portfolio_response,
         summary=summary,

@@ -1,16 +1,12 @@
 """AI Tutor API routes with Redis caching for term explanations."""
 
-import asyncio
-import json
 import logging
 import time
-import uuid
-from datetime import datetime
-from typing import AsyncGenerator, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from openai import AsyncOpenAI
 
@@ -20,11 +16,14 @@ from app.core.auth import get_current_user_optional
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.limiter import limiter
-from app.models.tutor import TutorSession, TutorMessage
 from app.models.glossary import Glossary
-from app.schemas.tutor import TutorChatRequest, TutorChatEvent
+from app.schemas.tutor import TutorChatRequest
 from app.services import get_redis_cache
 from chatbot.services.tutor_engine import generate_tutor_response_stream
+from app.metrics import (
+    EXTERNAL_API_REQUEST_TOTAL,
+    EXTERNAL_API_LATENCY_SECONDS,
+)
 
 router = APIRouter(prefix="/tutor", tags=["AI tutor"])
 
@@ -45,20 +44,28 @@ async def get_term_explanation_from_llm(term: str, difficulty: str) -> str:
     
     context = difficulty_context.get(difficulty, difficulty_context["beginner"])
     
-    response = await client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {
-                "role": "system",
-                "content": f"주식/금융 용어를 {context} 설명하는 튜터입니다. 3-4문장으로 간결하게 설명해주세요."
-            },
-            {
-                "role": "user",
-                "content": f"'{term}'이(가) 무엇인지 설명해주세요."
-            }
-        ],
-        max_tokens=300,
-    )
+    started = time.perf_counter()
+    try:
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": f"주식/금융 용어를 {context} 설명하는 튜터입니다. 3-4문장으로 간결하게 설명해주세요."
+                },
+                {
+                    "role": "user",
+                    "content": f"'{term}'이(가) 무엇인지 설명해주세요."
+                }
+            ],
+            max_tokens=300,
+        )
+        EXTERNAL_API_LATENCY_SECONDS.labels("openai").observe(time.perf_counter() - started)
+        EXTERNAL_API_REQUEST_TOTAL.labels("openai", "success").inc()
+    except Exception:
+        EXTERNAL_API_LATENCY_SECONDS.labels("openai").observe(time.perf_counter() - started)
+        EXTERNAL_API_REQUEST_TOTAL.labels("openai", "fail").inc()
+        raise
     
     return response.choices[0].message.content
 
@@ -130,7 +137,6 @@ async def explain_term(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-
 @router.post("/chat")
 @limiter.limit("10/minute")
 async def tutor_chat(
@@ -149,5 +155,3 @@ async def tutor_chat(
             "X-Accel-Buffering": "no",
         },
     )
-
-

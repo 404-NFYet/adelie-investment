@@ -1,7 +1,12 @@
+apiVersion: 1
 groups:
-  - name: infrastructure
+  - orgId: 1
+    name: infrastructure
+    interval: 1m
+    folder: "infrastructure"
     rules:
       - alert: HighCPU
+        title: "High CPU"
         expr: 100 - (avg by(instance)(irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
         for: 5m
         labels:
@@ -10,6 +15,7 @@ groups:
           summary: "{{ $labels.instance }} CPU > 90%"
 
       - alert: HighMemory
+        title: "High Memory"
         expr: (1 - node_memory_MemAvailable_bytes/node_memory_MemTotal_bytes) * 100 > 85
         for: 5m
         labels:
@@ -18,6 +24,7 @@ groups:
           summary: "{{ $labels.instance }} RAM > 85%"
 
       - alert: DiskAlmostFull
+        title: "Disk Almost Full"
         expr: 100 - (node_filesystem_avail_bytes{mountpoint="/"}/node_filesystem_size_bytes{mountpoint="/"} * 100) > 80
         for: 10m
         labels:
@@ -26,6 +33,7 @@ groups:
           summary: "{{ $labels.instance }} Disk > 80%"
 
       - alert: ContainerDown
+        title: "Container Down"
         expr: absent(container_last_seen{name=~"adelie-.*"})
         for: 1m
         labels:
@@ -34,6 +42,7 @@ groups:
           summary: "Adelie 컨테이너 다운 감지"
 
       - alert: ContainerRestart
+        title: "Container Restart"
         expr: increase(container_restart_count{name=~"adelie-.*"}[5m]) > 0
         for: 1m
         labels:

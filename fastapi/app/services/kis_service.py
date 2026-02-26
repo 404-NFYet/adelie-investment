@@ -8,12 +8,14 @@ import asyncio
 import json
 import logging
 import os
+import time
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
 import httpx
 
 from app.services.redis_cache import get_redis_cache
+from app.metrics import EXTERNAL_API_REQUEST_TOTAL, EXTERNAL_API_LATENCY_SECONDS
 
 logger = logging.getLogger(__name__)
 
@@ -73,14 +75,25 @@ class KISService:
                 raise ValueError("KIS API 키가 설정되지 않았습니다")
 
             # 토큰 발급 API 호출 (재사용 클라이언트)
-            response = await self.client.post(
-                f"{self.base_url}/oauth2/tokenP",
-                json={
-                    "grant_type": "client_credentials",
-                    "appkey": self.app_key,
-                    "appsecret": self.app_secret,
-                },
-            )
+            started = time.perf_counter()
+            try:
+                response = await self.client.post(
+                    f"{self.base_url}/oauth2/tokenP",
+                    json={
+                        "grant_type": "client_credentials",
+                        "appkey": self.app_key,
+                        "appsecret": self.app_secret,
+                    },
+                )
+                EXTERNAL_API_LATENCY_SECONDS.labels("kis").observe(time.perf_counter() - started)
+                if response.status_code >= 400:
+                    EXTERNAL_API_REQUEST_TOTAL.labels("kis", "fail").inc()
+                else:
+                    EXTERNAL_API_REQUEST_TOTAL.labels("kis", "success").inc()
+            except Exception:
+                EXTERNAL_API_LATENCY_SECONDS.labels("kis").observe(time.perf_counter() - started)
+                EXTERNAL_API_REQUEST_TOTAL.labels("kis", "fail").inc()
+                raise
             data = response.json()
             self._token = data.get("access_token", "")
             self._token_expires = datetime.now() + timedelta(hours=23)
@@ -103,10 +116,20 @@ class KISService:
         kwargs.setdefault("headers", {}).update(headers)
 
         # 실제 KIS API 호출 (재사용 클라이언트)
-        response = await self.client.request(method, f"{self.base_url}{path}", **kwargs)
-        if response.status_code >= 400:
-            logger.error("KIS API error (%s): %s", response.status_code, response.text[:200])
-        return response.json()
+        started = time.perf_counter()
+        try:
+            response = await self.client.request(method, f"{self.base_url}{path}", **kwargs)
+            EXTERNAL_API_LATENCY_SECONDS.labels("kis").observe(time.perf_counter() - started)
+            if response.status_code >= 400:
+                EXTERNAL_API_REQUEST_TOTAL.labels("kis", "fail").inc()
+                logger.error("KIS API error (%s): %s", response.status_code, response.text[:200])
+            else:
+                EXTERNAL_API_REQUEST_TOTAL.labels("kis", "success").inc()
+            return response.json()
+        except Exception:
+            EXTERNAL_API_LATENCY_SECONDS.labels("kis").observe(time.perf_counter() - started)
+            EXTERNAL_API_REQUEST_TOTAL.labels("kis", "fail").inc()
+            raise
 
     async def get_current_price(self, stock_code: str) -> Optional[dict]:
         """실시간 현재가 조회 (캐싱 적용)."""
