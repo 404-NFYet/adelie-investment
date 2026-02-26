@@ -131,7 +131,6 @@ function getChecklistItems(content, bullets) {
   return items.slice(0, 5);
 }
 
-<<<<<<< HEAD
 // CommonMark delimiter 규칙 우회: 한글+스마트인용부호 환경에서 **bold** 렌더링 보장
 function preprocessMarkdown(content) {
   if (!content) return '';
@@ -154,7 +153,6 @@ function preprocessMarkdown(content) {
   s = s.replace(/\*\*/g, '');
 
   return s;
-=======
 function normalizeCautionActionPoints(content) {
   const text = String(content || '');
   if (!text) return text;
@@ -192,7 +190,6 @@ function normalizeCautionActionPoints(content) {
   }
 
   return out.join('\n');
->>>>>>> 7dccb3dd5db868da867999a828119829aadc5415
 }
 
 function MarkdownBody({ content, onTermClick, className = '' }) {
@@ -352,15 +349,12 @@ function ContentTemplate({ stepConfig, stepData, stepTitle, oneLiner, data, onTe
               </li>
             ))}
           </ul>
-<<<<<<< HEAD
-=======
 
           <MarkdownBody
             content={cautionContent}
             onTermClick={onTermClick}
             className="mt-4 border-t border-border pt-4"
           />
->>>>>>> 7dccb3dd5db868da867999a828119829aadc5415
         </div>
       </section>
     );
