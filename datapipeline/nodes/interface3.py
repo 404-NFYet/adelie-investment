@@ -145,6 +145,52 @@ def _linebreak_sentences(text: str) -> str:
     return "\n".join(sentences)
 
 
+def _norm_compare_key(text: str) -> str:
+    lowered = _soften_text(text).lower()
+    return re.sub(r"[^0-9a-z가-힣]+", "", lowered)
+
+
+def _is_sentence_redundant(candidate: str, existing_keys: set[str], min_len: int = 18) -> bool:
+    key = _norm_compare_key(candidate)
+    if not key:
+        return True
+    if key in existing_keys:
+        return True
+    if len(key) < min_len:
+        return False
+    for seen in existing_keys:
+        if len(seen) < min_len:
+            continue
+        if key in seen or seen in key:
+            return True
+    return False
+
+
+def _dedupe_sentences(text: str, reference_texts: list[str] | None = None) -> str:
+    sentences = _split_sentences(text)
+    if not sentences:
+        return _soften_text(text)
+
+    existing_keys: set[str] = set()
+    for ref in reference_texts or []:
+        for ref_sentence in _split_sentences(ref):
+            key = _norm_compare_key(ref_sentence)
+            if key:
+                existing_keys.add(key)
+
+    kept: list[str] = []
+    for sentence in sentences:
+        if _is_sentence_redundant(sentence, existing_keys):
+            continue
+        kept.append(sentence)
+        existing_keys.add(_norm_compare_key(sentence))
+
+    if kept:
+        return " ".join(kept).strip()
+    # 모두 중복으로 판단되면 첫 문장만 남겨 의미 소실을 방지
+    return sentences[0]
+
+
 def _cleanup_label_artifacts(body_text: str, heading: str | None = None) -> str:
     text = _soften_text(body_text)
     if not text:
@@ -193,10 +239,21 @@ def _compress_markdown_content(content: str, max_sentences_per_block: int = MAX_
         return _linebreak_sentences(text)
 
     rendered: list[str] = []
+    seen_global: set[str] = set()
     for heading, body_lines in blocks:
         body_text = " ".join(line for line in body_lines if line)
         body_text = re.sub(r"\b(?:Trigger|Process|Outcome|Variables)\s*:\s*", "", body_text, flags=re.IGNORECASE)
         body_text = _cleanup_label_artifacts(body_text, heading)
+        body_text = _dedupe_sentences(body_text)
+        # 앞 블록과 사실상 같은 문장은 제거
+        block_sentences = _split_sentences(body_text)
+        filtered: list[str] = []
+        for sentence in block_sentences:
+            if _is_sentence_redundant(sentence, seen_global):
+                continue
+            filtered.append(sentence)
+            seen_global.add(_norm_compare_key(sentence))
+        body_text = " ".join(filtered).strip() if filtered else ""
         compact_body = _linebreak_sentences(body_text)
         if heading:
             rendered.append(heading)
@@ -345,6 +402,111 @@ def _normalize_summary_content(content: str, bullets: list[str]) -> str:
     return f"### 투자 전에 꼭 확인할 포인트\n{checklist}"
 
 
+def _kid_friendly_rewrite(sentence: str) -> str:
+    s = _soften_text(sentence)
+    if not s:
+        return s
+    replacements = {
+        "변동성": "가격이 크게 오르내리는 상황",
+        "수급": "누가 많이 사고파는지",
+        "모멘텀": "움직이는 힘",
+        "리스크": "위험",
+        "선행": "먼저 움직이는",
+        "후행": "나중에 따라오는",
+        "밸류에이션": "가격이 비싼지 싼지",
+        "센티먼트": "시장 분위기",
+    }
+    for src, dst in replacements.items():
+        s = s.replace(src, dst)
+    return s
+
+
+def _build_dynamic_why_needed(
+    content: str,
+    purpose: str,
+    theme: str,
+    one_liner: str,
+) -> str:
+    # 포맷은 유지하되(헤딩), 문장은 이슈별 원문에서 추출해 고정 템플릿 반복을 피한다.
+    source = " ".join(part for part in [content, purpose, one_liner, theme] if part).strip()
+    source_sentences = _split_sentences(source)
+    if not source_sentences:
+        return "지금은 뉴스 하나만 보지 말고, 시장 흐름까지 함께 봐야 실수를 줄일 수 있어요."
+
+    definition_like = re.compile(r"(란\?|의미|정의|쉽게\s*말해|현상|개념)", re.IGNORECASE)
+    kept = [
+        _kid_friendly_rewrite(s)
+        for s in source_sentences
+        if not definition_like.search(s)
+    ]
+    kept = [k for k in kept if k]
+
+    if not kept:
+        kept = [_kid_friendly_rewrite(source_sentences[0])]
+
+    # 이슈 문맥을 살린 1~2문장
+    line1 = _shorten_text(kept[0], 120)
+    line2 = _shorten_text(kept[1], 120) if len(kept) > 1 else ""
+
+    # 행동 포인트는 이슈 키워드에 따라 다르게 붙인다.
+    lowered = source.lower()
+    if re.search(r"금리|정책|규제|정부", lowered):
+        action = "그래서 뉴스 제목만 보지 말고, 정책/일정이 실제로 바뀌는지 같이 확인해야 해요."
+    elif re.search(r"수급|매수|매도|외국인|기관|거래대금", lowered):
+        action = "그래서 한 번에 크게 사기보다, 누가 실제로 사고파는지 보고 천천히 판단하는 게 좋아요."
+    elif re.search(r"실적|매출|영업이익|가이던스", lowered):
+        action = "그래서 기대만 보지 말고, 실제 실적 숫자가 따라오는지 꼭 확인해야 해요."
+    else:
+        action = "그래서 서두르지 말고, 시장 분위기와 회사 소식을 함께 보고 결정하는 게 좋아요."
+
+    lines = [line1]
+    if line2 and _norm_compare_key(line2) not in _norm_compare_key(line1):
+        lines.append(line2)
+    lines.append(action)
+    return " ".join(lines).strip()
+
+
+def _normalize_step2_content(
+    content: str,
+    concept_name: str,
+    concept_definition: str,
+    concept_relevance: str,
+    purpose: str,
+    theme: str,
+    one_liner: str,
+) -> str:
+    """2페이지(핵심 개념) 본문을 카드와 겹치지 않게 정규화한다."""
+    heading1, heading2 = DEFAULT_SECTION_HEADINGS[2]
+    text = _soften_text(content)
+    if not text:
+        text = "핵심 흐름을 이해하면 오늘 시장 해석이 쉬워져요."
+
+    # 카드 영역(정의/중요성)과 겹치는 문장을 제거한다.
+    reference_texts = [t for t in [concept_definition, concept_relevance] if t]
+    deduped = _dedupe_sentences(text, reference_texts=reference_texts) if reference_texts else text
+
+    definition_like_pattern = re.compile(
+        r"(란\?|의미해요|정의|쉽게\s*말해|현상이에요|상태예요|개념은\s*.+이에요)",
+        flags=re.IGNORECASE,
+    )
+    candidate_sentences = [
+        s for s in _split_sentences(deduped)
+        if not definition_like_pattern.search(s)
+    ]
+
+    intro = f"오늘 알아볼 개념은 {concept_name}이에요." if concept_name else "오늘 알아볼 개념을 먼저 짚어볼게요."
+
+    why_source = " ".join(candidate_sentences) if candidate_sentences else deduped
+    why_text = _build_dynamic_why_needed(
+        content=why_source,
+        purpose=purpose,
+        theme=theme,
+        one_liner=one_liner,
+    )
+
+    return f"### {heading1}\n{intro}\n\n### {heading2}\n{why_text}".strip()
+
+
 def _normalize_pages(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     if not isinstance(pages, list):
         return []
@@ -389,6 +551,8 @@ def _enforce_story_spine(pages: list[dict[str, Any]], raw_narrative: dict[str, A
     concept_name = _soften_text(str((concept or {}).get("name", "") if isinstance(concept, dict) else ""))
     concept_definition = _soften_text(str((concept or {}).get("definition", "") if isinstance(concept, dict) else ""))
     concept_relevance = _soften_text(str((concept or {}).get("relevance", "") if isinstance(concept, dict) else ""))
+    theme = _soften_text(str(raw_narrative.get("theme", "") if isinstance(raw_narrative, dict) else ""))
+    one_liner = _soften_text(str(raw_narrative.get("one_liner", "") if isinstance(raw_narrative, dict) else ""))
 
     hist_period = _soften_text(str((historical_case or {}).get("period", "") if isinstance(historical_case, dict) else ""))
     hist_title = _soften_text(str((historical_case or {}).get("title", "") if isinstance(historical_case, dict) else ""))
@@ -416,18 +580,17 @@ def _enforce_story_spine(pages: list[dict[str, Any]], raw_narrative: dict[str, A
         if step in {1, 2, 3, 4, 5}:
             content = _align_content_with_purpose(purpose, content)
 
-        if step == 2 and concept_name and not _contains_anchor(content, concept_name):
-            if _contains_any_phrase(content, ("### 오늘 배울 개념", "오늘 배울 개념은")):
-                current["content"] = content
-                enforced.append(current)
-                continue
-            concept_lines = [f"오늘 배울 개념은 {concept_name}이에요."]
-            if concept_definition:
-                concept_lines.append(concept_definition)
-            if concept_relevance:
-                concept_lines.append(concept_relevance)
-            concept_block = " ".join(line for line in concept_lines if line)
-            content = f"### 오늘 배울 개념\n{concept_block}\n\n{content}".strip()
+        # 2페이지는 카드와 본문 역할을 분리해 중복을 구조적으로 방지한다.
+        if step == 2:
+            content = _normalize_step2_content(
+                content=content,
+                concept_name=concept_name,
+                concept_definition=concept_definition,
+                concept_relevance=concept_relevance,
+                purpose=purpose,
+                theme=theme,
+                one_liner=one_liner,
+            )
 
         if step == 3:
             has_period = bool(hist_period) and _contains_anchor(content, hist_period)
