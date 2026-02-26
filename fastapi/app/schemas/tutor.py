@@ -20,7 +20,17 @@ class TutorChatRequest(BaseModel):
 class TutorChatEvent(BaseModel):
     """SSE event for AI Tutor chat."""
     
-    type: Literal["thinking", "tool_call", "text_delta", "done", "error", "action", "visualization"]
+    type: Literal[
+        "thinking",
+        "tool_call",
+        "text_delta",
+        "done",
+        "error",
+        "action",
+        "visualization",
+        "viz_intent",
+        "clarification",
+    ]
     content: Optional[str] = None
     tool: Optional[str] = None
     args: Optional[dict] = None
@@ -28,6 +38,8 @@ class TutorChatEvent(BaseModel):
     total_tokens: Optional[int] = None
     error: Optional[str] = None
     action_type: Optional[str] = None
+    question: Optional[str] = None
+    options: Optional[List[Dict[str, str]]] = None
 
 class TutorAction(BaseModel):
     """LLM intent classification Output Schema."""

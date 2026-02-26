@@ -20,6 +20,16 @@ const parseVisualizationPayload = (content) => {
   }
 };
 
+const parseClarificationPayload = (content) => {
+  if (!content) return null;
+  if (typeof content === 'object') return content;
+  try {
+    return JSON.parse(content);
+  } catch {
+    return null;
+  }
+};
+
 const mapHistoryMessage = (message, index) => {
   if (message.message_type === 'visualization') {
     const parsed = parseVisualizationPayload(message.content);
@@ -30,6 +40,18 @@ const mapHistoryMessage = (message, index) => {
       format: parsed?.chartData ? 'json' : (parsed?.format || 'html'),
       chartData: parsed?.chartData || null,
       executionTime: message.execution_time_ms || parsed?.execution_time_ms,
+      timestamp: message.created_at,
+      isStreaming: false,
+    };
+  }
+
+  if (message.message_type === 'clarification') {
+    const parsed = parseClarificationPayload(message.content);
+    return {
+      id: `${message.id || Date.now()}-clarification-${index}`,
+      role: 'clarification',
+      content: parsed?.question || message.question || message.content,
+      options: Array.isArray(parsed?.options) ? parsed.options : (Array.isArray(message.options) ? message.options : []),
       timestamp: message.created_at,
       isStreaming: false,
     };
@@ -241,6 +263,23 @@ export function TutorProvider({ children }) {
                 continue;
               }
 
+              if (data.type === 'clarification' && data.question) {
+                const clarificationMessage = {
+                  id: Date.now() + Math.random(),
+                  role: 'clarification',
+                  content: data.question,
+                  options: Array.isArray(data.options) ? data.options : [],
+                  timestamp: new Date().toISOString(),
+                  isStreaming: false,
+                };
+                setAgentStatus({
+                  phase: 'idle',
+                  text: '응답 대기 중',
+                });
+                setMessages((prev) => [...prev.filter((m) => !m.isVizStatus), clarificationMessage]);
+                continue;
+              }
+
               // Backend text chunks may come without an explicit type field.
               if ((data.type === 'text_delta' || (!data.type && data.content)) && data.content) {
                 if (!fullContent) {
@@ -396,7 +435,7 @@ export function TutorProvider({ children }) {
         if (error?.name === 'AbortError') {
           setMessages((prev) =>
             prev.map((m) =>
-              m.id === assistantMessage.id
+              m.id === assistantMsgId
                 ? { ...m, isStreaming: false, content: m.content || '(응답이 중단되었습니다.)' }
                 : m
             )

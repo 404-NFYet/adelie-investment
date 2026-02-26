@@ -179,6 +179,43 @@ function VisualizationMessage({ message }) {
   );
 }
 
+function ClarificationMessage({ message, onQuickReply, isLoading }) {
+  const options = Array.isArray(message.options) ? message.options : [];
+
+  return (
+    <motion.div className="mb-4" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+      <div className="max-w-[90%]">
+        <div className="flex items-center gap-1.5 mb-1.5">
+          <img src="/images/penguin-3d.png" alt="" className="w-5 h-5 rounded-full object-cover" />
+          <span className="text-xs text-text-secondary font-medium">AI 튜터</span>
+        </div>
+        <div className="px-4 py-3 rounded-2xl rounded-tl-md bg-surface border border-border">
+          <p className="text-sm leading-relaxed text-text-primary">{message.content}</p>
+          {options.length > 0 ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {options.map((option, idx) => {
+                const label = option?.label || option?.value || `옵션 ${idx + 1}`;
+                const value = option?.value || label;
+                return (
+                  <button
+                    key={option?.id || `${value}-${idx}`}
+                    type="button"
+                    disabled={isLoading}
+                    onClick={() => onQuickReply?.(value)}
+                    className="rounded-full border border-primary/30 bg-white px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
 export function TypingIndicator() {
   return (
     <motion.div className="flex justify-start mb-3" initial={{opacity:0,y:10}} animate={{opacity:1,y:0}}>
@@ -189,7 +226,7 @@ export function TypingIndicator() {
   );
 }
 
-export default React.memo(function Message({ message }) {
+export default React.memo(function Message({ message, onQuickReply, isLoading }) {
   const markdownContent = useMemo(
     () => normalizeMathDelimiters(message.content),
     [message.content],
@@ -199,6 +236,9 @@ export default React.memo(function Message({ message }) {
     [message.content],
   );
   if (message.role === 'visualization') return <VisualizationMessage message={message} />;
+  if (message.role === 'clarification') {
+    return <ClarificationMessage message={message} onQuickReply={onQuickReply} isLoading={isLoading} />;
+  }
 
   const isUser = message.role === 'user';
 

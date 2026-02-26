@@ -17,6 +17,7 @@ from app.services import get_redis_cache
 logger = logging.getLogger("narrative.tutor_sessions")
 
 router = APIRouter(prefix="/tutor", tags=["tutor sessions"])
+CLARIFICATION_KEY_PREFIX = "tutor:clarify:"
 
 
 @router.get("/sessions")
@@ -108,6 +109,13 @@ async def get_session_messages(
                     msg_data["execution_time_ms"] = viz_info.get("execution_time_ms")
             except Exception:
                 pass
+        if m.message_type == "clarification" and m.content:
+            try:
+                clarification_info = json.loads(m.content)
+                msg_data["question"] = clarification_info.get("question")
+                msg_data["options"] = clarification_info.get("options", [])
+            except Exception:
+                pass
         formatted_messages.append(msg_data)
 
     response_data = {
@@ -166,4 +174,5 @@ async def delete_session(
 
     cache = await get_redis_cache()
     await cache.invalidate_session_cache(session_id)
+    await cache.delete(f"{CLARIFICATION_KEY_PREFIX}{session_id}")
     return {"deleted": True}

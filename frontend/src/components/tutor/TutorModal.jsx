@@ -180,7 +180,17 @@ export default function TutorModal() {
                 </div>
               ) : (
                 <>
-                  {messages.map((m) => <Message key={m.id} message={m} />)}
+                  {messages.map((m) => (
+                    <Message
+                      key={m.id}
+                      message={m}
+                      isLoading={isLoading}
+                      onQuickReply={(value) => {
+                        if (isLoading || !value) return;
+                        sendMessage(String(value), settings.difficulty);
+                      }}
+                    />
+                  ))}
                   {isLoading && !messages.some((m) => m.isStreaming) && <TypingIndicator />}
                   <div ref={messagesEndRef} />
                 </>
