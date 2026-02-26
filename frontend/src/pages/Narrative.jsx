@@ -129,6 +129,78 @@ function normalizeChecklistLabelStyle(value) {
   return `${label}: ${body}`;
 }
 
+function normalizeDupKey(value) {
+  return String(value || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\[(?:Trigger|Process|시차\/Variables|Result|Outcome)\]\s*/gi, '')
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/[^0-9a-zA-Z가-힣]+/g, '')
+    .trim();
+}
+
+function isNearDuplicateSentence(sentence, referenceKeys) {
+  const key = normalizeDupKey(sentence);
+  if (!key || key.length < 18) return false;
+  for (const ref of referenceKeys) {
+    if (!ref || ref.length < 18) continue;
+    if (key === ref || key.includes(ref) || ref.includes(key)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function dedupeConceptExplainContent(content, concept) {
+  const text = String(content || '').trim();
+  if (!text) return text;
+  if (!concept || typeof concept !== 'object') return text;
+
+  const conceptName = String(concept.name || '').trim();
+  const likelyIntroHeading = (line) => /^#{1,6}\s*(?:🔹\s*)?개념\s*먼저\s*잡기\s*$/i.test(line.trim());
+  const likelyIntroLine = (line) => /오늘\s+알아볼\s+개념은?\s+/i.test(line);
+  const likelyDefinitionLine = (line) => (
+    !!conceptName
+    && line.includes(conceptName)
+    && /(란\?|쉽게\s*말해|현상이|상태이|의미해요?)/.test(line)
+  );
+
+  const normalizedPhrases = [concept.definition, concept.relevance]
+    .map((v) => String(v || '').trim())
+    .filter(Boolean)
+    .flatMap((v) => v.split(/[.!?。！？\n]/))
+    .map((v) => normalizeDupKey(v))
+    .filter((v) => v.length >= 14);
+
+  const referenceKeys = [
+    normalizeDupKey(conceptName),
+    normalizeDupKey(concept.definition),
+    normalizeDupKey(concept.relevance),
+    ...normalizedPhrases,
+  ].filter(Boolean);
+  if (referenceKeys.length === 0) return text;
+
+  const lines = text.split('\n');
+  const deduped = lines.map((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return line;
+    if (likelyIntroHeading(trimmed)) return '';
+    if (/^#{1,6}\s+/.test(trimmed)) return line;
+    if (likelyIntroLine(trimmed) || likelyDefinitionLine(trimmed)) return '';
+
+    const sentences = trimmed.match(/[^.!?。！？]+[.!?。！？]?/g) || [trimmed];
+    const kept = sentences
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .filter((s) => !likelyIntroLine(s) && !likelyDefinitionLine(s))
+      .filter((s) => !isNearDuplicateSentence(s, referenceKeys));
+    return kept.join(' ').trim();
+  }).filter(Boolean);
+
+  // 모든 줄이 날아가면 의미 손실이 커서 원문 유지
+  return deduped.length > 0 ? deduped.join('\n') : text;
+}
+
 function getChecklistItems(content, bullets) {
   const items = [];
   const pushItem = (value) => {
@@ -551,7 +623,7 @@ const MarkdownBody = React.memo(function MarkdownBody({ content, className = '',
       </ReactMarkdown>
     </div>
   );
-}
+});
 
 function NarrativeChartBlock({ stepKey, chart }) {
   const plot = useMemo(() => buildNarrativePlot(stepKey, chart), [stepKey, chart]);
@@ -656,6 +728,9 @@ const ContentTemplate = React.memo(function ContentTemplate({ stepConfig, stepDa
   const applicationContent = stepConfig.key === 'application'
     ? normalizeApplicationSection(markdownContent)
     : markdownContent;
+  const conceptContent = stepConfig.key === 'concept_explain'
+    ? dedupeConceptExplainContent(markdownContent, data?.concept)
+    : markdownContent;
   const hasHistoryBody = stepConfig.key === 'history' && Boolean(String(stepData?.content || '').trim());
 
   if (stepConfig.template === 'content4') {
@@ -757,7 +832,7 @@ const ContentTemplate = React.memo(function ContentTemplate({ stepConfig, stepDa
           )}
 
           <MarkdownBody
-            content={markdownContent}
+            content={conceptContent}
             className="mt-4"
             headingColorClass={stepConfig.key === 'history' ? 'text-[#065f46]' : 'text-primary'}
           />
