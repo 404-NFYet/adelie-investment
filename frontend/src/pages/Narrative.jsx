@@ -654,8 +654,8 @@ const ContentTemplate = React.memo(function ContentTemplate({ stepConfig, stepDa
     ? buildCautionActionGuide(stepData?.content, cautionItems)
     : stepData?.content;
   const applicationContent = stepConfig.key === 'application'
-    ? normalizeApplicationSection(stepData?.content)
-    : stepData?.content;
+    ? normalizeApplicationSection(markdownContent)
+    : markdownContent;
   const hasHistoryBody = stepConfig.key === 'history' && Boolean(String(stepData?.content || '').trim());
 
   if (stepConfig.template === 'content4') {
