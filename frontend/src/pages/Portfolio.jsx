@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import { usePortfolio } from '../contexts/PortfolioContext';
 import { portfolioApi } from '../api';
 import { useUser } from '../contexts/UserContext';
+import { useTutor } from '../contexts';
 import TradeModal from '../components/domain/TradeModal';
 import StockDetail from '../components/trading/StockDetail';
 import StockSearch from '../components/trading/StockSearch';
@@ -100,6 +101,7 @@ function TradeHistory({ trades }) {
 export default function Portfolio() {
   const { user, isLoading: isUserLoading } = useUser();
   const { portfolio, isLoading, error, fetchPortfolio, refreshPortfolio } = usePortfolio();
+  const { setContextInfo } = useTutor();
   const [activeTab, setActiveTab] = useState('holdings');
   const [trades, setTrades] = useState([]);
   const [ranking, setRanking] = useState([]);
@@ -133,6 +135,77 @@ export default function Portfolio() {
   };
   const displayPortfolio = portfolio || previewPortfolio;
   const isRefreshDisabled = isGuest || isRefreshing || cooldownLeft > 0;
+
+  useEffect(() => {
+    const tabNames = {
+      holdings: '보유 종목',
+      trading: '자유 매매',
+      leaderboard: '나의 랭킹',
+    };
+    const tabLabel = tabNames[activeTab] || '보유 종목';
+    const holdings = Array.isArray(displayPortfolio?.holdings) ? displayPortfolio.holdings : [];
+
+    const holdingsText = holdings.length > 0
+      ? holdings
+        .slice(0, 10)
+        .map((h) => (
+          `${h.stock_name}(${h.stock_code}): ${h.quantity}주, 평균매수가 ${formatKRW(h.avg_buy_price)}, 현재가 ${formatKRW(h.current_price || 0)}, 수익률 ${Number(h.profit_loss_pct || 0).toFixed(2)}%`
+        ))
+        .join('\n')
+      : '보유 종목 없음';
+
+    const tradesText = trades.length > 0
+      ? trades
+        .slice(0, 10)
+        .map((t) => (
+          `${t.trade_type === 'buy' ? '매수' : '매도'} ${t.stock_name}(${t.stock_code || '-'}) ${t.quantity}주 @ ${formatKRW(t.price || 0)} / 총 ${formatKRW(t.total_amount || 0)}`
+        ))
+        .join('\n')
+      : '최근 거래 없음';
+
+    const rankingText = ranking.length > 0
+      ? ranking
+        .slice(0, 5)
+        .map((r, idx) => (
+          `${idx + 1}위 ${r.stock_name}(${r.stock_code}): 현재가 ${formatKRW(r.current_price || 0)}, 등락률 ${Number(r.change_rate || 0).toFixed(2)}%`
+        ))
+        .join('\n')
+      : '랭킹 데이터 없음';
+
+    let tabDetail = '';
+    if (activeTab === 'holdings') {
+      tabDetail = `보유 종목 상세:\n${holdingsText}\n\n최근 거래:\n${tradesText}`;
+    } else if (activeTab === 'trading') {
+      tabDetail = `자유 매매 참고 데이터:\n거래량 TOP:\n${rankingText}\n\n최근 거래:\n${tradesText}`;
+    } else if (activeTab === 'leaderboard') {
+      tabDetail = `랭킹 탭 열람 중\n거래량 TOP 참고:\n${rankingText}`;
+    }
+
+    const totalValue = displayPortfolio?.total_value || 0;
+    const currentCash = displayPortfolio?.current_cash || 0;
+    const investedAmount = totalValue - currentCash;
+    const totalPL = displayPortfolio?.total_profit_loss || 0;
+    const totalPLPct = displayPortfolio?.total_profit_loss_pct || 0;
+
+    const stepContent = [
+      `[모의투자 포트폴리오 - ${tabLabel}]`,
+      `총 자산: ${formatKRW(totalValue)}`,
+      `보유 현금: ${formatKRW(currentCash)}`,
+      `투자 금액: ${formatKRW(investedAmount)}`,
+      `총 손익: ${totalPL >= 0 ? '+' : ''}${formatKRW(totalPL)} (${Number(totalPLPct).toFixed(2)}%)`,
+      '',
+      tabDetail,
+    ].join('\n');
+
+    setContextInfo({
+      stepTitle: `모의투자 - ${tabLabel}`,
+      stepContent,
+      sourcePage: 'portfolio',
+      activeTab,
+    });
+
+    return () => setContextInfo(null);
+  }, [activeTab, displayPortfolio, ranking, setContextInfo, trades]);
 
   // 총 자산 count-up
   const animatedTotal = useCountUp(displayPortfolio.total_value || 0, 800);

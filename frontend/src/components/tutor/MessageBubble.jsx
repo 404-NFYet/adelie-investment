@@ -138,13 +138,17 @@ function VisualizationMessage({ message }) {
   const hasChart = normalizedData.length > 0;
   const hasPie = normalizedData.some((trace) => trace.type === 'pie');
   const normalizedLayout = normalizeLayout(chartData?.layout || {}, { hasPie, clearTitle: false });
+  const dynamicTitle = message.title
+    || chartData?.layout?.title?.text
+    || chartData?.layout?.title
+    || '차트';
   const fixedHeight = expanded ? 440 : 280;
 
   return (
     <motion.div className="mb-4" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
       <div className="flex items-center gap-1.5 mb-1.5">
         <img src="/images/penguin-3d.png" alt="" className="w-5 h-5 rounded-full object-cover" />
-        <span className="text-xs text-text-secondary">차트</span>
+        <span className="text-xs text-text-secondary">{dynamicTitle}</span>
         {message.executionTime && <span className="text-[10px] text-text-secondary ml-auto">{message.executionTime}ms</span>}
       </div>
       <div className="max-w-[480px] overflow-hidden rounded-2xl border border-border bg-white p-2 transition-all">
@@ -170,6 +174,44 @@ function VisualizationMessage({ message }) {
           {expanded ? '축소' : '확대'}
         </button>
       )}
+      {message.sources && message.sources.length > 0 && <SourceBadge sources={message.sources} />}
+    </motion.div>
+  );
+}
+
+function ClarificationMessage({ message, onQuickReply, isLoading }) {
+  const options = Array.isArray(message.options) ? message.options : [];
+
+  return (
+    <motion.div className="mb-4" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+      <div className="max-w-[90%]">
+        <div className="flex items-center gap-1.5 mb-1.5">
+          <img src="/images/penguin-3d.png" alt="" className="w-5 h-5 rounded-full object-cover" />
+          <span className="text-xs text-text-secondary font-medium">AI 튜터</span>
+        </div>
+        <div className="px-4 py-3 rounded-2xl rounded-tl-md bg-surface border border-border">
+          <p className="text-sm leading-relaxed text-text-primary">{message.content}</p>
+          {options.length > 0 ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {options.map((option, idx) => {
+                const label = option?.label || option?.value || `옵션 ${idx + 1}`;
+                const value = option?.value || label;
+                return (
+                  <button
+                    key={option?.id || `${value}-${idx}`}
+                    type="button"
+                    disabled={isLoading}
+                    onClick={() => onQuickReply?.(value)}
+                    className="rounded-full border border-primary/30 bg-white px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
+      </div>
     </motion.div>
   );
 }
@@ -184,12 +226,19 @@ export function TypingIndicator() {
   );
 }
 
-export default React.memo(function Message({ message }) {
+export default React.memo(function Message({ message, onQuickReply, isLoading }) {
   const markdownContent = useMemo(
     () => normalizeMathDelimiters(message.content),
     [message.content],
   );
+  const hasExplicitLineBreak = useMemo(
+    () => /(?:\r\n|\r|\n)/.test(String(message.content || '')),
+    [message.content],
+  );
   if (message.role === 'visualization') return <VisualizationMessage message={message} />;
+  if (message.role === 'clarification') {
+    return <ClarificationMessage message={message} onQuickReply={onQuickReply} isLoading={isLoading} />;
+  }
 
   const isUser = message.role === 'user';
 
@@ -212,8 +261,24 @@ export default React.memo(function Message({ message }) {
         </div>
         <div className={`px-4 py-3 rounded-2xl rounded-tl-md ${message.isError ? 'bg-error-light text-error border border-error/20' : 'bg-surface border border-border'}`}>
           {message.isError ? <p className="text-sm">{message.content}</p> : (
-            <div className="text-sm leading-relaxed text-text-primary prose prose-sm prose-headings:text-text-primary prose-strong:text-text-primary prose-code:text-primary prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs max-w-none dark:prose-invert">
-              <ReactMarkdown remarkPlugins={[remarkMath, remarkGfm, remarkBreaks]} rehypePlugins={[rehypeRaw, rehypeKatex]}>
+            <div className={`text-sm text-text-primary prose prose-sm prose-headings:text-text-primary prose-strong:text-text-primary prose-code:text-primary prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs max-w-none dark:prose-invert ${hasExplicitLineBreak ? 'leading-7' : 'leading-relaxed'}`}>
+              <ReactMarkdown
+                remarkPlugins={[remarkMath, remarkGfm, remarkBreaks]}
+                rehypePlugins={[rehypeRaw, rehypeKatex]}
+                components={{
+                  br: ({ node, ...props }) => <br className={hasExplicitLineBreak ? 'block h-1.5' : undefined} {...props} />,
+                  table: ({ node, ...props }) => (
+                    <div className="my-3 overflow-x-auto">
+                      <table className="w-full border-collapse text-left text-xs" {...props} />
+                    </div>
+                  ),
+                  thead: ({ node, ...props }) => <thead className="bg-[#f8f9fa]" {...props} />,
+                  tbody: ({ node, ...props }) => <tbody {...props} />,
+                  tr: ({ node, ...props }) => <tr className="border-b border-border" {...props} />,
+                  th: ({ node, ...props }) => <th className="border border-border px-2 py-1.5 font-semibold text-text-primary" {...props} />,
+                  td: ({ node, ...props }) => <td className="border border-border px-2 py-1.5 align-top text-text-secondary" {...props} />,
+                }}
+              >
                 {markdownContent}
               </ReactMarkdown>
             </div>

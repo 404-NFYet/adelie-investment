@@ -60,31 +60,221 @@ PLACEHOLDER_HEADING_PATTERNS: tuple[str, ...] = (
     r"^\s*###\s*(?:소제목|접두사|heading|subheading|subtitle|title|제목)(?:\s*[:\-]?\s*\d+)?\s*[:\-]?\s*$",
 )
 
-JARGON_REPLACEMENTS: tuple[tuple[str, str], ...] = (
-    (r"\bCAPEX\b", "설비투자"),
-    (r"\bguidance\b", "실적 전망"),
-    (r"\bGUIDANCE\b", "실적 전망"),
-    (r"\b모멘텀\b", "흐름"),
-    (r"\b리레이팅\b", "재평가"),
-    (r"\b밸류체인\b", "공급망"),
-    (r"\b디스카운트\b", "저평가"),
-    (r"\b업사이드\b", "상승 여지"),
-    (r"\b다운사이드\b", "하락 위험"),
-    (r"\b타임 래그\b", "시차"),
-    (r"\bTime Lag\b", "시차"),
-)
+MAX_SHORT_LINE_CHARS = 110
+MAX_BULLETS_PER_PAGE = 5
+MAX_BULLET_CHARS = 140
+MAX_SECTION_SENTENCES = 6
 
 
 def _soften_text(text: str) -> str:
     normalized = str(text or "").replace("\r\n", "\n")
     if not normalized:
         return normalized
-    for pattern, replacement in JARGON_REPLACEMENTS:
-        normalized = re.sub(pattern, replacement, normalized, flags=re.IGNORECASE)
+    # Markdown 강조 기호 잔여물과 [라벨] 플레이스홀더를 제거해 렌더 아티팩트를 방지한다.
+    normalized = re.sub(r"\*\*([^*\n]+)\*\*", r"\1", normalized)
+    normalized = re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", r"\1", normalized)
+    normalized = re.sub(r"(?<=[가-힣A-Za-z0-9.!?。！？])\*(?=\s|$)", "", normalized)
+    normalized = re.sub(r"\[([가-힣A-Za-z0-9][^\[\]\n]{0,28})\]", r"\1", normalized)
     normalized = re.sub(r"[ \t]+", " ", normalized)
     normalized = re.sub(r"\n{3,}", "\n\n", normalized)
     normalized = "\n".join(line.strip() for line in normalized.split("\n"))
     return normalized.strip()
+
+
+def _shorten_text(text: str, max_chars: int = MAX_SHORT_LINE_CHARS) -> str:
+    softened = _soften_text(text)
+    if len(softened) <= max_chars:
+        return softened
+    # 문장 완결성을 우선한다. 중간 절단("...")은 금지.
+    sentences = re.split(r"(?<=[.!?。！？])\s+", softened)
+    picked: list[str] = []
+    current_len = 0
+    for sentence in sentences:
+        s = sentence.strip()
+        if not s:
+            continue
+        add_len = len(s) + (1 if picked else 0)
+        if picked and current_len + add_len > max_chars:
+            break
+        picked.append(s)
+        current_len += add_len
+        if current_len >= max_chars:
+            break
+
+    if picked:
+        return " ".join(picked).strip()
+    # 문장 구분자가 없고 한 문장만 매우 긴 경우: 원문 유지(의미 손실 방지)
+    return softened
+
+
+def _split_sentences(text: str) -> list[str]:
+    cleaned = _soften_text(text)
+    if not cleaned:
+        return []
+    parts = re.split(r"(?<=[.!?。！？])\s+", cleaned)
+    return [p.strip() for p in parts if p.strip()]
+
+
+def _split_long_sentence(sentence: str, max_chars: int = 120) -> str:
+    s = _soften_text(sentence)
+    if len(s) <= max_chars:
+        return s
+    chunks = [c.strip() for c in re.split(r"[,:;]", s) if c.strip()]
+    if len(chunks) < 2:
+        return s
+    short = chunks[:2]
+    joined = ". ".join(short).strip()
+    joined = re.sub(r"\.{2,}$", ".", joined)
+    if not re.search(r"[.!?。！？]$", joined):
+        joined += "."
+    return joined
+
+
+def _take_sentence_prefix(text: str, max_sentences: int = MAX_SECTION_SENTENCES) -> str:
+    sentences = _split_sentences(text)
+    if not sentences:
+        return _soften_text(text)
+    picked = [_split_long_sentence(s) for s in sentences[:max_sentences]]
+    return " ".join(picked).strip()
+
+
+def _linebreak_sentences(text: str) -> str:
+    sentences = _split_sentences(text)
+    if not sentences:
+        return _soften_text(text)
+    return "\n".join(sentences)
+
+
+def _norm_compare_key(text: str) -> str:
+    lowered = _soften_text(text).lower()
+    return re.sub(r"[^0-9a-z가-힣]+", "", lowered)
+
+
+def _is_sentence_redundant(candidate: str, existing_keys: set[str], min_len: int = 18) -> bool:
+    key = _norm_compare_key(candidate)
+    if not key:
+        return True
+    if key in existing_keys:
+        return True
+    if len(key) < min_len:
+        return False
+    for seen in existing_keys:
+        if len(seen) < min_len:
+            continue
+        if key in seen or seen in key:
+            return True
+    return False
+
+
+def _dedupe_sentences(text: str, reference_texts: list[str] | None = None) -> str:
+    sentences = _split_sentences(text)
+    if not sentences:
+        return _soften_text(text)
+
+    existing_keys: set[str] = set()
+    for ref in reference_texts or []:
+        for ref_sentence in _split_sentences(ref):
+            key = _norm_compare_key(ref_sentence)
+            if key:
+                existing_keys.add(key)
+
+    kept: list[str] = []
+    for sentence in sentences:
+        if _is_sentence_redundant(sentence, existing_keys):
+            continue
+        kept.append(sentence)
+        existing_keys.add(_norm_compare_key(sentence))
+
+    if kept:
+        return " ".join(kept).strip()
+    # 모두 중복으로 판단되면 첫 문장만 남겨 의미 소실을 방지
+    return sentences[0]
+
+
+def _cleanup_label_artifacts(body_text: str, heading: str | None = None) -> str:
+    text = _soften_text(body_text)
+    if not text:
+        return text
+
+    # 문장/라인 끝에 실수로 붙는 라벨 꼬리 제거
+    text = re.sub(r"(?:\s*\[?\s*과거\s*사이클\s*흐름\s*\]?)\s*$", "", text, flags=re.IGNORECASE)
+
+    # 소제목과 중복되는 선행 라벨 제거
+    if heading and "다른 점" in heading:
+        text = re.sub(r"^\s*닮은\s*점[:\s-]+", "", text)
+    if heading and "닮은 점" in heading:
+        text = re.sub(r"^\s*닮은\s*점[:\s-]+", "", text)
+
+    return text.strip()
+
+
+def _compress_markdown_content(content: str, max_sentences_per_block: int = MAX_SECTION_SENTENCES) -> str:
+    text = _soften_text(content)
+    if not text:
+        return text
+
+    lines = text.split("\n")
+    blocks: list[tuple[str | None, list[str]]] = []
+    current_heading: str | None = None
+    current_body: list[str] = []
+
+    def _flush() -> None:
+        nonlocal current_heading, current_body
+        if current_heading is not None or any(line.strip() for line in current_body):
+            blocks.append((current_heading, current_body[:]))
+        current_heading = None
+        current_body = []
+
+    for raw_line in lines:
+        line = raw_line.strip()
+        if re.match(r"^###\s+", line):
+            _flush()
+            current_heading = line
+            current_body = []
+        else:
+            current_body.append(line)
+    _flush()
+
+    if not blocks:
+        return _linebreak_sentences(text)
+
+    rendered: list[str] = []
+    seen_global: set[str] = set()
+    for heading, body_lines in blocks:
+        body_text = " ".join(line for line in body_lines if line)
+        body_text = re.sub(r"\b(?:Trigger|Process|Outcome|Variables)\s*:\s*", "", body_text, flags=re.IGNORECASE)
+        body_text = _cleanup_label_artifacts(body_text, heading)
+        body_text = _dedupe_sentences(body_text)
+        # 앞 블록과 사실상 같은 문장은 제거
+        block_sentences = _split_sentences(body_text)
+        filtered: list[str] = []
+        for sentence in block_sentences:
+            if _is_sentence_redundant(sentence, seen_global):
+                continue
+            filtered.append(sentence)
+            seen_global.add(_norm_compare_key(sentence))
+        body_text = " ".join(filtered).strip() if filtered else ""
+        compact_body = _linebreak_sentences(body_text)
+        if heading:
+            rendered.append(heading)
+        if compact_body:
+            rendered.append(compact_body)
+        rendered.append("")
+
+    return "\n".join(rendered).strip()
+
+
+def _normalize_bullets(bullets: list[str], max_items: int = MAX_BULLETS_PER_PAGE) -> list[str]:
+    compact: list[str] = []
+    for bullet in bullets:
+        if not isinstance(bullet, str):
+            continue
+        cleaned = _shorten_text(re.sub(r"^\s*[-*]\s*", "", bullet), MAX_BULLET_CHARS)
+        if cleaned and cleaned not in compact:
+            compact.append(cleaned)
+        if len(compact) >= max_items:
+            break
+    return compact
 
 
 def _trim_title(title: str, step: int) -> str:
@@ -139,7 +329,7 @@ def _purpose_is_reflected(purpose: str, content: str) -> bool:
 
 def _align_content_with_purpose(purpose: str, content: str) -> str:
     text = _soften_text(content)
-    purpose_clean = _soften_text(purpose)
+    purpose_clean = _shorten_text(purpose, 90)
     if not purpose_clean or _purpose_is_reflected(purpose_clean, text):
         return text
     return f"### 이 단계의 포인트\n{purpose_clean}\n\n{text}".strip()
@@ -156,10 +346,10 @@ def _inject_markdown_sections(step: int, content: str) -> str:
 
     lines = _extract_content_lines(text)
     if len(lines) >= 2:
-        first = lines[0]
-        second = " ".join(lines[1:3])
+        first = _shorten_text(lines[0])
+        second = _shorten_text(" ".join(lines[1:3]))
     else:
-        first = text
+        first = _shorten_text(text)
         second = "핵심 흐름을 짧게 나눠서 보면 더 쉽게 이해할 수 있어요."
 
     return f"### {heading1}\n{first}\n\n### {heading2}\n{second}"
@@ -167,16 +357,31 @@ def _inject_markdown_sections(step: int, content: str) -> str:
 
 def _normalize_summary_content(content: str, bullets: list[str]) -> str:
     collected: list[str] = []
+    seen_norm: set[str] = set()
+    heading_dup_phrases = ("투자 전에 꼭 확인할 포인트", "핵심 관찰 포인트")
+
+    def _norm_key(text: str) -> str:
+        no_tags = re.sub(r"<[^>]+>", "", str(text or ""))
+        return re.sub(r"\s+", " ", no_tags).strip().lower()
+
     for item in bullets or []:
         if isinstance(item, str):
-            cleaned = _soften_text(item)
-            if cleaned and cleaned not in collected:
+            cleaned = _shorten_text(item, MAX_BULLET_CHARS)
+            if any(phrase in cleaned for phrase in heading_dup_phrases):
+                continue
+            norm = _norm_key(cleaned)
+            if cleaned and norm and norm not in seen_norm:
                 collected.append(cleaned)
+                seen_norm.add(norm)
 
     for line in _extract_content_lines(content):
-        softened = _soften_text(line)
-        if softened not in collected:
+        softened = _shorten_text(line, MAX_BULLET_CHARS)
+        if any(phrase in softened for phrase in heading_dup_phrases):
+            continue
+        norm = _norm_key(softened)
+        if softened and norm and norm not in seen_norm:
             collected.append(softened)
+            seen_norm.add(norm)
         if len(collected) >= 3:
             break
 
@@ -188,11 +393,118 @@ def _normalize_summary_content(content: str, bullets: list[str]) -> str:
     for item in defaults:
         if len(collected) >= 3:
             break
-        if item not in collected:
+        norm = _norm_key(item)
+        if norm not in seen_norm:
             collected.append(item)
+            seen_norm.add(norm)
 
     checklist = "\n".join(f"- {item}" for item in collected[:3])
     return f"### 투자 전에 꼭 확인할 포인트\n{checklist}"
+
+
+def _kid_friendly_rewrite(sentence: str) -> str:
+    s = _soften_text(sentence)
+    if not s:
+        return s
+    replacements = {
+        "변동성": "가격이 크게 오르내리는 상황",
+        "수급": "누가 많이 사고파는지",
+        "모멘텀": "움직이는 힘",
+        "리스크": "위험",
+        "선행": "먼저 움직이는",
+        "후행": "나중에 따라오는",
+        "밸류에이션": "가격이 비싼지 싼지",
+        "센티먼트": "시장 분위기",
+    }
+    for src, dst in replacements.items():
+        s = s.replace(src, dst)
+    return s
+
+
+def _build_dynamic_why_needed(
+    content: str,
+    purpose: str,
+    theme: str,
+    one_liner: str,
+) -> str:
+    # 포맷은 유지하되(헤딩), 문장은 이슈별 원문에서 추출해 고정 템플릿 반복을 피한다.
+    source = " ".join(part for part in [content, purpose, one_liner, theme] if part).strip()
+    source_sentences = _split_sentences(source)
+    if not source_sentences:
+        return "지금은 뉴스 하나만 보지 말고, 시장 흐름까지 함께 봐야 실수를 줄일 수 있어요."
+
+    definition_like = re.compile(r"(란\?|의미|정의|쉽게\s*말해|현상|개념)", re.IGNORECASE)
+    kept = [
+        _kid_friendly_rewrite(s)
+        for s in source_sentences
+        if not definition_like.search(s)
+    ]
+    kept = [k for k in kept if k]
+
+    if not kept:
+        kept = [_kid_friendly_rewrite(source_sentences[0])]
+
+    # 이슈 문맥을 살린 1~2문장
+    line1 = _shorten_text(kept[0], 120)
+    line2 = _shorten_text(kept[1], 120) if len(kept) > 1 else ""
+
+    # 행동 포인트는 이슈 키워드에 따라 다르게 붙인다.
+    lowered = source.lower()
+    if re.search(r"금리|정책|규제|정부", lowered):
+        action = "그래서 뉴스 제목만 보지 말고, 정책/일정이 실제로 바뀌는지 같이 확인해야 해요."
+    elif re.search(r"수급|매수|매도|외국인|기관|거래대금", lowered):
+        action = "그래서 한 번에 크게 사기보다, 누가 실제로 사고파는지 보고 천천히 판단하는 게 좋아요."
+    elif re.search(r"실적|매출|영업이익|가이던스", lowered):
+        action = "그래서 기대만 보지 말고, 실제 실적 숫자가 따라오는지 꼭 확인해야 해요."
+    else:
+        action = "그래서 서두르지 말고, 시장 분위기와 회사 소식을 함께 보고 결정하는 게 좋아요."
+
+    lines = [line1]
+    if line2 and _norm_compare_key(line2) not in _norm_compare_key(line1):
+        lines.append(line2)
+    lines.append(action)
+    return " ".join(lines).strip()
+
+
+def _normalize_step2_content(
+    content: str,
+    concept_name: str,
+    concept_definition: str,
+    concept_relevance: str,
+    purpose: str,
+    theme: str,
+    one_liner: str,
+) -> str:
+    """2페이지(핵심 개념) 본문을 카드와 겹치지 않게 정규화한다."""
+    heading1, heading2 = DEFAULT_SECTION_HEADINGS[2]
+    text = _soften_text(content)
+    if not text:
+        text = "핵심 흐름을 이해하면 오늘 시장 해석이 쉬워져요."
+
+    # 카드 영역(정의/중요성)과 겹치는 문장을 제거한다.
+    reference_texts = [t for t in [concept_definition, concept_relevance] if t]
+    deduped = _dedupe_sentences(text, reference_texts=reference_texts) if reference_texts else text
+
+    definition_like_pattern = re.compile(
+        r"(란\?|의미해요|정의|쉽게\s*말해|현상이에요|상태예요|개념은\s*.+이에요)",
+        flags=re.IGNORECASE,
+    )
+    candidate_sentences = [
+        s for s in _split_sentences(deduped)
+        if not definition_like_pattern.search(s)
+    ]
+
+    intro = f"오늘 알아볼 개념은 {concept_name}이에요." if concept_name else "오늘 알아볼 개념을 먼저 짚어볼게요."
+
+    why_source = " ".join(candidate_sentences) if candidate_sentences else deduped
+    why_text = _build_dynamic_why_needed(
+        content=why_source,
+        purpose=purpose,
+        theme=theme,
+        one_liner=one_liner,
+    )
+
+    return f"### {heading1}\n{intro}\n\n### {heading2}\n{why_text}".strip()
 
 
 def _normalize_pages(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -213,7 +525,7 @@ def _normalize_pages(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         content = str(current.get("content", "") or "").strip()
         bullets = current.get("bullets", [])
         bullets = bullets if isinstance(bullets, list) else []
-        bullets = [_soften_text(str(item)) for item in bullets if str(item).strip()]
+        bullets = _normalize_bullets([str(item) for item in bullets if str(item).strip()])
         current["bullets"] = bullets
 
         current["title"] = _trim_title(str(current.get("title", "") or ""), step)
@@ -222,7 +534,7 @@ def _normalize_pages(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
             current["content"] = _normalize_summary_content(content, bullets)
             current["chart"] = None
         else:
-            current["content"] = _inject_markdown_sections(step, content)
+            current["content"] = _compress_markdown_content(_inject_markdown_sections(step, content))
 
         normalized.append(current)
 
@@ -239,6 +551,8 @@ def _enforce_story_spine(pages: list[dict[str, Any]], raw_narrative: dict[str, A
     concept_name = _soften_text(str((concept or {}).get("name", "") if isinstance(concept, dict) else ""))
     concept_definition = _soften_text(str((concept or {}).get("definition", "") if isinstance(concept, dict) else ""))
     concept_relevance = _soften_text(str((concept or {}).get("relevance", "") if isinstance(concept, dict) else ""))
+    theme = _soften_text(str(raw_narrative.get("theme", "") if isinstance(raw_narrative, dict) else ""))
+    one_liner = _soften_text(str(raw_narrative.get("one_liner", "") if isinstance(raw_narrative, dict) else ""))
 
     hist_period = _soften_text(str((historical_case or {}).get("period", "") if isinstance(historical_case, dict) else ""))
     hist_title = _soften_text(str((historical_case or {}).get("title", "") if isinstance(historical_case, dict) else ""))
@@ -256,6 +570,9 @@ def _enforce_story_spine(pages: list[dict[str, Any]], raw_narrative: dict[str, A
             step = 0
         content = _soften_text(str(current.get("content", "") or ""))
         purpose = _soften_text(str(current.get("purpose", "") or ""))
+        current["bullets"] = _normalize_bullets(
+            [str(item) for item in (current.get("bullets", []) or []) if str(item).strip()]
+        )
 
         if step in {1, 2, 3, 4, 5} and (not re.search(r"^\s*###\s+", content, flags=re.MULTILINE) or _has_placeholder_heading(content)):
             content = _inject_markdown_sections(step, content)
@@ -263,14 +580,17 @@ def _enforce_story_spine(pages: list[dict[str, Any]], raw_narrative: dict[str, A
         if step in {1, 2, 3, 4, 5}:
             content = _align_content_with_purpose(purpose, content)
 
-        if step == 2 and concept_name and not _contains_anchor(content, concept_name):
-            concept_lines = [f"오늘 배울 개념은 {concept_name}이에요."]
-            if concept_definition:
-                concept_lines.append(concept_definition)
-            if concept_relevance:
-                concept_lines.append(concept_relevance)
-            concept_block = " ".join(line for line in concept_lines if line)
-            content = f"### 오늘 배울 개념\n{concept_block}\n\n{content}".strip()
+        # 2페이지는 카드와 본문 역할을 분리해 중복을 구조적으로 방지한다.
+        if step == 2:
+            content = _normalize_step2_content(
+                content=content,
+                concept_name=concept_name,
+                concept_definition=concept_definition,
+                concept_relevance=concept_relevance,
+                purpose=purpose,
+                theme=theme,
+                one_liner=one_liner,
+            )
 
         if step == 3:
             has_period = bool(hist_period) and _contains_anchor(content, hist_period)
@@ -292,10 +612,10 @@ def _enforce_story_spine(pages: list[dict[str, Any]], raw_narrative: dict[str, A
         if step == 6:
             bullets = current.get("bullets", [])
             bullets = bullets if isinstance(bullets, list) else []
-            current["content"] = _normalize_summary_content(content, [_soften_text(str(item)) for item in bullets if str(item).strip()])
+            current["content"] = _normalize_summary_content(content, bullets)
             current["chart"] = None
         else:
-            current["content"] = content
+            current["content"] = _compress_markdown_content(content)
 
         enforced.append(current)
     return enforced
@@ -918,6 +1238,25 @@ def assemble_output_node(state: dict) -> dict:
                 page["chart"] = charts[section_key]
             elif "chart" not in page:
                 page["chart"] = None
+
+            # glossary 스키마 안정화: LLM이 null을 주더라도 문자열로 보정
+            glossary_items = page.get("glossary")
+            if isinstance(glossary_items, list):
+                normalized_glossary = []
+                for item in glossary_items:
+                    if not isinstance(item, dict):
+                        continue
+                    term = str(item.get("term") or "").strip()
+                    definition = str(item.get("definition") or "").strip()
+                    domain = str(item.get("domain") or "").strip()
+                    if not term:
+                        continue
+                    normalized_glossary.append({
+                        "term": term,
+                        "definition": definition,
+                        "domain": domain,
+                    })
+                page["glossary"] = normalized_glossary
 
         # FinalBriefing 조립
         final_briefing_data = {

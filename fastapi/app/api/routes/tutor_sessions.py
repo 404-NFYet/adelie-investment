@@ -13,11 +13,11 @@ from app.core.database import get_db
 from app.core.auth import get_current_user
 from app.models.tutor import TutorSession, TutorMessage
 from app.services import get_redis_cache
-from app.services.chart_storage import get_chart_presigned_url
 
 logger = logging.getLogger("narrative.tutor_sessions")
 
 router = APIRouter(prefix="/tutor", tags=["tutor sessions"])
+CLARIFICATION_KEY_PREFIX = "tutor:clarify:"
 
 
 @router.get("/sessions")
@@ -101,16 +101,19 @@ async def get_session_messages(
             "message_type": m.message_type,
             "created_at": m.created_at.isoformat() if m.created_at else None,
         }
-        # visualization 메시지 → presigned URL 추가
+        # JSON 기반 시각화 데이터 보존
         if m.message_type == "visualization" and m.content:
             try:
                 viz_info = json.loads(m.content)
-                minio_path = viz_info.get("minio_path")
-                if minio_path:
-                    url = get_chart_presigned_url(minio_path)
-                    if url:
-                        msg_data["chart_url"] = url
-                        msg_data["execution_time_ms"] = viz_info.get("execution_time_ms")
+                if "data" in viz_info and "layout" in viz_info:
+                    msg_data["execution_time_ms"] = viz_info.get("execution_time_ms")
+            except Exception:
+                pass
+        if m.message_type == "clarification" and m.content:
+            try:
+                clarification_info = json.loads(m.content)
+                msg_data["question"] = clarification_info.get("question")
+                msg_data["options"] = clarification_info.get("options", [])
             except Exception:
                 pass
         formatted_messages.append(msg_data)
@@ -171,4 +174,5 @@ async def delete_session(
 
     cache = await get_redis_cache()
     await cache.invalidate_session_cache(session_id)
+    await cache.delete(f"{CLARIFICATION_KEY_PREFIX}{session_id}")
     return {"deleted": True}

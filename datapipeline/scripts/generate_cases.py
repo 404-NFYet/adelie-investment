@@ -7,6 +7,7 @@ Historical Cases 생성 스크립트 (6페이지 골든케이스)
 - LangSmith @traceable 트레이싱 연동
 """
 import asyncio
+import argparse
 import json
 import logging
 import os
@@ -46,6 +47,23 @@ client = get_multi_provider_client()
 
 # 프롬프트 파일 경로
 PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="historical_cases 생성/갱신 스크립트")
+    parser.add_argument(
+        "--mode",
+        choices=["upsert-latest", "full-reset"],
+        default="upsert-latest",
+        help="upsert-latest: 최신 briefing 상위 N개만 갱신(기본), full-reset: 기존 전체 삭제 후 재생성",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=3,
+        help="upsert-latest 모드에서 처리할 최신 키워드 개수 (기본 3)",
+    )
+    return parser.parse_args()
 
 
 def _load_prompt(name: str) -> str:
@@ -472,6 +490,9 @@ def _log_quality_metrics(narrative: dict, keyword: str) -> None:
 
 async def main():
     import asyncpg
+    args = parse_args()
+    mode = args.mode
+    limit = max(1, int(args.limit or 3))
 
     db_url = os.getenv("DATABASE_URL", "")
     if not db_url:
@@ -480,25 +501,28 @@ async def main():
     db_url = db_url.replace("+asyncpg", "")
 
     print(f"=== Historical Cases 생성 시작 (6페이지 골든케이스) ===")
+    print(f"mode={mode}, limit={limit}")
     print(f"DB: {db_url}")
 
     conn = await asyncpg.connect(db_url)
 
-    # 1. 기존 데이터 확인 및 정리
-    existing_cases = await conn.fetchval("SELECT COUNT(*) FROM historical_cases")
-    existing_matches = await conn.fetchval("SELECT COUNT(*) FROM case_matches")
-    existing_relations = await conn.fetchval("SELECT COUNT(*) FROM case_stock_relations")
-    print(f"기존 데이터 - cases: {existing_cases}, matches: {existing_matches}, relations: {existing_relations}")
+    # 1. full-reset 모드에서만 기존 데이터 전체 삭제
+    if mode == "full-reset":
+        existing_cases = await conn.fetchval("SELECT COUNT(*) FROM historical_cases")
+        existing_matches = await conn.fetchval("SELECT COUNT(*) FROM case_matches")
+        existing_relations = await conn.fetchval("SELECT COUNT(*) FROM case_stock_relations")
+        print(f"기존 데이터 - cases: {existing_cases}, matches: {existing_matches}, relations: {existing_relations}")
 
-    # 기존 데이터 삭제 (트랜잭션으로 원자적 처리)
-    async with conn.transaction():
-        if existing_relations > 0:
-            await conn.execute("DELETE FROM case_stock_relations")
-        if existing_matches > 0:
-            await conn.execute("DELETE FROM case_matches")
-        if existing_cases > 0:
-            await conn.execute("DELETE FROM historical_cases")
-    logger.info("기존 데이터 삭제 완료")
+        async with conn.transaction():
+            if existing_relations > 0:
+                await conn.execute("DELETE FROM case_stock_relations")
+            if existing_matches > 0:
+                await conn.execute("DELETE FROM case_matches")
+            if existing_cases > 0:
+                await conn.execute("DELETE FROM historical_cases")
+        logger.info("기존 데이터 삭제 완료 (full-reset)")
+    else:
+        logger.info("전체 삭제 없이 최신 키워드 upsert 모드로 실행합니다.")
 
     # 2. 최신 briefing에서 키워드 가져오기
     row = await conn.fetchrow("""
@@ -518,9 +542,11 @@ async def main():
     briefing_date = row["briefing_date"]
     top_keywords = row["top_keywords"] if isinstance(row["top_keywords"], dict) else json.loads(row["top_keywords"])
     keywords = top_keywords.get("keywords", [])
+    if mode == "upsert-latest":
+        keywords = keywords[:limit]
 
     print(f"Briefing ID: {briefing_id}, 날짜: {briefing_date}")
-    print(f"키워드 {len(keywords)}개 발견")
+    print(f"키워드 {len(keywords)}개 처리")
 
     # 3. OPENAI_API_KEY 확인
     if not os.getenv("OPENAI_API_KEY"):
@@ -608,37 +634,69 @@ async def main():
             logger.warning(f"  event_year 범위 초과: {event_year}, 기본값 2000 사용")
             event_year = 2000
 
+        case_title = case_data.get("title", "")
+        case_summary = case_data.get("summary", "")
+        case_full_content = case_data.get("full_content", "")
+
         case_id = await conn.fetchval("""
             INSERT INTO historical_cases
             (title, event_year, summary, full_content, keywords, difficulty, view_count, created_at, updated_at)
             VALUES ($1, $2, $3, $4, $5::jsonb, 'beginner', 0, NOW(), NOW())
+            ON CONFLICT (title, event_year)
+            DO UPDATE SET
+                summary = EXCLUDED.summary,
+                full_content = EXCLUDED.full_content,
+                keywords = EXCLUDED.keywords,
+                updated_at = NOW()
             RETURNING id
         """,
-            case_data.get("title", ""),
+            case_title,
             event_year,
-            case_data.get("summary", ""),
-            case_data.get("full_content", ""),
+            case_summary,
+            case_full_content,
             keywords_jsonb
         )
-        print(f"  -> historical_cases: id={case_id}")
+        print(f"  -> historical_cases upsert: id={case_id}")
 
-        # case_matches에 삽입
+        # case_matches는 current_keyword 기준으로 upsert 유사 동작 (스키마 변경 없이 update/insert)
         stock_code = stock_codes[0] if stock_codes else None
-        match_id = await conn.fetchval("""
-            INSERT INTO case_matches
-            (current_keyword, current_stock_code, matched_case_id, similarity_score, match_reason, matched_at)
-            VALUES ($1, $2, $3, $4, $5, NOW())
-            RETURNING id
-        """,
-            kw_title,
-            stock_code,
-            case_id,
-            case_data.get("sync_rate", 70) / 100.0,
-            (case_data.get("key_insight", {}).get("summary", "") if isinstance(case_data.get("key_insight"), dict) else case_data.get("key_insight", "")) or "유사한 시장 패턴"
+        similarity_score = case_data.get("sync_rate", 70) / 100.0
+        match_reason = (
+            (case_data.get("key_insight", {}).get("summary", "") if isinstance(case_data.get("key_insight"), dict) else case_data.get("key_insight", ""))
+            or "유사한 시장 패턴"
         )
-        print(f"  -> case_matches: id={match_id}")
+        existing_match_id = await conn.fetchval("""
+            SELECT id
+            FROM case_matches
+            WHERE current_keyword = $1
+            ORDER BY matched_at DESC
+            LIMIT 1
+        """, kw_title)
 
-        # case_stock_relations에 삽입
+        if existing_match_id:
+            match_id = existing_match_id
+            await conn.execute("""
+                UPDATE case_matches
+                SET
+                    current_stock_code = $2,
+                    matched_case_id = $3,
+                    similarity_score = $4,
+                    match_reason = $5,
+                    matched_at = NOW()
+                WHERE id = $1
+            """, match_id, stock_code, case_id, similarity_score, match_reason)
+            print(f"  -> case_matches update: id={match_id}")
+        else:
+            match_id = await conn.fetchval("""
+                INSERT INTO case_matches
+                (current_keyword, current_stock_code, matched_case_id, similarity_score, match_reason, matched_at)
+                VALUES ($1, $2, $3, $4, $5, NOW())
+                RETURNING id
+            """, kw_title, stock_code, case_id, similarity_score, match_reason)
+            print(f"  -> case_matches insert: id={match_id}")
+
+        # case_stock_relations는 해당 case_id에 대해 재생성 (다른 케이스 영향 없음)
+        await conn.execute("DELETE FROM case_stock_relations WHERE case_id = $1", case_id)
         for j, sc in enumerate(stock_codes):
             stock_code = sc
             stock_name = ""
