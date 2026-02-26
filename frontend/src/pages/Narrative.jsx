@@ -108,10 +108,31 @@ function sanitizeChecklistItem(value) {
     .trim();
 }
 
+function normalizeChecklistLabelStyle(value) {
+  const text = String(value || '').trim();
+  if (!text) return text;
+
+  const splitIdx = text.search(/[:：]/);
+  if (splitIdx <= 0) return text;
+
+  const rawLabel = text.slice(0, splitIdx).trim();
+  const body = text.slice(splitIdx + 1).trim();
+  if (!rawLabel || !body) return text;
+
+  // 라벨은 동사형 종결보다 명사형 어구로 정리한다. (예: "대비해" -> "대비")
+  const nounLikeLabel = rawLabel
+    .replace(/\s+/g, ' ')
+    .replace(/(하세요|해요|하라|하기|해)\s*$/u, '')
+    .trim();
+
+  const label = nounLikeLabel || rawLabel;
+  return `${label}: ${body}`;
+}
+
 function getChecklistItems(content, bullets) {
   const items = [];
   const pushItem = (value) => {
-    const cleaned = sanitizeChecklistItem(value);
+    const cleaned = normalizeChecklistLabelStyle(sanitizeChecklistItem(value));
     if (!cleaned) return;
     if (/투자 전에 꼭 확인할 포인트/.test(cleaned)) return;
     if (!items.includes(cleaned)) {
@@ -156,10 +177,326 @@ function preprocessMarkdown(content) {
   // 5) 잔여 ** 정리 (매칭 실패한 고립 opening/closing delimiter)
   s = s.replace(/\*\*/g, '');
 
+  // 5-1) 줄긋기 마크다운/HTML(del,s,strike)은 모두 제거한다.
+  s = s.replace(/~~/g, '');
+  s = s.replace(/<\/?(?:del|s|strike)\b[^>]*>/gi, '');
+
+  // 6) 내러티브 핵심 라벨 표기를 공통 포맷으로 통일한다.
+  s = normalizeNarrativeBracketTags(s);
+
+  // 7) "이번에 주는 힌트"가 위 사례와 동일하면 힌트 문구를 압축해 중복을 줄인다.
+  s = normalizeHintDedup(s);
+
+  // 8) "라벨: 설명" 구조는 문장 단위로 줄바꿈해 가독성을 맞춘다.
+  s = normalizeLabelDescriptionBreaks(s);
+
+  // 8) "[Trigger]" 같은 라벨은 문장과 분리해 줄바꿈해 가독성을 높인다.
+  s = normalizeHistoricalLabelBreaks(s);
+
   return s;
 }
 
-const MarkdownBody = React.memo(function MarkdownBody({ content, className = '' }) {
+function normalizeLabelDescriptionBreaks(content) {
+  const text = String(content || '');
+  if (!text) return text;
+
+  // "문장 끝 + 다음 라벨: 설명" 패턴을 전역으로 정리한다.
+  // 예) "...했어요. ETF 투자자 주의: ..." -> "...했어요.\nETF 투자자 주의: ..."
+  return text.replace(
+    /(?<!\d)([.!?。！？])\s+(\*\*)?([가-힣A-Za-z0-9·()/~\-\s]{2,40}:)(\*\*)?\s*/g,
+    (_, endPunc, openBold = '', label, closeBold = '') => `${endPunc}\n${openBold}${label}${closeBold} `,
+  );
+}
+
+function normalizeNarrativeBracketTags(content) {
+  const text = String(content || '');
+  if (!text) return text;
+
+  let out = text;
+
+  // [원인 Trigger], [Trigger 원인], [원인(Trigger)], [Trigger(원인)], [원인], [Trigger] -> [Trigger]
+  out = out.replace(
+    /\[\s*(?:원인\s*[-/|]?\s*trigger|trigger\s*[-/|]?\s*원인|원인\s*\(\s*trigger\s*\)|trigger\s*\(\s*원인\s*\)|원인|trigger)\s*\]/gi,
+    '[Trigger]',
+  );
+  // 원인(Trigger):, Trigger(원인): -> [Trigger]
+  out = out.replace(/(^|[\s>])(?:원인\s*\(\s*trigger\s*\)|trigger\s*\(\s*원인\s*\))\s*:\s*/gim, '$1[Trigger] ');
+
+  // [전개 Process], [Process 전개], [전개(Process)], [Process(전개)], [전개], [Process] -> [Process]
+  out = out.replace(
+    /\[\s*(?:전개\s*[-/|]?\s*process|process\s*[-/|]?\s*전개|전개\s*\(\s*process\s*\)|process\s*\(\s*전개\s*\)|전개|process)\s*\]/gi,
+    '[Process]',
+  );
+  // 전개(Process):, Process(전개): -> [Process]
+  out = out.replace(/(^|[\s>])(?:전개\s*\(\s*process\s*\)|process\s*\(\s*전개\s*\))\s*:\s*/gim, '$1[Process] ');
+
+  // [시차/변수], [Time Lag/Variables], [Variables], [시차/Variables] -> [시차/Variables]
+  out = out.replace(/\[\s*(?:시차\s*\/\s*변수|시차\s*\/\s*variables|time\s*lag\s*\/\s*variables|variables)\s*\]/gi, '[시차/Variables]');
+  // 시차/변수(시차/Variables):, Time Lag/Variables: -> [시차/Variables]
+  out = out.replace(
+    /(^|[\s>])(?:시차\s*\/\s*변수(?:\s*\(\s*시차\s*\/\s*variables\s*\))?|time\s*lag\s*\/\s*variables|variables)\s*:\s*/gim,
+    '$1[시차/Variables] ',
+  );
+
+  return out;
+}
+
+function buildHintFromWholeContext(sourceText) {
+  const raw = String(sourceText || '')
+    .replace(/^###\s+.*$/gm, ' ')
+    .replace(/\[(?:Trigger|Process|시차\/Variables|Result|Outcome)\]\s*/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const factors = [];
+  if (/정책|규제|발표|정부/.test(raw)) factors.push('정책');
+  if (/수급|자금|매수|매도|유입/.test(raw)) factors.push('수급');
+  if (/실적|이익|매출|밸류|멀티플/.test(raw)) factors.push('실적/밸류');
+  if (/금리|유동성|거시|환율|물가/.test(raw)) factors.push('거시 환경');
+  if (/시차|lag|타이밍|선행|후행/.test(raw)) factors.push('시차');
+  if (/리스크|변동성|과열|조정/.test(raw)) factors.push('리스크');
+
+  const uniqueFactors = Array.from(new Set(factors));
+  const factorText = uniqueFactors.slice(0, 3).join('·') || '수급·심리·타이밍';
+  const hasLag = /시차|lag|선행|후행|타이밍/.test(raw);
+  const hasTheme = /테마|동조화|섹터|대장주/.test(raw);
+
+  const line1 = hasTheme
+    ? `핵심 힌트: 이번 구간은 개별 뉴스보다 ${factorText}의 방향이 주가를 먼저 움직일 가능성이 큽니다.`
+    : `핵심 힌트: 이번 구간에서는 ${factorText}의 변화가 단기 주가 반응을 좌우할 가능성이 큽니다.`;
+
+  const line2 = hasLag
+    ? '체크 포인트: 같은 재료라도 반응 시차가 생기므로 진입·추가·정리 타이밍을 한 번에 판단하지 말고 나눠 확인하세요.'
+    : '체크 포인트: 강한 재료가 보여도 확산 경로와 지속성을 먼저 확인한 뒤 대응하면 오판 가능성을 줄일 수 있습니다.';
+
+  return [line1, line2];
+}
+
+function normalizeHintDedup(content) {
+  const text = String(content || '');
+  if (!text.includes('### 이번에 주는 힌트')) return text;
+
+  const lines = text.split('\n');
+  const hintStart = lines.findIndex((line) => /^###\s*이번에 주는 힌트/.test(line.trim()));
+  if (hintStart < 0) return text;
+  const hintEnd = lines.findIndex((line, idx) => idx > hintStart && /^###\s+/.test(line.trim()));
+  const hintSliceEnd = hintEnd === -1 ? lines.length : hintEnd;
+  const sourceContext = [
+    ...lines.slice(0, hintStart),
+    ...lines.slice(hintSliceEnd),
+  ].join('\n');
+  const compactLines = buildHintFromWholeContext(sourceContext);
+
+  return [
+    ...lines.slice(0, hintStart + 1),
+    ...compactLines,
+    ...lines.slice(hintSliceEnd),
+  ].join('\n');
+}
+
+function normalizeHistoricalLabelBreaks(content) {
+  const text = String(content || '');
+  if (!text) return text;
+  const labelPattern = '\\[(?:Trigger|Process|Result|Outcome|Time\\s*Lag\\/Variables|Variables|시차\\/Variables)\\]';
+  let out = text;
+
+  // "국면: [Trigger]" 같은 패턴은 ":" 다음 줄로 라벨을 내린다.
+  out = out.replace(new RegExp(`([:：])\\s*(${labelPattern})`, 'g'), '$1\n$2');
+  // 일반 문장 중간에 붙은 라벨도 새 줄에서 시작하게 정리한다.
+  out = out.replace(new RegExp(`([^\\n:：])\\s+(${labelPattern})`, 'g'), '$1\n$2');
+
+  return out;
+}
+
+function pickSubheadingEmoji(text) {
+  const t = String(text || '').toLowerCase();
+  if (/과거|history|사례/.test(t)) return '🕰️';
+  if (/힌트|tip|포인트|check|체크/.test(t)) return '💡';
+  if (/리스크|위험|주의|caution/.test(t)) return '⚠️';
+  if (/기회|호재|상승|긍정|opportunity/.test(t)) return '🚀';
+  if (/전략|액션|대응|strategy|plan/.test(t)) return '🧭';
+  if (/데이터|지표|숫자|차트|data|metric/.test(t)) return '📊';
+  if (/요약|핵심|summary|takeaway/.test(t)) return '🧩';
+  return '🔹';
+}
+
+function resolveSubheadingTone(text, defaultColorClass) {
+  const emoji = pickSubheadingEmoji(text);
+  const colorClass = emoji === '🔹' ? 'text-[#1e3a8a]' : defaultColorClass;
+  return { emoji, colorClass };
+}
+
+function renderSubheadingWithEmoji(props) {
+  const raw = props.children;
+  const headingText = Array.isArray(raw) ? raw.join(' ') : String(raw || '');
+  const { emoji } = resolveSubheadingTone(headingText, 'text-primary');
+  return (
+    <>
+      <span aria-hidden="true" className="mr-1.5">{emoji}</span>
+      {props.children}
+    </>
+  );
+}
+
+function normalizeCautionActionPoints(content) {
+  const text = String(content || '');
+  if (!text) return text;
+
+  const lines = text.split('\n');
+  const out = [];
+  let inAction = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('### ')) {
+      inAction = trimmed.includes('대응 포인트');
+      out.push(line);
+      continue;
+    }
+
+    if (!inAction) {
+      out.push(line);
+      continue;
+    }
+
+    if (!trimmed) {
+      out.push(line);
+      inAction = false;
+      continue;
+    }
+
+    // "문장 끝 + 다음 라벨: 설명" 패턴을 강제로 줄바꿈한다.
+    // 라벨이 **굵게** 감싸진 마크다운 케이스도 함께 처리한다.
+    const normalized = trimmed.replace(
+      /([.!?。！？])\s+(\*\*)?([가-힣A-Za-z0-9·()/\-\s]{2,40}:)(\*\*)?\s*/g,
+      (_, endPunc, openBold = '', label, closeBold = '') => `${endPunc}\n${openBold}${label}${closeBold} `,
+    );
+    out.push(normalized);
+  }
+
+  return out.join('\n');
+}
+
+function toActionableCautionLine(item, idx) {
+  const cleaned = sanitizeChecklistItem(item);
+  const base = cleaned.replace(/[:：].*$/g, '').replace(/\s+/g, ' ').trim();
+  const fallbackTopics = ['비중 관리 원칙', '분할 대응 원칙', '유동성 점검 원칙'];
+  const topic = (() => {
+    if (/시차|전환|기대.?현실|갭|후행|선행/.test(base)) return '기대-현실 갭 대응';
+    if (/etf|nav|유동성|괴리|편입/.test(base.toLowerCase())) return 'ETF 유동성 점검';
+    if (/과열|경고|이벤트|급등|변동성/.test(base)) return '이벤트 과열 경계';
+    if (/실적|매출|영업이익|밸류|멀티플/.test(base)) return '실적 확인 우선';
+    if (/분산|집중|비중/.test(base)) return '비중 관리';
+    return fallbackTopics[idx % fallbackTopics.length];
+  })();
+
+  const templates = [
+    `${topic}: 진입 전에 확인 지표 1개와 중단 조건 1개를 먼저 정하세요. 조건이 충족되기 전에는 비중을 늘리지 않습니다.`,
+    `${topic}: 이벤트 직후에는 2~3회 분할로 대응하고, 반대 시그널이 나오면 즉시 비중을 줄이세요.`,
+    `${topic}: 단일 종목 대신 관련 ETF·대체 종목을 함께 비교해 분산하고, 거래대금/괴리율을 같이 확인하세요.`,
+  ];
+
+  return templates[idx % templates.length];
+}
+
+function buildCautionActionGuide(content, bullets = []) {
+  const normalized = normalizeCautionActionPoints(content);
+  const lines = String(normalized || '').split('\n');
+  const actionHeadingIdx = lines.findIndex((line) => line.trim().includes('대응 포인트'));
+  const intro = (actionHeadingIdx >= 0 ? lines.slice(0, actionHeadingIdx) : lines).join('\n').trim();
+
+  const sourceItems = (Array.isArray(bullets) ? bullets : [])
+    .map((v) => sanitizeChecklistItem(v))
+    .filter(Boolean)
+    .slice(0, 3);
+
+  const actionable = (sourceItems.length > 0
+    ? sourceItems.map((item, idx) => toActionableCautionLine(item, idx))
+    : [
+      '핵심 리스크: 진입 전에 확인 지표와 중단 조건을 먼저 정해 추격 매수를 피하세요.',
+      '체크 포인트: 이벤트 당일 변동성보다 다음 영업일의 거래대금·수급 지속 여부를 우선 확인하세요.',
+    ]);
+
+  const actionSection = [
+    '### 대응 포인트',
+    ...actionable.map((line, idx) => `${idx + 1}. ${line}`),
+  ].join('\n');
+
+  return [intro, actionSection].filter(Boolean).join('\n\n');
+}
+
+function normalizeApplicationSection(content) {
+  const text = String(content || '');
+  if (!text) return text;
+  if (!text.includes('### 닮은 점') || !text.includes('### 다른 점')) return text;
+
+  const lines = text.split('\n');
+  const top = [];
+  const similar = [];
+  const different = [];
+  let similarHeading = null;
+  let differentHeading = null;
+  let section = 'top';
+  const isSimilarityLine = (rawLine) => {
+    const normalized = String(rawLine || '')
+      .trim()
+      .replace(/^[-*]\s*/, '')
+      .replace(/^\*\*|\*\*$/g, '');
+    return /^\[?\s*유사점(?:\s*[-—:])?/i.test(normalized)
+      || /^닮은\s*점(?:\s*\(패턴\))?\s*:/.test(normalized)
+      || /\[유사점\s*[-—:]/.test(normalized);
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('### ')) {
+      if (trimmed.includes('닮은 점')) {
+        similarHeading = line;
+        section = 'similar';
+        continue;
+      }
+      if (trimmed.includes('다른 점')) {
+        differentHeading = line;
+        section = 'different';
+        continue;
+      }
+    }
+
+    if (section === 'top') {
+      top.push(line);
+      continue;
+    }
+    if (section === 'similar') {
+      similar.push(line);
+      continue;
+    }
+
+    // "다른 점" 섹션에 잘못 들어간 유사점/닮은점 라인은 "닮은 점"으로 이동.
+    if (isSimilarityLine(trimmed)) {
+      similar.push(line);
+    } else {
+      different.push(line);
+    }
+  }
+
+  const output = [];
+  output.push(...top);
+  if (similarHeading) output.push(similarHeading, ...similar);
+  if (differentHeading) output.push(differentHeading, ...different);
+  return output.join('\n');
+}
+
+function normalizeLessonLineBreaks(content) {
+  const text = String(content || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!text) return text;
+
+  // 문장 종결 뒤에는 줄바꿈해 가독성을 높인다.
+  return text.replace(/([.!?。！？])\s+/g, '$1\n');
+}
+
+function MarkdownBody({ content, onTermClick, className = '', headingColorClass = 'text-primary' }) {
   if (!content) return null;
   const processed = preprocessMarkdown(content);
 
@@ -169,11 +506,38 @@ const MarkdownBody = React.memo(function MarkdownBody({ content, className = '' 
         remarkPlugins={[remarkMath, remarkGfm, remarkBreaks]}
         rehypePlugins={[rehypeRaw, rehypeKatex]}
         components={{
-          mark: ({ node, ...props }) => <span className="term-highlight" data-term-highlight="true" {...props} />,
-          h1: ({ node, ...props }) => <h3 className="mb-2 text-base font-semibold text-text-primary" {...props} />,
-          h2: ({ node, ...props }) => <h3 className="mb-2 mt-4 text-base font-semibold text-text-primary" {...props} />,
-          h3: ({ node, ...props }) => <h4 className="mb-2 mt-3 text-sm font-semibold text-text-primary" {...props} />,
-          p: ({ node, ...props }) => <p className="mb-3 text-sm leading-relaxed text-text-secondary last:mb-0" {...props} />,
+          mark: ({ node, ...props }) => (
+            <mark
+              className="term-highlight cursor-pointer"
+              onClick={(event) => {
+                event.preventDefault();
+                onTermClick?.(event.currentTarget.textContent || '');
+              }}
+              {...props}
+            />
+          ),
+          h1: ({ node, ...props }) => <h3 className={`mb-2 text-base font-semibold ${headingColorClass}`} {...props} />,
+          h2: ({ node, ...props }) => (
+            <h3
+              {...props}
+              className={`mb-2 text-base font-semibold ${
+                resolveSubheadingTone(props.children, headingColorClass).colorClass
+              }`}
+            >
+              {renderSubheadingWithEmoji(props)}
+            </h3>
+          ),
+          h3: ({ node, ...props }) => (
+            <h4
+              {...props}
+              className={`mb-2 text-sm font-semibold ${
+                resolveSubheadingTone(props.children, headingColorClass).colorClass
+              }`}
+            >
+              {renderSubheadingWithEmoji(props)}
+            </h4>
+          ),
+          p: ({ node, ...props }) => <p className="mb-3 whitespace-pre-line text-sm leading-relaxed text-text-secondary last:mb-0" {...props} />,
           ul: ({ node, ...props }) => <ul className="mb-3 list-disc space-y-1 pl-5 text-sm text-text-secondary" {...props} />,
           ol: ({ node, ...props }) => <ol className="mb-3 list-decimal space-y-1 pl-5 text-sm text-text-secondary" {...props} />,
           li: ({ node, ...props }) => <li className="leading-relaxed" {...props} />,
@@ -183,6 +547,7 @@ const MarkdownBody = React.memo(function MarkdownBody({ content, className = '' 
           strong: ({ node, ...props }) => (
             <strong className="font-bold text-text-primary" {...props} />
           ),
+          del: ({ node, ...props }) => <span {...props} />,
           table: ({ node, ...props }) => (
             <div className="my-3 overflow-x-auto"><table className="w-full text-xs" {...props} /></div>
           ),
@@ -294,6 +659,13 @@ const ContentTemplate = React.memo(function ContentTemplate({ stepConfig, stepDa
     ? stepData.bullets
     : contentLines.slice(0, 5);
   const summaryChecklist = getChecklistItems(stepData?.content, stepData?.bullets);
+  const cautionContent = stepConfig.template === 'content4'
+    ? buildCautionActionGuide(stepData?.content, cautionItems)
+    : stepData?.content;
+  const applicationContent = stepConfig.key === 'application'
+    ? normalizeApplicationSection(stepData?.content)
+    : stepData?.content;
+  const hasHistoryBody = stepConfig.key === 'history' && Boolean(String(stepData?.content || '').trim());
 
   if (stepConfig.template === 'content4') {
     return (
@@ -306,20 +678,22 @@ const ContentTemplate = React.memo(function ContentTemplate({ stepConfig, stepDa
             {stepTitle}
           </h2>
 
-          {cautionItems.length > 0 ? (
-            <ul className="mt-5 space-y-3">
-              {cautionItems.slice(0, 5).map((item, idx) => (
-                <li key={`${item}-${idx}`} className="rounded-xl bg-[#f7f8fa] px-4 py-3 text-sm leading-relaxed text-text-secondary">
-                  <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-xs font-semibold text-primary">
-                    {idx + 1}
-                  </span>
-                  {item}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <MarkdownBody content={markdownContent} className="mt-5" />
-          )}
+          <ul className="mt-5 space-y-3">
+            {cautionItems.slice(0, 5).map((item, idx) => (
+              <li key={`${item}-${idx}`} className="rounded-xl bg-[#f7f8fa] px-4 py-3 text-sm leading-relaxed text-text-secondary">
+                <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-xs font-semibold text-primary">
+                  {idx + 1}
+                </span>
+                {item}
+              </li>
+            ))}
+          </ul>
+
+          <MarkdownBody
+            content={cautionContent}
+            onTermClick={onTermClick}
+            className="mt-4 border-t border-border pt-4"
+          />
         </div>
       </section>
     );
@@ -391,8 +765,10 @@ const ContentTemplate = React.memo(function ContentTemplate({ stepConfig, stepDa
           )}
 
           <MarkdownBody
-            content={markdownContent}
+            content={applicationContent}
+            onTermClick={onTermClick}
             className="mt-4"
+            headingColorClass={stepConfig.key === 'history' ? 'text-[#065f46]' : 'text-primary'}
           />
 
           {stepConfig.showChart ? (
@@ -423,21 +799,32 @@ const ContentTemplate = React.memo(function ContentTemplate({ stepConfig, stepDa
                 <p className="mt-1.5 text-[11px] font-medium text-[#047857]">{data.historical_case.period}</p>
               )}
               <p className="mt-1 text-sm font-bold text-[#064e3b]">{data.historical_case.title}</p>
-              {data.historical_case.summary && (
-                <p className="mt-2 text-[13px] leading-relaxed text-[#374151]">{data.historical_case.summary}</p>
+              {data.historical_case.summary && !hasHistoryBody && (
+                <p className="mt-2 whitespace-pre-line text-[13px] leading-relaxed text-[#374151]">
+                  {normalizeHistoricalLabelBreaks(data.historical_case.summary)}
+                </p>
               )}
-              {data.historical_case.outcome && (
+              {data.historical_case.outcome && !hasHistoryBody && (
                 <div className="mt-2 rounded-xl bg-white/60 px-3 py-2">
                   <p className="text-[11px] font-semibold text-[#065f46]">결과</p>
-                  <p className="mt-0.5 text-[12px] leading-relaxed text-[#374151]">{data.historical_case.outcome}</p>
+                  <p className="mt-0.5 whitespace-pre-line text-[12px] leading-relaxed text-[#374151]">
+                    {normalizeHistoricalLabelBreaks(data.historical_case.outcome)}
+                  </p>
                 </div>
+              )}
+              {hasHistoryBody && (
+                <p className="mt-2 text-[12px] text-[#4b5563]">
+                  상세 맥락은 아래 본문에서 확인하세요.
+                </p>
               )}
             </div>
           )}
 
           <MarkdownBody
-            content={markdownContent}
+            content={applicationContent}
+            onTermClick={onTermClick}
             className="mt-4"
+            headingColorClass={stepConfig.key === 'history' ? 'text-[#065f46]' : 'text-primary'}
           />
 
           {stepConfig.showChart ? (
@@ -480,7 +867,9 @@ const ContentTemplate = React.memo(function ContentTemplate({ stepConfig, stepDa
               <span className="mt-0.5 text-base">💡</span>
               <div>
                 <p className="text-[11px] font-semibold tracking-wide text-[#b45309]">과거에서 배우는 교훈</p>
-                <p className="mt-1.5 text-[13px] leading-relaxed text-[#92400e]">{data.historical_case.lesson}</p>
+                <p className="mt-1.5 whitespace-pre-line text-[13px] leading-relaxed text-[#92400e]">
+                  {normalizeLessonLineBreaks(data.historical_case.lesson)}
+                </p>
               </div>
             </div>
           )}
