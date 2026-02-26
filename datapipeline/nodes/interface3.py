@@ -145,6 +145,52 @@ def _linebreak_sentences(text: str) -> str:
     return "\n".join(sentences)
 
 
+def _norm_compare_key(text: str) -> str:
+    lowered = _soften_text(text).lower()
+    return re.sub(r"[^0-9a-z가-힣]+", "", lowered)
+
+
+def _is_sentence_redundant(candidate: str, existing_keys: set[str], min_len: int = 18) -> bool:
+    key = _norm_compare_key(candidate)
+    if not key:
+        return True
+    if key in existing_keys:
+        return True
+    if len(key) < min_len:
+        return False
+    for seen in existing_keys:
+        if len(seen) < min_len:
+            continue
+        if key in seen or seen in key:
+            return True
+    return False
+
+
+def _dedupe_sentences(text: str, reference_texts: list[str] | None = None) -> str:
+    sentences = _split_sentences(text)
+    if not sentences:
+        return _soften_text(text)
+
+    existing_keys: set[str] = set()
+    for ref in reference_texts or []:
+        for ref_sentence in _split_sentences(ref):
+            key = _norm_compare_key(ref_sentence)
+            if key:
+                existing_keys.add(key)
+
+    kept: list[str] = []
+    for sentence in sentences:
+        if _is_sentence_redundant(sentence, existing_keys):
+            continue
+        kept.append(sentence)
+        existing_keys.add(_norm_compare_key(sentence))
+
+    if kept:
+        return " ".join(kept).strip()
+    # 모두 중복으로 판단되면 첫 문장만 남겨 의미 소실을 방지
+    return sentences[0]
+
+
 def _cleanup_label_artifacts(body_text: str, heading: str | None = None) -> str:
     text = _soften_text(body_text)
     if not text:
@@ -193,10 +239,21 @@ def _compress_markdown_content(content: str, max_sentences_per_block: int = MAX_
         return _linebreak_sentences(text)
 
     rendered: list[str] = []
+    seen_global: set[str] = set()
     for heading, body_lines in blocks:
         body_text = " ".join(line for line in body_lines if line)
         body_text = re.sub(r"\b(?:Trigger|Process|Outcome|Variables)\s*:\s*", "", body_text, flags=re.IGNORECASE)
         body_text = _cleanup_label_artifacts(body_text, heading)
+        body_text = _dedupe_sentences(body_text)
+        # 앞 블록과 사실상 같은 문장은 제거
+        block_sentences = _split_sentences(body_text)
+        filtered: list[str] = []
+        for sentence in block_sentences:
+            if _is_sentence_redundant(sentence, seen_global):
+                continue
+            filtered.append(sentence)
+            seen_global.add(_norm_compare_key(sentence))
+        body_text = " ".join(filtered).strip() if filtered else ""
         compact_body = _linebreak_sentences(body_text)
         if heading:
             rendered.append(heading)
@@ -415,6 +472,12 @@ def _enforce_story_spine(pages: list[dict[str, Any]], raw_narrative: dict[str, A
 
         if step in {1, 2, 3, 4, 5}:
             content = _align_content_with_purpose(purpose, content)
+
+        # 2페이지 상단 concept 카드와 하단 본문 중복을 줄인다.
+        if step == 2:
+            reference_texts = [t for t in [concept_definition, concept_relevance] if t]
+            if reference_texts:
+                content = _dedupe_sentences(content, reference_texts=reference_texts)
 
         if step == 2 and concept_name and not _contains_anchor(content, concept_name):
             if _contains_any_phrase(content, ("### 오늘 배울 개념", "오늘 배울 개념은")):

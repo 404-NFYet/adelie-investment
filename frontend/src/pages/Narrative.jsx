@@ -560,7 +560,7 @@ function MarkdownBody({ content, onTermClick, className = '', headingColorClass 
       </ReactMarkdown>
     </div>
   );
-});
+}
 
 function NarrativeChartBlock({ stepKey, chart }) {
   const plot = useMemo(() => buildNarrativePlot(stepKey, chart), [stepKey, chart]);
