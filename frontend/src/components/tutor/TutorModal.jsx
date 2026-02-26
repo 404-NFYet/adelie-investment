@@ -181,7 +181,7 @@ export default function TutorModal() {
               ) : (
                 <>
                   {messages.map((m) => <Message key={m.id} message={m} />)}
-                  {isLoading && messages.length > 0 && messages[messages.length - 1]?.role === 'user' && <TypingIndicator />}
+                  {isLoading && !messages.some((m) => m.isStreaming) && <TypingIndicator />}
                   <div ref={messagesEndRef} />
                 </>
               )}

@@ -133,14 +133,10 @@ export function TutorProvider({ children }) {
         text: '질문을 분석 중입니다.',
       });
 
-      const assistantMessage = {
-        id: Date.now() + 1,
-        role: 'assistant',
-        content: '',
-        timestamp: new Date().toISOString(),
-        isStreaming: true,
-      };
-      setMessages((prev) => [...prev, assistantMessage]);
+      const assistantMsgId = Date.now() + 1;
+      let assistantMsgCreated = false;
+      let vizMsgId = null;
+      let pendingSources = null;
 
       try {
         const controller = new AbortController();
@@ -228,7 +224,25 @@ export function TutorProvider({ children }) {
                 continue;
               }
 
-              if (data.content) {
+              if (data.type === 'viz_intent') {
+                setAgentStatus({
+                  phase: 'tool_call',
+                  text: '차트를 생성하고 있어요...',
+                });
+                const statusMessage = {
+                  id: Date.now() + Math.random(),
+                  role: 'assistant',
+                  content: data.content || '📊 차트를 그려볼게요! 잠시만 기다려주세요.',
+                  timestamp: new Date().toISOString(),
+                  isStreaming: false,
+                  isVizStatus: true,
+                };
+                setMessages((prev) => [...prev, statusMessage]);
+                continue;
+              }
+
+              // Backend text chunks may come without an explicit type field.
+              if ((data.type === 'text_delta' || (!data.type && data.content)) && data.content) {
                 if (!fullContent) {
                   setAgentStatus({
                     phase: 'answering',
@@ -237,6 +251,21 @@ export function TutorProvider({ children }) {
                 }
                 fullContent += data.content;
                 pendingFlush = true;
+
+                if (!assistantMsgCreated) {
+                  assistantMsgCreated = true;
+                  const nextAssistant = {
+                    id: assistantMsgId,
+                    role: 'assistant',
+                    content: fullContent,
+                    timestamp: new Date().toISOString(),
+                    isStreaming: true,
+                  };
+                  if (pendingSources) nextAssistant.sources = pendingSources;
+                  setMessages((prev) => [...prev, nextAssistant]);
+                  lastFlushTime = Date.now();
+                  pendingFlush = false;
+                }
               }
 
               if (data.session_id) {
@@ -251,26 +280,42 @@ export function TutorProvider({ children }) {
                   content: data.content || null,
                   format: data.format || 'html',
                   chartData: data.chartData || null,
+                  title: data.title || '',
                   executionTime: data.execution_time_ms,
                   timestamp: new Date().toISOString(),
                 };
-                setMessages((prev) => [...prev, vizMessage]);
+                vizMsgId = vizMessage.id;
+                // Insert BEFORE the current assistant text bubble (chart-first ordering)
+                setMessages((prev) => {
+                  if (!assistantMsgCreated) return [...prev, vizMessage];
+                  const idx = prev.findIndex((m) => m.id === assistantMsgId);
+                  if (idx === -1) return [...prev, vizMessage];
+                  const next = [...prev];
+                  next.splice(idx, 0, vizMessage);
+                  return next;
+                });
                 continue;
               }
 
               if (data.type === 'done' && data.sources) {
+                pendingSources = data.sources;
                 setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantMessage.id ? { ...m, sources: data.sources } : m
-                  )
+                  prev.map((m) => (
+                    m.id === assistantMsgId || m.id === vizMsgId
+                      ? { ...m, sources: data.sources }
+                      : m
+                  ))
                 );
               }
 
               if (data.type === 'sources' && data.sources) {
+                pendingSources = data.sources;
                 setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantMessage.id ? { ...m, sources: data.sources } : m
-                  )
+                  prev.map((m) => (
+                    m.id === assistantMsgId || m.id === vizMsgId
+                      ? { ...m, sources: data.sources }
+                      : m
+                  ))
                 );
               }
 
@@ -280,13 +325,25 @@ export function TutorProvider({ children }) {
                   phase: 'error',
                   text: data.error,
                 });
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantMessage.id
-                      ? { ...m, content: `오류: ${data.error}`, isStreaming: false, isError: true }
-                      : m
-                  )
-                );
+                if (!assistantMsgCreated) {
+                  assistantMsgCreated = true;
+                  setMessages((prev) => [...prev, {
+                    id: assistantMsgId,
+                    role: 'assistant',
+                    content: `오류: ${data.error}`,
+                    timestamp: new Date().toISOString(),
+                    isStreaming: false,
+                    isError: true,
+                  }]);
+                } else {
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === assistantMsgId
+                        ? { ...m, content: `오류: ${data.error}`, isStreaming: false, isError: true }
+                        : m
+                    )
+                  );
+                }
               }
 
               if (data.type === 'done') {
@@ -296,6 +353,7 @@ export function TutorProvider({ children }) {
                     text: '응답 대기 중',
                   });
                 }
+                setMessages((prev) => prev.filter((m) => !m.isVizStatus));
               }
             } catch {
               // ignore malformed SSE chunk
@@ -303,16 +361,27 @@ export function TutorProvider({ children }) {
           }
           if (pendingFlush && Date.now() - lastFlushTime >= STREAM_FLUSH_INTERVAL_MS) {
             setMessages((prev) =>
-              prev.map((m) => (m.id === assistantMessage.id ? { ...m, content: fullContent } : m))
+              prev.map((m) => (m.id === assistantMsgId ? { ...m, content: fullContent } : m))
             );
             lastFlushTime = Date.now();
             pendingFlush = false;
           }
         }
 
-        setMessages((prev) =>
-          prev.map((m) => (m.id === assistantMessage.id ? { ...m, content: fullContent, isStreaming: false } : m))
-        );
+        if (assistantMsgCreated) {
+          setMessages((prev) =>
+            prev.map((m) => (
+              m.id === assistantMsgId
+                ? {
+                  ...m,
+                  content: fullContent,
+                  isStreaming: false,
+                  ...(pendingSources ? { sources: pendingSources } : {}),
+                }
+                : m
+            ))
+          );
+        }
         if (analytics?.source === 'selection_cta') {
           trackEvent('tutor_selection_success', {
             case_id: analytics.caseId ?? null,
@@ -351,15 +420,28 @@ export function TutorProvider({ children }) {
           phase: 'error',
           text: visibleErrorMessage,
         });
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantMessage.id
-              ? { ...m, content: `오류: ${visibleErrorMessage}`, isStreaming: false, isError: true }
-              : m
-          )
-        );
+        if (!assistantMsgCreated) {
+          assistantMsgCreated = true;
+          setMessages((prev) => [...prev, {
+            id: assistantMsgId,
+            role: 'assistant',
+            content: `오류: ${visibleErrorMessage}`,
+            timestamp: new Date().toISOString(),
+            isStreaming: false,
+            isError: true,
+          }]);
+        } else {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsgId
+                ? { ...m, content: `오류: ${visibleErrorMessage}`, isStreaming: false, isError: true }
+                : m
+            )
+          );
+        }
       } finally {
         abortControllerRef.current = null;
+        setMessages((prev) => prev.filter((m) => !m.isVizStatus));
         setIsLoading(false);
         if (!hasError) {
           setAgentStatus({

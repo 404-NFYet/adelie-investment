@@ -1,0 +1,17 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	classify_input(classify_input)
+	increment_retry(increment_retry)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> classify_input;
+	classify_input -. &nbsp;end&nbsp; .-> __end__;
+	classify_input -. &nbsp;retry&nbsp; .-> increment_retry;
+	increment_retry --> classify_input;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc
