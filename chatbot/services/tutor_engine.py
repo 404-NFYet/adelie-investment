@@ -383,7 +383,7 @@ async def generate_tutor_response_stream(
                     # 프롬프트 제어
                     chart_system_prompt = "[시스템 안내] 차트 시각화가 기술적으로 불가능하거나 실패했습니다. 데이터의 흐름과 수치를 텍스트만으로 최대한 상세하고 직관적으로 설명해 주세요."
             else:
-                yield f"event: action\ndata: {json.dumps({'action_type': 'visualizing', 'message': '데이터 시각화 중이에요. 잠시만 기다려주세요...'})}\n\n"
+                yield f"event: viz_intent\ndata: {json.dumps({'type': 'viz_intent', 'content': '📊 차트를 그려볼게요! 잠시만 기다려주세요.'})}\n\n"
                 
                 # 차트 JSON 렌더링
                 chart_json = await generate_chart_json(viz_context, classification.chart_type)

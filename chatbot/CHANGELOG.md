@@ -137,7 +137,7 @@ setMessages((prev) => {
 | 파일 | 변경 유형 | 내용 |
 |------|-----------|------|
 | `chatbot/services/tutor_engine.py` | **대폭 수정** | `generate_tutor_response_stream` 신규 구현 (Chart-First 파이프라인 포함) |
-| `chatbot/services/tutor_chart_generator.py` | **버그 수정** | Claude API 제거, OpenAI 전용으로 교체 |
+| `chatbot/services/tutor_chart_generator.py` | **구조 개편** | 챗봇 모듈로 이동 및 OpenAI gpt-4o-mini 단독 사용 체제 안정화 |
 | `chatbot/services/guardrail.py` | **버그 수정** | `context` 파라미터 추가 및 프롬프트 반영 |
 | `fastapi/app/api/routes/tutor.py` | **경량화** | 인라인 스트리밍 로직 제거, `tutor_engine.py`로 위임 |
 | `frontend/src/contexts/TutorContext.jsx` | **버그 수정** | 차트 메시지 삽입 위치 수정 (`push` → `splice`) |
