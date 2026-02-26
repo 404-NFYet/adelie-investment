@@ -482,6 +482,16 @@ function normalizeApplicationSection(content) {
   return output.join('\n');
 }
 
+function normalizeLessonLineBreaks(content) {
+  const text = String(content || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!text) return text;
+
+  // 문장 종결 뒤에는 줄바꿈해 가독성을 높인다.
+  return text.replace(/([.!?。！？])\s+/g, '$1\n');
+}
+
 function MarkdownBody({ content, onTermClick, className = '', headingColorClass = 'text-primary' }) {
   if (!content) return null;
   const processed = preprocessMarkdown(content);
@@ -842,7 +852,9 @@ function ContentTemplate({ stepConfig, stepData, stepTitle, oneLiner, data, onTe
               <span className="mt-0.5 text-base">💡</span>
               <div>
                 <p className="text-[11px] font-semibold tracking-wide text-[#b45309]">과거에서 배우는 교훈</p>
-                <p className="mt-1.5 text-[13px] leading-relaxed text-[#92400e]">{data.historical_case.lesson}</p>
+                <p className="mt-1.5 whitespace-pre-line text-[13px] leading-relaxed text-[#92400e]">
+                  {normalizeLessonLineBreaks(data.historical_case.lesson)}
+                </p>
               </div>
             </div>
           )}
