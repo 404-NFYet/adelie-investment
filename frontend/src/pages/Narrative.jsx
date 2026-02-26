@@ -131,6 +131,7 @@ function getChecklistItems(content, bullets) {
   return items.slice(0, 5);
 }
 
+<<<<<<< HEAD
 // CommonMark delimiter 규칙 우회: 한글+스마트인용부호 환경에서 **bold** 렌더링 보장
 function preprocessMarkdown(content) {
   if (!content) return '';
@@ -153,6 +154,45 @@ function preprocessMarkdown(content) {
   s = s.replace(/\*\*/g, '');
 
   return s;
+=======
+function normalizeCautionActionPoints(content) {
+  const text = String(content || '');
+  if (!text) return text;
+  if (!text.includes('### 대응 포인트')) return text;
+
+  const lines = text.split('\n');
+  const out = [];
+  let inAction = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('### ')) {
+      inAction = trimmed.includes('대응 포인트');
+      out.push(line);
+      continue;
+    }
+
+    if (!inAction) {
+      out.push(line);
+      continue;
+    }
+
+    if (!trimmed) {
+      out.push(line);
+      inAction = false;
+      continue;
+    }
+
+    // "문장 끝 + 다음 라벨: 설명" 패턴을 강제로 줄바꿈한다.
+    const normalized = trimmed.replace(
+      /([.!?。！？])\s+([가-힣A-Za-z0-9·()/\-\s]{2,30}:\s)/g,
+      '$1\n$2',
+    );
+    out.push(normalized);
+  }
+
+  return out.join('\n');
+>>>>>>> 7dccb3dd5db868da867999a828119829aadc5415
 }
 
 function MarkdownBody({ content, onTermClick, className = '' }) {
@@ -178,7 +218,7 @@ function MarkdownBody({ content, onTermClick, className = '' }) {
           h1: ({ node, ...props }) => <h3 className="mb-2 text-base font-semibold text-text-primary" {...props} />,
           h2: ({ node, ...props }) => <h3 className="mb-2 text-base font-semibold text-text-primary" {...props} />,
           h3: ({ node, ...props }) => <h4 className="mb-2 text-sm font-semibold text-text-primary" {...props} />,
-          p: ({ node, ...props }) => <p className="mb-3 text-sm leading-relaxed text-text-secondary last:mb-0" {...props} />,
+          p: ({ node, ...props }) => <p className="mb-3 whitespace-pre-line text-sm leading-relaxed text-text-secondary last:mb-0" {...props} />,
           ul: ({ node, ...props }) => <ul className="mb-3 list-disc space-y-1 pl-5 text-sm text-text-secondary" {...props} />,
           ol: ({ node, ...props }) => <ol className="mb-3 list-decimal space-y-1 pl-5 text-sm text-text-secondary" {...props} />,
           li: ({ node, ...props }) => <li className="leading-relaxed" {...props} />,
@@ -287,6 +327,9 @@ function ContentTemplate({ stepConfig, stepData, stepTitle, oneLiner, data, onTe
     ? stepData.bullets
     : contentLines.slice(0, 5);
   const summaryChecklist = getChecklistItems(stepData?.content, stepData?.bullets);
+  const cautionContent = stepConfig.template === 'content4'
+    ? normalizeCautionActionPoints(stepData?.content)
+    : stepData?.content;
 
   if (stepConfig.template === 'content4') {
     return (
@@ -309,6 +352,15 @@ function ContentTemplate({ stepConfig, stepData, stepTitle, oneLiner, data, onTe
               </li>
             ))}
           </ul>
+<<<<<<< HEAD
+=======
+
+          <MarkdownBody
+            content={cautionContent}
+            onTermClick={onTermClick}
+            className="mt-4 border-t border-border pt-4"
+          />
+>>>>>>> 7dccb3dd5db868da867999a828119829aadc5415
         </div>
       </section>
     );
