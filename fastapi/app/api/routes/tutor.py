@@ -34,6 +34,12 @@ from app.services.stock_resolver import detect_stock_codes
 from app.services.guardrail import run_guardrail
 from app.services.tutor_chart_generator import classify_chart_request, generate_chart_json
 from app.schemas.tutor import ChartType
+from app.metrics import (
+    TUTOR_CHAT_TOTAL,
+    TUTOR_CHAT_TOKENS_TOTAL,
+    EXTERNAL_API_REQUEST_TOTAL,
+    EXTERNAL_API_LATENCY_SECONDS,
+)
 
 router = APIRouter(prefix="/tutor", tags=["AI tutor"])
 
@@ -54,20 +60,28 @@ async def get_term_explanation_from_llm(term: str, difficulty: str) -> str:
     
     context = difficulty_context.get(difficulty, difficulty_context["beginner"])
     
-    response = await client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {
-                "role": "system",
-                "content": f"주식/금융 용어를 {context} 설명하는 튜터입니다. 3-4문장으로 간결하게 설명해주세요."
-            },
-            {
-                "role": "user",
-                "content": f"'{term}'이(가) 무엇인지 설명해주세요."
-            }
-        ],
-        max_tokens=300,
-    )
+    started = time.perf_counter()
+    try:
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": f"주식/금융 용어를 {context} 설명하는 튜터입니다. 3-4문장으로 간결하게 설명해주세요."
+                },
+                {
+                    "role": "user",
+                    "content": f"'{term}'이(가) 무엇인지 설명해주세요."
+                }
+            ],
+            max_tokens=300,
+        )
+        EXTERNAL_API_LATENCY_SECONDS.labels("openai").observe(time.perf_counter() - started)
+        EXTERNAL_API_REQUEST_TOTAL.labels("openai", "success").inc()
+    except Exception:
+        EXTERNAL_API_LATENCY_SECONDS.labels("openai").observe(time.perf_counter() - started)
+        EXTERNAL_API_REQUEST_TOTAL.labels("openai", "fail").inc()
+        raise
     
     return response.choices[0].message.content
 
@@ -208,6 +222,7 @@ async def generate_tutor_response(
                 logger.warning("가드레일 차단 내역 DB 저장 실패: %s", e)
 
             yield f"event: done\ndata: {json.dumps({'session_id': session_id, 'total_tokens': 0, 'guardrail': guardrail_result.decision})}\n\n"
+            TUTOR_CHAT_TOTAL.labels("blocked").inc()
             return
     except Exception as e:
         logger.warning(f"Guardrail check failed, falling open: {e}")
@@ -215,6 +230,7 @@ async def generate_tutor_response(
     api_key = get_settings().OPENAI_API_KEY
     if not api_key:
         yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'OpenAI API key not configured'})}\n\n"
+        TUTOR_CHAT_TOTAL.labels("fail").inc()
         return
     
     # 컨텍스트 주입 (사용자가 보고 있는 페이지 기반)
@@ -338,13 +354,20 @@ async def generate_tutor_response(
     
     try:
         client = AsyncOpenAI(api_key=api_key)
-        
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=messages,
-            max_tokens=4096,
-            stream=True,
-        )
+        started = time.perf_counter()
+        try:
+            response = await client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=messages,
+                max_tokens=4096,
+                stream=True,
+            )
+            EXTERNAL_API_LATENCY_SECONDS.labels("openai").observe(time.perf_counter() - started)
+            EXTERNAL_API_REQUEST_TOTAL.labels("openai", "success").inc()
+        except Exception:
+            EXTERNAL_API_LATENCY_SECONDS.labels("openai").observe(time.perf_counter() - started)
+            EXTERNAL_API_REQUEST_TOTAL.labels("openai", "fail").inc()
+            raise
         
         total_tokens = 0
         full_response = ""
@@ -456,12 +479,17 @@ async def generate_tutor_response(
             done_data['type'] = 'done'
             done_data['sources'] = sources
         yield f"event: done\ndata: {json.dumps(done_data)}\n\n"
+        TUTOR_CHAT_TOTAL.labels("success").inc()
+        if total_tokens:
+            TUTOR_CHAT_TOKENS_TOTAL.labels("gpt-4o-mini").inc(total_tokens)
         
     except asyncio.TimeoutError:
         logger.warning("OpenAI API 호출 타임아웃")
         yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': 'AI 응답 시간 초과'})}\n\n"
+        TUTOR_CHAT_TOTAL.labels("fail").inc()
     except Exception as e:
         yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+        TUTOR_CHAT_TOTAL.labels("fail").inc()
     finally:
         # DB 세션 및 리소스 정리
         try:
@@ -489,5 +517,3 @@ async def tutor_chat(
             "X-Accel-Buffering": "no",
         },
     )
-
-

@@ -2,10 +2,12 @@
 
 from collections.abc import AsyncGenerator
 
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
 from app.core.config import settings
+from app.metrics import DB_QUERY_TOTAL
 
 
 class Base(DeclarativeBase):
@@ -23,6 +25,26 @@ engine = create_async_engine(
     pool_timeout=30,
     pool_recycle=1800,
 )
+
+
+def _extract_db_operation(statement: str) -> str:
+    if not statement:
+        return "other"
+    op = statement.lstrip().split(None, 1)[0].lower()
+    if op in {"select", "insert", "update", "delete"}:
+        return op
+    return "other"
+
+
+@event.listens_for(engine.sync_engine, "after_cursor_execute")
+def _after_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+    DB_QUERY_TOTAL.labels(_extract_db_operation(statement), "success").inc()
+
+
+@event.listens_for(engine.sync_engine, "handle_error")
+def _handle_db_error(exception_context):
+    statement = getattr(exception_context, "statement", "") or ""
+    DB_QUERY_TOTAL.labels(_extract_db_operation(statement), "fail").inc()
 
 AsyncSessionLocal = async_sessionmaker(
     bind=engine,

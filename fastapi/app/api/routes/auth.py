@@ -14,7 +14,12 @@ from app.schemas.auth import (
     RefreshRequest,
     RegisterRequest,
 )
-from app.metrics import AUTH_LOGIN_TOTAL, AUTH_REFRESH_TOTAL
+from app.metrics import (
+    AUTH_LOGIN_TOTAL,
+    AUTH_REFRESH_TOTAL,
+    AUTH_REGISTER_TOTAL,
+    AUTH_LOGOUT_TOTAL,
+)
 from app.services.auth_service import login_user, refresh_tokens, register_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -103,13 +108,18 @@ async def register(
     response: Response,
     db: AsyncSession = Depends(get_db),
 ) -> AuthResponse:
-    auth = await register_user(
-        db,
-        email=payload.email,
-        password=payload.password,
-        username=payload.username,
-        difficulty_level=payload.difficulty_level
-    )
+    try:
+        auth = await register_user(
+            db,
+            email=payload.email,
+            password=payload.password,
+            username=payload.username,
+            difficulty_level=payload.difficulty_level,
+        )
+        AUTH_REGISTER_TOTAL.labels("success").inc()
+    except Exception:
+        AUTH_REGISTER_TOTAL.labels("fail").inc()
+        raise
     if auth.get("accessToken"):
         _set_access_cookie(response, auth["accessToken"])
         auth.pop("accessToken", None)
@@ -180,8 +190,7 @@ async def logout(
     user: dict | None = Depends(get_current_user_optional),
 ) -> dict:
     # Stateless JWT: client discards token. Keep endpoint for compatibility.
-    if user:
-        pass
+    AUTH_LOGOUT_TOTAL.labels("success").inc()
     _clear_auth_cookies(response)
     return {}
 

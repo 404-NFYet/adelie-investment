@@ -12,6 +12,7 @@ from app.core.auth import get_current_user
 from app.core.database import get_db
 from app.services.kis_service import get_kis_service
 from app.services.stock_price_service import get_current_price
+from app.metrics import TRADING_ORDER_TOTAL
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/trading", tags=["trading"])
@@ -80,11 +81,13 @@ async def execute_order(
 
     if order.order_kind == "limit":
         # 지정가 주문 비활성화 (매칭/체결 로직 미구현)
+        TRADING_ORDER_TOTAL.labels(order.order_type, "fail").inc()
         raise HTTPException(status_code=400, detail="현재 시장가 주문만 지원됩니다")
     else:
         # 시장가 주문
         price_data = await get_current_price(order.stock_code)
         if not price_data:
+            TRADING_ORDER_TOTAL.labels(order.order_type, "fail").inc()
             raise HTTPException(status_code=404, detail="가격 조회 불가")
 
         try:
@@ -99,8 +102,10 @@ async def execute_order(
                 quantity=order.quantity,
                 trade_reason="자유매매",
             )
+            TRADING_ORDER_TOTAL.labels(order.order_type, "success").inc()
             return result
         except Exception as e:
+            TRADING_ORDER_TOTAL.labels(order.order_type, "fail").inc()
             logger.error(f"매매 실행 실패: {e}")
             raise HTTPException(status_code=500, detail=f"매매 실행 실패: {str(e)}")
 
