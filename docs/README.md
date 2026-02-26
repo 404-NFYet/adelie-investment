@@ -53,6 +53,8 @@
 - [KIS API](reference/kis-api.md)
 - [환경변수](reference/env-vars.md)
 - [LLM 모델](reference/llm-models.md)
+- [분석 시스템 (Analytics)](reference/analytics.md) — Clarity + PostHog + 자체 DB 통합 가이드
+- [공용 계정 관리](reference/shared-accounts.md) — 외부 서비스 접속 정보, API Key 관리
 - [변경이력 (changes/)](../changes/) — 팀원별 Phase 단위 상세 변경이력
 
 ## 아카이브 (Archive)

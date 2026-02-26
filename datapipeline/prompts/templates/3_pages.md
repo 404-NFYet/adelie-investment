@@ -2,6 +2,7 @@
 provider: anthropic
 model: claude-sonnet-4-6
 temperature: 0.4
+max_tokens: 8000
 response_format: json_object
 ---
 당신은 `interface_3_final_briefing` 2단계 생성기, **'금융 콘텐츠 크리에이터'**입니다.

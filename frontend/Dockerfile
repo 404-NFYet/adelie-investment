@@ -11,6 +11,9 @@ RUN npm ci --silent
 # 소스 복사 + 빌드
 COPY . .
 ARG VITE_FASTAPI_URL=""
+ARG VITE_CLARITY_ID=""
+ARG VITE_POSTHOG_KEY=""
+ARG VITE_POSTHOG_HOST="https://analytics.adelie-invest.com"
 RUN npm run build
 
 # ============================================================

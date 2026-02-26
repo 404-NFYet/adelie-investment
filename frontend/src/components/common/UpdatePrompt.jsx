@@ -1,6 +1,6 @@
 /**
  * UpdatePrompt - SW 업데이트 알림 배너
- * 새 버전이 감지되면 상단에 업데이트 버튼을 표시한다.
+ * 새 버전이 감지되면 상단에 배너를 표시하고, 수동 버튼으로 업데이트.
  */
 import { useRegisterSW } from 'virtual:pwa-register/react';
 
@@ -19,7 +19,7 @@ export default function UpdatePrompt() {
         onClick={() => updateServiceWorker(true)}
         className="underline ml-2 font-bold"
       >
-        업데이트
+        지금 업데이트
       </button>
     </div>
   );

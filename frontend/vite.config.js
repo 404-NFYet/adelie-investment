@@ -52,11 +52,28 @@ export default defineConfig({
             purpose: 'maskable',
           },
         ],
+        screenshots: [
+          {
+            src: '/images/screenshot-home.png',
+            sizes: '430x932',
+            type: 'image/png',
+            form_factor: 'narrow',
+            label: '홈 화면',
+          },
+          {
+            src: '/images/screenshot-narrative.png',
+            sizes: '430x932',
+            type: 'image/png',
+            form_factor: 'narrow',
+            label: '내러티브',
+          },
+        ],
       },
       workbox: {
+        skipWaiting: true,
         cleanupOutdatedCaches: true,
         clientsClaim: true,
-        globPatterns: ['**/*.html'],
+        globPatterns: ['**/*.html', '**/*.css', 'assets/index-*.js'],
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
@@ -119,6 +136,7 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
+          analytics: ['posthog-js'],
           plotly: ['react-plotly.js', 'plotly.js-basic-dist-min'],
           'framer-motion': ['framer-motion'],
           chartjs: ['chart.js', 'react-chartjs-2'],

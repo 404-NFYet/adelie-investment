@@ -15,6 +15,7 @@ import ChatFAB from './components/layout/ChatFAB';
 import BottomNav from './components/layout/BottomNav';
 import PenguinLoading from './components/common/PenguinLoading';
 import UpdatePrompt from './components/common/UpdatePrompt';
+import AnalyticsProvider from './components/common/AnalyticsProvider';
 
 // 코드 스플리팅: 각 페이지를 동적 import
 const Auth = lazy(() => import('./pages/Auth'));
@@ -87,6 +88,7 @@ export default function App() {
     <BrowserRouter>
       <ThemeProvider>
         <UserProvider>
+          <AnalyticsProvider>
           <PortfolioProvider>
           <TutorProvider>
             <TermProvider>
@@ -105,6 +107,7 @@ export default function App() {
             </TermProvider>
           </TutorProvider>
           </PortfolioProvider>
+          </AnalyticsProvider>
         </UserProvider>
       </ThemeProvider>
     </BrowserRouter>
