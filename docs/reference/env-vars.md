@@ -130,8 +130,13 @@
 | 변수명 | 기본값 | 설명 | 사용처 |
 |--------|--------|------|--------|
 | `VITE_FASTAPI_URL` | 빈 문자열 | API 베이스 URL (빈 값이면 프록시/nginx 사용) | Frontend |
+| `VITE_CLARITY_ID` | 빈 문자열 | MS Clarity Project ID (빈 값이면 SDK 미로드) | Frontend |
+| `VITE_POSTHOG_KEY` | 빈 문자열 | PostHog API Key (`phc_xxx`, 빈 값이면 SDK 미로드) | Frontend |
+| `VITE_POSTHOG_HOST` | `https://analytics.adelie-invest.com` | PostHog 서버 URL | Frontend |
 
 > **주의**: Vite에서는 `VITE_` 접두사가 있는 환경변수만 클라이언트 번들에 포함된다. Frontend에서 `.env`를 로드할 때 `vite.config.js`의 `envDir`이 프로젝트 루트(`../`)를 가리키므로, 루트 `.env` 파일의 `VITE_*` 변수를 읽는다.
+
+> **Analytics 환경변수**: `VITE_CLARITY_ID`와 `VITE_POSTHOG_KEY`가 빈 값이면 해당 SDK를 초기화하지 않으므로 로컬 개발 시 에러 없이 동작한다. deploy-test에서만 실제 값을 설정한다.
 
 ---
 

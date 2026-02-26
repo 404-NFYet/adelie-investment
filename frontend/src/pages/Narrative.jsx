@@ -8,6 +8,8 @@ import { AnimatePresence, motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
+import remarkBreaks from 'remark-breaks';
+import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import { learningApi, narrativeApi } from '../api';
 import { usePortfolio } from '../contexts/PortfolioContext';
@@ -89,13 +91,81 @@ const SELECTION_IGNORE_SELECTOR = '#tutor-selection-btn, button, [role="button"]
 
 const getResumeStorageKey = (caseId) => `${RESUME_STORAGE_PREFIX}${caseId}`;
 
+function getPlainLines(content) {
+  if (!content) return [];
+  return content
+    .replace(/<[^>]+>/g, ' ')
+    .split('\n')
+    .map((line) => line.replace(/^#{1,6}\s*/, '').replace(/^[-*]\s*/, '').trim())
+    .filter(Boolean);
+}
+
+function sanitizeChecklistItem(value) {
+  return String(value || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getChecklistItems(content, bullets) {
+  const items = [];
+  const pushItem = (value) => {
+    const cleaned = sanitizeChecklistItem(value);
+    if (!cleaned) return;
+    if (/투자 전에 꼭 확인할 포인트/.test(cleaned)) return;
+    if (!items.includes(cleaned)) {
+      items.push(cleaned);
+    }
+  };
+
+  if (Array.isArray(bullets)) {
+    bullets.forEach(pushItem);
+  }
+
+  String(content || '')
+    .split('\n')
+    .forEach((line) => {
+      const match = line.match(/^\s*(?:[-*]|\d+[.)])\s+(.+)$/);
+      if (match?.[1]) {
+        pushItem(match[1]);
+      }
+    });
+
+  return items.slice(0, 5);
+}
+
+// CommonMark delimiter 규칙 우회: 한글+스마트인용부호 환경에서 **bold** 렌더링 보장
+function preprocessMarkdown(content) {
+  if (!content) return '';
+  let s = content;
+
+  // 1) *[text] 패턴 제거 (LLM 오류: orphan * — *[유사점]** 같은 패턴)
+  s = s.replace(/\*(\[[^\]]+\])/g, '$1');
+
+  // 2) [text]** 패턴에서 ** 제거 (bracket 닫힘 직후 ** — 잘못된 delimiter)
+  s = s.replace(/(\[[^\]]+\])\*\*/g, '$1');
+
+  // 3) *텍스트** → **텍스트** 정규화 (앞 * 하나·뒤 ** 두 개 비대칭 LLM 오류)
+  s = s.replace(/(?<!\*)\*(?!\*)((?:[^*\n])+?)\*\*/g, '**$1**');
+
+  // 4) **...** → <strong>...</strong>
+  //    right-flanking delimiter 실패 케이스 (punctuation + ** + 한글 / HTML 태그) 포함
+  s = s.replace(/\*\*((?:(?!\*\*)[^\n])+?)\*\*/g, '<strong>$1</strong>');
+
+  // 5) 잔여 ** 정리 (매칭 실패한 고립 opening/closing delimiter)
+  s = s.replace(/\*\*/g, '');
+
+  return s;
+}
+
 const MarkdownBody = React.memo(function MarkdownBody({ content, className = '' }) {
   if (!content) return null;
+  const processed = preprocessMarkdown(content);
 
   return (
     <div className={`${className} select-text`} style={{ userSelect: 'text', WebkitUserSelect: 'text' }}>
       <ReactMarkdown
-        remarkPlugins={[remarkMath]}
+        remarkPlugins={[remarkMath, remarkGfm, remarkBreaks]}
         rehypePlugins={[rehypeRaw, rehypeKatex]}
         components={{
           mark: ({ node, ...props }) => <span className="term-highlight" data-term-highlight="true" {...props} />,
@@ -106,9 +176,21 @@ const MarkdownBody = React.memo(function MarkdownBody({ content, className = '' 
           ul: ({ node, ...props }) => <ul className="mb-3 list-disc space-y-1 pl-5 text-sm text-text-secondary" {...props} />,
           ol: ({ node, ...props }) => <ol className="mb-3 list-decimal space-y-1 pl-5 text-sm text-text-secondary" {...props} />,
           li: ({ node, ...props }) => <li className="leading-relaxed" {...props} />,
+          blockquote: ({ node, ...props }) => (
+            <blockquote className="my-3 border-l-[3px] border-primary/40 bg-[#fff8f3] py-2 pl-4 pr-3 text-[13px] leading-relaxed text-text-secondary" {...props} />
+          ),
+          strong: ({ node, ...props }) => (
+            <strong className="font-bold text-text-primary" {...props} />
+          ),
+          table: ({ node, ...props }) => (
+            <div className="my-3 overflow-x-auto"><table className="w-full text-xs" {...props} /></div>
+          ),
+          thead: ({ node, ...props }) => <thead className="border-b border-border bg-gray-50" {...props} />,
+          td: ({ node, ...props }) => <td className="px-2 py-1.5 text-text-secondary" {...props} />,
+          th: ({ node, ...props }) => <th className="px-2 py-1.5 text-left font-semibold text-text-primary" {...props} />,
         }}
       >
-        {content}
+        {processed}
       </ReactMarkdown>
     </div>
   );
@@ -193,7 +275,7 @@ function NarrativeSources({ sources = [] }) {
   );
 }
 
-const ContentTemplate = React.memo(function ContentTemplate({ stepConfig, stepData, stepTitle, oneLiner }) {
+const ContentTemplate = React.memo(function ContentTemplate({ stepConfig, stepData, stepTitle, oneLiner, data }) {
   const markdownContent = useMemo(() => {
     if (stepData?.content?.trim()) {
       return stepData.content;
@@ -206,6 +288,12 @@ const ContentTemplate = React.memo(function ContentTemplate({ stepConfig, stepDa
     return '';
   }, [stepData?.content, stepData?.bullets]);
 
+  const contentLines = getPlainLines(stepData?.content || '');
+  const cautionItems = (stepData?.bullets && stepData.bullets.length > 0)
+    ? stepData.bullets
+    : contentLines.slice(0, 5);
+  const summaryChecklist = getChecklistItems(stepData?.content, stepData?.bullets);
+
   if (stepConfig.template === 'content4') {
     return (
       <section className="space-y-4">
@@ -217,7 +305,20 @@ const ContentTemplate = React.memo(function ContentTemplate({ stepConfig, stepDa
             {stepTitle}
           </h2>
 
-          <MarkdownBody content={markdownContent} className="mt-5" />
+          {cautionItems.length > 0 ? (
+            <ul className="mt-5 space-y-3">
+              {cautionItems.slice(0, 5).map((item, idx) => (
+                <li key={`${item}-${idx}`} className="rounded-xl bg-[#f7f8fa] px-4 py-3 text-sm leading-relaxed text-text-secondary">
+                  <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-xs font-semibold text-primary">
+                    {idx + 1}
+                  </span>
+                  {item}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <MarkdownBody content={markdownContent} className="mt-5" />
+          )}
         </div>
       </section>
     );
@@ -236,6 +337,18 @@ const ContentTemplate = React.memo(function ContentTemplate({ stepConfig, stepDa
           {oneLiner ? (
             <p className="mt-3 text-sm leading-relaxed text-text-secondary">{oneLiner}</p>
           ) : null}
+
+          {data?.related_companies?.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {data.related_companies.slice(0, 5).map((c, i) => (
+                <span key={c.stock_code || i}
+                  className="inline-flex items-center gap-1 rounded-full border border-[#e5e7eb] bg-white px-2.5 py-1 text-[11px] font-medium text-[#374151]">
+                  <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                  {c.stock_name}
+                </span>
+              ))}
+            </div>
+          )}
 
           {stepConfig.showChart ? (
             <div className="mt-5">
@@ -263,6 +376,19 @@ const ContentTemplate = React.memo(function ContentTemplate({ stepConfig, stepDa
             {stepTitle}
           </h2>
 
+          {data?.concept?.name && (
+            <div className="mt-4 rounded-2xl border border-[#dbeafe] bg-[#eff6ff] p-4">
+              <p className="text-[11px] font-semibold tracking-wide text-[#1e40af]">핵심 개념</p>
+              <p className="mt-1 text-sm font-bold text-[#1e3a5f]">{data.concept.name}</p>
+              <p className="mt-2 text-[13px] leading-relaxed text-[#374151]">{data.concept.definition}</p>
+              {data.concept.relevance && (
+                <p className="mt-2 text-[12px] leading-relaxed text-[#6b7280]">
+                  <span className="font-semibold text-[#1e40af]">왜 중요한가: </span>{data.concept.relevance}
+                </p>
+              )}
+            </div>
+          )}
+
           <MarkdownBody
             content={markdownContent}
             className="mt-4"
@@ -288,6 +414,25 @@ const ContentTemplate = React.memo(function ContentTemplate({ stepConfig, stepDa
           <h2 className="mt-3 text-[clamp(1.5rem,5.9vw,2.05rem)] font-extrabold leading-[1.2] text-black">
             {stepTitle}
           </h2>
+
+          {stepConfig.key === 'history' && data?.historical_case?.title && (
+            <div className="mt-4 rounded-2xl border border-[#d1fae5] bg-[#ecfdf5] p-4">
+              <p className="text-[11px] font-semibold tracking-wide text-[#065f46]">과거 유사 사례</p>
+              {data.historical_case.period && (
+                <p className="mt-1.5 text-[11px] font-medium text-[#047857]">{data.historical_case.period}</p>
+              )}
+              <p className="mt-1 text-sm font-bold text-[#064e3b]">{data.historical_case.title}</p>
+              {data.historical_case.summary && (
+                <p className="mt-2 text-[13px] leading-relaxed text-[#374151]">{data.historical_case.summary}</p>
+              )}
+              {data.historical_case.outcome && (
+                <div className="mt-2 rounded-xl bg-white/60 px-3 py-2">
+                  <p className="text-[11px] font-semibold text-[#065f46]">결과</p>
+                  <p className="mt-0.5 text-[12px] leading-relaxed text-[#374151]">{data.historical_case.outcome}</p>
+                </div>
+              )}
+            </div>
+          )}
 
           <MarkdownBody
             content={markdownContent}
@@ -315,7 +460,33 @@ const ContentTemplate = React.memo(function ContentTemplate({ stepConfig, stepDa
             {stepTitle}
           </h2>
 
-          <MarkdownBody content={markdownContent} className="mt-4" />
+          <h3 className="mt-4 text-sm font-semibold text-[#b45309]">투자 전에 꼭 확인할 포인트</h3>
+          {summaryChecklist.length > 0 ? (
+            <ul className="mt-2 space-y-2">
+              {summaryChecklist.map((item, idx) => (
+                <li key={`${item}-${idx}`} className="rounded-xl bg-[#fff7ed] px-4 py-3 text-sm leading-relaxed text-[#b45309]">
+                  <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-xs font-semibold text-primary">
+                    {idx + 1}
+                  </span>
+                  {item}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+
+          {data?.historical_case?.lesson && (
+            <div className="mt-4 flex items-start gap-2.5 rounded-2xl border border-[#ffedd5] bg-[#fff7ed] p-4">
+              <span className="mt-0.5 text-base">💡</span>
+              <div>
+                <p className="text-[11px] font-semibold tracking-wide text-[#b45309]">과거에서 배우는 교훈</p>
+                <p className="mt-1.5 text-[13px] leading-relaxed text-[#92400e]">{data.historical_case.lesson}</p>
+              </div>
+            </div>
+          )}
+
+          {summaryChecklist.length === 0 ? (
+            <MarkdownBody content={markdownContent} className="mt-4" />
+          ) : null}
         </div>
       </section>
     );
@@ -911,6 +1082,7 @@ export default function Narrative() {
                 stepData={stepData}
                 stepTitle={stepTitle}
                 oneLiner={data.one_liner}
+                data={data}
               />
             ) : (
               <section className="px-3 py-5 text-center">

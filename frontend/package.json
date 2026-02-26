@@ -21,6 +21,8 @@
     "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",
     "react-plotly.js": "^2.6.0",
+    "@microsoft/clarity": "^1.0.0",
+    "posthog-js": "^1.200.0",
     "react-router-dom": "^7.13.0",
     "rehype-katex": "^7.0.1",
     "rehype-raw": "^7.0.0",

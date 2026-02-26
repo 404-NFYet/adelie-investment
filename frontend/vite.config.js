@@ -136,6 +136,7 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
+          analytics: ['posthog-js'],
           plotly: ['react-plotly.js', 'plotly.js-basic-dist-min'],
           'framer-motion': ['framer-motion'],
           chartjs: ['chart.js', 'react-chartjs-2'],

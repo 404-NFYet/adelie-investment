@@ -13,6 +13,7 @@ from app.core.database import get_db
 from app.core.redis_keys import key_keywords_today
 from app.models.briefing import DailyBriefing
 from app.models.historical_case import CaseMatch, HistoricalCase
+from app.models.stock_listing import StockListing
 from app.services.redis_cache import get_redis_cache
 from datapipeline.constants.home_icons import normalize_title_for_match, resolve_icon_key
 
@@ -134,6 +135,7 @@ async def get_today_keywords(
                 },
                 "present_label": comparison.get("present_label", ""),
                 "description": comparison.get("current_summary") or case.summary or "",
+                "_case_keywords": case_kw,
                 "matched_stock_codes": set(),
                 "latest_matched_at": match.matched_at,
             }
@@ -151,6 +153,19 @@ async def get_today_keywords(
         reverse=True,
     )
 
+    # 모든 matched_stock_codes 수집 → StockListing에서 이름 일괄 조회
+    all_stock_codes: set[str] = set()
+    for c in generated_cards:
+        all_stock_codes |= c["matched_stock_codes"]
+
+    stock_name_map: dict[str, str] = {}
+    if all_stock_codes:
+        sl_stmt = select(StockListing.stock_code, StockListing.stock_name).where(
+            StockListing.stock_code.in_(sorted(all_stock_codes))
+        )
+        sl_rows = (await db.execute(sl_stmt)).all()
+        stock_name_map = {row.stock_code: row.stock_name for row in sl_rows}
+
     keywords_with_cases = []
     if generated_cards:
         for i, case_info in enumerate(generated_cards):
@@ -162,18 +177,26 @@ async def get_today_keywords(
             matched_stocks = [
                 {
                     "stock_code": code,
-                    "stock_name": code,
+                    "stock_name": stock_name_map.get(code, code),
                     "reason": "case_match",
                 }
                 for code in sorted(case_info["matched_stock_codes"])
             ]
+
+            # description: one_liner(파이프라인 생성) > comparison.current_summary > case.summary
+            case_kw = None
+            if case_info.get("case_id"):
+                case_kw_raw = case_info.get("_case_keywords")
+                if isinstance(case_kw_raw, dict):
+                    case_kw = case_kw_raw
+            one_liner_desc = (case_kw or {}).get("one_liner", "")
 
             keywords_with_cases.append(
                 {
                     "id": i + 1,
                     "category": fallback_kw.get("category", "GENERATED_CASE"),
                     "title": current_title,
-                    "description": case_info["description"] or fallback_kw.get("description", ""),
+                    "description": one_liner_desc or case_info["description"] or fallback_kw.get("description", ""),
                     "icon_key": resolve_icon_key(
                         title=current_title,
                         description=case_info["description"] or fallback_kw.get("description", ""),
