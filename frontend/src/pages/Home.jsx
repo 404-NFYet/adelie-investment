@@ -179,29 +179,31 @@ export default function Home() {
               {visibleCards.map((keyword, index) => (
                 <article
                   key={keyword.id || index}
-                  className="flex items-center justify-between gap-3 rounded-[20px] border border-border bg-white px-4 py-4 shadow-card sm:gap-4 sm:px-5"
+                  className="rounded-[20px] border border-border bg-white px-4 py-4 shadow-card sm:px-5"
                 >
-                  <div className="min-w-0">
-                    <h3 className="line-limit-2 text-[15px] font-bold leading-[1.35] text-[#101828] break-keep sm:text-[16px]">
-                      {keyword.title}
-                    </h3>
-                    <button
-                      type="button"
-                      className="mt-3 h-9 rounded-[10px] bg-primary px-4 text-sm font-semibold text-white disabled:opacity-40"
-                      disabled={!keyword.case_id}
-                      onClick={() => navigate(`/narrative/${keyword.case_id}`, { state: { keyword } })}
-                    >
-                      기사 읽으러 가기
-                    </button>
+                  <div className="flex items-center justify-between gap-3 sm:gap-4">
+                    <div className="min-w-0">
+                      <h3 className="line-limit-2 text-[15px] font-bold leading-[1.35] text-[#101828] break-keep sm:text-[16px]">
+                        {keyword.title}
+                      </h3>
+                      <button
+                        type="button"
+                        className="mt-3 h-9 rounded-[10px] bg-primary px-4 text-sm font-semibold text-white disabled:opacity-40"
+                        disabled={!keyword.case_id}
+                        onClick={() => navigate(`/narrative/${keyword.case_id}`, { state: { keyword } })}
+                      >
+                        기사 읽으러 가기
+                      </button>
+                    </div>
+                    <img
+                      src={getHomeIconSrc(keyword.icon_key)}
+                      alt={`${keyword.title || '카드 뉴스'} 아이콘`}
+                      onError={(e) => {
+                        e.currentTarget.src = getHomeIconSrc(DEFAULT_HOME_ICON_KEY);
+                      }}
+                      className="h-16 w-16 flex-shrink-0 object-contain sm:h-20 sm:w-20"
+                    />
                   </div>
-                  <img
-                    src={getHomeIconSrc(keyword.icon_key)}
-                    alt={`${keyword.title || '카드 뉴스'} 아이콘`}
-                    onError={(e) => {
-                      e.currentTarget.src = getHomeIconSrc(DEFAULT_HOME_ICON_KEY);
-                    }}
-                    className="h-16 w-16 flex-shrink-0 object-contain sm:h-20 sm:w-20"
-                  />
                 </article>
               ))}
             </div>

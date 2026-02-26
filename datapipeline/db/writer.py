@@ -106,7 +106,7 @@ async def _save(
             )
             existing_kw = json.loads(existing_kw_raw) if existing_kw_raw else {"keywords": []}
 
-            new_kw = _build_top_keywords(curated, final)
+            new_kw = _build_top_keywords(curated, final, narrative)
             existing_keywords = existing_kw.get("keywords", [])
             existing_titles = {k.get("title", "") for k in existing_keywords}
             latest_keywords = [
@@ -134,7 +134,7 @@ async def _save(
                    RETURNING id""",
                 briefing_date,
                 curated.get("theme", ""),
-                json.dumps(_build_top_keywords(curated, final), ensure_ascii=False),
+                json.dumps(_build_top_keywords(curated, final, narrative), ensure_ascii=False),
             )
             logger.info("새 브리핑 생성: id=%d, date=%s", briefing_id, briefing_date)
 
@@ -245,7 +245,7 @@ async def _save(
 
 # ── 헬퍼 함수 ──
 
-def _build_top_keywords(curated: dict, final: dict) -> dict:
+def _build_top_keywords(curated: dict, final: dict, narrative: dict | None = None) -> dict:
     """daily_briefings.top_keywords JSONB 구성 (keywords API 호환)."""
     keywords_list = []
     theme = final.get("theme") or curated.get("theme", "")
@@ -271,6 +271,15 @@ def _build_top_keywords(curated: dict, final: dict) -> dict:
                 "reason": " | ".join(parts),
             })
 
+        # mirroring_hint: 과거 사례 제목 + 기간으로 힌트 생성
+        mirroring_hint = None
+        if narrative:
+            hist_case = narrative.get("historical_case", {})
+            hist_title = hist_case.get("title", "")
+            hist_period = hist_case.get("period", "")
+            if hist_title:
+                mirroring_hint = f"{hist_period} {hist_title}".strip() if hist_period else hist_title
+
         keywords_list.append({
             "title": theme,
             "description": one_liner,
@@ -282,6 +291,7 @@ def _build_top_keywords(curated: dict, final: dict) -> dict:
             "catalyst": catalyst.get("title") if catalyst else None,
             "catalyst_url": catalyst.get("url") if catalyst else None,
             "catalyst_source": catalyst.get("source") if catalyst else None,
+            "mirroring_hint": mirroring_hint,
             "quality_score": _calc_quality_score(curated),
             "icon_key": icon_key,
         })

@@ -1,7 +1,10 @@
 /**
  * analytics.js - 사용 행동 분석 (자동 수집)
  * 데모 기간 중 UX 개선 데이터 확보
+ *
+ * Bridge 패턴: 이벤트 → [1] 자체 DB  [2] Clarity  [3] PostHog
  */
+import { clarityEvent, posthogEvent, clarityPageView, posthogPageView } from './analyticsProviders';
 
 let eventQueue = [];
 let flushTimer = null;
@@ -52,6 +55,10 @@ export function trackEvent(eventType, data = {}) {
   };
 
   eventQueue.push(event);
+
+  // 외부 분석 도구로 전달 (fire-and-forget)
+  clarityEvent(eventType);
+  posthogEvent(eventType, { ...data, page: window.location.pathname });
 
   // 배치 사이즈 도달 시 즉시 전송
   if (eventQueue.length >= BATCH_SIZE) {
@@ -105,6 +112,10 @@ export function trackPageView(pageName) {
 
   pageEnterTime = Date.now();
   trackEvent('page_view', { page: pageName });
+
+  // 외부 분석 도구 페이지뷰
+  clarityPageView();
+  posthogPageView();
 }
 
 /**

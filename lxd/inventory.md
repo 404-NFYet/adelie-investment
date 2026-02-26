@@ -12,7 +12,8 @@
 | dev-jjjh02 | 10.10.10.12 | Backend (FastAPI, DB) | 허진서 | 4/8GB | `dev-standard.yml` |
 | dev-hj | 10.10.10.15 | Infra (Docker, CI/CD) | 도형준 | 4/8GB | `dev-standard.yml` |
 | localstack | 10.10.10.16 | LocalStack (AWS 로컬 테스트) | 도형준 | 4/8GB | `dev-standard.yml` |
-| **합계** | - | - | - | **38/92GB** | - |
+| analytics | 10.10.10.17 | PostHog 셀프호스팅 (유저 행동 분석) | 공유 | 8/16GB | 커스텀 |
+| **합계** | - | - | - | **46/108GB** | - |
 
 > 디스크: 전체 인스턴스가 **1개의 1.8TB NVMe**를 공유하는 구조.
 
@@ -24,7 +25,8 @@
 | deploy-test | 200GB | Docker 이미지 + 컨테이너 |
 | dev-* (각각) | 150GB | 소스코드, Docker, node_modules |
 | localstack | 100GB | Docker 이미지, Terraform state, LocalStack 데이터 |
-| 예비 | 450GB | 향후 확장용 |
+| analytics | 150GB | PostHog (ClickHouse, Kafka, PostgreSQL 등 24개 컨테이너) |
+| 예비 | 300GB | 향후 확장용 |
 
 ## 배포 현황 (2026-02-19 업데이트)
 
@@ -53,6 +55,16 @@
 | tmp-redis-1 | :6379 | 레거시 — 실행 중이나 미사용 |
 
 > 2026-02-24부터 공유 DB 역할 종료. 각 dev-* 서버가 docker-compose.dev.yml로 로컬 postgres 운영.
+
+### analytics (10.10.10.17) — PostHog 셀프호스팅
+
+| 서비스 | 포트 | URL |
+|--------|------|-----|
+| PostHog (24개 컨테이너) | :80, :443 | https://analytics.adelie-invest.com |
+
+- PostHog hobby 배포: PostgreSQL, ClickHouse, Kafka, Redis, Caddy 프록시 등
+- Cloudflare Tunnel: deploy-test의 cloudflared에서 `analytics.adelie-invest.com → 10.10.10.17:80`
+- 데이터: Docker volumes (clickhouse-data, postgres-data)
 
 ## 역할 변경 이력 (2026-02-14)
 
