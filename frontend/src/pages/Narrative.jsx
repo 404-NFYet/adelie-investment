@@ -496,7 +496,7 @@ function normalizeLessonLineBreaks(content) {
   return text.replace(/([.!?。！？])\s+/g, '$1\n');
 }
 
-function MarkdownBody({ content, onTermClick, className = '', headingColorClass = 'text-primary' }) {
+const MarkdownBody = React.memo(function MarkdownBody({ content, className = '', headingColorClass = 'text-primary' }) {
   if (!content) return null;
   const processed = preprocessMarkdown(content);
 
@@ -506,16 +506,7 @@ function MarkdownBody({ content, onTermClick, className = '', headingColorClass 
         remarkPlugins={[remarkMath, remarkGfm, remarkBreaks]}
         rehypePlugins={[rehypeRaw, rehypeKatex]}
         components={{
-          mark: ({ node, ...props }) => (
-            <mark
-              className="term-highlight cursor-pointer"
-              onClick={(event) => {
-                event.preventDefault();
-                onTermClick?.(event.currentTarget.textContent || '');
-              }}
-              {...props}
-            />
-          ),
+          mark: ({ node, ...props }) => <span className="term-highlight" data-term-highlight="true" {...props} />,
           h1: ({ node, ...props }) => <h3 className={`mb-2 text-base font-semibold ${headingColorClass}`} {...props} />,
           h2: ({ node, ...props }) => (
             <h3
@@ -663,8 +654,8 @@ const ContentTemplate = React.memo(function ContentTemplate({ stepConfig, stepDa
     ? buildCautionActionGuide(stepData?.content, cautionItems)
     : stepData?.content;
   const applicationContent = stepConfig.key === 'application'
-    ? normalizeApplicationSection(stepData?.content)
-    : stepData?.content;
+    ? normalizeApplicationSection(markdownContent)
+    : markdownContent;
   const hasHistoryBody = stepConfig.key === 'history' && Boolean(String(stepData?.content || '').trim());
 
   if (stepConfig.template === 'content4') {
@@ -678,21 +669,22 @@ const ContentTemplate = React.memo(function ContentTemplate({ stepConfig, stepDa
             {stepTitle}
           </h2>
 
-          <ul className="mt-5 space-y-3">
-            {cautionItems.slice(0, 5).map((item, idx) => (
-              <li key={`${item}-${idx}`} className="rounded-xl bg-[#f7f8fa] px-4 py-3 text-sm leading-relaxed text-text-secondary">
-                <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-xs font-semibold text-primary">
-                  {idx + 1}
-                </span>
-                {item}
-              </li>
-            ))}
-          </ul>
+          {cautionItems.length > 0 ? (
+            <ul className="mt-5 space-y-3">
+              {cautionItems.slice(0, 5).map((item, idx) => (
+                <li key={`${item}-${idx}`} className="rounded-xl bg-[#f7f8fa] px-4 py-3 text-sm leading-relaxed text-text-secondary">
+                  <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-xs font-semibold text-primary">
+                    {idx + 1}
+                  </span>
+                  {item}
+                </li>
+              ))}
+            </ul>
+          ) : null}
 
           <MarkdownBody
             content={cautionContent}
-            onTermClick={onTermClick}
-            className="mt-4 border-t border-border pt-4"
+            className={cautionItems.length > 0 ? 'mt-4 border-t border-border pt-4' : 'mt-5'}
           />
         </div>
       </section>
@@ -765,8 +757,7 @@ const ContentTemplate = React.memo(function ContentTemplate({ stepConfig, stepDa
           )}
 
           <MarkdownBody
-            content={applicationContent}
-            onTermClick={onTermClick}
+            content={markdownContent}
             className="mt-4"
             headingColorClass={stepConfig.key === 'history' ? 'text-[#065f46]' : 'text-primary'}
           />
@@ -822,7 +813,6 @@ const ContentTemplate = React.memo(function ContentTemplate({ stepConfig, stepDa
 
           <MarkdownBody
             content={applicationContent}
-            onTermClick={onTermClick}
             className="mt-4"
             headingColorClass={stepConfig.key === 'history' ? 'text-[#065f46]' : 'text-primary'}
           />
