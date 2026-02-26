@@ -189,6 +189,10 @@ export default React.memo(function Message({ message }) {
     () => normalizeMathDelimiters(message.content),
     [message.content],
   );
+  const hasExplicitLineBreak = useMemo(
+    () => /(?:\r\n|\r|\n)/.test(String(message.content || '')),
+    [message.content],
+  );
   if (message.role === 'visualization') return <VisualizationMessage message={message} />;
 
   const isUser = message.role === 'user';
@@ -212,11 +216,12 @@ export default React.memo(function Message({ message }) {
         </div>
         <div className={`px-4 py-3 rounded-2xl rounded-tl-md ${message.isError ? 'bg-error-light text-error border border-error/20' : 'bg-surface border border-border'}`}>
           {message.isError ? <p className="text-sm">{message.content}</p> : (
-            <div className="text-sm leading-relaxed text-text-primary prose prose-sm prose-headings:text-text-primary prose-strong:text-text-primary prose-code:text-primary prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs max-w-none dark:prose-invert">
+            <div className={`text-sm text-text-primary prose prose-sm prose-headings:text-text-primary prose-strong:text-text-primary prose-code:text-primary prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs max-w-none dark:prose-invert ${hasExplicitLineBreak ? 'leading-7' : 'leading-relaxed'}`}>
               <ReactMarkdown
                 remarkPlugins={[remarkMath, remarkGfm, remarkBreaks]}
                 rehypePlugins={[rehypeRaw, rehypeKatex]}
                 components={{
+                  br: ({ node, ...props }) => <br className={hasExplicitLineBreak ? 'block h-1.5' : undefined} {...props} />,
                   table: ({ node, ...props }) => (
                     <div className="my-3 overflow-x-auto">
                       <table className="w-full border-collapse text-left text-xs" {...props} />

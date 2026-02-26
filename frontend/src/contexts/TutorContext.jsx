@@ -115,6 +115,7 @@ export function TutorProvider({ children }) {
       const { appendUser = true, contextOverride = null, analytics = null } = options;
       if (!message.trim()) return;
       const requestStartAt = Date.now();
+      let hasError = false;
 
       if (appendUser) {
         const userMessage = {
@@ -274,9 +275,10 @@ export function TutorProvider({ children }) {
               }
 
               if (data.type === 'error' && data.error) {
+                hasError = true;
                 setAgentStatus({
-                  phase: 'idle',
-                  text: '응답 대기 중',
+                  phase: 'error',
+                  text: data.error,
                 });
                 setMessages((prev) =>
                   prev.map((m) =>
@@ -288,10 +290,12 @@ export function TutorProvider({ children }) {
               }
 
               if (data.type === 'done') {
-                setAgentStatus({
-                  phase: 'idle',
-                  text: '응답 대기 중',
-                });
+                if (!hasError) {
+                  setAgentStatus({
+                    phase: 'idle',
+                    text: '응답 대기 중',
+                  });
+                }
               }
             } catch {
               // ignore malformed SSE chunk
@@ -332,6 +336,7 @@ export function TutorProvider({ children }) {
         }
         console.error('Tutor error:', error);
         const visibleErrorMessage = error?.message?.trim() || '죄송합니다. 오류가 발생했습니다.';
+        hasError = true;
         if (analytics?.source === 'selection_cta') {
           trackEvent('tutor_selection_error', {
             case_id: analytics.caseId ?? null,
@@ -343,8 +348,8 @@ export function TutorProvider({ children }) {
           });
         }
         setAgentStatus({
-          phase: 'idle',
-          text: '응답 대기 중',
+          phase: 'error',
+          text: visibleErrorMessage,
         });
         setMessages((prev) =>
           prev.map((m) =>
@@ -356,10 +361,12 @@ export function TutorProvider({ children }) {
       } finally {
         abortControllerRef.current = null;
         setIsLoading(false);
-        setAgentStatus({
-          phase: 'idle',
-          text: '응답 대기 중',
-        });
+        if (!hasError) {
+          setAgentStatus({
+            phase: 'idle',
+            text: '응답 대기 중',
+          });
+        }
         refreshSessions();
       }
     },
