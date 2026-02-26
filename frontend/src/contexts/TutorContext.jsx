@@ -1,5 +1,6 @@
-import { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { API_BASE_URL, authFetch, fetchJson, postJson, deleteJson } from '../api/client';
+import { trackEvent } from '../utils/analytics';
 
 const TutorContext = createContext(null);
 const SESSION_KEY = 'adelie_tutor_session';
@@ -65,6 +66,14 @@ export function TutorProvider({ children }) {
     }
   });
   const [agentStatus, setAgentStatus] = useState(DEFAULT_AGENT_STATUS);
+  const [selectionCtaState, setSelectionCtaState] = useState({
+    active: false,
+    text: '',
+    prompt: '',
+    context: null,
+  });
+  const abortControllerRef = useRef(null);
+  const isSubmittingSelectionRef = useRef(false);
 
   useEffect(() => {
     try {
@@ -102,16 +111,21 @@ export function TutorProvider({ children }) {
   }, []);
 
   const sendMessage = useCallback(
-    async (message, difficulty = 'beginner') => {
+    async (message, difficulty = 'beginner', options = {}) => {
+      const { appendUser = true, contextOverride = null, analytics = null } = options;
       if (!message.trim()) return;
+      const requestStartAt = Date.now();
+      let hasError = false;
 
-      const userMessage = {
-        id: Date.now(),
-        role: 'user',
-        content: message,
-        timestamp: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, userMessage]);
+      if (appendUser) {
+        const userMessage = {
+          id: Date.now(),
+          role: 'user',
+          content: message,
+          timestamp: new Date().toISOString(),
+        };
+        setMessages((prev) => [...prev, userMessage]);
+      }
       setIsLoading(true);
       if (sessionId) setActiveSessionId(sessionId);
       setAgentStatus({
@@ -129,22 +143,48 @@ export function TutorProvider({ children }) {
       setMessages((prev) => [...prev, assistantMessage]);
 
       try {
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+
         const response = await authFetch(`${API_BASE_URL}/api/v1/tutor/chat`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
+          signal: controller.signal,
           body: JSON.stringify({
             session_id: sessionId,
             message,
             difficulty,
-            context_type: contextInfo?.type,
-            context_id: contextInfo?.id,
-            context_text: contextInfo?.stepContent,
+            context_type: (contextOverride || contextInfo)?.type,
+            context_id: (contextOverride || contextInfo)?.id,
+            context_text: (contextOverride || contextInfo)?.stepContent,
           }),
         });
 
-        if (!response.ok) throw new Error('Failed to get response');
+        if (!response.ok) {
+          let errorMessage = '';
+          try {
+            const errorJson = await response.clone().json();
+            if (typeof errorJson?.detail === 'string') {
+              errorMessage = errorJson.detail;
+            } else if (Array.isArray(errorJson?.detail)) {
+              errorMessage = errorJson.detail
+                .map((item) => item?.msg || item?.message || JSON.stringify(item))
+                .join(', ');
+            } else if (typeof errorJson?.error === 'string') {
+              errorMessage = errorJson.error;
+            }
+          } catch {
+            try {
+              errorMessage = (await response.text()).trim();
+            } catch {
+              // ignore body parse errors
+            }
+          }
+
+          throw new Error(errorMessage || `요청 실패 (${response.status})`);
+        }
         if (!response.body) throw new Error('Response body is empty');
 
         const reader = response.body.getReader();
@@ -235,9 +275,10 @@ export function TutorProvider({ children }) {
               }
 
               if (data.type === 'error' && data.error) {
+                hasError = true;
                 setAgentStatus({
-                  phase: 'idle',
-                  text: '응답 대기 중',
+                  phase: 'error',
+                  text: data.error,
                 });
                 setMessages((prev) =>
                   prev.map((m) =>
@@ -249,10 +290,12 @@ export function TutorProvider({ children }) {
               }
 
               if (data.type === 'done') {
-                setAgentStatus({
-                  phase: 'idle',
-                  text: '응답 대기 중',
-                });
+                if (!hasError) {
+                  setAgentStatus({
+                    phase: 'idle',
+                    text: '응답 대기 중',
+                  });
+                }
               }
             } catch {
               // ignore malformed SSE chunk
@@ -270,30 +313,143 @@ export function TutorProvider({ children }) {
         setMessages((prev) =>
           prev.map((m) => (m.id === assistantMessage.id ? { ...m, content: fullContent, isStreaming: false } : m))
         );
+        if (analytics?.source === 'selection_cta') {
+          trackEvent('tutor_selection_success', {
+            case_id: analytics.caseId ?? null,
+            step_key: analytics.stepKey || null,
+            selected_text_len: analytics.selectedTextLen || 0,
+            difficulty: analytics.difficulty || difficulty,
+            latency_ms: Date.now() - requestStartAt,
+            response_len: fullContent.trim().length,
+          });
+        }
       } catch (error) {
+        if (error?.name === 'AbortError') {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMessage.id
+                ? { ...m, isStreaming: false, content: m.content || '(응답이 중단되었습니다.)' }
+                : m
+            )
+          );
+          return;
+        }
         console.error('Tutor error:', error);
+        const visibleErrorMessage = error?.message?.trim() || '죄송합니다. 오류가 발생했습니다.';
+        hasError = true;
+        if (analytics?.source === 'selection_cta') {
+          trackEvent('tutor_selection_error', {
+            case_id: analytics.caseId ?? null,
+            step_key: analytics.stepKey || null,
+            selected_text_len: analytics.selectedTextLen || 0,
+            difficulty: analytics.difficulty || difficulty,
+            latency_ms: Date.now() - requestStartAt,
+            error_message: visibleErrorMessage.slice(0, 120),
+          });
+        }
         setAgentStatus({
-          phase: 'idle',
-          text: '응답 대기 중',
+          phase: 'error',
+          text: visibleErrorMessage,
         });
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantMessage.id
-              ? { ...m, content: '죄송합니다. 오류가 발생했습니다.', isStreaming: false, isError: true }
+              ? { ...m, content: `오류: ${visibleErrorMessage}`, isStreaming: false, isError: true }
               : m
           )
         );
       } finally {
+        abortControllerRef.current = null;
         setIsLoading(false);
-        setAgentStatus({
-          phase: 'idle',
-          text: '응답 대기 중',
-        });
+        if (!hasError) {
+          setAgentStatus({
+            phase: 'idle',
+            text: '응답 대기 중',
+          });
+        }
         refreshSessions();
       }
     },
     [sessionId, contextInfo, refreshSessions]
   );
+
+  const stopGeneration = useCallback(() => {
+    abortControllerRef.current?.abort();
+  }, []);
+
+  const regenerateLastResponse = useCallback((difficulty = 'beginner') => {
+    if (isLoading) return;
+
+    const lastUser = [...messages].reverse().find((msg) => msg.role === 'user' && msg.content?.trim());
+    if (!lastUser) return;
+
+    setMessages((prev) => {
+      const lastUserIndex = [...prev].map((m) => m.role).lastIndexOf('user');
+      if (lastUserIndex < 0) return prev;
+      return prev.slice(0, lastUserIndex + 1);
+    });
+    sendMessage(lastUser.content, difficulty, { appendUser: false });
+  }, [isLoading, messages, sendMessage]);
+
+  const updateSelectionCtaState = useCallback((nextState) => {
+    setSelectionCtaState((prev) => ({
+      ...prev,
+      ...nextState,
+    }));
+  }, []);
+
+  const clearSelectionCtaState = useCallback(() => {
+    setSelectionCtaState({
+      active: false,
+      text: '',
+      prompt: '',
+      context: null,
+    });
+  }, []);
+
+  const askTutorFromSelection = useCallback(async (difficulty = 'beginner') => {
+    const prompt = selectionCtaState.prompt?.trim();
+    if (!selectionCtaState.active || !prompt || isSubmittingSelectionRef.current) return;
+
+    isSubmittingSelectionRef.current = true;
+    try {
+      const selectionContext = selectionCtaState.context || null;
+      const selectedTextLen = selectionCtaState.text?.trim()?.length || 0;
+      const normalizedCaseId = Number(selectionContext?.id);
+      const safeCaseId = Number.isFinite(normalizedCaseId) ? normalizedCaseId : null;
+      trackEvent('tutor_selection_submit', {
+        case_id: safeCaseId,
+        step_key: selectionContext?.stepKey || null,
+        selected_text_len: selectedTextLen,
+        difficulty,
+      });
+
+      openTutor(selectionContext);
+      await sendMessage(
+        prompt,
+        difficulty,
+        {
+          contextOverride: selectionContext,
+          analytics: {
+            source: 'selection_cta',
+            caseId: safeCaseId,
+            stepKey: selectionContext?.stepKey || null,
+            selectedTextLen,
+            difficulty,
+          },
+        },
+      );
+    } finally {
+      isSubmittingSelectionRef.current = false;
+      clearSelectionCtaState();
+      try {
+        window.getSelection?.()?.removeAllRanges();
+        window.dispatchEvent(new Event('narrative-selection-clear'));
+      } catch {
+        // ignore selection clear failures
+      }
+    }
+  }, [selectionCtaState, openTutor, sendMessage, clearSelectionCtaState]);
 
   const createNewChat = useCallback(async () => {
     const created = await postJson(`${API_BASE_URL}/api/v1/tutor/sessions/new`, {});
@@ -366,6 +522,12 @@ export function TutorProvider({ children }) {
     refreshSessions,
     requestVisualization,
     agentStatus,
+    stopGeneration,
+    regenerateLastResponse,
+    selectionCtaState,
+    updateSelectionCtaState,
+    clearSelectionCtaState,
+    askTutorFromSelection,
   }), [
     isOpen,
     openTutor,
@@ -384,6 +546,12 @@ export function TutorProvider({ children }) {
     refreshSessions,
     requestVisualization,
     agentStatus,
+    stopGeneration,
+    regenerateLastResponse,
+    selectionCtaState,
+    updateSelectionCtaState,
+    clearSelectionCtaState,
+    askTutorFromSelection,
   ]);
 
   return (

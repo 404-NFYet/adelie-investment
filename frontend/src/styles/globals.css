@@ -243,6 +243,7 @@
     @apply font-semibold;
   }
     /* 텍스트 선택 강제 허용 (Framer 및 타겟 이벤트 버블링 충돌 방지용) */
+    .select-text,
     .select-text * {
       user-select: text !important;
       -webkit-user-select: text !important;
