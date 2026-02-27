@@ -55,7 +55,7 @@ docker compose -f docker-compose.dev.yml restart
 ## 2. 서비스별 설명
 
 ### postgres
-- **역할**: PostgreSQL 15 데이터베이스
+- **역할**: PostgreSQL 16 + pgvector 데이터베이스
 - **포트**: 5433 (호스트) → 5432 (컨테이너)
 - **볼륨**: `postgres_data` (데이터 영구 저장)
 - **접속**: `psql -h localhost -p 5433 -U narative -d narrative_invest`

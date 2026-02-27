@@ -10,7 +10,7 @@
 |--------|----------|------|------|
 | Frontend (nginx) | adelie-frontend | :80 | SPA + API 리버스 프록시 |
 | Backend API | adelie-backend-api | :8082 | FastAPI |
-| PostgreSQL 15 | adelie-postgres | :5432 | 내부 전용 |
+| PostgreSQL 16 (pgvector) | adelie-postgres | :5432 | 내부 전용 |
 | Redis 7 | adelie-redis | :6379 | 캐싱, Rate Limiting |
 | MinIO | adelie-minio | :9000/:9001 | S3 호환 오브젝트 스토리지 |
 | Prometheus | adelie-prometheus | :9090 | 메트릭 수집 |
@@ -54,6 +54,7 @@ make -f lxd/Makefile sync-dev-data
 | https://demo.adelie-invest.com | Frontend (nginx) | Cloudflare Tunnel → deploy-test:80 |
 | https://monitoring.adelie-invest.com | Grafana | Cloudflare Tunnel → deploy-test:3000 |
 | https://dashboard.adelie-invest.com | Streamlit 대시보드 | Cloudflare Tunnel → deploy-test:8501 (nginx) |
+| https://analytics.adelie-invest.com | PostHog (분석) | Cloudflare Tunnel → analytics LXD (10.10.10.17) |
 
 ## 배포 절차
 
