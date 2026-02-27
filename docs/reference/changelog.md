@@ -6,9 +6,25 @@
 > **브랜딩 변경 (2026-02)**: "아델리에 투자" → "아델리에", 교육 중심 메시징 강화
 > 이후 항목 작성 시: "포트폴리오" (모의투자 대신), "금융 학습" (투자 교육 대신)
 
----
 
-## prod-final (2026-02-24~25)
+## prod-final (2026-02-24~27)
+
+### 기능 추가
+- Prometheus 백엔드 메트릭 통합 (PR #33)
+- Hybrid Clarification Flow — 튜터 명확화 질문 시스템 (PR #36)
+- Chart-First 아키텍처 — 차트 선생성 후 텍스트 스트리밍 (chatbot)
+- 가드레일 문맥 인식 — 페이지 문맥 + 이전 대화 기반 의도 판단 (chatbot)
+- Claude API 의존성 제거 — 차트 생성 OpenAI 단독 전환 (chatbot)
+
+### 프론트엔드
+- PostHog/Clarity 이벤트 트래킹 통합 (PR #40)
+- 홈 리디자인 프로토타입 (PR #40)
+- 데일리 퀴즈 UI 개선 (PR #40)
+
+### 파이프라인
+- 내러티브 중복 제거 + dynamic concept_explain rationale (PR #39, #41)
+- datapipeline 최신 코드 반영 (147ad7a)
+- interface2/3 텍스트 포맷팅 개선 (4fc6a05)
 
 ### 인프라
 - Docker 이미지 태그 정책 변경: `:latest` 제거, `prod-YYYYMMDD` 명시적 태그 (afa4721)
@@ -17,11 +33,12 @@
 - lxd/Makefile 싱크 타겟 브랜치명 `dev-final/*` 전환 (77921fe)
 - 브랜치 전략 & 워크플로우 문서 전면 재작성 (7464814)
 
-### 파이프라인
-- datapipeline 최신 코드 반영 (147ad7a)
-- interface2/3 텍스트 포맷팅 개선 (4fc6a05)
+### 문서
+- README.md 서비스 URL Cloudflare 도메인 전환, 깨진 링크 수정
+- PostgreSQL 16 버전 전체 문서 통일
+- datapipeline README 18노드 파이프라인 기준 전면 재작성
+- architecture/overview.md, setup.md 참조 링크 정리
 
----
 
 ## v1.2.1-stable-feb20 (2026-02-20)
 
@@ -39,7 +56,6 @@
 - Agent Canvas v3: canvas API + UI 컴포넌트 (3a0789b, 91eb89e, 1c7b91c)
 - AgentDock 채팅 모드 분리 및 잔여 참조 제거 (b2476bd, 74d400f)
 
----
 
 ## v1.2 (2026-02-22)
 
@@ -60,7 +76,6 @@
 - 프로젝트 소개 및 기능 목록 최신화 (7706080)
 - 인프라 운영 이력 및 LXD 자동화 가이드 (1fb2af3)
 
----
 
 ## v1.1 (2026-02-19~20)
 
@@ -79,7 +94,6 @@
 ### 인프라
 - LXD git 점검 + dev DB 동기화 자동화 (f9b6e82)
 
----
 
 ## v1.0 (2026-02-13~18)
 
@@ -116,7 +130,6 @@
 - penguin-3d 8.2MB → 330KB WebP + nginx 보안 헤더 (32e99f4)
 - keywords N+1 쿼리 → 배치 조인 (4f56280)
 
----
 
 ## 2026-02-08 (v0.9.0)
 
@@ -160,7 +173,6 @@
 - `.gitignore`에 Claude Code 관련 파일 추가
 - 문서 체계 개편: 번호 순서 리네이밍 (01~06)
 
----
 
 ## 2026-02-07
 
@@ -179,7 +191,6 @@
 - 팀 개발 문서 + AWS 인프라 문서 작성
 - 데이터 파이프라인 및 배포 가이드
 
----
 
 ## 작성 규칙
 
