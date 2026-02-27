@@ -4,7 +4,21 @@
 > **범위**: `chatbot/` 폴더 구조 개편 이후 수정사항  
 > **적용 환경**: `chatbot/services/`, `fastapi/app/api/routes/`, `frontend/src/`
 
----
+## 6. Hybrid Clarification Flow
+
+### 개요
+사용자의 모호한 질문에 대해 즉시 답변하는 대신, 의도를 명확히 하는 clarification 질문을 먼저 제시하는 하이브리드 흐름 추가.
+
+### 변경 사항
+- **`chatbot/agent/tutor_agent.py`**: clarification 분기 노드 추가 — 의도 분류 후 명확화 필요 시 선택지 제시
+- **PR #36** 통합 머지 (1e856ab): hybrid clarification + 기존 가드레일/Chart-First 통합
+
+### 동작 방식
+```
+사용자 질문 → 의도 분류
+  ├─ 명확한 질문 → 기존 응답 파이프라인
+  └─ 모호한 질문 → clarification 선택지 제시 → 사용자 선택 → 응답
+```
 
 ## 1. 가드레일 — 문맥 인식 버그 수정
 
@@ -23,7 +37,6 @@ guardrail_result = await run_guardrail(request.message)
 guardrail_result = await run_guardrail(request.message, context=guardrail_context)
 ```
 
----
 
 ## 2. 차트 분류 — Pydantic 유효성 검증 오류 수정
 
@@ -38,7 +51,6 @@ guardrail_result = await run_guardrail(request.message, context=guardrail_contex
 { "reasoning": "...", "chart_type": "line" }
 ```
 
----
 
 ## 3. Chart-First Architecture — 스트리밍 파이프라인 전면 재설계
 
@@ -67,7 +79,6 @@ guardrail_result = await run_guardrail(request.message, context=guardrail_contex
 > [!WARNING]
 > **수정 필요**: fallback 메시지가 아직 프론트엔드에서 올바르게 표시되지 않고 있음. `event: text_delta`로 전송 시 기존 스트리밍 텍스트와 처리 방식이 충돌하거나, `TutorContext.jsx`의 `action_type: 'visualizing'` 이벤트 핸들러가 없어 로딩 표시 없이 곧바로 fallback이 출력되는 문제 존재. 추가 조사 및 수정 예정.
 
----
 
 ## 4. Claude API 의존성 제거 — 차트 JSON 생성 버그 수정
 
@@ -101,7 +112,6 @@ Chart JSON generated successfully: type=line, traces=2  ✅
 [Chart-First] chart_json generated: True               ✅
 ```
 
----
 
 ## 5. 차트 메시지 순서 오류 수정 (Frontend)
 
@@ -130,7 +140,6 @@ setMessages((prev) => {
 });
 ```
 
----
 
 ## 변경 파일 요약
 
