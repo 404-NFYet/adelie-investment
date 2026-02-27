@@ -377,7 +377,7 @@ graph LR
     subgraph CD [deploy.yml — push develop]
         G[push develop] --> H[Docker Build 3개]
         H --> I[Docker Hub Push]
-        I --> J[SSH → deploy-test]
+        I --> J[SSH deploy-test]
         J --> K[Health Check]
         K --> L[Discord 알림]
     end

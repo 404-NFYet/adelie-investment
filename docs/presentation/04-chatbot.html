@@ -280,15 +280,15 @@ graph TD
     B -->|매칭| C[MALICIOUS 차단]
     B -->|통과| D[LLM 분류<br/>gpt-4o-mini]
     D --> E{분류 결과}
-    E -->|SAFE| F[통과 ✓]
+    E -->|SAFE| F[통과]
     E -->|ADVICE| G{정책 확인<br/>soft/hard}
-    E -->|OFF_TOPIC| H[차단 ✗]
+    E -->|OFF_TOPIC| H[차단]
     E -->|MALICIOUS| C
     G -->|soft| F
     G -->|hard| H
     D -->|JSON 파싱 실패| I{재시도<br/>MAX_RETRIES=2}
     I -->|재시도 가능| D
-    I -->|초과| J[Fail-open → SAFE]
+    I -->|초과| J[Fail-open: SAFE]
 
     style A fill:#fff3e6,stroke:#FF6B00,color:#333
     style B fill:#fff3e6,stroke:#FF6B00,color:#333

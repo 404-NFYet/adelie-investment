@@ -115,8 +115,8 @@ graph TD
     B --> C{모듈 존재?}
     C -->|성공| D[_route_modules에 저장]
     C -->|실패| E[warning 로그<br/>건너뛰기]
-    D --> F[_router_config 매핑<br/>모듈→태그/prefix]
-    F --> G[app.include_router<br/>prefix=/api/v1]
+    D --> F[_router_config 매핑<br/>모듈-태그/prefix]
+    F --> G[app.include_router<br/>prefix /api/v1]
 
     style A fill:#fff3e6,stroke:#FF6B00,color:#333
     style B fill:#fff3e6,stroke:#FF6B00,color:#333
