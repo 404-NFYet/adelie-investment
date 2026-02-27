@@ -1,0 +1,1132 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>데이터베이스 — Adelie Investment Tech QA</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'IBM Plex Sans KR',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#ffffff;color:#333333;line-height:1.7;max-width:900px;margin:0 auto;padding:24px}
+a{color:#FF6B00;text-decoration:none}a:hover{text-decoration:underline}
+.nav{margin-bottom:24px}.nav a{font-size:14px;display:inline-flex;align-items:center;gap:6px}
+.header{margin-bottom:24px;border-bottom:2px solid #FF6B00;padding-bottom:16px}
+.header h1{color:#FF6B00;font-size:28px;margin-bottom:4px}
+.header .meta{color:#666666;font-size:14px}
+.search-box{margin-bottom:24px}
+.search-box input{width:100%;padding:12px 16px;background:#f5f5f5;border:1px solid #d0d7de;border-radius:8px;color:#333333;font-size:15px;outline:none}
+.search-box input:focus{border-color:#FF6B00}
+.search-box input::placeholder{color:#aaaaaa}
+.qa-item{margin-bottom:12px;border:1px solid #e0e0e0;border-radius:8px;overflow:hidden;background:#ffffff}
+.qa-item.hidden{display:none}
+.qa-q{display:flex;align-items:center;padding:16px 20px;cursor:pointer;user-select:none;gap:12px;transition:background 0.2s}
+.qa-q:hover{background:#f5f5f5}
+.qa-num{color:#FF6B00;font-weight:700;font-size:14px;min-width:28px}
+.qa-t{flex:1;font-weight:600;font-size:15px}
+.qa-tog{color:#FF6B00;font-size:18px;transition:transform 0.3s}
+.qa-item.open .qa-tog{transform:rotate(45deg)}
+.qa-a{display:none;padding:0 20px 20px;border-top:1px solid #e0e0e0}
+.qa-item.open .qa-a{display:block}
+.qa-a p{margin-bottom:12px}
+.qa-a ul,.qa-a ol{margin:8px 0 12px 24px}
+.qa-a li{margin-bottom:6px}
+.qa-a strong{color:#FF6B00}
+.qa-a h3{color:#FF6B00;font-size:15px;margin:16px 0 8px}
+.qa-a h4{color:#555555;font-size:14px;margin:12px 0 6px}
+pre{background:#f6f8fa;border:1px solid #d0d7de;border-radius:6px;padding:16px;margin:12px 0;overflow-x:auto;font-family:'JetBrains Mono','Fira Code',monospace;font-size:13px;line-height:1.5;color:#24292e}
+.file-path{color:#666666;font-size:12px;margin-bottom:4px;display:block;font-family:monospace}
+.file-ref{color:#0550ae;font-family:monospace;font-size:13px;background:#f6f8fa;padding:2px 6px;border-radius:4px}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px}
+th,td{padding:8px 12px;border:1px solid #d0d7de;text-align:left}
+th{background:#f6f8fa;color:#FF6B00;font-weight:600}
+.mermaid-box{background:#f6f8fa;border:1px solid #d0d7de;border-radius:6px;padding:16px;margin:12px 0;overflow-x:auto;font-family:monospace;font-size:13px;white-space:pre;color:#24292e}
+@media(max-width:480px){body{padding:16px}.header h1{font-size:22px}.qa-q{padding:12px 14px}.qa-a{padding:0 14px 14px}pre{font-size:11px;padding:12px}}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({startOnLoad:true,theme:'default',themeVariables:{primaryColor:'#fff3e6',primaryBorderColor:'#FF6B00',lineColor:'#FF6B00',textColor:'#333'}});</script>
+</head>
+<body>
+<nav class="nav"><a href="index.html">&larr; 목차로 돌아가기</a></nav>
+<div class="header">
+  <h1>데이터베이스</h1>
+  <div class="meta">12문항 &middot; Adelie Investment 기술 QA</div>
+</div>
+<div class="search-box">
+  <input type="text" placeholder="이 카테고리에서 검색..." oninput="filterQA(this.value)">
+</div>
+<div id="qa-list">
+
+<!-- Q1 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)">
+    <span class="qa-num">Q1</span>
+    <span class="qa-t">데이터베이스 아키텍처 개요 (PostgreSQL + pgvector + Redis + MinIO)</span>
+    <span class="qa-tog">+</span>
+  </div>
+  <div class="qa-a">
+    <p>Adelie Investment는 <strong>3가지 스토리지 시스템</strong>을 조합하여 사용합니다. 각각 역할이 명확히 분리되어 있으며, 모든 운영 데이터는 PostgreSQL에, 캐시 및 레이트리밋은 Redis에, 대용량 파일은 MinIO에 저장됩니다.</p>
+
+    <h3>1. PostgreSQL 16 (pgvector + pg_trgm)</h3>
+    <ul>
+      <li><strong>역할</strong>: 주요 OLTP 데이터베이스 -- 21개 이상 테이블, 모든 비즈니스 데이터 저장</li>
+      <li><strong>드라이버</strong>: <code>asyncpg</code> (SQLAlchemy async) -- FastAPI 비동기 I/O에 최적화</li>
+      <li><strong>pgvector</strong>: Vector(1536) 컬럼으로 OpenAI 임베딩 저장, ivfflat 인덱스로 코사인 유사도 검색</li>
+      <li><strong>pg_trgm</strong>: GIN 인덱스 기반 한글 퍼지 텍스트 검색 (용어집, 역사 사례)</li>
+      <li><strong>DB명</strong>: <code>narrative_invest</code></li>
+    </ul>
+
+    <h3>2. Redis 7</h3>
+    <ul>
+      <li><strong>역할</strong>: 캐싱 레이어 + 레이트리밋 엔진</li>
+      <li><strong>캐싱</strong>: AI Tutor 용어 설명 (24h TTL), 용어집 (24h), 사용자 설정 (2h), 채팅 메시지 (1h)</li>
+      <li><strong>레이트리밋</strong>: Lua 스크립트 기반 슬라이딩 윈도우 (100 req/min per IP, ZSET 사용)</li>
+      <li><strong>연결 풀</strong>: max_connections=50, <code>redis.asyncio</code> 비동기 클라이언트</li>
+    </ul>
+
+    <h3>3. MinIO</h3>
+    <ul>
+      <li><strong>역할</strong>: S3 호환 오브젝트 스토리지 -- 증권사 리서치 리포트 PDF 저장</li>
+      <li><strong>사용</strong>: <code>broker_reports.minio_path</code> 컬럼에 저장 경로 참조</li>
+      <li><strong>배포</strong>: 프로덕션 환경에서만 운용 (docker-compose.prod.yml)</li>
+    </ul>
+
+    <h3>환경별 인프라 구성</h3>
+    <table>
+      <tr><th>서비스</th><th>Dev (docker-compose.dev.yml)</th><th>Prod (docker-compose.prod.yml)</th></tr>
+      <tr><td>PostgreSQL 16</td><td>localhost:5433 (로컬 컨테이너)</td><td><code>adelie-postgres</code> 컨테이너</td></tr>
+      <tr><td>Redis 7</td><td>localhost:6379 (로컬 컨테이너)</td><td><code>adelie-redis</code> 컨테이너</td></tr>
+      <tr><td>MinIO</td><td>미사용</td><td><code>adelie-minio</code> 컨테이너</td></tr>
+    </table>
+
+    <p>참조: <span class="file-ref">fastapi/app/core/database.py</span>, <span class="file-ref">fastapi/app/services/redis_cache.py</span></p>
+  </div>
+</div>
+
+<!-- Q2 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)">
+    <span class="qa-num">Q2</span>
+    <span class="qa-t">테이블 구조와 관계 (ER 다이어그램)</span>
+    <span class="qa-tog">+</span>
+  </div>
+  <div class="qa-a">
+    <p>Adelie Investment의 데이터베이스는 <strong>21개 이상의 테이블</strong>로 구성되며, 사용자(users)를 중심으로 포트폴리오, 브리핑, 사례, 튜터, 학습 진도 등 도메인별로 관계가 설정되어 있습니다.</p>
+
+    <h3>ER 다이어그램</h3>
+    <pre class="mermaid">erDiagram
+    users ||--o| user_settings : "1:1"
+    users ||--o| user_portfolios : "1:1 (UNIQUE)"
+    users ||--o{ tutor_sessions : "1:N"
+    users ||--o{ learning_progress : "1:N"
+    users ||--o{ notifications : "1:N"
+    users ||--o{ briefing_rewards : "1:N"
+    users ||--o{ dwell_rewards : "1:N"
+
+    user_portfolios ||--o{ portfolio_holdings : "1:N"
+    user_portfolios ||--o{ simulation_trades : "1:N"
+    user_portfolios ||--o{ briefing_rewards : "1:N"
+    user_portfolios ||--o{ dwell_rewards : "1:N"
+
+    daily_briefings ||--o{ briefing_stocks : "1:N"
+
+    historical_cases ||--o{ case_stock_relations : "1:N"
+    historical_cases ||--o{ case_matches : "1:N"
+
+    daily_narratives ||--o{ narrative_scenarios : "1:N"
+
+    tutor_sessions ||--o{ tutor_messages : "1:N"
+
+    users {
+        int id PK
+        string email UK
+        string username UK
+        string password_hash
+        string difficulty_level
+        datetime created_at
+    }
+
+    user_settings {
+        int id PK
+        int user_id FK "UNIQUE"
+        string theme
+        boolean push_notification
+        time morning_briefing_time
+    }
+
+    user_portfolios {
+        int id PK
+        int user_id FK "UNIQUE"
+        string portfolio_name
+        bigint initial_cash
+        bigint current_cash
+        bigint total_rewards_received
+    }
+
+    portfolio_holdings {
+        int id PK
+        int portfolio_id FK
+        string stock_code
+        string stock_name
+        int quantity
+        numeric avg_buy_price
+    }
+
+    simulation_trades {
+        int id PK
+        int portfolio_id FK
+        string trade_type
+        string stock_code
+        int quantity
+        numeric price
+        numeric total_amount
+    }
+
+    daily_briefings {
+        int id PK
+        date briefing_date UK
+        text market_summary
+        jsonb top_keywords
+    }
+
+    briefing_stocks {
+        int id PK
+        int briefing_id FK
+        string stock_code
+        string stock_name
+        numeric change_rate
+        int trend_days
+        text catalyst
+    }
+
+    historical_cases {
+        int id PK
+        string title
+        int event_year
+        text summary
+        text full_content
+        jsonb keywords
+        vector embedding "1536dim"
+    }
+
+    case_stock_relations {
+        int id PK
+        int case_id FK
+        string stock_code
+        string relation_type
+    }
+
+    case_matches {
+        int id PK
+        string current_keyword
+        int matched_case_id FK
+        numeric similarity_score
+    }
+
+    daily_narratives {
+        uuid id PK
+        date date UK
+        text_array main_keywords
+        jsonb glossary
+    }
+
+    narrative_scenarios {
+        uuid id PK
+        uuid narrative_id FK
+        text title
+        jsonb narrative_sections
+        int sort_order
+    }
+
+    tutor_sessions {
+        int id PK
+        int user_id FK
+        uuid session_uuid UK
+        string context_type
+        boolean is_active
+    }
+
+    tutor_messages {
+        int id PK
+        int session_id FK
+        string role
+        text content
+        string term_asked
+    }
+
+    glossary {
+        int id PK
+        string term UK
+        string difficulty
+        string category
+        string definition_short
+    }
+
+    stock_listings {
+        string stock_code PK
+        string stock_name
+        string market
+        string sector
+        boolean is_active
+    }
+
+    market_daily_history {
+        int id PK
+        date date
+        string index_code
+        numeric close
+        bigint volume
+    }
+
+    broker_reports {
+        int id PK
+        string broker_name
+        date report_date
+        jsonb stock_codes
+        string minio_path
+    }
+
+    learning_progress {
+        int id PK
+        int user_id FK
+        string content_type
+        int content_id
+        string status
+        int progress_percent
+    }
+
+    notifications {
+        int id PK
+        int user_id FK
+        string type
+        string title
+        boolean is_read
+    }
+
+    briefing_rewards {
+        int id PK
+        int user_id FK
+        int portfolio_id FK
+        int case_id
+        bigint final_reward
+        string status
+    }
+
+    dwell_rewards {
+        int id PK
+        int user_id FK
+        int portfolio_id FK
+        string page
+        int dwell_seconds
+        bigint reward_amount
+    }
+    </pre>
+
+    <h3>주요 테이블 그룹</h3>
+    <table>
+      <tr><th>그룹</th><th>테이블</th><th>설명</th></tr>
+      <tr><td>사용자</td><td>users, user_settings</td><td>인증, 설정 (1:1 관계)</td></tr>
+      <tr><td>포트폴리오</td><td>user_portfolios, portfolio_holdings, simulation_trades</td><td>모의투자 시뮬레이션</td></tr>
+      <tr><td>브리핑</td><td>daily_briefings, briefing_stocks</td><td>일일 키워드 + 종목 데이터</td></tr>
+      <tr><td>역사 사례</td><td>historical_cases, case_stock_relations, case_matches</td><td>과거 사례 + 현재 매칭</td></tr>
+      <tr><td>내러티브</td><td>daily_narratives, narrative_scenarios</td><td>7단계 스토리텔링 브리핑</td></tr>
+      <tr><td>튜터</td><td>tutor_sessions, tutor_messages</td><td>AI 튜터 대화 이력</td></tr>
+      <tr><td>보상</td><td>briefing_rewards, dwell_rewards</td><td>학습 보상 + 체류 보상</td></tr>
+      <tr><td>참조</td><td>stock_listings, glossary, market_daily_history, broker_reports</td><td>독립 참조 테이블</td></tr>
+    </table>
+
+    <p>참조: <span class="file-ref">fastapi/app/models/__init__.py</span>, <span class="file-ref">fastapi/app/models/*.py</span></p>
+  </div>
+</div>
+
+<!-- Q3 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)">
+    <span class="qa-num">Q3</span>
+    <span class="qa-t">SQLAlchemy 비동기 ORM 패턴 (Mapped[T] + mapped_column)</span>
+    <span class="qa-tog">+</span>
+  </div>
+  <div class="qa-a">
+    <p>Adelie Investment는 <strong>SQLAlchemy 2.0+ 비동기 스타일</strong>을 사용합니다. 레거시 <code>Column()</code> 대신 <code>mapped_column()</code>과 Python 타입 어노테이션(<code>Mapped[T]</code>)을 사용하여 타입 안전성과 IDE 자동완성을 확보합니다.</p>
+
+    <h3>핵심 패턴</h3>
+    <ul>
+      <li><strong>Mapped[int], Mapped[str], Mapped[datetime]</strong>: Python 타입 힌트로 컬럼 타입 추론</li>
+      <li><strong>Mapped[Optional[T]]</strong>: nullable 컬럼 표현</li>
+      <li><strong>mapped_column()</strong>: Column() 대체, primary_key, ForeignKey, Index 등 설정</li>
+      <li><strong>relationship(back_populates=...)</strong>: 양방향 관계 정의</li>
+      <li><strong>DeclarativeBase</strong>: <code>app.core.database.Base</code> 클래스에서 상속</li>
+    </ul>
+
+    <h3>모델 코드 예시 (User 모델)</h3>
+    <span class="file-path">fastapi/app/models/user.py</span>
+<pre>from sqlalchemy import String, Boolean, Time, ForeignKey, Index
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.core.database import Base
+
+
+class User(Base):
+    """User model."""
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    username: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    difficulty_level: Mapped[str] = mapped_column(
+        String(20), default="beginner",
+        comment="beginner, elementary, intermediate"
+    )
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+
+    # Relationships (양방향)
+    settings: Mapped[Optional["UserSettings"]] = relationship(
+        back_populates="user", uselist=False
+    )
+    tutor_sessions: Mapped[list["TutorSession"]] = relationship(
+        back_populates="user"
+    )
+    portfolios: Mapped[list["UserPortfolio"]] = relationship(
+        back_populates="user"
+    )
+
+    __table_args__ = (
+        Index("ix_users_email", "email"),
+        Index("ix_users_username", "username"),
+    )</pre>
+
+    <h3>Relationship 패턴 요약</h3>
+    <table>
+      <tr><th>패턴</th><th>설정</th><th>예시</th></tr>
+      <tr><td>1:1</td><td><code>uselist=False</code></td><td>User &harr; UserSettings</td></tr>
+      <tr><td>1:N</td><td><code>Mapped[list["Child"]]</code></td><td>User &harr; TutorSession</td></tr>
+      <tr><td>cascade 삭제</td><td><code>cascade="all, delete-orphan"</code></td><td>HistoricalCase &harr; CaseStockRelation</td></tr>
+      <tr><td>정렬된 관계</td><td><code>order_by="Model.column"</code></td><td>DailyNarrative &harr; NarrativeScenario</td></tr>
+    </table>
+
+    <h3>Base 클래스 정의</h3>
+    <span class="file-path">fastapi/app/core/database.py</span>
+<pre>from sqlalchemy.orm import DeclarativeBase
+
+class Base(DeclarativeBase):
+    """Base class for SQLAlchemy models."""
+    pass</pre>
+
+    <p>모든 모델은 이 <code>Base</code>를 상속하며, Alembic 마이그레이션에서도 이 Base의 metadata를 참조합니다.</p>
+
+    <p>참조: <span class="file-ref">fastapi/app/models/*.py</span>, <span class="file-ref">fastapi/app/core/database.py</span></p>
+  </div>
+</div>
+
+<!-- Q4 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)">
+    <span class="qa-num">Q4</span>
+    <span class="qa-t">커넥션 풀링과 성능 최적화</span>
+    <span class="qa-tog">+</span>
+  </div>
+  <div class="qa-a">
+    <p>FastAPI 비동기 환경에서 DB 커넥션 관리는 성능에 직접적인 영향을 미칩니다. Adelie Investment는 <strong>SQLAlchemy AsyncEngine</strong>의 커넥션 풀을 세밀하게 튜닝하고, Prometheus 메트릭으로 DB 쿼리를 모니터링합니다.</p>
+
+    <h3>커넥션 풀 설정</h3>
+    <span class="file-path">fastapi/app/core/database.py</span>
+<pre>engine = create_async_engine(
+    settings.DATABASE_URL,
+    echo=settings.DEBUG,
+    pool_pre_ping=True,      # stale 커넥션 감지
+    pool_size=50,             # 기본 풀 크기
+    max_overflow=100,         # 추가 허용 커넥션
+    pool_timeout=30,          # 풀 대기 타임아웃 (초)
+    pool_recycle=1800,        # 커넥션 재활용 주기 (30분)
+)</pre>
+
+    <table>
+      <tr><th>파라미터</th><th>값</th><th>설명</th></tr>
+      <tr><td>pool_size</td><td>50</td><td>풀에 유지하는 기본 커넥션 수</td></tr>
+      <tr><td>max_overflow</td><td>100</td><td>pool_size 초과 시 추가 생성 가능한 수 (최대 동시 150)</td></tr>
+      <tr><td>pool_timeout</td><td>30초</td><td>풀에서 커넥션 획득 대기 최대 시간</td></tr>
+      <tr><td>pool_recycle</td><td>1800초 (30분)</td><td>커넥션 수명 -- DB 서버의 idle timeout 방지</td></tr>
+      <tr><td>pool_pre_ping</td><td>True</td><td>사용 전 PING으로 stale 커넥션 감지 후 재연결</td></tr>
+    </table>
+
+    <h3>비동기 세션 설정</h3>
+<pre>AsyncSessionLocal = async_sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
+    expire_on_commit=False,   # 커밋 후에도 객체 속성 유지
+    autocommit=False,         # 수동 커밋
+    autoflush=False,          # 수동 플러시
+)</pre>
+
+    <ul>
+      <li><strong>expire_on_commit=False</strong>: 커밋 후 SELECT 재발행 방지 -- 응답 직렬화 시 lazy loading N+1 문제 차단</li>
+      <li><strong>autoflush=False</strong>: 쿼리 전 불필요한 자동 INSERT/UPDATE 방지</li>
+    </ul>
+
+    <h3>Prometheus 메트릭 -- DB 쿼리 카운터</h3>
+    <p>SQLAlchemy의 <code>after_cursor_execute</code> 이벤트를 후킹하여 모든 쿼리를 operation(select/insert/update/delete)과 result(success/fail)로 분류하여 카운트합니다.</p>
+<pre>@event.listens_for(engine.sync_engine, "after_cursor_execute")
+def _after_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+    DB_QUERY_TOTAL.labels(_extract_db_operation(statement), "success").inc()
+
+@event.listens_for(engine.sync_engine, "handle_error")
+def _handle_db_error(exception_context):
+    statement = getattr(exception_context, "statement", "") or ""
+    DB_QUERY_TOTAL.labels(_extract_db_operation(statement), "fail").inc()</pre>
+
+    <p>Grafana 대시보드에서 <code>db_query_total</code> 메트릭으로 쿼리 처리량 및 오류율을 실시간 모니터링합니다.</p>
+
+    <h3>세션 라이프사이클 (Dependency Injection)</h3>
+<pre>async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """Dependency for getting async database session."""
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+        finally:
+            await session.close()</pre>
+    <p>FastAPI의 <code>Depends(get_db)</code>로 라우트 핸들러에 주입되며, 요청 종료 시 자동으로 세션이 반환됩니다.</p>
+
+    <p>참조: <span class="file-ref">fastapi/app/core/database.py</span>, <span class="file-ref">fastapi/app/metrics.py</span></p>
+  </div>
+</div>
+
+<!-- Q5 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)">
+    <span class="qa-num">Q5</span>
+    <span class="qa-t">pgvector 벡터 검색 구현</span>
+    <span class="qa-tog">+</span>
+  </div>
+  <div class="qa-a">
+    <p>Adelie Investment는 <strong>pgvector</strong> 확장을 사용하여 역사적 사례(historical_cases)의 의미적 유사도 검색을 구현합니다. OpenAI의 <code>text-embedding-3-small</code> 모델로 생성된 1536차원 임베딩 벡터를 저장하고, 코사인 거리 기반 ivfflat 인덱스로 검색합니다.</p>
+
+    <h3>1. 모델 정의 -- Vector(1536) 컬럼</h3>
+    <span class="file-path">fastapi/app/models/historical_case.py</span>
+<pre>try:
+    from pgvector.sqlalchemy import Vector
+except ImportError:
+    Vector = None
+
+
+class HistoricalCase(Base):
+    __tablename__ = "historical_cases"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    keywords: Mapped[Optional[dict]] = mapped_column(JSONB)
+    embedding: Mapped[Optional[list]] = mapped_column(
+        Vector(1536) if Vector else None,
+        nullable=True,
+        comment="OpenAI text-embedding-3-small 벡터"
+    )</pre>
+
+    <p><strong>pgvector 미설치 폴백</strong>: <code>try/except ImportError</code>로 pgvector가 없는 환경(로컬 테스트)에서도 모델 로딩이 실패하지 않습니다.</p>
+
+    <h3>2. 마이그레이션 -- 확장 활성화 + 인덱스 생성</h3>
+    <span class="file-path">database/alembic/versions/20260211_pg_trgm_pgvector_mv.py</span>
+<pre># pgvector 확장 활성화
+op.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+
+# embedding 컬럼 추가
+op.execute("""
+    ALTER TABLE historical_cases
+        ADD COLUMN IF NOT EXISTS embedding vector(1536);
+""")
+
+# ivfflat 인덱스 생성 (코사인 거리)
+op.execute("""
+    CREATE INDEX IF NOT EXISTS ix_historical_cases_embedding
+        ON historical_cases USING ivfflat (embedding vector_cosine_ops)
+        WITH (lists = 10);
+""")</pre>
+
+    <h3>3. 벡터 검색 활용</h3>
+    <table>
+      <tr><th>항목</th><th>상세</th></tr>
+      <tr><td>임베딩 모델</td><td>OpenAI <code>text-embedding-3-small</code> (1536차원)</td></tr>
+      <tr><td>인덱스 타입</td><td>ivfflat (Inverted File + Flat)</td></tr>
+      <tr><td>거리 함수</td><td><code>vector_cosine_ops</code> (코사인 유사도)</td></tr>
+      <tr><td>lists 파라미터</td><td>10 (클러스터 수 -- 데이터 규모에 비례하여 설정)</td></tr>
+      <tr><td>사용 사례</td><td>현재 시장 이벤트와 유사한 역사적 사례 자동 매칭</td></tr>
+    </table>
+
+    <h4>검색 쿼리 예시</h4>
+<pre>-- 코사인 유사도 기반 상위 5개 유사 사례 검색
+SELECT id, title, summary,
+       1 - (embedding &lt;=&gt; $1::vector) AS similarity
+FROM historical_cases
+WHERE embedding IS NOT NULL
+ORDER BY embedding &lt;=&gt; $1::vector
+LIMIT 5;</pre>
+
+    <p><code>&lt;=&gt;</code>는 pgvector의 코사인 거리 연산자이며, <code>1 - distance</code>로 유사도(0~1)를 계산합니다.</p>
+
+    <p>참조: <span class="file-ref">fastapi/app/models/historical_case.py</span>, <span class="file-ref">database/alembic/versions/20260211_pg_trgm_pgvector_mv.py</span></p>
+  </div>
+</div>
+
+<!-- Q6 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)">
+    <span class="qa-num">Q6</span>
+    <span class="qa-t">pg_trgm 퍼지 텍스트 검색</span>
+    <span class="qa-tog">+</span>
+  </div>
+  <div class="qa-a">
+    <p><strong>pg_trgm</strong>(trigram) 확장은 텍스트를 3글자 단위로 분해하여 유사도를 계산합니다. 한글 검색에서 정확한 키워드를 모르더라도 부분 일치나 오타를 허용하는 퍼지 검색이 가능합니다.</p>
+
+    <h3>GIN 인덱스 구성</h3>
+    <span class="file-path">database/alembic/versions/20260211_pg_trgm_pgvector_mv.py</span>
+<pre># pg_trgm 확장 활성화
+op.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm;")
+
+# glossary 테이블 GIN 인덱스
+op.execute("""
+    CREATE INDEX IF NOT EXISTS ix_glossary_term_trgm
+        ON glossary USING gin (term gin_trgm_ops);
+""")
+op.execute("""
+    CREATE INDEX IF NOT EXISTS ix_glossary_def_trgm
+        ON glossary USING gin (definition_short gin_trgm_ops);
+""")
+
+# historical_cases 테이블 GIN 인덱스
+op.execute("""
+    CREATE INDEX IF NOT EXISTS ix_historical_cases_title_trgm
+        ON historical_cases USING gin (title gin_trgm_ops);
+""")
+op.execute("""
+    CREATE INDEX IF NOT EXISTS ix_historical_cases_summary_trgm
+        ON historical_cases USING gin (summary gin_trgm_ops);
+""")</pre>
+
+    <h3>인덱스 대상 정리</h3>
+    <table>
+      <tr><th>테이블</th><th>컬럼</th><th>인덱스명</th><th>용도</th></tr>
+      <tr><td>glossary</td><td>term</td><td>ix_glossary_term_trgm</td><td>용어명 퍼지 검색</td></tr>
+      <tr><td>glossary</td><td>definition_short</td><td>ix_glossary_def_trgm</td><td>한줄 정의 퍼지 검색</td></tr>
+      <tr><td>historical_cases</td><td>title</td><td>ix_historical_cases_title_trgm</td><td>사례 제목 퍼지 검색</td></tr>
+      <tr><td>historical_cases</td><td>summary</td><td>ix_historical_cases_summary_trgm</td><td>사례 요약 퍼지 검색</td></tr>
+      <tr><td>historical_cases</td><td>keywords (JSONB)</td><td>ix_historical_cases_keywords</td><td>JSONB GIN 검색</td></tr>
+    </table>
+
+    <h3>Materialized View -- 키워드 빈도 집계</h3>
+    <p>daily_briefings의 top_keywords JSONB를 분해하여 키워드별 출현 빈도와 최근 등장일을 집계하는 Materialized View입니다.</p>
+<pre>CREATE MATERIALIZED VIEW IF NOT EXISTS mv_keyword_frequency AS
+SELECT
+    kw->>'title' AS keyword,
+    COUNT(*) AS frequency,
+    MAX(b.briefing_date) AS last_seen
+FROM daily_briefings b,
+     jsonb_array_elements(b.top_keywords->'keywords') AS kw
+WHERE b.top_keywords IS NOT NULL
+GROUP BY kw->>'title'
+ORDER BY frequency DESC;</pre>
+
+    <p>이 뷰에는 <code>ix_mv_keyword_frequency_keyword</code> UNIQUE 인덱스가 설정되어 있어 <code>REFRESH MATERIALIZED VIEW CONCURRENTLY</code>가 가능합니다.</p>
+
+    <h4>퍼지 검색 쿼리 예시</h4>
+<pre>-- "삼성전" 으로 "삼성전자" 검색 (유사도 0.3 이상)
+SELECT term, definition_short,
+       similarity(term, '삼성전') AS sim
+FROM glossary
+WHERE term % '삼성전'
+ORDER BY sim DESC
+LIMIT 10;</pre>
+
+    <p>참조: <span class="file-ref">database/alembic/versions/20260211_pg_trgm_pgvector_mv.py</span></p>
+  </div>
+</div>
+
+<!-- Q7 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)">
+    <span class="qa-num">Q7</span>
+    <span class="qa-t">Redis 캐싱 전략과 패턴</span>
+    <span class="qa-tog">+</span>
+  </div>
+  <div class="qa-a">
+    <p>Adelie Investment의 Redis 캐싱은 <strong>Cache-Aside (Lazy Loading) 패턴</strong>을 기반으로 합니다. 모든 캐시 연산은 비동기이며, Redis 장애 시에도 서비스가 정상 동작하도록 <strong>Graceful Fallback</strong>이 적용되어 있습니다.</p>
+
+    <h3>캐시 타입별 TTL</h3>
+    <span class="file-path">fastapi/app/services/redis_cache.py</span>
+<pre>TTL_TERM_EXPLANATION = 60 * 60 * 24  # 24시간
+TTL_GLOSSARY = 60 * 60 * 24          # 24시간
+TTL_USER_SETTINGS = 60 * 60 * 2      # 2시간
+TTL_CHAT_MESSAGES = 60 * 60          # 1시간</pre>
+
+    <table>
+      <tr><th>캐시 타입</th><th>TTL</th><th>키 패턴</th><th>용도</th></tr>
+      <tr><td>term_explanation</td><td>24시간</td><td><code>term:{difficulty}:{term}</code></td><td>AI Tutor 용어 설명</td></tr>
+      <tr><td>glossary (by ID)</td><td>24시간</td><td><code>glossary:{term_id}</code></td><td>용어집 조회</td></tr>
+      <tr><td>glossary (by name)</td><td>24시간</td><td><code>glossary:name:{term_name}</code></td><td>용어명 기반 조회</td></tr>
+      <tr><td>user_settings</td><td>2시간</td><td><code>user_settings:{user_id}</code></td><td>사용자 설정</td></tr>
+      <tr><td>chat_messages</td><td>1시간</td><td><code>chat_messages:{session_id}</code></td><td>채팅 세션 메시지</td></tr>
+    </table>
+
+    <h3>네임스페이스 키 스키마</h3>
+    <p>Redis 키는 <span class="file-ref">fastapi/app/core/redis_keys.py</span>에서 정의된 함수로 환경별 네임스페이스를 포함합니다.</p>
+<pre>ENV = os.getenv("ENV", "dev")
+
+def key_term_explanation(difficulty, term):
+    return f"{ENV}:api:tutor:term:{difficulty}:{term.lower()}"
+
+def key_glossary_by_id(term_id):
+    return f"{ENV}:api:glossary:id:{term_id}"
+
+def key_rate_limit(scope, identifier):
+    return f"{ENV}:rl:{scope}:{identifier}"
+
+def key_keywords_today(date_str):
+    return f"{ENV}:api:keywords:today:{date_str}"</pre>
+
+    <h3>Graceful Fallback 패턴</h3>
+    <p>모든 Redis 연산은 <code>_is_available()</code> 체크 후 수행되며, 예외 발생 시 <code>None</code> 또는 <code>False</code>를 반환하여 DB 직접 조회로 폴백합니다.</p>
+<pre>async def get_term_explanation(self, term, difficulty="beginner"):
+    if not self._is_available():
+        return None                    # Redis 미연결 시 캐시 스킵
+    key = f"term:{difficulty}:{term.lower()}"
+    try:
+        data = await self._client.get(key)
+        CACHE_HIT_TOTAL.labels("term_explanation",
+                               "true" if data else "false").inc()
+        return data
+    except Exception as e:
+        logger.warning(f"Redis get_term_explanation error: {e}")
+        return None                    # 오류 시 DB 폴백</pre>
+
+    <h3>파이프라인 캐시 무효화</h3>
+    <p>데이터 파이프라인 실행 후 <code>invalidate_pipeline_caches()</code>로 키워드/브리핑 관련 캐시를 일괄 삭제합니다. SCAN 명령으로 패턴 매칭 삭제를 수행합니다.</p>
+<pre>async def invalidate_pipeline_caches(self) -> int:
+    # api:keywords:today:* 패턴 삭제
+    cursor = b"0"
+    while True:
+        cursor, keys = await self._client.scan(
+            cursor=cursor, match="api:keywords:today:*", count=100
+        )
+        if keys:
+            deleted += await self._client.delete(*keys)
+        if cursor == b"0" or cursor == 0:
+            break</pre>
+
+    <h3>Prometheus 메트릭</h3>
+    <p><code>CACHE_HIT_TOTAL</code> Counter로 캐시별 hit/miss 비율을 추적합니다. 라벨: <code>cache</code>(term_explanation, glossary, user_settings, chat_messages), <code>hit</code>(true/false).</p>
+
+    <p>참조: <span class="file-ref">fastapi/app/services/redis_cache.py</span>, <span class="file-ref">fastapi/app/core/redis_keys.py</span></p>
+  </div>
+</div>
+
+<!-- Q8 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)">
+    <span class="qa-num">Q8</span>
+    <span class="qa-t">Rate Limiting (Redis Lua Script)</span>
+    <span class="qa-tog">+</span>
+  </div>
+  <div class="qa-a">
+    <p>Adelie Investment는 <strong>슬라이딩 윈도우(Sliding Window) 알고리즘</strong>을 Redis ZSET + Lua 스크립트로 구현하여 IP 기반 레이트리밋을 적용합니다. 원자적(atomic) Lua 스크립트로 race condition 없이 정확한 카운팅을 보장합니다.</p>
+
+    <h3>레이트리밋 설정</h3>
+    <table>
+      <tr><th>항목</th><th>값</th></tr>
+      <tr><td>제한</td><td>100 requests / 분 (per IP)</td></tr>
+      <tr><td>윈도우</td><td>60,000ms (1분)</td></tr>
+      <tr><td>제외 경로</td><td>/metrics, /docs, /redoc, /openapi.json, /</td></tr>
+      <tr><td>Redis 장애 시</td><td>레이트리밋 미적용 (graceful fallback)</td></tr>
+    </table>
+
+    <h3>Lua 스크립트 (원자적 슬라이딩 윈도우)</h3>
+    <span class="file-path">fastapi/app/middleware/rate_limit.py</span>
+<pre>SLIDING_WINDOW_LUA = """
+local key = KEYS[1]
+local now = tonumber(ARGV[1])
+local window = tonumber(ARGV[2])
+local limit = tonumber(ARGV[3])
+
+-- 윈도우 밖 오래된 요소 제거
+redis.call('ZREMRANGEBYSCORE', key, 0, now - window)
+-- 현재 윈도우 내 요청 수
+local count = redis.call('ZCARD', key)
+
+if count &lt; limit then
+    -- 허용: 현재 timestamp를 score와 member로 추가
+    redis.call('ZADD', key, now, now)
+    redis.call('EXPIRE', key, math.ceil(window / 1000))
+    return {1, limit - count - 1, 0}  -- {allowed, remaining, 0}
+else
+    -- 거부: 가장 오래된 요청의 만료 시점 계산
+    local oldest = redis.call('ZRANGE', key, 0, 0, 'WITHSCORES')
+    local reset = oldest[2] and (tonumber(oldest[2]) + window)
+                             or (now + window)
+    return {0, 0, reset}  -- {denied, 0, reset_timestamp}
+end
+"""</pre>
+
+    <h3>동작 원리</h3>
+    <ol>
+      <li><strong>ZREMRANGEBYSCORE</strong>: 현재 시간 - 윈도우(60초) 이전의 모든 엔트리 삭제</li>
+      <li><strong>ZCARD</strong>: 남은 엔트리 수 = 현재 윈도우 내 요청 수</li>
+      <li>limit 미만이면 현재 timestamp를 ZADD하고 허용</li>
+      <li>limit 이상이면 거부 + 가장 오래된 요청의 만료 시점(reset)을 반환</li>
+    </ol>
+
+    <h3>응답 헤더</h3>
+    <p>429 (Too Many Requests) 응답 시 다음 헤더를 포함합니다:</p>
+<pre>headers = {
+    "X-RateLimit-Limit": "100",
+    "X-RateLimit-Remaining": "0",
+    "X-RateLimit-Reset": "1709234567",     # Unix timestamp
+    "Retry-After": "23",                    # 초 단위 대기 시간
+}</pre>
+
+    <h3>미들웨어 구현</h3>
+<pre>class RateLimitMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        if request.url.path in _EXEMPT_PATHS:
+            return await call_next(request)
+
+        client_ip = request.client.host if request.client else "unknown"
+        try:
+            cache = await get_redis_cache()
+            if cache.client:
+                now_ms = int(time.time() * 1000)
+                k = key_rate_limit("ip", client_ip)
+                result = await cache.client.eval(
+                    SLIDING_WINDOW_LUA, 1, k,
+                    now_ms, WINDOW_MS, RATE_LIMIT
+                )
+                allowed, remaining, reset_ms = result
+                if not allowed:
+                    # 429 응답 반환
+                    ...
+        except Exception as e:
+            # Redis 장애 시 레이트리밋 미적용
+            logger.warning(f"RateLimit Redis error (fallback=allow): {e}")
+
+        return await call_next(request)</pre>
+
+    <p>참조: <span class="file-ref">fastapi/app/middleware/rate_limit.py</span>, <span class="file-ref">fastapi/app/core/redis_keys.py</span></p>
+  </div>
+</div>
+
+<!-- Q9 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)">
+    <span class="qa-num">Q9</span>
+    <span class="qa-t">Alembic 마이그레이션 관리</span>
+    <span class="qa-tog">+</span>
+  </div>
+  <div class="qa-a">
+    <p>Adelie Investment는 <strong>Alembic</strong>으로 DB 스키마 버전을 관리합니다. 초기 15개 테이블부터 현재 14개 마이그레이션 파일을 거치며 인덱스 최적화, 벡터 검색, 모의투자, 보상 시스템이 순차적으로 추가되었습니다.</p>
+
+    <h3>마이그레이션 히스토리 (14개 파일)</h3>
+    <table>
+      <tr><th>순서</th><th>Revision ID</th><th>설명</th></tr>
+      <tr><td>1</td><td>bf2bf190408c</td><td>초기 스키마 -- 15개 테이블 (users, user_settings, glossary, daily_briefings 등)</td></tr>
+      <tr><td>2</td><td>72a5a3b425a4</td><td>stock_listings 테이블 추가 (KOSPI/KOSDAQ 종목 매핑)</td></tr>
+      <tr><td>3</td><td>20260209_narrative</td><td>daily_narratives, narrative_scenarios 테이블 + 퀴즈 관련 추가</td></tr>
+      <tr><td>4</td><td>20260209_trend</td><td>briefing_stocks에 trend_days, trend_type, catalyst 컬럼 추가</td></tr>
+      <tr><td>5</td><td>20260209_indexes</td><td>FK/GIN/복합/부분 인덱스 30개+ 추가, company_relations 삭제</td></tr>
+      <tr><td>6</td><td>20260211_optimization</td><td>pg_trgm GIN 인덱스, pgvector embedding 컬럼, mv_keyword_frequency</td></tr>
+      <tr><td>7</td><td>20260212_merge</td><td>브랜치 분기 머지 (merge migration)</td></tr>
+      <tr><td>8</td><td>20260213_trading</td><td>limit_orders, watchlists 테이블 + briefing_rewards UNIQUE</td></tr>
+      <tr><td>9</td><td>20260214_rewards</td><td>briefing_rewards, dwell_rewards 테이블 생성</td></tr>
+      <tr><td>10</td><td>20260214_missing</td><td>누락 테이블 보완</td></tr>
+      <tr><td>11</td><td>20260216_fk_cascade</td><td>rewards, limit_orders, watchlists FK CASCADE 규칙 보강</td></tr>
+      <tr><td>12</td><td>20260216_unique_cases</td><td>historical_cases에 (title, event_year) UNIQUE 제약</td></tr>
+      <tr><td>13</td><td>20260217_rewards</td><td>user_portfolios.total_rewards_received 컬럼 추가</td></tr>
+      <tr><td>14</td><td>20260218_unique_portfolio</td><td>user_portfolios.user_id UNIQUE 인덱스 재생성</td></tr>
+    </table>
+
+    <h3>실행 명령어</h3>
+    <table>
+      <tr><th>환경</th><th>명령어</th></tr>
+      <tr><td>로컬 (venv)</td><td><code>cd database && ../.venv/bin/alembic upgrade head</code></td></tr>
+      <tr><td>Docker Dev</td><td><code>docker compose -f docker-compose.dev.yml run db-migrate</code></td></tr>
+      <tr><td>Docker Prod</td><td><code>docker exec adelie-backend-api sh -c "cd /app/database && alembic upgrade head"</code></td></tr>
+      <tr><td>deploy-test</td><td><code>ssh deploy-test 'docker exec adelie-backend-api sh -c "cd /app/database && alembic upgrade head"'</code></td></tr>
+    </table>
+
+    <h3>Merge Migration (브랜치 분기 해결)</h3>
+    <p>20260212_merge_heads는 병렬 개발로 인해 분기된 마이그레이션 체인을 하나로 합칩니다. Alembic에서 두 개 이상의 head가 존재할 때 <code>alembic merge</code>로 생성합니다.</p>
+
+    <h3>마이그레이션 충돌 방지 운영 규칙</h3>
+    <ul>
+      <li>#migration 채널에 알림 후 1명씩 순차 작성</li>
+      <li>revision ID에 날짜 접두사 사용 (<code>20260218_unique_portfolio</code>)</li>
+      <li>down_revision 체인이 선형이 되도록 관리</li>
+    </ul>
+
+    <p>참조: <span class="file-ref">database/alembic/versions/</span></p>
+  </div>
+</div>
+
+<!-- Q10 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)">
+    <span class="qa-num">Q10</span>
+    <span class="qa-t">datapipeline DB 저장 (asyncpg 직접 사용)</span>
+    <span class="qa-tog">+</span>
+  </div>
+  <div class="qa-a">
+    <p>데이터 파이프라인(<code>datapipeline/</code>)은 SQLAlchemy ORM 대신 <strong>asyncpg를 직접 사용</strong>합니다. 파이프라인은 FastAPI와 독립적으로 실행되므로 ORM 모델 로딩 없이 raw SQL로 성능을 최적화합니다.</p>
+
+    <h3>저장 대상 테이블</h3>
+    <table>
+      <tr><th>테이블</th><th>데이터 소스</th><th>저장 방식</th></tr>
+      <tr><td>daily_briefings</td><td>interface_1_curated_context</td><td>UPSERT (날짜 기준)</td></tr>
+      <tr><td>briefing_stocks</td><td>curated_context.selected_stocks</td><td>NOT EXISTS 중복 방지</td></tr>
+      <tr><td>historical_cases</td><td>interface_2_raw_narrative</td><td>INSERT</td></tr>
+      <tr><td>case_matches</td><td>theme + stocks 조합</td><td>INSERT (종목별 매칭)</td></tr>
+      <tr><td>case_stock_relations</td><td>case_id + stocks</td><td>INSERT (main_subject/related)</td></tr>
+    </table>
+
+    <h3>Advisory Lock -- 동시 쓰기 방지</h3>
+    <span class="file-path">datapipeline/db/writer.py</span>
+<pre>async with conn.transaction():
+    # 동일 날짜에 대한 동시 쓰기 방지 (advisory lock)
+    lock_key = int(briefing_date.toordinal()) &amp; 0x7FFFFFFF
+    await conn.execute("SELECT pg_advisory_xact_lock($1)", lock_key)</pre>
+    <p><code>pg_advisory_xact_lock()</code>은 트랜잭션 범위의 배타적 잠금으로, 같은 날짜의 브리핑을 여러 파이프라인 인스턴스가 동시에 저장하는 것을 방지합니다. <code>toordinal()</code>로 날짜를 정수 키로 변환합니다.</p>
+
+    <h3>키워드 누적 (덮어쓰기 방지)</h3>
+<pre>if existing_id:
+    # 기존 top_keywords 읽어서 새 키워드 누적
+    existing_kw_raw = await conn.fetchval(
+        "SELECT top_keywords FROM daily_briefings WHERE id = $1",
+        existing_id,
+    )
+    existing_kw = json.loads(existing_kw_raw) if existing_kw_raw else {"keywords": []}
+
+    new_kw = _build_top_keywords(curated, final, narrative)
+    existing_titles = {k.get("title", "") for k in existing_kw.get("keywords", [])}
+    latest_keywords = [
+        kw for kw in new_kw.get("keywords", [])
+        if kw.get("title", "") and kw.get("title", "") not in existing_titles
+    ]
+    # 최신 키워드를 앞에 배치
+    existing_kw["keywords"] = latest_keywords + existing_keywords</pre>
+    <p>동일 날짜에 파이프라인을 여러 번 실행해도 기존 키워드가 보존되고, 새 키워드가 앞에 추가됩니다.</p>
+
+    <h3>NOT EXISTS 중복 방지 (briefing_stocks)</h3>
+<pre>await conn.executemany(
+    """INSERT INTO briefing_stocks
+       (briefing_id, stock_code, stock_name, ...)
+       SELECT $1,$2::text,$3,...
+       WHERE NOT EXISTS (
+           SELECT 1 FROM briefing_stocks
+           WHERE briefing_id = $1 AND stock_code::text = $2::text
+       )""",
+    rows,
+)</pre>
+    <p>UNIQUE 제약이 없는 환경에서도 <code>NOT EXISTS</code> 서브쿼리로 동일 종목 중복 저장을 방지합니다.</p>
+
+    <h3>DATABASE_URL 폴백</h3>
+<pre>def _get_database_url() -> Optional[str]:
+    url = os.getenv("DATABASE_URL", "")
+    if not url:
+        return None
+    return url.replace("+asyncpg", "")  # asyncpg 드라이버 접미사 제거</pre>
+    <p>DATABASE_URL이 없으면 DB 저장을 건너뛰어(<code>{"skipped": True}</code>) 로컬 테스트(<code>--backend mock</code>) 호환성을 유지합니다.</p>
+
+    <p>참조: <span class="file-ref">datapipeline/db/writer.py</span></p>
+  </div>
+</div>
+
+<!-- Q11 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)">
+    <span class="qa-num">Q11</span>
+    <span class="qa-t">인덱스 전략 (단일, 복합, GIN, Vector)</span>
+    <span class="qa-tog">+</span>
+  </div>
+  <div class="qa-a">
+    <p>Adelie Investment는 4가지 유형의 인덱스를 조합하여 쿼리 성능을 최적화합니다. <strong>단일 컬럼</strong>, <strong>복합</strong>, <strong>GIN (JSONB/trigram)</strong>, <strong>Vector (ivfflat)</strong> 인덱스가 전략적으로 배치되어 있습니다.</p>
+
+    <h3>1. 단일 컬럼 인덱스</h3>
+    <table>
+      <tr><th>테이블</th><th>컬럼</th><th>용도</th></tr>
+      <tr><td>users</td><td>email (UNIQUE), username (UNIQUE)</td><td>로그인, 중복 체크</td></tr>
+      <tr><td>daily_briefings</td><td>briefing_date (UNIQUE)</td><td>날짜별 브리핑 조회</td></tr>
+      <tr><td>glossary</td><td>difficulty, category, term (UNIQUE)</td><td>용어 필터링</td></tr>
+      <tr><td>briefing_stocks</td><td>briefing_id, stock_code</td><td>FK 조회</td></tr>
+      <tr><td>historical_cases</td><td>event_year</td><td>연도별 사례 조회</td></tr>
+      <tr><td>case_matches</td><td>current_keyword, matched_at, matched_case_id</td><td>매칭 검색</td></tr>
+      <tr><td>tutor_sessions</td><td>user_id, session_uuid</td><td>세션 조회</td></tr>
+      <tr><td>tutor_messages</td><td>session_id, created_at</td><td>메시지 이력</td></tr>
+      <tr><td>market_daily_history</td><td>date, index_code</td><td>시장 데이터 조회</td></tr>
+      <tr><td>stock_listings</td><td>stock_name</td><td>종목명 검색</td></tr>
+    </table>
+
+    <h3>2. 복합 인덱스</h3>
+    <span class="file-path">database/alembic/versions/20260209_add_db_optimization_indexes.py</span>
+    <table>
+      <tr><th>테이블</th><th>컬럼</th><th>용도</th></tr>
+      <tr><td>stock_listings</td><td>(market, sector)</td><td>시장+섹터 필터링</td></tr>
+      <tr><td>notifications</td><td>(user_id, created_at)</td><td>사용자별 알림 시간순 조회</td></tr>
+      <tr><td>case_matches</td><td>(current_keyword, matched_at)</td><td>키워드별 최신 매칭</td></tr>
+      <tr><td>simulation_trades</td><td>(portfolio_id, traded_at)</td><td>포트폴리오별 거래 이력</td></tr>
+      <tr><td>market_daily_history</td><td>(date, index_code)</td><td>날짜+지수 복합 조회</td></tr>
+    </table>
+
+    <h3>3. 부분(Partial) 인덱스</h3>
+<pre>-- 활성 튜터 세션만 인덱싱
+CREATE INDEX ix_tutor_sessions_active
+    ON tutor_sessions (user_id) WHERE is_active = true;
+
+-- 읽지 않은 알림만 인덱싱
+CREATE INDEX ix_notifications_unread
+    ON notifications (user_id, created_at) WHERE is_read = false;
+
+-- 대기 중인 보상만 인덱싱
+CREATE INDEX ix_briefing_rewards_pending
+    ON briefing_rewards (user_id, maturity_at) WHERE status = 'pending';</pre>
+
+    <h3>4. GIN 인덱스 (JSONB + trigram)</h3>
+    <table>
+      <tr><th>테이블</th><th>컬럼</th><th>인덱스 타입</th></tr>
+      <tr><td>historical_cases</td><td>keywords (JSONB)</td><td>GIN</td></tr>
+      <tr><td>daily_briefings</td><td>top_keywords (JSONB)</td><td>GIN</td></tr>
+      <tr><td>briefing_stocks</td><td>keywords (JSONB)</td><td>GIN</td></tr>
+      <tr><td>daily_narratives</td><td>glossary (JSONB)</td><td>GIN</td></tr>
+      <tr><td>narrative_scenarios</td><td>sources, related_companies (JSONB)</td><td>GIN</td></tr>
+      <tr><td>broker_reports</td><td>stock_codes (JSONB)</td><td>GIN</td></tr>
+      <tr><td>glossary</td><td>term, definition_short</td><td>GIN (gin_trgm_ops)</td></tr>
+      <tr><td>historical_cases</td><td>title, summary</td><td>GIN (gin_trgm_ops)</td></tr>
+    </table>
+
+    <h3>5. Vector 인덱스 (ivfflat)</h3>
+<pre>CREATE INDEX ix_historical_cases_embedding
+    ON historical_cases USING ivfflat (embedding vector_cosine_ops)
+    WITH (lists = 10);</pre>
+
+    <h3>6. UNIQUE 제약 조건</h3>
+    <table>
+      <tr><th>테이블</th><th>컬럼</th></tr>
+      <tr><td>users</td><td>email, username</td></tr>
+      <tr><td>user_settings</td><td>user_id</td></tr>
+      <tr><td>user_portfolios</td><td>user_id</td></tr>
+      <tr><td>glossary</td><td>term</td></tr>
+      <tr><td>daily_briefings</td><td>briefing_date</td></tr>
+      <tr><td>daily_narratives</td><td>date</td></tr>
+      <tr><td>historical_cases</td><td>(title, event_year)</td></tr>
+      <tr><td>learning_progress</td><td>(user_id, content_type, content_id)</td></tr>
+    </table>
+
+    <p>참조: <span class="file-ref">database/alembic/versions/20260209_add_db_optimization_indexes.py</span>, <span class="file-ref">database/alembic/versions/20260211_pg_trgm_pgvector_mv.py</span></p>
+  </div>
+</div>
+
+<!-- Q12 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)">
+    <span class="qa-num">Q12</span>
+    <span class="qa-t">DB 스크립트와 운영 도구</span>
+    <span class="qa-tog">+</span>
+  </div>
+  <div class="qa-a">
+    <p><span class="file-ref">database/scripts/</span> 디렉토리에는 4개의 운영 스크립트가 있으며, DB 생성부터 데이터 초기화, 종목 동기화, dev 환경 데이터 복제까지 전체 운영 라이프사이클을 커버합니다.</p>
+
+    <h3>1. create_database.py -- DB + 익스텐션 생성</h3>
+    <span class="file-path">database/scripts/create_database.py</span>
+    <p>PostgreSQL에 <code>narrative_invest</code> 데이터베이스를 생성하고, <strong>pgvector</strong>와 <strong>pg_trgm</strong> 익스텐션을 설치합니다.</p>
+<pre>def create_database():
+    # 1. postgres DB에 연결하여 narrative_invest DB 생성
+    cursor.execute(f'CREATE DATABASE {db_name}')
+
+    # 2. 새 DB에 연결하여 익스텐션 설치
+    cursor.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    cursor.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")</pre>
+    <ul>
+      <li>psycopg2 동기 드라이버 사용 (DB 생성은 asyncpg 불가)</li>
+      <li>.env에서 DB_HOST, DB_PORT, DB_USER, DB_PASSWORD 읽기</li>
+      <li>이미 존재하는 DB는 건너뜀</li>
+    </ul>
+
+    <h3>2. reset_db.py -- 데이터 초기화</h3>
+    <span class="file-path">database/scripts/reset_db.py</span>
+    <p>콘텐츠 데이터를 TRUNCATE하고 포트폴리오를 100만원으로 초기화하는 운영 스크립트입니다.</p>
+
+    <table>
+      <tr><th>플래그</th><th>동작</th></tr>
+      <tr><td><code>--force</code></td><td>확인 프롬프트 없이 강제 실행</td></tr>
+      <tr><td><code>--dry-run</code></td><td>실행 없이 현재 상태만 미리보기</td></tr>
+      <tr><td><code>--content-only</code></td><td>콘텐츠만 초기화 (유저/포트폴리오/거래 보존)</td></tr>
+    </table>
+
+    <h4>TRUNCATE 대상 테이블 (FK 의존성 순서)</h4>
+<pre>CONTENT_TABLES = [
+    "tutor_messages",       # FK -> tutor_sessions
+    "tutor_sessions",
+    "notifications",
+    "briefing_rewards",
+    "dwell_rewards",
+    "case_stock_relations", # FK -> historical_cases
+    "case_matches",         # FK -> historical_cases
+    "historical_cases",
+    "briefing_stocks",      # FK -> daily_briefings
+    "daily_briefings",
+    "broker_reports",
+    "learning_progress",
+    "narrative_scenarios",
+    "daily_narratives",
+]
+
+TRADING_TABLES = [
+    "simulation_trades",    # FK -> user_portfolios
+    "portfolio_holdings",   # FK -> user_portfolios
+]</pre>
+
+    <h3>3. init_stock_listings.py -- 종목 코드 동기화</h3>
+    <span class="file-path">database/scripts/init_stock_listings.py</span>
+    <p>pykrx로 KOSPI/KOSDAQ 전체 종목 코드와 업종 정보를 수집하여 <code>stock_listings</code> 테이블에 저장합니다.</p>
+    <ul>
+      <li><strong>수집</strong>: <code>pykrx.stock.get_market_ticker_list()</code>로 종목 코드/이름</li>
+      <li><strong>업종</strong>: <code>get_market_sector_classifications()</code>로 섹터/산업 분류</li>
+      <li><strong>저장</strong>: 기존 종목은 업데이트, 신규 종목은 추가 (UPSERT 패턴)</li>
+      <li><strong>권장</strong>: 최초 1회 실행 + 월 1회 cron 업데이트</li>
+    </ul>
+
+    <h3>4. sync_dev_data.sh -- prod -> dev 데이터 동기화</h3>
+    <span class="file-path">database/scripts/sync_dev_data.sh</span>
+    <p>deploy-test(프로덕션) DB에서 콘텐츠 데이터를 덤프하여 LXD 개발 서버 5대에 복원하는 bash 스크립트입니다.</p>
+
+    <h4>동기화 대상 테이블 (13개, Tier 순서)</h4>
+<pre># Tier 0: 참조 테이블
+stock_listings, market_daily_history, stock_daily_history,
+glossary, company_relations, broker_reports
+
+# Tier 1: 메인 콘텐츠
+daily_briefings, daily_narratives, historical_cases
+
+# Tier 2: 자식 (FK -> Tier 1)
+briefing_stocks, narrative_scenarios,
+case_stock_relations, case_matches</pre>
+
+    <h4>동작 3단계</h4>
+    <ol>
+      <li><strong>pg_dump</strong>: deploy-test에서 <code>--data-only --disable-triggers</code> 옵션으로 데이터만 덤프</li>
+      <li><strong>복원 SQL 래퍼 생성</strong>: TRUNCATE CASCADE + 덤프 데이터 + 시퀀스 리셋을 하나의 트랜잭션으로 래핑</li>
+      <li><strong>LXD 서버 복원</strong>: <code>lxc file push</code> + <code>lxc exec</code>으로 각 서버에 복원</li>
+    </ol>
+
+<pre># 사용법
+bash database/scripts/sync_dev_data.sh              # 전체 5대
+bash database/scripts/sync_dev_data.sh dev-ryejinn  # 단일 서버
+
+# 또는 Makefile 타겟 사용
+make -f lxd/Makefile sync-dev-data</pre>
+
+    <p>참조: <span class="file-ref">database/scripts/create_database.py</span>, <span class="file-ref">database/scripts/reset_db.py</span>, <span class="file-ref">database/scripts/init_stock_listings.py</span>, <span class="file-ref">database/scripts/sync_dev_data.sh</span></p>
+  </div>
+</div>
+
+</div>
+<script>
+function toggle(el){el.closest('.qa-item').classList.toggle('open')}
+function filterQA(q){document.querySelectorAll('.qa-item').forEach(item=>{const t=item.textContent.toLowerCase();item.classList.toggle('hidden',q&&!t.includes(q.toLowerCase()))})}
+</script>
+</body>
+</html>

@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>프론트엔드 — Adelie Investment Tech QA</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'IBM Plex Sans KR',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#ffffff;color:#333333;line-height:1.7;max-width:900px;margin:0 auto;padding:24px}
+a{color:#FF6B00;text-decoration:none}a:hover{text-decoration:underline}
+.nav{margin-bottom:24px}.nav a{font-size:14px;display:inline-flex;align-items:center;gap:6px}
+.header{margin-bottom:24px;border-bottom:2px solid #FF6B00;padding-bottom:16px}
+.header h1{color:#FF6B00;font-size:28px;margin-bottom:4px}
+.header .meta{color:#666666;font-size:14px}
+.search-box{margin-bottom:24px}
+.search-box input{width:100%;padding:12px 16px;background:#f5f5f5;border:1px solid #d0d7de;border-radius:8px;color:#333333;font-size:15px;outline:none}
+.search-box input:focus{border-color:#FF6B00}
+.search-box input::placeholder{color:#aaaaaa}
+.qa-item{margin-bottom:12px;border:1px solid #e0e0e0;border-radius:8px;overflow:hidden;background:#ffffff}
+.qa-item.hidden{display:none}
+.qa-q{display:flex;align-items:center;padding:16px 20px;cursor:pointer;user-select:none;gap:12px;transition:background 0.2s}
+.qa-q:hover{background:#f5f5f5}
+.qa-num{color:#FF6B00;font-weight:700;font-size:14px;min-width:28px}
+.qa-t{flex:1;font-weight:600;font-size:15px}
+.qa-tog{color:#FF6B00;font-size:18px;transition:transform 0.3s}
+.qa-item.open .qa-tog{transform:rotate(45deg)}
+.qa-a{display:none;padding:0 20px 20px;border-top:1px solid #e0e0e0}
+.qa-item.open .qa-a{display:block}
+.qa-a p{margin-bottom:12px}
+.qa-a ul,.qa-a ol{margin:8px 0 12px 24px}
+.qa-a li{margin-bottom:6px}
+.qa-a strong{color:#FF6B00}
+.qa-a h3{color:#FF6B00;font-size:15px;margin:16px 0 8px}
+.qa-a h4{color:#555555;font-size:14px;margin:12px 0 6px}
+pre{background:#f6f8fa;border:1px solid #d0d7de;border-radius:6px;padding:16px;margin:12px 0;overflow-x:auto;font-family:'JetBrains Mono','Fira Code',monospace;font-size:13px;line-height:1.5;color:#24292e}
+.file-path{color:#666666;font-size:12px;margin-bottom:4px;display:block;font-family:monospace}
+.file-ref{color:#0550ae;font-family:monospace;font-size:13px;background:#f6f8fa;padding:2px 6px;border-radius:4px}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px}
+th,td{padding:8px 12px;border:1px solid #d0d7de;text-align:left}
+th{background:#f6f8fa;color:#FF6B00;font-weight:600}
+.mermaid-box{background:#f6f8fa;border:1px solid #d0d7de;border-radius:6px;padding:16px;margin:12px 0;overflow-x:auto;font-family:monospace;font-size:13px;white-space:pre;color:#24292e}
+@media(max-width:480px){body{padding:16px}.header h1{font-size:22px}.qa-q{padding:12px 14px}.qa-a{padding:0 14px 14px}pre{font-size:11px;padding:12px}}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({startOnLoad:true,theme:'default',themeVariables:{primaryColor:'#fff3e6',primaryBorderColor:'#FF6B00',lineColor:'#FF6B00',textColor:'#333'}});</script>
+</head>
+<body>
+<nav class="nav"><a href="index.html">&larr; 목차로 돌아가기</a></nav>
+<div class="header"><h1>프론트엔드</h1><div class="meta">12문항 &middot; Adelie Investment 기술 QA</div></div>
+<div class="search-box"><input type="text" placeholder="이 카테고리에서 검색..." oninput="filterQA(this.value)"></div>
+<div id="qa-list">
+
+<!-- Q1 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)"><span class="qa-num">Q1</span><span class="qa-t">React 19 + Vite 6 선택 이유는?</span><span class="qa-tog">+</span></div>
+  <div class="qa-a">
+    <h3>React 19 선택 이유</h3>
+    <ul>
+      <li><strong>자동 배칭(Automatic Batching) 강화</strong> — 이벤트 핸들러뿐 아니라 Promise, setTimeout, native 이벤트에서도 상태 업데이트가 자동 배칭되어 렌더링 횟수가 감소합니다. SSE 스트리밍으로 실시간 메시지를 받는 튜터 채팅에서 빈번한 <code>setMessages</code> 호출이 자연스럽게 최적화됩니다.</li>
+      <li><strong>useTransition / Suspense 개선</strong> — 17개 페이지를 <code>React.lazy</code>로 코드 스플리팅하고, Suspense의 fallback(PenguinLoading)으로 로딩 UX를 관리합니다.</li>
+      <li><strong>use() Hook 지원</strong> — 비동기 리소스를 선언적으로 처리할 수 있어, Context 6단계 래핑에서의 데이터 전달이 깔끔합니다.</li>
+      <li><strong>서버 컴포넌트 호환</strong> — 향후 SSR/RSC로의 점진적 전환 가능성을 열어둡니다.</li>
+    </ul>
+    <h3>Vite 6 선택 이유</h3>
+    <ul>
+      <li><strong>네이티브 ESM 기반 HMR</strong> — 번들링 없이 모듈 단위로 교체하여 개발 서버 시작과 핫 리로드가 밀리초 단위입니다.</li>
+      <li><strong>Rollup 4 기반 빌드</strong> — <code>manualChunks</code>로 plotly(1.7MB+), framer-motion, chart.js, analytics를 별도 청크로 분리하여 초기 로드를 최적화합니다.</li>
+      <li><strong>PWA 플러그인 통합</strong> — <code>vite-plugin-pwa</code>로 Workbox 기반 서비스 워커, 매니페스트, 캐싱 전략을 하나의 설정으로 관리합니다.</li>
+      <li><strong>Proxy 설정의 간결함</strong> — <code>server.proxy</code>로 개발 시 CORS 없이 백엔드 API를 호출합니다.</li>
+    </ul>
+    <span class="file-path">frontend/package.json:19-20 (react ^19.0.0), frontend/package.json:39 (vite ^6.1.0)</span>
+<pre>{
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.13.0",
+    "framer-motion": "^12.0.0",
+    "plotly.js-basic-dist-min": "^3.3.1",
+    ...
+  },
+  "devDependencies": {
+    "vite": "^6.1.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite-plugin-pwa": "^1.2.0",
+    "tailwindcss": "^3.4.17",
+    ...
+  }
+}</pre>
+  </div>
+</div>
+
+<!-- Q2 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)"><span class="qa-num">Q2</span><span class="qa-t">Context Provider 구조 (7단계 래핑)는?</span><span class="qa-tog">+</span></div>
+  <div class="qa-a">
+    <p>앱 전체를 감싸는 Provider 래핑 순서는 의존성 방향에 따라 결정됩니다. 상위 Provider가 제공하는 값을 하위 Provider가 사용하므로, 순서가 바뀌면 런타임 에러가 발생합니다.</p>
+    <h3>래핑 순서 및 각 역할</h3>
+    <table>
+      <tr><th>#</th><th>Provider</th><th>역할</th><th>의존 대상</th></tr>
+      <tr><td>1</td><td><strong>BrowserRouter</strong></td><td>SPA 라우팅 (react-router-dom v7)</td><td>없음</td></tr>
+      <tr><td>2</td><td><strong>ThemeProvider</strong></td><td>다크모드 토글, <code>document.documentElement.classList</code>에 'dark' 추가/제거</td><td>없음</td></tr>
+      <tr><td>3</td><td><strong>UserProvider</strong></td><td>인증 상태, 사용자 설정(난이도, 북마크, 히스토리), 로그인/로그아웃</td><td>없음</td></tr>
+      <tr><td>4</td><td><strong>AnalyticsProvider</strong></td><td>PostHog + Clarity SDK 초기화, 유저 식별, SPA 페이지뷰 추적</td><td>UserProvider (user 식별)</td></tr>
+      <tr><td>5</td><td><strong>PortfolioProvider</strong></td><td>모의투자 포트폴리오 조회, 거래 실행, 보상 청구</td><td>UserProvider (userId)</td></tr>
+      <tr><td>6</td><td><strong>TutorProvider</strong></td><td>AI 튜터 SSE 채팅, 세션 관리, 시각화 요청, 에이전트 상태</td><td>없음 (독립)</td></tr>
+      <tr><td>7</td><td><strong>TermProvider</strong></td><td>용어 바텀시트 열기/닫기, 튜터 연결</td><td>TutorProvider (openTutor)</td></tr>
+    </table>
+    <p>이후 <strong>ErrorBoundary</strong>(클래스 컴포넌트)와 <strong>ToastProvider</strong>가 감싸며, 글로벌 UI 컴포넌트(TutorModal, TermBottomSheet, ChatFAB, BottomNav)가 AppRoutes와 함께 렌더링됩니다.</p>
+    <span class="file-path">frontend/src/App.jsx:86-115</span>
+<pre>export default function App() {
+  return (
+    &lt;BrowserRouter&gt;
+      &lt;ThemeProvider&gt;
+        &lt;UserProvider&gt;
+          &lt;AnalyticsProvider&gt;
+          &lt;PortfolioProvider&gt;
+          &lt;TutorProvider&gt;
+            &lt;TermProvider&gt;
+              &lt;ErrorBoundary&gt;
+                &lt;ToastProvider&gt;
+                  &lt;div className="app-container"&gt;
+                    &lt;UpdatePrompt /&gt;
+                    &lt;AppRoutes /&gt;
+                    &lt;TermBottomSheet /&gt;
+                    &lt;TutorModal /&gt;
+                    &lt;ChatFAB /&gt;
+                    &lt;BottomNav /&gt;
+                  &lt;/div&gt;
+                &lt;/ToastProvider&gt;
+              &lt;/ErrorBoundary&gt;
+            &lt;/TermProvider&gt;
+          &lt;/TutorProvider&gt;
+          &lt;/PortfolioProvider&gt;
+          &lt;/AnalyticsProvider&gt;
+        &lt;/UserProvider&gt;
+      &lt;/ThemeProvider&gt;
+    &lt;/BrowserRouter&gt;
+  );
+}</pre>
+    <h3>핵심 설계 포인트</h3>
+    <ul>
+      <li><strong>UserProvider</strong>는 앱 시작 시 <code>authApi.getMe()</code>로 쿠키 기반 인증을 복원하고, <code>auth:logout</code> 커스텀 이벤트를 수신하여 401 시 자동 로그아웃합니다.</li>
+      <li><strong>PortfolioProvider</strong>는 <code>userId</code>가 존재할 때만 데이터를 fetch하며, 로그아웃 시 상태를 자동 초기화합니다.</li>
+      <li><strong>TermProvider</strong>는 TutorContext의 <code>openTutor</code>를 호출하므로 반드시 TutorProvider 아래에 위치해야 합니다.</li>
+    </ul>
+
+<div class="mermaid-box"><pre class="mermaid">
+graph TD
+    A[BrowserRouter] --> B[ThemeProvider]
+    B --> C[UserProvider]
+    C --> D[AnalyticsProvider]
+    D --> E[PortfolioProvider]
+    E --> F[TutorProvider]
+    F --> G[TermProvider]
+    G --> H[ErrorBoundary]
+    H --> I[ToastProvider]
+    I --> J[AppRoutes + 글로벌 UI]
+
+    style A fill:#fff3e6,stroke:#FF6B00,color:#333
+    style B fill:#fff3e6,stroke:#FF6B00,color:#333
+    style C fill:#fff3e6,stroke:#FF6B00,color:#333
+    style D fill:#fff3e6,stroke:#FF6B00,color:#333
+    style E fill:#fff3e6,stroke:#FF6B00,color:#333
+    style F fill:#fff3e6,stroke:#FF6B00,color:#333
+    style G fill:#fff3e6,stroke:#FF6B00,color:#333
+    style H fill:#fff3e6,stroke:#FF6B00,color:#333
+    style I fill:#fff3e6,stroke:#FF6B00,color:#333
+    style J fill:#fff3e6,stroke:#FF6B00,color:#333
+</pre></div>
+  </div>
+</div>
+
+<!-- Q3 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)"><span class="qa-num">Q3</span><span class="qa-t">코드 스플리팅(React.lazy) 전략은?</span><span class="qa-tog">+</span></div>
+  <div class="qa-a">
+    <p><strong>15개 페이지</strong>를 <code>React.lazy</code>로 동적 import하여 초기 번들에서 분리합니다. 사용자가 해당 라우트에 접근할 때 비로소 해당 페이지의 JS 청크를 다운로드합니다.</p>
+    <h3>lazy-loaded 페이지 목록</h3>
+    <span class="file-path">frontend/src/App.jsx:21-35</span>
+<pre>const Auth = lazy(() =&gt; import('./pages/Auth'));
+const Landing = lazy(() =&gt; import('./pages/Landing'));
+const Home = lazy(() =&gt; import('./pages/Home'));
+const Education = lazy(() =&gt; import('./pages/Education'));
+const ActivityArchive = lazy(() =&gt; import('./pages/ActivityArchive'));
+const Search = lazy(() =&gt; import('./pages/Search'));
+const Comparison = lazy(() =&gt; import('./pages/Comparison'));
+const Story = lazy(() =&gt; import('./pages/Story'));
+const Companies = lazy(() =&gt; import('./pages/Companies'));
+const History = lazy(() =&gt; import('./pages/History'));
+const Narrative = lazy(() =&gt; import('./pages/Narrative'));
+const Notifications = lazy(() =&gt; import('./pages/Notifications'));
+const Portfolio = lazy(() =&gt; import('./pages/Portfolio'));
+const Profile = lazy(() =&gt; import('./pages/Profile'));
+const TutorChat = lazy(() =&gt; import('./pages/TutorChat'));</pre>
+    <h3>Suspense fallback</h3>
+    <p>모든 lazy 라우트는 <code>&lt;Suspense fallback={&lt;PageLoader /&gt;}&gt;</code>로 감싸져 있으며, 로딩 중에는 펭귄 마스코트 애니메이션(<code>PenguinLoading</code>)이 표시됩니다.</p>
+    <span class="file-path">frontend/src/App.jsx:50-56, 60</span>
+<pre>function PageLoader() {
+  return (
+    &lt;div className="min-h-screen bg-background flex items-center justify-center"&gt;
+      &lt;PenguinLoading size="sm" /&gt;
+    &lt;/div&gt;
+  );
+}
+
+// AppRoutes 내부
+&lt;Suspense fallback={&lt;PageLoader /&gt;}&gt;
+  &lt;Routes&gt; ... &lt;/Routes&gt;
+&lt;/Suspense&gt;</pre>
+    <h3>추가 lazy loading</h3>
+    <ul>
+      <li><strong>Plotly</strong>: <code>ResponsivePlotly.jsx</code>에서 <code>React.lazy(() =&gt; Promise.all([import('react-plotly.js/factory'), import('plotly.js-basic-dist-min')]))</code>로 1.7MB+ Plotly를 on-demand 로딩합니다.</li>
+      <li><strong>ECharts</strong>: <code>ResponsiveEChart.jsx</code>에서 <code>React.lazy(() =&gt; import('echarts-for-react'))</code>로 별도 청크 분리합니다.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- Q4 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)"><span class="qa-num">Q4</span><span class="qa-t">다크모드(CSS 변수 + class 전략) 구현은?</span><span class="qa-tog">+</span></div>
+  <div class="qa-a">
+    <p>Tailwind CSS의 <strong><code>darkMode: 'class'</code></strong> 전략을 사용하여, <code>&lt;html&gt;</code> 요소에 <code>dark</code> 클래스를 토글하면 전체 테마가 전환됩니다. 모든 색상은 CSS 변수로 정의되어, 다크모드 전환 시 변수 값만 바뀌므로 개별 컴포넌트 수정이 필요 없습니다.</p>
+    <h3>1단계: CSS 변수 정의 (globals.css)</h3>
+    <span class="file-path">frontend/src/styles/globals.css:8-69</span>
+<pre>/* Light Mode (Default) */
+:root {
+  --color-background: #ffffff;
+  --color-surface: #f8f9fa;
+  --color-surface-elevated: #ffffff;
+  --color-border: #e5e7eb;
+  --color-text-primary: #1a1a1a;
+  --color-text-secondary: #6b7280;
+  --color-primary: #FF6B00;
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-header-bg: rgba(255, 255, 255, 0.72);
+  ...
+}
+
+/* Dark Mode */
+.dark {
+  --color-background: #0f0f0f;
+  --color-surface: #1a1a1a;
+  --color-surface-elevated: #262626;
+  --color-border: #333333;
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #a3a3a3;
+  --glass-bg: rgba(30, 30, 30, 0.7);
+  --glass-header-bg: rgba(15, 15, 15, 0.72);
+  ...
+}</pre>
+    <h3>2단계: Tailwind에서 CSS 변수 바인딩</h3>
+    <span class="file-path">frontend/tailwind.config.js:7-37</span>
+<pre>darkMode: 'class',
+theme: {
+  extend: {
+    colors: {
+      background: 'var(--color-background)',
+      surface: {
+        DEFAULT: 'var(--color-surface)',
+        elevated: 'var(--color-surface-elevated)',
+      },
+      text: {
+        primary: 'var(--color-text-primary)',
+        secondary: 'var(--color-text-secondary)',
+        muted: 'var(--color-text-muted)',
+      },
+      primary: { DEFAULT: '#FF6B00', hover: '#e55f00', ... },
+      ...
+    },
+  },
+},</pre>
+    <h3>3단계: ThemeContext에서 class 토글</h3>
+    <span class="file-path">frontend/src/contexts/ThemeContext.jsx:5-29</span>
+<pre>export function ThemeProvider({ children }) {
+  const [isDarkMode, setIsDarkMode] = useState(false);
+
+  useEffect(() =&gt; {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [isDarkMode]);
+  ...
+}</pre>
+    <h3>Glassmorphism 지원</h3>
+    <p>헤더, 네비게이션, 카드에 <code>backdrop-filter: blur()</code>를 적용하며, 다크/라이트 각각 별도의 glass 변수 세트를 사용합니다.</p>
+<pre>.glass-header {
+  background: var(--glass-header-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}</pre>
+  </div>
+</div>
+
+<!-- Q5 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)"><span class="qa-num">Q5</span><span class="qa-t">모바일 반응형 최적화 (360~440px)는?</span><span class="qa-tog">+</span></div>
+  <div class="qa-a">
+    <p>모바일 퍼스트(max-width: 480px) 설계이며, Galaxy S25(360px)부터 iPhone 16 Pro Max(440px)까지 다양한 기기를 지원합니다. 핵심 기법은 세 가지입니다.</p>
+    <h3>1. max-w-mobile (480px 제한)</h3>
+    <p>Tailwind 커스텀 유틸리티 <code>max-w-mobile</code>을 정의하여 모든 컨테이너와 모달이 480px를 초과하지 않도록 제한합니다.</p>
+    <span class="file-path">frontend/tailwind.config.js:38-40</span>
+<pre>maxWidth: {
+  mobile: '480px',
+},</pre>
+    <span class="file-path">frontend/src/styles/globals.css:90-91</span>
+<pre>.container {
+  @apply max-w-mobile mx-auto px-4;
+}</pre>
+    <p>실제 사용 예: 모달, 카드, 바텀시트, FAB 등 모든 주요 UI에 적용됩니다.</p>
+<pre>&lt;!-- 내러티브 페이지 --&gt;
+&lt;div className="mx-auto w-full max-w-mobile px-4 pb-3 pt-4"&gt;
+&lt;!-- 트레이드 모달 --&gt;
+&lt;div className="bg-surface-elevated rounded-t-3xl w-full max-w-mobile p-6"&gt;
+&lt;!-- 용어 바텀시트 --&gt;
+&lt;div className="fixed inset-x-0 bottom-0 z-50 max-w-mobile mx-auto"&gt;</pre>
+    <h3>2. CSS clamp()로 유동 타이포그래피</h3>
+    <p>360~440px 범위에서 폰트 크기가 뷰포트에 비례하여 유동적으로 변합니다. 최소/최대 크기를 보장하면서 중간에는 vw 단위로 스케일합니다.</p>
+    <span class="file-path">frontend/src/pages/Landing.jsx:213, Home.jsx:76-78, Narrative.jsx:743-912</span>
+<pre>&lt;!-- Landing 제목 --&gt;
+&lt;h1 className="text-[clamp(2rem,8.2vw,2.35rem)] font-extrabold"&gt;
+
+&lt;!-- Home 잔고 표시 --&gt;
+&lt;p className="text-[clamp(1.9rem,9.2vw,2.25rem)] font-extrabold"&gt;
+  &lt;span className="text-[clamp(0.95rem,4.5vw,1.1rem)]"&gt;원&lt;/span&gt;
+
+&lt;!-- Narrative 섹션 제목들 --&gt;
+&lt;h2 className="text-[clamp(1.45rem,5.6vw,2rem)] font-extrabold"&gt;
+&lt;h2 className="text-[clamp(1.75rem,7vw,2.55rem)] font-black"&gt;
+&lt;h2 className="text-[clamp(1.55rem,6vw,2.1rem)] font-extrabold"&gt;</pre>
+    <h3>3. safe-area-inset 대응</h3>
+    <p>노치, 홈 인디케이터가 있는 기기에서 UI가 가려지지 않도록 <code>env(safe-area-inset-bottom)</code>을 활용합니다.</p>
+    <span class="file-path">frontend/src/components/layout/ChatFAB.jsx:32-33</span>
+<pre>&lt;div className={`fixed inset-x-0 z-50 pointer-events-none ${
+  isSelectionMode
+    ? 'bottom-[max(7rem,env(safe-area-inset-bottom))]'
+    : 'bottom-[max(5.5rem,env(safe-area-inset-bottom))]'
+}`}&gt;</pre>
+  </div>
+</div>
+
+<!-- Q6 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)"><span class="qa-num">Q6</span><span class="qa-t">API 클라이언트 구현은? (authFetch, 401 refresh retry, CSRF)</span><span class="qa-tog">+</span></div>
+  <div class="qa-a">
+    <p>중앙 집중식 HTTP 클라이언트(<code>client.js</code>)가 인증, CSRF, 에러 핸들링을 모두 처리합니다. 도메인별 API 모듈(auth.js, portfolio.js, narrative.js 등)은 이 클라이언트를 호출하기만 합니다.</p>
+    <h3>핵심 흐름: authFetch</h3>
+    <span class="file-path">frontend/src/api/client.js:82-108</span>
+<pre>/** 인증 포함 fetch (HttpOnly 쿠키 자동 전송, 401 시 refresh 후 1회 재시도) */
+export const authFetch = async (url, options = {}, canRetry = true) =&gt; {
+  const response = await fetch(url, {
+    ...options,
+    credentials: 'include',  // HttpOnly 쿠키 자동 전송
+    headers: mergeHeaders(options.headers, options.method),
+  });
+
+  if (response.status !== 401 || !canRetry || isAuthBypassRequest(url)) {
+    return response;
+  }
+
+  // 401 → refresh token으로 access token 갱신 후 1회 재시도
+  try {
+    await refreshAccessToken();
+    const retried = await fetch(url, {
+      ...options,
+      credentials: 'include',
+      headers: mergeHeaders(options.headers, options.method),
+    });
+    if (retried.status === 401) {
+      handleAuthFailure();  // 재시도도 실패 → 강제 로그아웃
+    }
+    return retried;
+  } catch (error) {
+    handleAuthFailure();
+    throw error;
+  }
+};</pre>
+    <h3>CSRF Double-Submit Cookie 패턴</h3>
+    <p>POST/PUT/PATCH/DELETE 요청 시 쿠키에서 <code>csrfToken</code>을 읽어 <code>X-CSRF-Token</code> 헤더에 자동 포함합니다.</p>
+    <span class="file-path">frontend/src/api/client.js:32-45</span>
+<pre>const getCsrfToken = () =&gt; {
+  const match = document.cookie.match(/(?:^|;\s*)csrfToken=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : '';
+};
+
+const mergeHeaders = (headers, method) =&gt; {
+  const merged = new Headers(headers || {});
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method?.toUpperCase())) {
+    const csrf = getCsrfToken();
+    if (csrf) merged.set('X-CSRF-Token', csrf);
+  }
+  return merged;
+};</pre>
+    <h3>Refresh Token 동시 요청 처리</h3>
+    <p><code>refreshPromise</code> 싱글턴으로 동시에 여러 401이 발생해도 refresh 요청은 1회만 실행됩니다.</p>
+    <span class="file-path">frontend/src/api/client.js:61-79</span>
+<pre>let refreshPromise = null;
+
+const refreshAccessToken = async () =&gt; {
+  if (refreshPromise) return refreshPromise;  // 이미 진행 중이면 재사용
+  refreshPromise = (async () =&gt; {
+    const response = await fetch(`${API_BASE_URL}/api/v1/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!response.ok) {
+      const message = await readErrorMessage(response);
+      throw new Error(message);
+    }
+  })().finally(() =&gt; { refreshPromise = null; });
+  return refreshPromise;
+};</pre>
+    <h3>래퍼 함수</h3>
+    <p><code>fetchJson</code>(GET), <code>postJson</code>(POST), <code>deleteJson</code>(DELETE) 세 래퍼가 있으며 모두 <code>authFetch</code>를 내부에서 호출합니다.</p>
+    <h3>강제 로그아웃</h3>
+    <p>refresh 실패 시 <code>window.dispatchEvent(new Event('auth:logout'))</code>를 발행하여 UserContext가 수신하고 <code>setUser(null)</code>로 상태를 초기화합니다.</p>
+  </div>
+</div>
+
+<!-- Q7 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)"><span class="qa-num">Q7</span><span class="qa-t">SSE 클라이언트 구현은? (ReadableStream, 이벤트 타입 파싱)</span><span class="qa-tog">+</span></div>
+  <div class="qa-a">
+    <p>AI 튜터 채팅은 <strong>Server-Sent Events(SSE)</strong>를 <code>fetch + ReadableStream</code>으로 직접 구현합니다. <code>EventSource</code> API 대신 fetch를 사용하는 이유는 POST 요청에 JSON body를 보내야 하고, HttpOnly 쿠키 인증(<code>credentials: 'include'</code>)이 필요하기 때문입니다.</p>
+    <h3>SSE 스트리밍 핵심 코드</h3>
+    <span class="file-path">frontend/src/contexts/TutorContext.jsx:163-408</span>
+<pre>// authFetch로 SSE 연결 (POST + credentials)
+const response = await authFetch(`${API_BASE_URL}/api/v1/tutor/chat`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  signal: controller.signal,  // AbortController로 취소 가능
+  body: JSON.stringify({
+    session_id: sessionId,
+    message,
+    difficulty,
+    context_type: ...,
+    context_id: ...,
+  }),
+});
+
+// ReadableStream으로 청크 단위 읽기
+const reader = response.body.getReader();
+const decoder = new TextDecoder();
+let buffer = '';
+
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+
+  buffer += decoder.decode(value, { stream: true });
+  const lines = buffer.split('\n');
+  buffer = lines.pop() || '';  // 마지막 미완성 라인은 버퍼에 유지
+
+  for (const line of lines) {
+    if (!trimmed.startsWith('data: ')) continue;
+    const data = JSON.parse(trimmed.slice(6));
+    // 이벤트 타입별 처리...
+  }
+}</pre>
+    <h3>8가지 SSE 이벤트 타입</h3>
+    <table>
+      <tr><th>이벤트</th><th>처리 내용</th></tr>
+      <tr><td><strong>thinking</strong></td><td>에이전트 상태를 '질문 분석 중'으로 표시</td></tr>
+      <tr><td><strong>tool_call</strong></td><td>도구 실행 상태 표시 (검색, 비교, 시각화 등)</td></tr>
+      <tr><td><strong>viz_intent</strong></td><td>차트 생성 시작 알림 메시지 삽입</td></tr>
+      <tr><td><strong>clarification</strong></td><td>사용자에게 선택지를 보여주는 확인 질문</td></tr>
+      <tr><td><strong>text_delta</strong></td><td>텍스트 스트리밍 청크 누적 + 120ms 간격 플러시</td></tr>
+      <tr><td><strong>visualization</strong></td><td>차트 데이터(JSON/HTML) 메시지 삽입</td></tr>
+      <tr><td><strong>sources</strong> / <strong>done</strong></td><td>출처 정보 첨부, 스트리밍 완료 처리</td></tr>
+      <tr><td><strong>error</strong></td><td>에러 메시지 표시, 에이전트 상태를 error로 전환</td></tr>
+    </table>
+    <h3>성능 최적화: 120ms 플러시 간격</h3>
+    <p>매 청크마다 <code>setMessages</code>를 호출하면 과도한 리렌더링이 발생합니다. <code>STREAM_FLUSH_INTERVAL_MS = 120</code>으로 설정하여 최소 120ms 간격으로만 UI를 갱신합니다.</p>
+<pre>const STREAM_FLUSH_INTERVAL_MS = 120;
+let lastFlushTime = Date.now();
+let pendingFlush = false;
+
+// 청크 수신 후
+if (pendingFlush &amp;&amp; Date.now() - lastFlushTime &gt;= STREAM_FLUSH_INTERVAL_MS) {
+  setMessages((prev) =&gt;
+    prev.map((m) =&gt; (m.id === assistantMsgId ? { ...m, content: fullContent } : m))
+  );
+  lastFlushTime = Date.now();
+  pendingFlush = false;
+}</pre>
+    <h3>AbortController로 생성 중단</h3>
+    <span class="file-path">frontend/src/contexts/TutorContext.jsx:497-499</span>
+<pre>const stopGeneration = useCallback(() =&gt; {
+  abortControllerRef.current?.abort();
+}, []);</pre>
+  </div>
+</div>
+
+<!-- Q8 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)"><span class="qa-num">Q8</span><span class="qa-t">PWA 구현은? (Workbox, manifest, service worker 캐싱 전략)</span><span class="qa-tog">+</span></div>
+  <div class="qa-a">
+    <p><code>vite-plugin-pwa</code>를 통해 Workbox 기반 서비스 워커를 자동 생성합니다. 별도 sw.js를 작성하지 않고 <code>vite.config.js</code>에서 모든 PWA 설정을 선언적으로 관리합니다.</p>
+    <h3>Web App Manifest</h3>
+    <span class="file-path">frontend/vite.config.js:16-70</span>
+<pre>manifest: {
+  name: '아델리에',
+  short_name: '아델리에',
+  description: 'AI 기반 금융 학습 플랫폼 - 역사는 반복된다',
+  theme_color: '#FF6B00',
+  background_color: '#ffffff',
+  display: 'standalone',      // 네이티브 앱처럼 표시
+  orientation: 'portrait',    // 세로 고정
+  start_url: '/',
+  lang: 'ko',
+  categories: ['finance', 'education'],
+  shortcuts: [
+    { name: '오늘의 키워드', url: '/', icons: [...] },
+  ],
+  icons: [
+    { src: '/images/icon-192.png', sizes: '192x192', type: 'image/png' },
+    { src: '/images/icon-512.png', sizes: '512x512', type: 'image/png' },
+    { src: '/images/icon-512.png', sizes: '512x512', purpose: 'maskable' },
+  ],
+  screenshots: [
+    { src: '/images/screenshot-home.png', sizes: '430x932', form_factor: 'narrow' },
+    { src: '/images/screenshot-narrative.png', sizes: '430x932', form_factor: 'narrow' },
+  ],
+},</pre>
+    <h3>Workbox 캐싱 전략 (3가지)</h3>
+    <table>
+      <tr><th>패턴</th><th>전략</th><th>용도</th></tr>
+      <tr><td><code>/assets/*.{js,css}</code></td><td><strong>StaleWhileRevalidate</strong></td><td>정적 에셋 (Vite content hash로 stale 방지), 7일 만료</td></tr>
+      <tr><td><code>/api/v1/tutor/*</code></td><td><strong>NetworkOnly</strong></td><td>SSE 튜터 채팅 (캐싱 불가, 실시간 스트림)</td></tr>
+      <tr><td><code>/api/v1/*</code></td><td><strong>NetworkFirst</strong></td><td>일반 API (최신 우선, 오프라인 폴백용), 5분 만료</td></tr>
+    </table>
+    <span class="file-path">frontend/vite.config.js:72-103</span>
+<pre>workbox: {
+  skipWaiting: true,
+  cleanupOutdatedCaches: true,
+  clientsClaim: true,
+  globPatterns: ['**/*.html', '**/*.css', 'assets/index-*.js'],
+  navigateFallback: '/index.html',
+  navigateFallbackDenylist: [/^\/api\//],
+  runtimeCaching: [
+    {
+      urlPattern: /\/assets\/.+\.(js|css)$/,
+      handler: 'StaleWhileRevalidate',
+      options: { cacheName: 'static-assets', expiration: { maxEntries: 60, maxAgeSeconds: 604800 } },
+    },
+    {
+      urlPattern: /^https?:\/\/.*\/api\/v1\/tutor\/.*/i,
+      handler: 'NetworkOnly',
+    },
+    {
+      urlPattern: /^https?:\/\/.*\/api\/v1\/.*/i,
+      handler: 'NetworkFirst',
+      options: { cacheName: 'api-cache', expiration: { maxEntries: 50, maxAgeSeconds: 300 } },
+    },
+  ],
+},</pre>
+    <h3>SW 업데이트 프롬프트</h3>
+    <p><code>registerType: 'autoUpdate'</code>로 새 SW 감지 시 <code>UpdatePrompt</code> 배너가 표시되고, 사용자가 수동으로 업데이트를 트리거합니다.</p>
+    <span class="file-path">frontend/src/components/common/UpdatePrompt.jsx:5-26</span>
+<pre>import { useRegisterSW } from 'virtual:pwa-register/react';
+
+export default function UpdatePrompt() {
+  const {
+    needRefresh: [needRefresh],
+    updateServiceWorker,
+  } = useRegisterSW();
+
+  if (!needRefresh) return null;
+
+  return (
+    &lt;div className="fixed top-0 inset-x-0 z-50 bg-primary text-white text-center py-2"&gt;
+      새 버전이 있습니다.
+      &lt;button onClick={() =&gt; updateServiceWorker(true)} className="underline ml-2 font-bold"&gt;
+        지금 업데이트
+      &lt;/button&gt;
+    &lt;/div&gt;
+  );
+}</pre>
+  </div>
+</div>
+
+<!-- Q9 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)"><span class="qa-num">Q9</span><span class="qa-t">차트 시각화 라이브러리 선택은?</span><span class="qa-tog">+</span></div>
+  <div class="qa-a">
+    <p>세 가지 차트 라이브러리를 <strong>용도별로 분리</strong>하여 사용합니다.</p>
+    <h3>라이브러리 선택 기준</h3>
+    <table>
+      <tr><th>라이브러리</th><th>용도</th><th>번들 전략</th><th>특징</th></tr>
+      <tr><td><strong>Plotly.js</strong></td><td>AI 튜터 동적 차트 생성</td><td>manualChunks 분리 (~1.7MB)</td><td>LangGraph 에이전트가 JSON 스펙을 생성하면 프론트에서 렌더링</td></tr>
+      <tr><td><strong>ECharts</strong></td><td>대시보드 정적 차트</td><td>React.lazy 로딩</td><td>Canvas 렌더링, 대량 데이터 성능 우수</td></tr>
+      <tr><td><strong>Chart.js</strong></td><td>간단한 바/라인 차트</td><td>manualChunks 분리</td><td>경량, 교육 컨텐츠의 단순 시각화</td></tr>
+    </table>
+    <h3>ResponsivePlotly: AI 차트 전용 래퍼</h3>
+    <p>Plotly는 React.lazy로 on-demand 로딩하며, <code>ResizeObserver</code>로 컨테이너 폭을 감지하여 높이를 비율/고정 모드로 자동 조절합니다.</p>
+    <span class="file-path">frontend/src/components/charts/ResponsivePlotly.jsx:1-10</span>
+<pre>const Plot = React.lazy(() =&gt;
+  Promise.all([
+    import('react-plotly.js/factory'),
+    import('plotly.js-basic-dist-min'),     // 경량 빌드 사용
+  ]).then(([{ default: createPlotlyComponent }, Plotly]) =&gt; ({
+    default: createPlotlyComponent(Plotly.default || Plotly),
+  }))
+);</pre>
+    <h3>ResponsiveEChart: 대시보드 차트 래퍼</h3>
+    <p>ECharts도 동일한 패턴(lazy + ResizeObserver + ErrorBoundary)을 적용합니다.</p>
+    <span class="file-path">frontend/src/components/charts/ResponsiveEChart.jsx:3-4</span>
+<pre>const EChart = React.lazy(() =&gt; import('echarts-for-react'));</pre>
+    <h3>차트 컴포넌트 전체 목록 (16개)</h3>
+    <p><code>components/charts/</code> 디렉토리에 16개 차트 컴포넌트가 있으며, ChartContainer, ComparisonBarChart, ComparisonMatrix, MarketIndexCard, MetricGauge, PlotlyChart, ResponsiveEChart, ResponsivePlotly, RiskIndicatorChart, SimilarityChart, SingleBarChart, StepPlaceholder, TopMoversChart, TrendLineChart 등을 포함합니다.</p>
+  </div>
+</div>
+
+<!-- Q10 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)"><span class="qa-num">Q10</span><span class="qa-t">빌드 최적화는? (manualChunks 분리)</span><span class="qa-tog">+</span></div>
+  <div class="qa-a">
+    <p>Vite의 Rollup <code>manualChunks</code>를 사용하여 대용량 라이브러리를 별도 청크로 분리합니다. 이를 통해 메인 번들 크기를 줄이고, 변경되지 않는 라이브러리는 브라우저 캐시를 장기간 유지합니다.</p>
+    <h3>manualChunks 설정</h3>
+    <span class="file-path">frontend/vite.config.js:133-147</span>
+<pre>build: {
+  outDir: 'dist',
+  sourcemap: true,
+  rollupOptions: {
+    output: {
+      manualChunks: {
+        analytics: ['posthog-js'],                           // PostHog (~40KB)
+        plotly: ['react-plotly.js', 'plotly.js-basic-dist-min'], // Plotly (~1.7MB)
+        'framer-motion': ['framer-motion'],                  // 애니메이션 (~130KB)
+        chartjs: ['chart.js', 'react-chartjs-2'],            // Chart.js (~70KB)
+      },
+    },
+  },
+},</pre>
+    <h3>분리 효과</h3>
+    <table>
+      <tr><th>청크 이름</th><th>포함 패키지</th><th>분리 이유</th></tr>
+      <tr><td><strong>plotly</strong></td><td>react-plotly.js + plotly.js-basic-dist-min</td><td>1.7MB+, 튜터 차트 페이지에서만 사용 (대부분 사용자 미도달)</td></tr>
+      <tr><td><strong>framer-motion</strong></td><td>framer-motion</td><td>~130KB, 애니메이션 라이브러리로 모든 페이지 전환에서 사용하지만 초기 로드에는 불필요</td></tr>
+      <tr><td><strong>chartjs</strong></td><td>chart.js + react-chartjs-2</td><td>~70KB, 포트폴리오/교육 차트에서만 사용</td></tr>
+      <tr><td><strong>analytics</strong></td><td>posthog-js</td><td>~40KB, 분석 SDK는 메인 번들과 분리하여 UX에 영향 없도록</td></tr>
+    </table>
+    <h3>추가 최적화 기법</h3>
+    <ul>
+      <li><strong>React.lazy</strong>: 15개 페이지 + Plotly/ECharts를 동적 import로 on-demand 로딩</li>
+      <li><strong>plotly.js-basic-dist-min</strong>: 전체 plotly.js(3.5MB) 대신 basic 축소판(~1.7MB) 사용</li>
+      <li><strong>sourcemap: true</strong>: 프로덕션 에러 디버깅용 소스맵 포함 (Sentry 등 연동 대비)</li>
+      <li><strong>Workbox precache</strong>: <code>globPatterns</code>으로 HTML/CSS/핵심 JS만 프리캐시하여 SW 캐시 크기 제한</li>
+    </ul>
+  </div>
+</div>
+
+<!-- Q11 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)"><span class="qa-num">Q11</span><span class="qa-t">컴포넌트 구조는? (9개 도메인, 56개 컴포넌트)</span><span class="qa-tog">+</span></div>
+  <div class="qa-a">
+    <p><code>frontend/src/components/</code> 디렉토리에 총 <strong>56개</strong> 컴포넌트 파일이 <strong>9개 도메인 폴더</strong>로 분류되어 있습니다.</p>
+    <h3>디렉토리 구조</h3>
+    <table>
+      <tr><th>폴더</th><th>컴포넌트 수</th><th>역할</th><th>주요 컴포넌트</th></tr>
+      <tr><td><strong>charts/</strong></td><td>16</td><td>차트 시각화</td><td>ResponsivePlotly, ResponsiveEChart, ComparisonBarChart, TrendLineChart, SimilarityChart, MetricGauge</td></tr>
+      <tr><td><strong>common/</strong></td><td>11</td><td>범용 재사용</td><td>ErrorBoundary, Toast, PenguinLoading, AnalyticsProvider, UpdatePrompt, SplashScreen</td></tr>
+      <tr><td><strong>domain/</strong></td><td>8</td><td>비즈니스 로직</td><td>KeywordCard, CompanyCard, TermBottomSheet, TradeModal, OpinionPoll, ThinkingPoint</td></tr>
+      <tr><td><strong>tutor/</strong></td><td>5</td><td>AI 튜터 채팅</td><td>TutorModal, TutorPanel, ChatInput, MessageBubble, SessionSidebar</td></tr>
+      <tr><td><strong>trading/</strong></td><td>5</td><td>모의투자</td><td>StockDetail, StockSearch, MiniChart, Leaderboard, RewardCard</td></tr>
+      <tr><td><strong>layout/</strong></td><td>4</td><td>앱 레이아웃</td><td>AppHeader, BottomNav, ChatFAB, DashboardHeader</td></tr>
+      <tr><td><strong>calendar/</strong></td><td>3</td><td>학습 활동 달력</td><td>MonthlyActivityCalendar, ActivityDayList, ActivityDayDashboard</td></tr>
+      <tr><td><strong>quiz/</strong></td><td>2</td><td>일일 퀴즈</td><td>DailyQuizModal, DailyQuizMissionCard</td></tr>
+      <tr><td><strong>narrative/</strong></td><td>1</td><td>내러티브 보상</td><td>RewardResultScreen</td></tr>
+    </table>
+    <h3>설계 원칙</h3>
+    <ul>
+      <li><strong>관심사 분리</strong>: common(재사용) vs domain(비즈니스) vs layout(구조)를 명확히 구분합니다.</li>
+      <li><strong>글로벌 컴포넌트</strong>: TutorModal, TermBottomSheet, ChatFAB, BottomNav는 App.jsx에서 직접 렌더링되어 모든 페이지에서 접근 가능합니다.</li>
+      <li><strong>index.js 배럴 파일</strong>: <code>components/index.js</code>에서 자주 사용되는 컴포넌트를 일괄 export하여 import 경로를 단순화합니다.</li>
+    </ul>
+    <h3>API 모듈 구조 (7개 파일)</h3>
+    <p><code>src/api/</code> 디렉토리에 도메인별로 분리: <code>client.js</code>(공통), <code>auth.js</code>, <code>narrative.js</code>, <code>portfolio.js</code>, <code>learning.js</code>, <code>quiz.js</code>, <code>index.js</code>(배럴)</p>
+  </div>
+</div>
+
+<!-- Q12 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)"><span class="qa-num">Q12</span><span class="qa-t">라우팅 구조와 ProtectedRoute 패턴은?</span><span class="qa-tog">+</span></div>
+  <div class="qa-a">
+    <p>React Router v7을 사용하며, <strong>17개 라우트</strong>(공개 2 + 보호 14 + 와일드카드 1)를 선언적으로 관리합니다.</p>
+    <h3>ProtectedRoute 컴포넌트</h3>
+    <p>인증 상태를 확인하여 미인증 시 Landing 페이지로 리다이렉트합니다. 로딩 중에는 PenguinLoading을 표시하여 깜빡임을 방지합니다.</p>
+    <span class="file-path">frontend/src/App.jsx:43-48</span>
+<pre>function ProtectedRoute({ children }) {
+  const { user, isLoading } = useUser();
+  if (isLoading) return &lt;PageLoader /&gt;;       // 인증 확인 중 로딩
+  if (!user?.isAuthenticated) return &lt;Navigate to="/" replace /&gt;;  // 미인증 → 랜딩
+  return children;
+}</pre>
+    <h3>전체 라우트 맵</h3>
+    <table>
+      <tr><th>경로</th><th>페이지</th><th>보호</th><th>비고</th></tr>
+      <tr><td><code>/</code></td><td>Landing</td><td>공개</td><td>앱 진입점</td></tr>
+      <tr><td><code>/auth</code></td><td>Auth</td><td>공개</td><td>로그인/회원가입</td></tr>
+      <tr><td><code>/home</code></td><td>Home</td><td>보호</td><td>메인 대시보드</td></tr>
+      <tr><td><code>/education</code></td><td>Education</td><td>보호</td><td>교육 허브</td></tr>
+      <tr><td><code>/education/archive</code></td><td>ActivityArchive</td><td>보호</td><td>학습 활동 아카이브</td></tr>
+      <tr><td><code>/search</code></td><td>Search</td><td>보호</td><td>케이스 검색</td></tr>
+      <tr><td><code>/comparison</code></td><td>Comparison</td><td>보호</td><td>과거-현재 비교</td></tr>
+      <tr><td><code>/story</code></td><td>Story</td><td>보호</td><td>스토리 뷰</td></tr>
+      <tr><td><code>/companies</code></td><td>Companies</td><td>보호</td><td>종목 목록</td></tr>
+      <tr><td><code>/history</code></td><td>History</td><td>보호</td><td>히스토리</td></tr>
+      <tr><td><code>/narrative/:caseId</code></td><td>Narrative</td><td>보호</td><td>내러티브 상세 (동적 파라미터)</td></tr>
+      <tr><td><code>/case/:caseId</code></td><td>CaseRedirect</td><td>보호</td><td>레거시 URL → /narrative/:caseId 리다이렉트</td></tr>
+      <tr><td><code>/notifications</code></td><td>Notifications</td><td>보호</td><td>알림</td></tr>
+      <tr><td><code>/portfolio</code></td><td>Portfolio</td><td>보호</td><td>모의투자 포트폴리오</td></tr>
+      <tr><td><code>/profile</code></td><td>Profile</td><td>보호</td><td>프로필 설정</td></tr>
+      <tr><td><code>/tutor</code></td><td>TutorChat</td><td>보호</td><td>AI 튜터 전체 화면</td></tr>
+      <tr><td><code>*</code></td><td>Navigate</td><td>-</td><td>매칭 안 되는 모든 경로 → <code>/</code>로 리다이렉트</td></tr>
+    </table>
+    <h3>레거시 호환</h3>
+    <p><code>/landing</code>과 <code>/onboarding</code>은 <code>&lt;Navigate to="/" replace /&gt;</code>로 리다이렉트하고, <code>/case/:caseId</code>는 <code>CaseRedirect</code> 컴포넌트를 통해 <code>/narrative/:caseId</code>로 영구 리다이렉트합니다.</p>
+    <span class="file-path">frontend/src/App.jsx:37-41</span>
+<pre>function CaseRedirect() {
+  const { caseId } = useParams();
+  if (!caseId) return &lt;Navigate to="/search" replace /&gt;;
+  return &lt;Navigate to={`/narrative/${caseId}`} replace /&gt;;
+}</pre>
+    <h3>인증 흐름 요약</h3>
+    <ol>
+      <li>앱 시작 → UserProvider가 <code>authApi.getMe()</code>로 쿠키 기반 인증 복원</li>
+      <li><code>isLoading</code> 동안 PageLoader(펭귄 애니메이션) 표시</li>
+      <li>인증 성공 → ProtectedRoute 통과, 인증 실패 → Landing(<code>/</code>)으로 리다이렉트</li>
+      <li>API 호출 중 401 → client.js가 refresh 시도 → 실패 시 <code>auth:logout</code> 이벤트 → UserProvider가 상태 초기화</li>
+    </ol>
+  </div>
+</div>
+
+</div>
+<script>
+function toggle(el){el.closest('.qa-item').classList.toggle('open')}
+function filterQA(q){document.querySelectorAll('.qa-item').forEach(i=>{i.classList.toggle('hidden',q&&!i.textContent.toLowerCase().includes(q.toLowerCase()))})}
+</script>
+</body>
+</html>

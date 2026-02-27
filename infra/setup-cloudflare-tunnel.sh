@@ -52,6 +52,8 @@ credentials-file: $HOME/.cloudflared/$TUNNEL_ID.json
 ingress:
   - hostname: demo.adelie-invest.com
     service: http://localhost:80
+  - hostname: qa.adelie-invest.com
+    service: http://localhost:8503
   - service: http_status:404
 EOF
 

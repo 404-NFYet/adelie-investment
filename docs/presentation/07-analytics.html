@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>분석 시스템 — Adelie Investment Tech QA</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'IBM Plex Sans KR',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#ffffff;color:#333333;line-height:1.7;max-width:900px;margin:0 auto;padding:24px}
+a{color:#FF6B00;text-decoration:none}a:hover{text-decoration:underline}
+.nav{margin-bottom:24px}.nav a{font-size:14px;display:inline-flex;align-items:center;gap:6px}
+.header{margin-bottom:24px;border-bottom:2px solid #FF6B00;padding-bottom:16px}
+.header h1{color:#FF6B00;font-size:28px;margin-bottom:4px}
+.header .meta{color:#666666;font-size:14px}
+.search-box{margin-bottom:24px}
+.search-box input{width:100%;padding:12px 16px;background:#f5f5f5;border:1px solid #d0d7de;border-radius:8px;color:#333333;font-size:15px;outline:none}
+.search-box input:focus{border-color:#FF6B00}
+.search-box input::placeholder{color:#aaaaaa}
+.qa-item{margin-bottom:12px;border:1px solid #e0e0e0;border-radius:8px;overflow:hidden;background:#ffffff}
+.qa-item.hidden{display:none}
+.qa-q{display:flex;align-items:center;padding:16px 20px;cursor:pointer;user-select:none;gap:12px;transition:background 0.2s}
+.qa-q:hover{background:#f5f5f5}
+.qa-num{color:#FF6B00;font-weight:700;font-size:14px;min-width:28px}
+.qa-t{flex:1;font-weight:600;font-size:15px}
+.qa-tog{color:#FF6B00;font-size:18px;transition:transform 0.3s}
+.qa-item.open .qa-tog{transform:rotate(45deg)}
+.qa-a{display:none;padding:0 20px 20px;border-top:1px solid #e0e0e0}
+.qa-item.open .qa-a{display:block}
+.qa-a p{margin-bottom:12px}
+.qa-a ul,.qa-a ol{margin:8px 0 12px 24px}
+.qa-a li{margin-bottom:6px}
+.qa-a strong{color:#FF6B00}
+.qa-a h3{color:#FF6B00;font-size:15px;margin:16px 0 8px}
+.qa-a h4{color:#555555;font-size:14px;margin:12px 0 6px}
+pre{background:#f6f8fa;border:1px solid #d0d7de;border-radius:6px;padding:16px;margin:12px 0;overflow-x:auto;font-family:'JetBrains Mono','Fira Code',monospace;font-size:13px;line-height:1.5;color:#24292e}
+.file-path{color:#666666;font-size:12px;margin-bottom:4px;display:block;font-family:monospace}
+.file-ref{color:#0550ae;font-family:monospace;font-size:13px;background:#f6f8fa;padding:2px 6px;border-radius:4px}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px}
+th,td{padding:8px 12px;border:1px solid #d0d7de;text-align:left}
+th{background:#f6f8fa;color:#FF6B00;font-weight:600}
+.mermaid-box{background:#f6f8fa;border:1px solid #d0d7de;border-radius:6px;padding:16px;margin:12px 0;overflow-x:auto;font-family:monospace;font-size:13px;white-space:pre;color:#24292e}
+@media(max-width:480px){body{padding:16px}.header h1{font-size:22px}.qa-q{padding:12px 14px}.qa-a{padding:0 14px 14px}pre{font-size:11px;padding:12px}}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({startOnLoad:true,theme:'default',themeVariables:{primaryColor:'#fff3e6',primaryBorderColor:'#FF6B00',lineColor:'#FF6B00',textColor:'#333'}});</script>
+</head>
+<body>
+<nav class="nav"><a href="index.html">&larr; 목차로 돌아가기</a></nav>
+<div class="header"><h1>분석 시스템</h1><div class="meta">8문항 &middot; Adelie Investment 기술 QA</div></div>
+<div class="search-box"><input type="text" placeholder="이 카테고리에서 검색..." oninput="filterQA(this.value)"></div>
+<div id="qa-list">
+
+<!-- Q1 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)"><span class="qa-num">Q1</span><span class="qa-t">PostHog 자체 호스팅 선택 이유와 구성은?</span><span class="qa-tog">+</span></div>
+  <div class="qa-a">
+    <p>PostHog를 SaaS가 아닌 자체 호스팅으로 운영하는 이유는 크게 세 가지입니다.</p>
+    <h3>자체 호스팅 선택 이유</h3>
+    <ul>
+      <li><strong>데이터 주권</strong>: 금융 교육 플랫폼 특성상 사용자 행동 데이터(포트폴리오 조회, 거래 패턴 등)가 민감할 수 있어, 외부 서버로 전송하지 않고 내부에서 관리</li>
+      <li><strong>비용 절감</strong>: PostHog Cloud는 이벤트 볼륨에 따라 과금되지만, 자체 호스팅은 서버 비용만 발생하므로 데모/학습 플랫폼 환경에서 경제적</li>
+      <li><strong>커스터마이징 자유도</strong>: 세션 레코딩, 히트맵, 피처 플래그 등 전체 기능을 제한 없이 활용 가능</li>
+    </ul>
+    <h3>인프라 구성</h3>
+    <table>
+      <tr><th>항목</th><th>값</th></tr>
+      <tr><td>서버</td><td>LXD 컨테이너 (analytics, 10.10.10.17)</td></tr>
+      <tr><td>컨테이너 수</td><td>24개 (PostHog 풀스택: ClickHouse, Kafka, PostgreSQL, Redis, worker 등)</td></tr>
+      <tr><td>스토리지</td><td>HDD bind mount (/mnt/posthog-data, sda2 1.7TB)</td></tr>
+      <tr><td>외부 URL</td><td>https://analytics.adelie-invest.com (Cloudflare Tunnel)</td></tr>
+      <tr><td>Project Token</td><td>phc_FyygPemUq7s5fJieYE3MrM1GUTLK8pLVhRZD8JjX8wv</td></tr>
+      <tr><td>타임존</td><td>Asia/Seoul</td></tr>
+    </table>
+    <p>프론트엔드에서는 <code>VITE_POSTHOG_KEY</code> 환경변수로 토큰을 주입하고, <code>VITE_POSTHOG_HOST</code>로 자체 호스팅 서버를 지정합니다.</p>
+    <span class="file-path">frontend/src/utils/analyticsProviders.js:9-10</span>
+<pre>const POSTHOG_KEY = import.meta.env.VITE_POSTHOG_KEY || '';
+const POSTHOG_HOST = import.meta.env.VITE_POSTHOG_HOST || 'https://analytics.adelie-invest.com';</pre>
+  </div>
+</div>
+
+<!-- Q2 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)"><span class="qa-num">Q2</span><span class="qa-t">MS Clarity 히트맵/세션 리플레이 활용은?</span><span class="qa-tog">+</span></div>
+  <div class="qa-a">
+    <p>Microsoft Clarity는 PostHog와 병행하여 <strong>히트맵</strong>과 <strong>세션 리플레이</strong>에 특화된 분석을 제공합니다. PostHog가 이벤트 기반 분석에 강점이 있다면, Clarity는 시각적 UX 분석에 최적화되어 있어 상호 보완적으로 사용합니다.</p>
+    <h3>활용 영역</h3>
+    <ul>
+      <li><strong>히트맵</strong>: 키워드 카드, 내러티브 스텝, 모의투자 버튼 등 모바일 UI 요소의 실제 터치/클릭 분포 분석</li>
+      <li><strong>세션 리플레이</strong>: 사용자가 내러티브 7단계를 어느 단계에서 이탈하는지, 튜터 채팅 진입 경로가 어디인지 시각적으로 확인</li>
+      <li><strong>Rage Click 감지</strong>: 반응이 없는 UI 요소를 반복 터치하는 패턴을 자동으로 감지하여 UX 문제점 파악</li>
+    </ul>
+    <h3>초기화 방식</h3>
+    <p>Clarity SDK는 <code>@microsoft/clarity</code> npm 패키지를 dynamic import하여 로드합니다. <code>VITE_CLARITY_ID</code> 환경변수가 없으면 초기화를 건너뛰어, 개발 환경에서는 Clarity가 작동하지 않습니다.</p>
+    <span class="file-path">frontend/src/utils/analyticsProviders.js:18-27</span>
+<pre>export async function initClarity() {
+  if (!CLARITY_ID) return;
+  try {
+    const { default: Clarity } = await import('@microsoft/clarity');
+    Clarity.init(CLARITY_ID);
+    clarityReady = true;
+  } catch (err) {
+    console.warn('[Analytics] Clarity 초기화 실패:', err);
+  }
+}</pre>
+  </div>
+</div>
+
+<!-- Q3 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)"><span class="qa-num">Q3</span><span class="qa-t">프론트엔드 이벤트 트래킹 구조는?</span><span class="qa-tog">+</span></div>
+  <div class="qa-a">
+    <p>이벤트 트래킹은 <strong>Bridge 패턴</strong>으로 설계되어 있습니다. 하나의 <code>trackEvent()</code> 호출이 최대 3개 목적지로 동시 전송됩니다.</p>
+    <h3>3계층 전송 구조</h3>
+    <table>
+      <tr><th>목적지</th><th>역할</th><th>메커니즘</th></tr>
+      <tr><td>자체 DB</td><td>상세 이벤트 저장</td><td>배치 전송 (/api/v1/analytics/events)</td></tr>
+      <tr><td>Clarity</td><td>히트맵/세션 리플레이</td><td>clarityEvent() fire-and-forget</td></tr>
+      <tr><td>PostHog</td><td>이벤트 분석/퍼널</td><td>posthogEvent() fire-and-forget</td></tr>
+    </table>
+    <h3>배치 전송 메커니즘</h3>
+    <p>자체 DB로의 전송은 배치 처리를 사용합니다. 이벤트를 큐에 쌓아두고, <strong>10개 도달 시 즉시</strong> 또는 <strong>5초 타이머 만료 시</strong> 일괄 전송합니다. 전송 실패 시에는 큐에 재추가하되, 최대 100개로 제한하여 메모리 누수를 방지합니다.</p>
+    <span class="file-path">frontend/src/utils/analytics.js:45-72</span>
+<pre>export function trackEvent(eventType, data = {}) {
+  const event = {
+    user_id: getCurrentUserId(),
+    session_id: getSessionId(),
+    event_type: eventType,
+    event_data: {
+      ...data,
+      timestamp: Date.now(),
+      page: window.location.pathname,
+    },
+  };
+
+  eventQueue.push(event);
+
+  // 외부 분석 도구로 전달 (fire-and-forget)
+  clarityEvent(eventType);
+  posthogEvent(eventType, { ...data, page: window.location.pathname });
+
+  // 배치 사이즈 도달 시 즉시 전송
+  if (eventQueue.length >= BATCH_SIZE) {
+    flushEvents();
+  }
+
+  // 타이머 설정 (아직 없으면)
+  if (!flushTimer) {
+    flushTimer = setTimeout(flushEvents, FLUSH_INTERVAL);
+  }
+}</pre>
+    <h3>주요 이벤트 유형</h3>
+    <ul>
+      <li><code>page_view</code>, <code>page_duration</code> — 페이지 조회 및 체류 시간</li>
+      <li><code>narrative_step</code> — 내러티브 단계 진행</li>
+      <li><code>trade_execute</code> — 모의투자 거래 실행</li>
+      <li><code>tutor_ask</code>, <code>tutor_selection_submit</code> — AI 튜터 질문</li>
+      <li><code>term_click</code> — 용어 클릭</li>
+      <li><code>narrative_selection_cta_exposed</code>, <code>narrative_selection_ask_click</code> — CTA 노출/클릭</li>
+    </ul>
+    <p>페이지 이탈 시(<code>beforeunload</code>) 또는 탭이 비활성화될 때(<code>visibilitychange</code>) 즉시 flush하여 데이터 유실을 최소화합니다.</p>
+    <span class="file-path">frontend/src/utils/analytics.js:124-131</span>
+<pre>if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', flushEvents);
+  window.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      flushEvents();
+    }
+  });
+}</pre>
+  </div>
+</div>
+
+<!-- Q4 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)"><span class="qa-num">Q4</span><span class="qa-t">PostHog 사용자 식별(identify)은 어떻게 하나?</span><span class="qa-tog">+</span></div>
+  <div class="qa-a">
+    <p>PostHog의 사용자 식별은 <code>AnalyticsProvider</code> 컴포넌트가 <code>UserContext</code>의 user 상태를 감시하여 자동으로 처리합니다.</p>
+    <h3>식별 흐름</h3>
+    <ol>
+      <li><strong>로그인 시</strong>: <code>user.isAuthenticated</code>가 true가 되면 <code>identifyUser(user)</code> 호출</li>
+      <li><strong>PostHog identify</strong>: <code>posthogInstance.identify(String(user.id), { email, nickname })</code>로 사용자 ID를 PostHog에 등록</li>
+      <li><strong>로그아웃 시</strong>: <code>resetUser()</code>가 <code>posthogInstance.reset()</code>을 호출하여 익명 상태로 복귀</li>
+    </ol>
+    <p>이 패턴 덕분에 로그인 전 익명 이벤트와 로그인 후 이벤트가 <strong>자동으로 병합(merge)</strong>되어, 한 사용자의 전체 여정을 추적할 수 있습니다.</p>
+    <span class="file-path">frontend/src/utils/analyticsProviders.js:55-69</span>
+<pre>export function identifyUser(user) {
+  if (!user?.id) return;
+  try {
+    if (clarityReady &amp;&amp; window.clarity) {
+      window.clarity('identify', String(user.id));
+    }
+  } catch {}
+  try {
+    if (posthogInstance) {
+      posthogInstance.identify(String(user.id), {
+        email: user.email || undefined,
+        nickname: user.nickname || undefined,
+      });
+    }
+  } catch {}
+}</pre>
+    <span class="file-path">frontend/src/components/common/AnalyticsProvider.jsx:30-37</span>
+<pre>// 유저 식별 (로그인/로그아웃)
+useEffect(() => {
+  if (user?.isAuthenticated) {
+    identifyUser(user);
+  } else {
+    resetUser();
+  }
+}, [user]);</pre>
+    <h3>전달 속성(Person Properties)</h3>
+    <table>
+      <tr><th>속성</th><th>설명</th><th>용도</th></tr>
+      <tr><td>distinct_id</td><td>user.id (문자열)</td><td>사용자 고유 식별</td></tr>
+      <tr><td>email</td><td>가입 이메일</td><td>코호트 분석</td></tr>
+      <tr><td>nickname</td><td>사용자 닉네임</td><td>세션 리플레이 식별</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- Q5 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)"><span class="qa-num">Q5</span><span class="qa-t">Clarity 이벤트 추적은 어떻게 하나?</span><span class="qa-tog">+</span></div>
+  <div class="qa-a">
+    <p>Clarity는 PostHog와 달리 커스텀 속성(properties) 전달이 불가능하므로, <strong>이벤트 이름만</strong> 전송하는 단순한 인터페이스를 사용합니다.</p>
+    <h3>커스텀 이벤트 (clarityEvent)</h3>
+    <p><code>window.clarity('event', eventType)</code>을 호출하여 Clarity 대시보드에서 특정 이벤트가 발생한 세션을 필터링할 수 있게 합니다.</p>
+    <span class="file-path">frontend/src/utils/analyticsProviders.js:86-91</span>
+<pre>export function clarityEvent(eventType) {
+  if (!clarityReady || !window.clarity) return;
+  try {
+    window.clarity('event', eventType);
+  } catch {}
+}</pre>
+    <h3>SPA 페이지뷰 (clarityPageView)</h3>
+    <p>React Router의 <code>location.pathname</code> 변경을 감지하여 <code>page_view</code> 이벤트를 Clarity에 전송합니다. Clarity는 기본적으로 SPA 라우트 변경을 자동 감지하지만, 명시적 이벤트도 전송하여 정확성을 보장합니다.</p>
+    <span class="file-path">frontend/src/utils/analyticsProviders.js:106-112</span>
+<pre>export function clarityPageView() {
+  if (!clarityReady || !window.clarity) return;
+  try {
+    // Clarity는 SPA 변경을 자동 감지하지만, 명시적 이벤트도 전송
+    window.clarity('event', 'page_view');
+  } catch {}
+}</pre>
+    <h3>사용자 식별</h3>
+    <p>Clarity의 identify는 PostHog와 동일한 시점에 호출되며, user.id를 문자열로 전달합니다. 이를 통해 Clarity 대시보드에서 특정 사용자의 세션 리플레이를 찾을 수 있습니다.</p>
+<pre>window.clarity('identify', String(user.id));</pre>
+  </div>
+</div>
+
+<!-- Q6 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)"><span class="qa-num">Q6</span><span class="qa-t">분석 시스템이 앱 성능에 미치는 영향은?</span><span class="qa-tog">+</span></div>
+  <div class="qa-a">
+    <p>분석 시스템은 <strong>"분석이 앱을 깨뜨리면 안 된다"</strong>는 원칙 아래 여러 겹의 방어 메커니즘을 갖추고 있습니다.</p>
+    <h3>성능 최적화 전략</h3>
+    <table>
+      <tr><th>전략</th><th>구현</th><th>효과</th></tr>
+      <tr><td>Dynamic Import</td><td><code>await import('posthog-js')</code>, <code>await import('@microsoft/clarity')</code></td><td>초기 번들에 미포함, 별도 청크로 분리</td></tr>
+      <tr><td>코드 스플리팅</td><td>Vite manualChunks: <code>analytics: ['posthog-js']</code></td><td>메인 JS와 분리된 analytics 청크</td></tr>
+      <tr><td>try/catch 래핑</td><td>모든 analytics 함수에 빈 catch 블록</td><td>SDK 오류가 앱 로직에 전파되지 않음</td></tr>
+      <tr><td>Null 가드</td><td><code>if (!posthogInstance) return</code>, <code>if (!clarityReady) return</code></td><td>SDK 미초기화 시 즉시 반환</td></tr>
+      <tr><td>Fire-and-forget</td><td>외부 도구 호출은 await 없이 실행</td><td>비동기 처리로 UI 블로킹 제로</td></tr>
+    </table>
+    <span class="file-path">frontend/vite.config.js:136-144</span>
+<pre>rollupOptions: {
+  output: {
+    manualChunks: {
+      analytics: ['posthog-js'],
+      plotly: ['react-plotly.js', 'plotly.js-basic-dist-min'],
+      'framer-motion': ['framer-motion'],
+      chartjs: ['chart.js', 'react-chartjs-2'],
+    },
+  },
+},</pre>
+    <h3>환경변수 기반 비활성화</h3>
+    <p><code>VITE_POSTHOG_KEY</code>나 <code>VITE_CLARITY_ID</code>가 빈 문자열이면 SDK 초기화 자체를 건너뛰므로, 개발 환경에서는 분석 오버헤드가 완전히 제거됩니다.</p>
+    <span class="file-path">frontend/src/utils/analyticsProviders.js:1-6</span>
+<pre>/**
+ * analyticsProviders.js - Clarity + PostHog SDK 래퍼
+ *
+ * 외부 분석 도구 통합 레이어. analytics.js에서 호출.
+ * 모든 호출은 fire-and-forget + try/catch (분석이 앱을 깨뜨리면 안 됨)
+ */</pre>
+    <h3>배치 전송으로 네트워크 부하 최소화</h3>
+    <p>자체 DB 전송은 개별 이벤트마다 API를 호출하지 않고, 10개 또는 5초 단위로 배치 처리하여 네트워크 요청을 대폭 줄입니다.</p>
+  </div>
+</div>
+
+<!-- Q7 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)"><span class="qa-num">Q7</span><span class="qa-t">PostHog 자동 캡처(autocapture) 설정은?</span><span class="qa-tog">+</span></div>
+  <div class="qa-a">
+    <p>PostHog의 <strong>autocapture</strong> 기능은 <code>true</code>로 활성화되어 있어, 별도의 코드 계측 없이도 사용자의 클릭, 폼 입력, 페이지 이동 등을 자동으로 수집합니다.</p>
+    <h3>설정 내용</h3>
+    <span class="file-path">frontend/src/utils/analyticsProviders.js:36-46</span>
+<pre>posthog.init(POSTHOG_KEY, {
+  api_host: POSTHOG_HOST,
+  capture_pageview: false,   // SPA — 수동 페이지뷰
+  autocapture: true,         // 클릭/폼 자동 수집
+  persistence: 'localStorage',
+  session_recording: {
+    maskAllInputs: true,
+    maskTextSelector: '[data-ph-mask]',
+  },
+});
+posthogInstance = posthog;</pre>
+    <h3>주요 설정 항목 해설</h3>
+    <table>
+      <tr><th>옵션</th><th>값</th><th>이유</th></tr>
+      <tr><td>capture_pageview</td><td>false</td><td>SPA이므로 React Router 변경 시 수동으로 <code>$pageview</code> 캡처 (자동 캡처 시 초기 1회만 발생)</td></tr>
+      <tr><td>autocapture</td><td>true</td><td>버튼 클릭, 링크 클릭, 폼 제출 등 사용자 인터랙션을 자동으로 수집</td></tr>
+      <tr><td>persistence</td><td>localStorage</td><td>쿠키 대신 localStorage에 distinct_id 저장 (쿠키 동의 불필요)</td></tr>
+    </table>
+    <h3>수동 페이지뷰의 동작 방식</h3>
+    <p><code>AnalyticsProvider</code>가 <code>location.pathname</code> 변경을 감지하면 <code>posthogPageView()</code>를 호출하여 PostHog에 <code>$pageview</code> 이벤트를 전송합니다.</p>
+    <span class="file-path">frontend/src/utils/analyticsProviders.js:117-122</span>
+<pre>export function posthogPageView() {
+  if (!posthogInstance) return;
+  try {
+    posthogInstance.capture('$pageview');
+  } catch {}
+}</pre>
+    <p>이렇게 하면 <code>/</code> &rarr; <code>/narrative/123</code> &rarr; <code>/education</code> 같은 SPA 내비게이션이 모두 정확히 추적됩니다.</p>
+  </div>
+</div>
+
+<!-- Q8 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)"><span class="qa-num">Q8</span><span class="qa-t">세션 레코딩 + 입력 마스킹 설정은?</span><span class="qa-tog">+</span></div>
+  <div class="qa-a">
+    <p>PostHog의 세션 레코딩은 사용자의 화면 인터랙션을 녹화하여, 실제 사용 패턴을 시각적으로 분석할 수 있게 합니다. 그러나 금융 교육 플랫폼 특성상 <strong>개인정보 보호</strong>가 중요하므로 입력 마스킹을 적극 적용합니다.</p>
+    <h3>마스킹 설정</h3>
+    <span class="file-path">frontend/src/utils/analyticsProviders.js:41-44</span>
+<pre>session_recording: {
+  maskAllInputs: true,
+  maskTextSelector: '[data-ph-mask]',
+},</pre>
+    <table>
+      <tr><th>설정</th><th>효과</th></tr>
+      <tr><td><strong>maskAllInputs: true</strong></td><td>모든 &lt;input&gt;, &lt;textarea&gt; 입력값이 녹화에서 '***'로 대체됨. 비밀번호, 이메일, 거래 금액 등 민감 정보 보호</td></tr>
+      <tr><td><strong>maskTextSelector: '[data-ph-mask]'</strong></td><td><code>data-ph-mask</code> 속성이 있는 요소의 텍스트 콘텐츠도 마스킹. 특정 영역(예: 포트폴리오 잔고, 수익률)을 선택적으로 숨길 때 사용</td></tr>
+    </table>
+    <h3>PostHog 팀 설정 (서버 측)</h3>
+    <table>
+      <tr><th>설정</th><th>값</th></tr>
+      <tr><td>session_recording</td><td>true (전체 세션 녹화 활성)</td></tr>
+      <tr><td>heatmaps</td><td>true</td></tr>
+      <tr><td>autocapture</td><td>true</td></tr>
+      <tr><td>timezone</td><td>Asia/Seoul</td></tr>
+    </table>
+    <h3>Clarity와의 역할 분담</h3>
+    <ul>
+      <li><strong>PostHog 세션 레코딩</strong>: 특정 사용자/이벤트 기반 필터링이 강력. 예: "퀴즈 오답 후 이탈한 사용자" 세션만 조회</li>
+      <li><strong>Clarity 세션 리플레이</strong>: Rage Click, Dead Click, 스크롤 깊이 등 UX 문제 자동 감지. 히트맵 시각화에 특화</li>
+    </ul>
+    <p>두 도구를 병행하여 <strong>정량 분석(PostHog)</strong>과 <strong>정성 분석(Clarity)</strong>을 모두 커버합니다.</p>
+  </div>
+</div>
+
+</div>
+<script>
+function toggle(el){el.closest('.qa-item').classList.toggle('open')}
+function filterQA(q){document.querySelectorAll('.qa-item').forEach(i=>{i.classList.toggle('hidden',q&&!i.textContent.toLowerCase().includes(q.toLowerCase()))})}
+</script>
+</body>
+</html>

@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI/LLM 활용 — Adelie Investment Tech QA</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'IBM Plex Sans KR',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#ffffff;color:#333333;line-height:1.7;max-width:900px;margin:0 auto;padding:24px}
+a{color:#FF6B00;text-decoration:none}a:hover{text-decoration:underline}
+.nav{margin-bottom:24px}.nav a{font-size:14px;display:inline-flex;align-items:center;gap:6px}
+.header{margin-bottom:24px;border-bottom:2px solid #FF6B00;padding-bottom:16px}
+.header h1{color:#FF6B00;font-size:28px;margin-bottom:4px}
+.header .meta{color:#666666;font-size:14px}
+.search-box{margin-bottom:24px}
+.search-box input{width:100%;padding:12px 16px;background:#f5f5f5;border:1px solid #d0d7de;border-radius:8px;color:#333333;font-size:15px;outline:none}
+.search-box input:focus{border-color:#FF6B00}
+.search-box input::placeholder{color:#aaaaaa}
+.qa-item{margin-bottom:12px;border:1px solid #e0e0e0;border-radius:8px;overflow:hidden;background:#ffffff}
+.qa-item.hidden{display:none}
+.qa-q{display:flex;align-items:center;padding:16px 20px;cursor:pointer;user-select:none;gap:12px;transition:background 0.2s}
+.qa-q:hover{background:#f5f5f5}
+.qa-num{color:#FF6B00;font-weight:700;font-size:14px;min-width:28px}
+.qa-t{flex:1;font-weight:600;font-size:15px}
+.qa-tog{color:#FF6B00;font-size:18px;transition:transform 0.3s}
+.qa-item.open .qa-tog{transform:rotate(45deg)}
+.qa-a{display:none;padding:0 20px 20px;border-top:1px solid #e0e0e0}
+.qa-item.open .qa-a{display:block}
+.qa-a p{margin-bottom:12px}
+.qa-a ul,.qa-a ol{margin:8px 0 12px 24px}
+.qa-a li{margin-bottom:6px}
+.qa-a strong{color:#FF6B00}
+.qa-a h3{color:#FF6B00;font-size:15px;margin:16px 0 8px}
+.qa-a h4{color:#555555;font-size:14px;margin:12px 0 6px}
+pre{background:#f6f8fa;border:1px solid #d0d7de;border-radius:6px;padding:16px;margin:12px 0;overflow-x:auto;font-family:'JetBrains Mono','Fira Code',monospace;font-size:13px;line-height:1.5;color:#24292e}
+.file-path{color:#666666;font-size:12px;margin-bottom:4px;display:block;font-family:monospace}
+.file-ref{color:#0550ae;font-family:monospace;font-size:13px;background:#f6f8fa;padding:2px 6px;border-radius:4px}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px}
+th,td{padding:8px 12px;border:1px solid #d0d7de;text-align:left}
+th{background:#f6f8fa;color:#FF6B00;font-weight:600}
+.mermaid-box{background:#f6f8fa;border:1px solid #d0d7de;border-radius:6px;padding:16px;margin:12px 0;overflow-x:auto;font-family:monospace;font-size:13px;white-space:pre;color:#24292e}
+@media(max-width:480px){body{padding:16px}.header h1{font-size:22px}.qa-q{padding:12px 14px}.qa-a{padding:0 14px 14px}pre{font-size:11px;padding:12px}}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({startOnLoad:true,theme:'default',themeVariables:{primaryColor:'#fff3e6',primaryBorderColor:'#FF6B00',lineColor:'#FF6B00',textColor:'#333'}});</script>
+</head>
+<body>
+<nav class="nav"><a href="index.html">&larr; 목차로 돌아가기</a></nav>
+<div class="header"><h1>AI/LLM 활용</h1><div class="meta">12문항 &middot; Adelie Investment 기술 QA</div></div>
+<div class="search-box"><input type="text" placeholder="이 카테고리에서 검색..." oninput="filterQA(this.value)"></div>
+<div id="qa-list">
+
+<!-- Q1 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)"><span class="qa-num">Q1</span><span class="qa-t">멀티 프로바이더(OpenAI, Claude, Perplexity) 전략과 각 역할 분담은?</span><span class="qa-tog">+</span></div>
+  <div class="qa-a">
+    <p>Adelie Investment는 <strong>3개 LLM 프로바이더</strong>를 목적별로 분리하여 운영합니다. <code>MultiProviderClient</code> 싱글톤이 모든 프로바이더를 통합 관리하며, 프롬프트 템플릿의 frontmatter에서 <code>provider</code> 필드로 어떤 프로바이더를 사용할지 선언합니다.</p>
+
+    <h3>프로바이더별 역할 분담</h3>
+    <table>
+      <tr><th>프로바이더</th><th>모델</th><th>역할</th><th>사용 프롬프트</th></tr>
+      <tr><td><strong>Anthropic (Claude)</strong></td><td>claude-sonnet-4-6</td><td>핵심 내러티브 생성, 팩트체크, 톤 보정</td><td>page_purpose, historical_case, narrative_body, hallucination_check, 3_theme, 3_pages, 3_tone_final, 3_hallcheck_pages, 3_hallcheck_glossary, 3_glossary, 3_glossary_term_extraction</td></tr>
+      <tr><td><strong>OpenAI</strong></td><td>gpt-4o-mini, gpt-5-mini</td><td>차트 생성, 용어사전, 아이콘 매핑, JSON 복구 폴백</td><td>chart_generation, glossary_generation, 3_chart_reasoning, 3_chart_generation, 3_hallcheck_chart, 3_home_icon_map</td></tr>
+      <tr><td><strong>Perplexity</strong></td><td>OpenAI 호환 API</td><td>실시간 뉴스/리서치 검색, 카탈리스트 탐색</td><td>파이프라인 내 뉴스 크롤링 및 웹 검색</td></tr>
+    </table>
+
+    <p>전략의 핵심은 <strong>고품질 텍스트 생성은 Claude</strong>, <strong>구조화된 데이터/차트 생성은 OpenAI (비용 효율)</strong>, <strong>실시간 정보 검색은 Perplexity</strong>로 분담하는 것입니다. Anthropic 실패 시 OpenAI로 자동 폴백하는 안전장치도 갖추고 있습니다.</p>
+
+    <span class="file-path">datapipeline/ai/multi_provider_client.py:49-96</span>
+<pre># OpenAI, Perplexity, Anthropic을 통합 관리하는 AI 클라이언트
+class MultiProviderClient:
+    def __init__(self, openai_key="", perplexity_key="", anthropic_key=""):
+        self.providers: dict[str, Any] = {}
+
+        # OpenAI
+        if openai_key:
+            self.providers["openai"] = OpenAI(
+                api_key=openai_key, timeout=OPENAI_TIMEOUT_SECONDS)
+
+        # Perplexity (OpenAI 호환 API)
+        if perplexity_key:
+            self.providers["perplexity"] = OpenAI(
+                api_key=perplexity_key,
+                base_url="https://api.perplexity.ai",
+                timeout=PERPLEXITY_TIMEOUT_SECONDS)
+
+        # Anthropic (선택적)
+        if anthropic_key:
+            from anthropic import Anthropic
+            self._anthropic_client = Anthropic(api_key=anthropic_key)
+            self.providers["anthropic"] = self._anthropic_client</pre>
+  </div>
+</div>
+
+<!-- Q2 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)"><span class="qa-num">Q2</span><span class="qa-t">MultiProviderClient 동시성 제어는? (전역 세마포어 6, 프로바이더별 4/2/2)</span><span class="qa-tog">+</span></div>
+  <div class="qa-a">
+    <p>MultiProviderClient는 <strong>2계층 세마포어 시스템</strong>으로 동시성을 제어합니다. 전역 세마포어가 전체 LLM 호출 수를 제한하고, 프로바이더별 세마포어가 개별 API의 Rate Limit를 존중합니다.</p>
+
+    <h3>세마포어 구조</h3>
+    <table>
+      <tr><th>세마포어</th><th>기본값</th><th>환경변수</th><th>목적</th></tr>
+      <tr><td><strong>전역 (Global)</strong></td><td>6</td><td>LLM_MAX_CONCURRENCY</td><td>전체 동시 LLM 호출 상한</td></tr>
+      <tr><td><strong>OpenAI</strong></td><td>4</td><td>OPENAI_MAX_CONCURRENCY</td><td>OpenAI API Rate Limit 보호</td></tr>
+      <tr><td><strong>Perplexity</strong></td><td>2</td><td>PERPLEXITY_MAX_CONCURRENCY</td><td>Perplexity API 제한 (낮은 쿼터)</td></tr>
+      <tr><td><strong>Anthropic</strong></td><td>2</td><td>ANTHROPIC_MAX_CONCURRENCY</td><td>Claude API Rate Limit 보호</td></tr>
+    </table>
+
+    <p>호출 시 <strong>전역 세마포어를 먼저 획득</strong>한 후, <strong>프로바이더별 세마포어를 추가로 획득</strong>하는 이중 잠금 구조입니다. Context Manager 패턴으로 예외 발생 시에도 세마포어가 안전하게 해제됩니다.</p>
+
+    <span class="file-path">datapipeline/ai/multi_provider_client.py:23-28, 63-68, 97-108</span>
+<pre>LLM_MAX_CONCURRENCY = max(1, int(os.getenv("LLM_MAX_CONCURRENCY", "6")))
+OPENAI_MAX_CONCURRENCY = max(1, int(os.getenv("OPENAI_MAX_CONCURRENCY", "4")))
+PERPLEXITY_MAX_CONCURRENCY = max(1, int(os.getenv("PERPLEXITY_MAX_CONCURRENCY", "2")))
+ANTHROPIC_MAX_CONCURRENCY = max(1, int(os.getenv("ANTHROPIC_MAX_CONCURRENCY", "2")))
+
+# 2계층 세마포어 초기화
+self._global_semaphore = threading.BoundedSemaphore(LLM_MAX_CONCURRENCY)
+self._provider_semaphores: dict[str, threading.BoundedSemaphore] = {
+    "openai": threading.BoundedSemaphore(OPENAI_MAX_CONCURRENCY),
+    "perplexity": threading.BoundedSemaphore(PERPLEXITY_MAX_CONCURRENCY),
+    "anthropic": threading.BoundedSemaphore(ANTHROPIC_MAX_CONCURRENCY),
+}
+
+@contextmanager
+def _provider_slot(self, provider: str):
+    """전역 + 프로바이더별 세마포어 이중 획득/해제"""
+    provider_sem = self._provider_semaphores.get(provider)
+    self._global_semaphore.acquire()
+    if provider_sem is not None:
+        provider_sem.acquire()
+    try:
+        yield
+    finally:
+        if provider_sem is not None:
+            provider_sem.release()
+        self._global_semaphore.release()</pre>
+  </div>
+</div>
+
+<!-- Q3 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)"><span class="qa-num">Q3</span><span class="qa-t">재시도(retry) 로직은? (retryable 에러 키워드, 지수 백오프, 최대 1회)</span><span class="qa-tog">+</span></div>
+  <div class="qa-a">
+    <p>재시도 로직은 <strong>2개 레이어</strong>에서 동작합니다. <code>MultiProviderClient</code>의 내장 재시도와 <code>llm_utils.py</code>의 프로바이더 폴백입니다.</p>
+
+    <h3>1단계: MultiProviderClient 내장 재시도</h3>
+    <ul>
+      <li><strong>최대 재시도 횟수</strong>: 기본 1회 (<code>PROVIDER_MAX_RETRIES=1</code>, 총 2회 시도)</li>
+      <li><strong>지수 백오프</strong>: base=1.0초, cap=8.0초, <code>base * 2^(attempt-1) + jitter</code></li>
+      <li><strong>재시도 가능 에러 판별</strong>: 에러 메시지에 특정 키워드가 포함되면 재시도</li>
+    </ul>
+
+    <h3>Retryable 에러 키워드 목록</h3>
+    <p><code>timeout</code>, <code>timed out</code>, <code>connection reset</code>, <code>connection aborted</code>, <code>temporarily unavailable</code>, <code>service unavailable</code>, <code>rate limit</code>, <code>too many requests</code>, <code>429</code>, <code>502</code>, <code>503</code>, <code>504</code>, <code>bad gateway</code></p>
+
+    <h3>2단계: llm_utils 프로바이더 폴백</h3>
+    <ul>
+      <li><strong>OpenAI 재시도</strong>: OpenAI 호출이 retryable 에러로 실패하면 동일 모델로 1회 재시도</li>
+      <li><strong>Anthropic &rarr; OpenAI 폴백</strong>: Claude가 크레딧 부족, 미초기화, 쿼터 초과 등으로 실패하면 <code>gpt-5.2</code>로 자동 폴백</li>
+    </ul>
+
+    <span class="file-path">datapipeline/ai/multi_provider_client.py:29-46, 110-120</span>
+<pre>PROVIDER_MAX_RETRIES = max(0, int(os.getenv("PROVIDER_MAX_RETRIES", "1")))
+PROVIDER_BACKOFF_BASE_SECONDS = float(os.getenv("PROVIDER_BACKOFF_BASE_SECONDS", "1.0"))
+PROVIDER_BACKOFF_MAX_SECONDS = float(os.getenv("PROVIDER_BACKOFF_MAX_SECONDS", "8.0"))
+
+_RETRYABLE_ERROR_KEYWORDS = (
+    "timeout", "timed out", "connection reset", "connection aborted",
+    "temporarily unavailable", "service unavailable",
+    "rate limit", "too many requests", "429", "502", "503", "504", "bad gateway",
+)
+
+def _is_retryable_error(self, exc: Exception) -&gt; bool:
+    if isinstance(exc, (TimeoutError, ConnectionError)):
+        return True
+    lower = str(exc).lower()
+    return any(keyword in lower for keyword in _RETRYABLE_ERROR_KEYWORDS)
+
+def _compute_backoff_seconds(self, attempt: int) -&gt; float:
+    base = max(0.1, PROVIDER_BACKOFF_BASE_SECONDS)
+    cap = max(base, PROVIDER_BACKOFF_MAX_SECONDS)
+    wait = min(cap, base * (2 ** max(0, attempt - 1)))
+    return wait + random.uniform(0, min(0.5, wait * 0.2))  # jitter</pre>
+  </div>
+</div>
+
+<!-- Q4 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)"><span class="qa-num">Q4</span><span class="qa-t">GPT-5 특수 처리는 무엇인가? (max_completion_tokens, reasoning_effort)</span><span class="qa-tog">+</span></div>
+  <div class="qa-a">
+    <p>GPT-5 계열 모델은 OpenAI의 다른 모델과 API 파라미터 체계가 다릅니다. <code>MultiProviderClient</code>는 모델명에 <code>gpt-5</code>가 포함되면 자동으로 특수 처리를 적용합니다.</p>
+
+    <h3>GPT-5 vs 일반 모델 파라미터 차이</h3>
+    <table>
+      <tr><th>파라미터</th><th>일반 모델 (gpt-4o-mini 등)</th><th>GPT-5 계열</th></tr>
+      <tr><td>토큰 상한</td><td><code>max_tokens</code></td><td><code>max_completion_tokens</code></td></tr>
+      <tr><td>temperature</td><td>frontmatter에서 설정</td><td><strong>전달하지 않음</strong> (GPT-5가 자체 관리)</td></tr>
+      <tr><td>thinking 모드</td><td>미지원</td><td><code>reasoning_effort</code> (low/medium/high)</td></tr>
+    </table>
+
+    <p><code>thinking</code> 파라미터와 <code>thinking_effort</code>는 프롬프트 frontmatter에서 선언할 수 있으며, GPT-5 모델일 때만 <code>reasoning_effort</code>로 변환되어 전달됩니다. 현재 프로젝트에서는 <code>3_home_icon_map.md</code>가 <code>gpt-5-mini</code>를 사용하고 있습니다.</p>
+
+    <span class="file-path">datapipeline/ai/multi_provider_client.py:196-225</span>
+<pre>def _call_openai_compatible(self, provider, model, messages, thinking,
+                            thinking_effort, temperature, max_tokens,
+                            response_format, **kwargs):
+    """OpenAI 호환 API 호출 (OpenAI, Perplexity)."""
+    client = self.providers[provider]
+    is_gpt5 = provider == "openai" and "gpt-5" in model
+
+    call_kwargs = {"model": model, "messages": messages}
+
+    if is_gpt5:
+        # GPT-5: max_completion_tokens 사용, temperature 전달 안 함
+        call_kwargs["max_completion_tokens"] = max_tokens
+    else:
+        # 일반 모델: max_tokens + temperature
+        call_kwargs["max_tokens"] = max_tokens
+        call_kwargs["temperature"] = temperature
+
+    # thinking 모드: GPT-5에서만 reasoning_effort 전달
+    if thinking and is_gpt5:
+        call_kwargs["reasoning_effort"] = thinking_effort
+
+    if response_format:
+        call_kwargs["response_format"] = response_format
+
+    response = client.chat.completions.create(**call_kwargs)</pre>
+  </div>
+</div>
+
+<!-- Q5 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)"><span class="qa-num">Q5</span><span class="qa-t">프롬프트 템플릿 관리 방법은? (마크다운 + frontmatter)</span><span class="qa-tog">+</span></div>
+  <div class="qa-a">
+    <p>프롬프트 템플릿은 <strong>마크다운 파일(.md)</strong>에 <strong>YAML-like frontmatter</strong>를 붙인 형식으로 관리됩니다. <code>prompt_loader.py</code>가 이를 파싱하여 <code>PromptSpec</code> 데이터클래스를 반환합니다.</p>
+
+    <h3>프롬프트 파일 구조</h3>
+<pre>---
+provider: anthropic              # 사용할 프로바이더
+model: claude-sonnet-4-6         # 모델명
+temperature: 0.3                 # 생성 다양성
+max_tokens: 8000                 # 최대 출력 토큰
+response_format: json_object     # JSON 모드 강제
+thinking: true                   # GPT-5 thinking 모드
+thinking_effort: medium          # 추론 노력도
+system_message: &gt;
+  당신은 금융 전문가입니다.
+  {{include:_tone_guide}}        # 다른 .md 파일 인라인
+---
+본문 프롬프트 내용...
+{{curated_context}}              # 런타임 변수 치환</pre>
+
+    <h3>핵심 기능 3가지</h3>
+    <ol>
+      <li><strong>Include 지시자</strong>: <code>{{include:_tone_guide}}</code>로 공통 모듈(톤 가이드, 차트 스켈레톤)을 인라인 삽입. <code>_</code> 접두어 파일은 include 전용 파셜입니다.</li>
+      <li><strong>변수 치환</strong>: <code>{{variable}}</code> 플레이스홀더를 <code>call_llm_with_prompt()</code> 호출 시 넘긴 dict/list 값으로 치환. dict/list는 자동으로 JSON 직렬화됩니다.</li>
+      <li><strong>메타데이터 분리</strong>: frontmatter에서 프로바이더, 모델, temperature 등을 선언하면 코드 수정 없이 모델 교체가 가능합니다.</li>
+    </ol>
+
+    <span class="file-path">datapipeline/prompts/prompt_loader.py:46-60, 138-206</span>
+<pre>@dataclass
+class PromptSpec:
+    """파싱된 프롬프트 템플릿 + 메타데이터."""
+    body: str
+    provider: str = "openai"           # openai, perplexity, anthropic
+    model: str = "gpt-4o-mini"
+    temperature: float = 0.7
+    response_format: str | None = None # "json_object" or None
+    system_message: str = ""
+    max_tokens: int = 4096
+    thinking: bool = False             # GPT-5 thinking 모드
+    thinking_effort: str = "medium"    # low, medium, high
+
+def load_prompt(name: str, prompts_dir=None, **kwargs) -&gt; PromptSpec:
+    raw = filepath.read_text(encoding="utf-8")
+    meta, body = _parse_frontmatter(raw)
+    body = _resolve_includes(body, directory)  # {{include:file}} 해결
+    body = _substitute_vars(body, str_kwargs)  # {{variable}} 치환
+    # system_message에도 include/변수 치환 적용
+    return PromptSpec(body=body.strip(), provider=meta.get("provider"), ...)</pre>
+  </div>
+</div>
+
+<!-- Q6 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)"><span class="qa-num">Q6</span><span class="qa-t">파이프라인 프롬프트 목록과 각각의 역할은?</span><span class="qa-tog">+</span></div>
+  <div class="qa-a">
+    <p>파이프라인에는 <strong>20개 프롬프트 템플릿</strong>이 있으며, 크게 Interface 2 (내러티브 생성), Interface 3 (최종 브리핑 조립), 레거시 프롬프트, 그리고 공통 파셜로 나뉩니다.</p>
+
+    <h3>Interface 2 프롬프트 (내러티브 생성 단계)</h3>
+    <table>
+      <tr><th>프롬프트</th><th>프로바이더/모델</th><th>역할</th></tr>
+      <tr><td><strong>page_purpose</strong></td><td>Claude Sonnet 4.6</td><td>curated_context에서 theme, one_liner, concept 추출</td></tr>
+      <tr><td><strong>historical_case</strong></td><td>Claude Sonnet 4.6</td><td>대표 과거 사례 1개 생성 (period, title, summary, outcome, lesson)</td></tr>
+      <tr><td><strong>narrative_body</strong></td><td>Claude Sonnet 4.6</td><td>6단계 내러티브 본문 생성 (background~summary)</td></tr>
+      <tr><td><strong>hallucination_check</strong></td><td>Claude Sonnet 4.6</td><td>Interface 2 전체 팩트체크 (issues + validated_interface_2 반환)</td></tr>
+    </table>
+
+    <h3>Interface 3 프롬프트 (최종 브리핑 조립 단계)</h3>
+    <table>
+      <tr><th>프롬프트</th><th>프로바이더/모델</th><th>역할</th></tr>
+      <tr><td><strong>3_theme</strong></td><td>Claude Sonnet 4.6</td><td>최종 theme, one_liner 재가공</td></tr>
+      <tr><td><strong>3_pages</strong></td><td>Claude Sonnet 4.6</td><td>6페이지 Markdown 콘텐츠 생성 (해요체, 쉬운 표현)</td></tr>
+      <tr><td><strong>3_hallcheck_pages</strong></td><td>Claude Sonnet 4.6</td><td>페이지 콘텐츠 팩트체크</td></tr>
+      <tr><td><strong>3_glossary_term_extraction</strong></td><td>Claude Sonnet 4.6</td><td>페이지별 어려운 용어 추출 (context_sentence 포함)</td></tr>
+      <tr><td><strong>3_glossary</strong></td><td>Claude Sonnet 4.6</td><td>추출된 용어에 대한 초보자 눈높이 정의 생성</td></tr>
+      <tr><td><strong>3_hallcheck_glossary</strong></td><td>Claude Sonnet 4.6</td><td>용어 정의 팩트체크 (검색 결과 기반 검증)</td></tr>
+      <tr><td><strong>3_tone_final</strong></td><td>Claude Sonnet 4.6</td><td>최종 톤 보정 + glossary 병합 + 해요체 통일</td></tr>
+      <tr><td><strong>3_chart_reasoning</strong></td><td>gpt-4o-mini</td><td>섹션별 차트 기획 (유형 선택, 도구 호출 계획)</td></tr>
+      <tr><td><strong>3_chart_generation</strong></td><td>gpt-4o-mini</td><td>Plotly.js 차트 JSON 생성</td></tr>
+      <tr><td><strong>3_hallcheck_chart</strong></td><td>gpt-4o-mini</td><td>차트 데이터 정확성 검증</td></tr>
+      <tr><td><strong>3_home_icon_map</strong></td><td>gpt-5-mini</td><td>홈 카드 아이콘 key 매핑</td></tr>
+    </table>
+
+    <h3>레거시 / 공통 파셜</h3>
+    <table>
+      <tr><th>프롬프트</th><th>프로바이더/모델</th><th>역할</th></tr>
+      <tr><td><strong>chart_generation</strong></td><td>gpt-4o-mini</td><td>레거시 Plotly 차트 생성</td></tr>
+      <tr><td><strong>glossary_generation</strong></td><td>gpt-4o-mini</td><td>레거시 용어사전 생성</td></tr>
+      <tr><td><strong>final_hallucination</strong></td><td>Claude Sonnet 4.6</td><td>레거시 6페이지 전체 최종 팩트체크</td></tr>
+      <tr><td><strong>_tone_guide</strong></td><td colspan="2">include 전용 파셜 &mdash; 해요체 톤 가이드</td></tr>
+      <tr><td><strong>_chart_skeletons</strong></td><td colspan="2">include 전용 파셜 &mdash; 섹션별 Plotly 차트 골격 템플릿</td></tr>
+    </table>
+
+    <span class="file-path">datapipeline/prompts/templates/ (20개 파일)</span>
+<pre># 프롬프트 frontmatter 예시 (page_purpose.md)
+---
+provider: anthropic
+model: claude-sonnet-4-6
+temperature: 0.3
+response_format: json_object
+system_message: &gt;
+  당신은 금융 에듀테인먼트 콘텐츠의 프레이밍 전문가입니다.
+---</pre>
+  </div>
+</div>
+
+<!-- Q7 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)"><span class="qa-num">Q7</span><span class="qa-t">할루시네이션 방지를 위한 다단계 검증은?</span><span class="qa-tog">+</span></div>
+  <div class="qa-a">
+    <p>Adelie Investment는 <strong>최소 3단계, 최대 5단계의 할루시네이션 검증</strong>을 파이프라인에 내장하고 있습니다. 모든 검증은 <code>curated_context</code>(실제 수집 데이터)를 Ground Truth로 사용합니다.</p>
+
+    <h3>검증 파이프라인 흐름</h3>
+    <ol>
+      <li><strong>Interface 2 팩트체크</strong> (<code>hallucination_check</code>): page_purpose, historical_case, narrative 전체를 curated_context 기준으로 교차 검증. 수치/날짜/고유명사/인과관계를 검사하고 <code>validated_interface_2</code>를 반환합니다.</li>
+      <li><strong>Interface 3 페이지 팩트체크</strong> (<code>3_hallcheck_pages</code>): theme, one_liner, 6개 pages를 validated_interface_2 기준으로 재검증. cross_page_consistency, timeline_consistency, numeric_consistency 체크를 수행합니다.</li>
+      <li><strong>Interface 3 용어 팩트체크</strong> (<code>3_hallcheck_glossary</code>): 용어 정의를 웹 검색 결과(Search Results)와 대조하여 정의 정확성, 눈높이, 중복 여부를 검증합니다.</li>
+      <li><strong>차트 팩트체크</strong> (<code>3_hallcheck_chart</code>): 생성된 차트의 x/y 데이터가 원본 소스와 일치하는지, 시각적 오해 소지가 없는지 검증합니다.</li>
+      <li><strong>최종 할루시네이션 체크</strong> (<code>final_hallucination</code>): 6페이지 전체 브리핑을 curated_context 기준으로 종합 팩트체크합니다.</li>
+    </ol>
+
+    <h3>판정 체계</h3>
+    <table>
+      <tr><th>verdict</th><th>설명</th></tr>
+      <tr><td><strong>verified</strong></td><td>curated_context 근거와 일치</td></tr>
+      <tr><td><strong>approximate</strong></td><td>근사치이며 문맥상 허용 가능</td></tr>
+      <tr><td><strong>unverified</strong></td><td>근거를 찾을 수 없음</td></tr>
+      <tr><td><strong>hallucination</strong></td><td>근거와 명확히 충돌하거나 허구</td></tr>
+    </table>
+    <table>
+      <tr><th>severity</th><th>설명</th></tr>
+      <tr><td><strong>info</strong></td><td>문장 다듬기 수준</td></tr>
+      <tr><td><strong>warning</strong></td><td>사실성/정합성에 유의미한 위험</td></tr>
+      <tr><td><strong>critical</strong></td><td>명백한 허위, 큰 수치 오류, 핵심 논리 붕괴</td></tr>
+    </table>
+
+    <p><strong>overall_risk 에스컬레이션 규칙</strong>: critical이 1건 이상이면 overall_risk는 최소 high, 2건 이상이거나 핵심 필드(theme/concept/historical_case)에 중대한 허위가 있으면 critical로 올립니다.</p>
+
+    <span class="file-path">datapipeline/prompts/templates/hallucination_check.md:42-58</span>
+<pre>### verdict
+- verified: curated_context 근거와 일치
+- approximate: 근사치이며 문맥상 허용 가능
+- unverified: curated_context에서 근거를 찾을 수 없음
+- hallucination: 근거와 명확히 충돌하거나 허구
+
+### overall_risk 규칙
+1. critical이 1건 이상이면 overall_risk는 최소 high여야 해요.
+2. critical이 2건 이상이거나 핵심 필드(theme/concept/historical_case)에
+   중대한 허위가 있으면 critical로 올려요.</pre>
+  </div>
+</div>
+
+<!-- Q8 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)"><span class="qa-num">Q8</span><span class="qa-t">LLM 비용 최적화 전략은?</span><span class="qa-tog">+</span></div>
+  <div class="qa-a">
+    <p>프로젝트는 여러 레이어에서 LLM 비용을 최적화합니다.</p>
+
+    <h3>1. 모델 티어링 (Model Tiering)</h3>
+    <p>작업 복잡도에 따라 모델을 분리합니다. <strong>핵심 내러티브/팩트체크</strong>에는 Claude Sonnet 4.6을 사용하고, <strong>구조화된 데이터(차트, 용어사전)</strong>에는 비용이 낮은 gpt-4o-mini를, <strong>경량 작업(아이콘 매핑)</strong>에는 gpt-5-mini를 사용합니다.</p>
+
+    <h3>2. 응답 캐시 (LLM Response Cache)</h3>
+    <p>동일한 프롬프트+모델+메시지 조합의 응답을 <strong>SHA-256 해시 키</strong>로 인메모리 캐싱합니다. TTL 15분, 최대 512개 엔트리, LRU 방식으로 운영되어 파이프라인 실행 중 중복 호출을 제거합니다.</p>
+
+    <h3>3. JSON 복구로 재호출 절약</h3>
+    <p>LLM 응답의 JSON 파싱 실패 시, <strong>로컬 복구(API 호출 없음)</strong>를 먼저 시도합니다. 코드블록 제거, 중괄호 균형 맞추기, 스마트 따옴표 변환, trailing comma 제거 등을 수행하여 불필요한 재호출을 방지합니다.</p>
+
+    <h3>4. 비핵심 프롬프트 폴백 스킵</h3>
+    <p>JSON 파싱이 실패해도 <strong>비핵심 프롬프트는 OpenAI 3차 폴백을 건너뛰어</strong> 비용을 절감합니다. 핵심 프롬프트 목록(<code>CRITICAL_JSON_PROMPTS</code>)만 3차까지 시도합니다.</p>
+
+    <span class="file-path">datapipeline/ai/llm_response_cache.py:18-22</span>
+<pre>_CACHE_ENABLED = os.getenv("LLM_CACHE_ENABLED", "true").lower() == "true"
+_CACHE_TTL_SECONDS = int(os.getenv("LLM_CACHE_TTL_SECONDS", "900"))   # 15분
+_CACHE_MAX_ENTRIES = int(os.getenv("LLM_CACHE_MAX_ENTRIES", "512"))</pre>
+
+    <span class="file-path">datapipeline/ai/llm_utils.py:53-60</span>
+<pre># 핵심 프롬프트만 OpenAI 3차 폴백 허용 (비용 최적화)
+_CRITICAL_JSON_PROMPTS = {
+    p.strip() for p in os.getenv(
+        "CRITICAL_JSON_PROMPTS",
+        "page_purpose,historical_case,narrative_body,hallucination_check,"
+        "3_theme,3_pages,3_tone_final,3_chart_reasoning,3_chart_generation",
+    ).split(",") if p.strip()
+}</pre>
+
+    <span class="file-path">datapipeline/ai/llm_utils.py:211-244 (로컬 JSON 복구)</span>
+<pre>def _try_local_json_repair(raw_text: str) -&gt; dict[str, Any] | None:
+    """API 호출 없이 로컬에서 깨진 JSON 복구 시도"""
+    text = str(raw_text or "").strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)   # 코드블록 제거
+    # 스마트 따옴표 변환
+    candidate = candidate.replace("\u201c", '"').replace("\u201d", '"')
+    # trailing comma 제거
+    candidate = re.sub(r",\s*([}\]])", r"\1", candidate)
+    # 중괄호 균형 맞추기
+    open_curly = candidate.count("{")
+    close_curly = candidate.count("}")
+    if open_curly &gt; close_curly:
+        candidate = candidate + ("}" * (open_curly - close_curly))</pre>
+  </div>
+</div>
+
+<!-- Q9 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)"><span class="qa-num">Q9</span><span class="qa-t">LangSmith 관측성(observability) 활용은?</span><span class="qa-tog">+</span></div>
+  <div class="qa-a">
+    <p><strong>LangSmith</strong>는 파이프라인의 모든 LLM 호출과 노드 실행을 추적하는 관측성(observability) 플랫폼으로 사용됩니다. <code>shared/langsmith_config.py</code>에서 공통 설정을 정의하고, chatbot과 datapipeline이 각각 바인딩하여 사용합니다.</p>
+
+    <h3>트레이싱 아키텍처</h3>
+    <ul>
+      <li><strong>@traceable 데코레이터</strong>: 파이프라인의 모든 LangGraph 노드(25개 이상)에 적용되어 실행 이력을 LangSmith에 자동 전송합니다.</li>
+      <li><strong>메타데이터 구조</strong>: 각 트레이스에 <code>phase</code> (data_collection, interface_2, interface_3), <code>phase_name</code> (한글명), <code>step</code> (순서)이 포함됩니다.</li>
+      <li><strong>run_type 분류</strong>: <code>tool</code> (데이터 수집/조립), <code>llm</code> (LLM 호출), <code>chain</code> (복합 체인), <code>agent</code> (에이전트) 유형으로 구분됩니다.</li>
+      <li><strong>환경 분리</strong>: 프로젝트명이 <code>{project_name}-{environment}</code> 형식으로 자동 설정되어 dev/prod 트레이스가 분리됩니다.</li>
+    </ul>
+
+    <h3>모듈별 바인딩</h3>
+    <p>chatbot과 datapipeline은 <code>shared/langsmith_config.py</code>의 함수를 <code>functools.partial</code>로 바인딩하여 <code>module_name</code>을 자동 주입합니다.</p>
+
+    <span class="file-path">shared/langsmith_config.py:19-43</span>
+<pre>def setup_langsmith() -&gt; bool:
+    settings = get_settings()
+    if not settings.langsmith.tracing_enabled:
+        os.environ["LANGCHAIN_TRACING_V2"] = "false"
+        return False
+
+    # 환경에 따른 프로젝트명 설정
+    project_name = f"{settings.langsmith.project_name}-{settings.environment}"
+    os.environ["LANGCHAIN_TRACING_V2"] = "true"
+    os.environ["LANGCHAIN_API_KEY"] = settings.langsmith.api_key
+    os.environ["LANGCHAIN_PROJECT"] = project_name
+    os.environ["LANGCHAIN_ENDPOINT"] = settings.langsmith.endpoint
+    return True</pre>
+
+    <span class="file-path">datapipeline/nodes/interface2.py:396-397 (@traceable 사용 예시)</span>
+<pre>@traceable(name="run_page_purpose", run_type="llm",
+           metadata={"phase": "interface_2", "phase_name": "내러티브 생성", "step": 1})
+def run_page_purpose_node(state: dict) -&gt; dict:</pre>
+
+    <span class="file-path">chatbot/core/langsmith_config.py:14-16 (모듈 바인딩)</span>
+<pre># module_name="chatbot" 바인딩
+with_metadata = partial(_with_metadata, module_name="chatbot")
+create_run_metadata = partial(_create_run_metadata, module_name="chatbot")</pre>
+  </div>
+</div>
+
+<!-- Q10 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)"><span class="qa-num">Q10</span><span class="qa-t">토큰 사용량 추적 및 로깅은?</span><span class="qa-tog">+</span></div>
+  <div class="qa-a">
+    <p><code>llm_observability.py</code> 모듈이 파이프라인 1회 실행 단위로 <strong>호출 수, 토큰 소비, 응답 시간, 이벤트</strong>를 스레드 안전하게 누적 집계합니다.</p>
+
+    <h3>집계 구조</h3>
+    <ul>
+      <li><strong>totals</strong>: 전체 호출 수, prompt_tokens, completion_tokens, elapsed_s</li>
+      <li><strong>by_prompt</strong>: 프롬프트별로 호출 수, 토큰, 시간, 이벤트(cache_hit, json_repair_success, provider_fallback 등), 프로바이더/모델 분포를 추적</li>
+    </ul>
+
+    <h3>추적되는 이벤트 유형</h3>
+    <table>
+      <tr><th>이벤트</th><th>설명</th></tr>
+      <tr><td><code>cache_hit</code></td><td>캐시에서 응답을 재사용</td></tr>
+      <tr><td><code>cache_store</code></td><td>새 응답을 캐시에 저장</td></tr>
+      <tr><td><code>json_parse_retry</code></td><td>JSON 파싱 실패로 재시도</td></tr>
+      <tr><td><code>json_local_repair_success</code></td><td>로컬 JSON 복구 성공</td></tr>
+      <tr><td><code>json_repair_success</code></td><td>LLM 기반 JSON 복구 성공</td></tr>
+      <tr><td><code>provider_fallback_to_openai</code></td><td>Anthropic에서 OpenAI로 폴백</td></tr>
+      <tr><td><code>provider_retry_openai</code></td><td>OpenAI 재시도 트리거</td></tr>
+      <tr><td><code>json_parse_failure</code></td><td>모든 복구 시도 실패</td></tr>
+    </table>
+
+    <p><code>snapshot_llm_stats()</code>로 현재 통계 스냅샷을 조회할 수 있으며, <code>reset_llm_stats()</code>로 파이프라인 실행 경계에서 초기화합니다.</p>
+
+    <span class="file-path">datapipeline/ai/llm_observability.py:62-101</span>
+<pre>def record_llm_call(*, prompt_name, provider, model, usage, elapsed_s):
+    """LLM 1회 호출 결과를 기록한다."""
+    prompt_tokens = _to_int((usage or {}).get("prompt_tokens"))
+    completion_tokens = _to_int((usage or {}).get("completion_tokens"))
+
+    with _LOCK:
+        totals = _STATS["totals"]
+        totals["calls"] += 1
+        totals["prompt_tokens"] += prompt_tokens
+        totals["completion_tokens"] += completion_tokens
+        totals["elapsed_s"] += elapsed
+
+        bucket = _STATS["by_prompt"][name]
+        bucket["calls"] += 1
+        bucket["prompt_tokens"] += prompt_tokens
+        bucket["completion_tokens"] += completion_tokens
+        bucket["providers"][provider_name] += 1
+        bucket["models"][model_name] += 1
+
+def record_llm_event(*, prompt_name, event):
+    """재시도/폴백/파싱실패 등 이벤트를 기록한다."""
+    with _LOCK:
+        bucket = _STATS["by_prompt"][name]
+        bucket["events"][event_name] += 1</pre>
+  </div>
+</div>
+
+<!-- Q11 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)"><span class="qa-num">Q11</span><span class="qa-t">Anthropic API와 OpenAI API 호출 차이점 처리는?</span><span class="qa-tog">+</span></div>
+  <div class="qa-a">
+    <p><code>MultiProviderClient</code>는 Anthropic과 OpenAI의 API 차이를 내부적으로 추상화하여 호출자에게 <strong>통일된 응답 형식</strong>을 반환합니다. 주요 차이점과 처리 방식은 다음과 같습니다.</p>
+
+    <h3>API 차이점 비교</h3>
+    <table>
+      <tr><th>항목</th><th>OpenAI API</th><th>Anthropic API</th><th>처리 방식</th></tr>
+      <tr><td><strong>클라이언트</strong></td><td><code>OpenAI()</code> SDK</td><td><code>Anthropic()</code> SDK</td><td>provider로 분기</td></tr>
+      <tr><td><strong>system 메시지</strong></td><td>messages 배열에 role:"system" 포함</td><td>별도 <code>system</code> 파라미터</td><td>messages에서 system 추출 후 분리</td></tr>
+      <tr><td><strong>호출 메서드</strong></td><td><code>chat.completions.create()</code></td><td><code>messages.create()</code></td><td>내부 메서드 분리</td></tr>
+      <tr><td><strong>응답 구조</strong></td><td><code>response.choices[0].message.content</code></td><td><code>response.content[].text</code> (블록 순회)</td><td>통일 형식으로 변환</td></tr>
+      <tr><td><strong>토큰 카운트</strong></td><td><code>usage.prompt_tokens</code></td><td><code>usage.input_tokens</code></td><td>통일 키로 매핑</td></tr>
+      <tr><td><strong>빈 메시지 처리</strong></td><td>허용</td><td>user 메시지 필수</td><td>빈 경우 기본 메시지 추가</td></tr>
+    </table>
+
+    <h3>통일된 응답 형식</h3>
+    <p>두 프로바이더 모두 아래 형식으로 정규화되어 반환됩니다.</p>
+
+    <span class="file-path">datapipeline/ai/multi_provider_client.py:243-290</span>
+<pre>def _call_anthropic(self, model, messages, temperature, max_tokens):
+    """Anthropic Claude API 호출."""
+    # system 메시지 분리 (Anthropic은 별도 파라미터)
+    system_msg = ""
+    user_messages = []
+    for msg in messages:
+        if msg["role"] == "system":
+            system_msg += msg["content"] + "\n"
+        else:
+            user_messages.append(msg)
+
+    # user 메시지가 없으면 기본 메시지 추가
+    if not user_messages:
+        user_messages = [{"role": "user", "content": "위 지시사항을 수행해주세요."}]
+
+    call_kwargs = {"model": model, "max_tokens": max_tokens,
+                   "temperature": temperature, "messages": user_messages}
+    if system_msg.strip():
+        call_kwargs["system"] = system_msg.strip()
+
+    response = client.messages.create(**call_kwargs)
+
+    # content 블록 순회 (Anthropic 특유의 블록 구조)
+    content = ""
+    for block in response.content:
+        if hasattr(block, "text"):
+            content += block.text
+
+    # 통일 형식으로 변환 (input_tokens &rarr; prompt_tokens)
+    return {
+        "choices": [{"message": {"content": content, "role": "assistant"}}],
+        "model": response.model,
+        "usage": {
+            "prompt_tokens": getattr(response.usage, 'input_tokens', 0),
+            "completion_tokens": getattr(response.usage, 'output_tokens', 0),
+        },
+    }</pre>
+  </div>
+</div>
+
+<!-- Q12 -->
+<div class="qa-item">
+  <div class="qa-q" onclick="toggle(this)"><span class="qa-num">Q12</span><span class="qa-t">프로바이더 타임아웃 설정은?</span><span class="qa-tog">+</span></div>
+  <div class="qa-a">
+    <p>각 프로바이더는 서로 다른 타임아웃을 설정합니다. 타임아웃은 네트워크 레벨에서 SDK에 의해 강제되며, 환경변수로 오버라이드할 수 있습니다.</p>
+
+    <h3>프로바이더별 타임아웃 설정</h3>
+    <table>
+      <tr><th>프로바이더</th><th>기본 타임아웃</th><th>환경변수</th><th>설정 위치</th></tr>
+      <tr><td><strong>OpenAI</strong></td><td>180초 (3분)</td><td>OPENAI_TIMEOUT_SECONDS</td><td>OpenAI SDK <code>timeout</code> 파라미터</td></tr>
+      <tr><td><strong>Perplexity</strong></td><td>60초 (1분)</td><td>PERPLEXITY_TIMEOUT_SECONDS</td><td>OpenAI SDK <code>timeout</code> 파라미터 (호환 API)</td></tr>
+      <tr><td><strong>Anthropic</strong></td><td>SDK 기본값</td><td>&mdash;</td><td>Anthropic SDK 내부 기본값 사용</td></tr>
+    </table>
+
+    <p><strong>타임아웃 차이의 이유</strong>:</p>
+    <ul>
+      <li><strong>OpenAI (180초)</strong>: 내러티브 생성, 차트 생성 등 복잡한 JSON 응답을 생성하는 작업이 있어 넉넉하게 설정</li>
+      <li><strong>Perplexity (60초)</strong>: 검색 기반 API로 비교적 빠른 응답이 기대되므로 짧게 설정</li>
+      <li><strong>Anthropic (SDK 기본)</strong>: Anthropic SDK가 자체 타임아웃을 관리하므로 별도 설정하지 않음</li>
+    </ul>
+
+    <p>타임아웃 발생 시 <code>_is_retryable_error()</code>에서 <code>timeout</code>, <code>timed out</code> 키워드로 감지되어 자동 재시도 대상이 됩니다.</p>
+
+    <span class="file-path">datapipeline/ai/multi_provider_client.py:23-24, 70-84</span>
+<pre>OPENAI_TIMEOUT_SECONDS = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "180"))
+PERPLEXITY_TIMEOUT_SECONDS = float(os.getenv("PERPLEXITY_TIMEOUT_SECONDS", "60"))
+
+# OpenAI 클라이언트에 timeout 직접 전달
+if openai_key:
+    self.providers["openai"] = OpenAI(
+        api_key=openai_key,
+        timeout=OPENAI_TIMEOUT_SECONDS,   # 180초
+    )
+
+# Perplexity (OpenAI 호환 API)
+if perplexity_key:
+    self.providers["perplexity"] = OpenAI(
+        api_key=perplexity_key,
+        base_url="https://api.perplexity.ai",
+        timeout=PERPLEXITY_TIMEOUT_SECONDS,  # 60초
+    )
+
+# Anthropic (SDK 기본 타임아웃 사용)
+if anthropic_key:
+    self._anthropic_client = Anthropic(api_key=anthropic_key)</pre>
+  </div>
+</div>
+
+</div>
+<script>
+function toggle(el){el.closest('.qa-item').classList.toggle('open')}
+function filterQA(q){document.querySelectorAll('.qa-item').forEach(i=>{i.classList.toggle('hidden',q&&!i.textContent.toLowerCase().includes(q.toLowerCase()))})}
+</script>
+</body>
+</html>

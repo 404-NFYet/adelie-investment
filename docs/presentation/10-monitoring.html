@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>모니터링 &amp; 알림 — Adelie Investment Tech QA</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'IBM Plex Sans KR',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#ffffff;color:#333333;line-height:1.7;max-width:900px;margin:0 auto;padding:24px}
+a{color:#FF6B00;text-decoration:none}a:hover{text-decoration:underline}
+.nav{margin-bottom:24px}.nav a{font-size:14px;display:inline-flex;align-items:center;gap:6px}
+.header{margin-bottom:24px;border-bottom:2px solid #FF6B00;padding-bottom:16px}
+.header h1{color:#FF6B00;font-size:28px;margin-bottom:4px}
+.header .meta{color:#666666;font-size:14px}
+.search-box{margin-bottom:24px}
+.search-box input{width:100%;padding:12px 16px;background:#f5f5f5;border:1px solid #d0d7de;border-radius:8px;color:#333333;font-size:15px;outline:none}
+.search-box input:focus{border-color:#FF6B00}
+.search-box input::placeholder{color:#aaaaaa}
+.qa-item{margin-bottom:12px;border:1px solid #e0e0e0;border-radius:8px;overflow:hidden;background:#ffffff}
+.qa-item.hidden{display:none}
+.qa-q{display:flex;align-items:center;padding:16px 20px;cursor:pointer;user-select:none;gap:12px;transition:background 0.2s}
+.qa-q:hover{background:#f5f5f5}
+.qa-num{color:#FF6B00;font-weight:700;font-size:14px;min-width:28px}
+.qa-t{flex:1;font-weight:600;font-size:15px}
+.qa-tog{color:#FF6B00;font-size:18px;transition:transform 0.3s}
+.qa-item.open .qa-tog{transform:rotate(45deg)}
+.qa-a{display:none;padding:0 20px 20px;border-top:1px solid #e0e0e0}
+.qa-item.open .qa-a{display:block}
+.qa-a p{margin-bottom:12px}
+.qa-a ul,.qa-a ol{margin:8px 0 12px 24px}
+.qa-a li{margin-bottom:6px}
+.qa-a strong{color:#FF6B00}
+.qa-a h3{color:#FF6B00;font-size:15px;margin:16px 0 8px}
+.qa-a h4{color:#555555;font-size:14px;margin:12px 0 6px}
+pre{background:#f6f8fa;border:1px solid #d0d7de;border-radius:6px;padding:16px;margin:12px 0;overflow-x:auto;font-family:'JetBrains Mono','Fira Code',monospace;font-size:13px;line-height:1.5;color:#24292e}
+.file-path{color:#666666;font-size:12px;margin-bottom:4px;display:block;font-family:monospace}
+.file-ref{color:#0550ae;font-family:monospace;font-size:13px;background:#f6f8fa;padding:2px 6px;border-radius:4px}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px}
+th,td{padding:8px 12px;border:1px solid #d0d7de;text-align:left}
+th{background:#f6f8fa;color:#FF6B00;font-weight:600}
+.mermaid-box{background:#f6f8fa;border:1px solid #d0d7de;border-radius:6px;padding:16px;margin:12px 0;overflow-x:auto;font-family:monospace;font-size:13px;white-space:pre;color:#24292e}
+@media(max-width:480px){body{padding:16px}.header h1{font-size:22px}.qa-q{padding:12px 14px}.qa-a{padding:0 14px 14px}pre{font-size:11px;padding:12px}}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({startOnLoad:true,theme:'default',themeVariables:{primaryColor:'#fff3e6',primaryBorderColor:'#FF6B00',lineColor:'#FF6B00',textColor:'#333'}});</script>
+</head>
+<body>
+<nav class="nav"><a href="index.html">&larr; 목차로 돌아가기</a></nav>
+<div class="header"><h1>모니터링 &amp; 알림</h1><div class="meta">10문항 &middot; Adelie Investment 기술 QA</div></div>
+<div class="search-box"><input type="text" placeholder="이 카테고리에서 검색..." oninput="filterQA(this.value)"></div>
+<div id="qa-list">
+
+<!-- Q1 -->
+<div class="qa-item">
+<div class="qa-q" onclick="toggle(this)">
+<span class="qa-num">Q1</span>
+<span class="qa-t">Prometheus 메트릭 수집 구조는?</span>
+<span class="qa-tog">+</span>
+</div>
+<div class="qa-a">
+<p>Prometheus는 <strong>3개 scrape job</strong>을 <strong>15초 간격</strong>으로 수집합니다. 각 job은 대상 인프라와 서비스에서 메트릭을 pull 방식으로 가져옵니다.</p>
+
+<h3>Job 구성</h3>
+<table>
+<tr><th>Job</th><th>대상</th><th>포트</th><th>수집 내용</th></tr>
+<tr><td><strong>node</strong></td><td>LXD 서버 7대</td><td>9100</td><td>CPU, 메모리, 디스크, 네트워크 (node_exporter)</td></tr>
+<tr><td><strong>fastapi</strong></td><td>deploy-test</td><td>8082</td><td>HTTP 요청, 커스텀 비즈니스 메트릭</td></tr>
+<tr><td><strong>cadvisor</strong></td><td>infra-server, deploy-test</td><td>8080</td><td>Docker 컨테이너 리소스 사용량</td></tr>
+</table>
+
+<span class="file-path">infra/monitoring/prometheus.yml</span>
+<pre>global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'node'
+    static_configs:
+      - targets:
+          - '10.10.10.10:9100'   # infra-server
+          - '10.10.10.20:9100'   # deploy-test
+          - '10.10.10.14:9100'   # dev-yj99son
+          - '10.10.10.11:9100'   # dev-j2hoon10
+          - '10.10.10.13:9100'   # dev-ryejinn
+          - '10.10.10.12:9100'   # dev-jjjh02
+          - '10.10.10.15:9100'   # dev-hj
+        labels:
+          env: 'lxd'
+
+  - job_name: 'fastapi'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets:
+          - '10.10.10.20:8082'   # deploy-test
+        labels:
+          service: 'backend-api'
+
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets:
+          - '10.10.10.10:8080'   # infra-server
+          - '10.10.10.20:8080'   # deploy-test</pre>
+
+<p>개발 환경에서는 별도의 <code>prometheus.dev.yml</code>을 사용하며, backend-api 컨테이너만 스크레이핑합니다.</p>
+
+<span class="file-path">infra/monitoring/prometheus.dev.yml</span>
+<pre>global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: "backend-api"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets:
+          - "backend-api:8082"
+        labels:
+          service: "backend-api"</pre>
+
+<div class="mermaid-box"><pre class="mermaid">
+graph LR
+    subgraph Targets
+        N[node_exporter<br/>7대 :9100]
+        F[FastAPI<br/>:8082/metrics]
+        C[cAdvisor<br/>2대 :8080]
+    end
+    P[Prometheus<br/>15초 간격] -->|scrape| N
+    P -->|scrape| F
+    P -->|scrape| C
+    P --> G[Grafana<br/>:3000]
+    G --> D[Discord<br/>알림]
+
+    style P fill:#fff3e6,stroke:#FF6B00,color:#333
+    style N fill:#fff3e6,stroke:#FF6B00,color:#333
+    style F fill:#fff3e6,stroke:#FF6B00,color:#333
+    style C fill:#fff3e6,stroke:#FF6B00,color:#333
+    style G fill:#fff3e6,stroke:#FF6B00,color:#333
+    style D fill:#fff3e6,stroke:#FF6B00,color:#333
+</pre></div>
+</div>
+</div>
+
+<!-- Q2 -->
+<div class="qa-item">
+<div class="qa-q" onclick="toggle(this)">
+<span class="qa-num">Q2</span>
+<span class="qa-t">정의된 알림 규칙 5가지는?</span>
+<span class="qa-tog">+</span>
+</div>
+<div class="qa-a">
+<p>Grafana Alerting의 provisioning 파일에 <strong>infrastructure</strong> 그룹으로 5개 알림 규칙이 정의되어 있습니다. 평가 간격은 <strong>1분</strong>입니다.</p>
+
+<table>
+<tr><th>알림</th><th>조건</th><th>for</th><th>severity</th></tr>
+<tr><td><strong>HighCPU</strong></td><td>CPU 사용률 > 90%</td><td>5m</td><td>warning</td></tr>
+<tr><td><strong>HighMemory</strong></td><td>메모리 사용률 > 85%</td><td>5m</td><td>warning</td></tr>
+<tr><td><strong>DiskAlmostFull</strong></td><td>디스크 사용률 > 80%</td><td>10m</td><td>critical</td></tr>
+<tr><td><strong>ContainerDown</strong></td><td>adelie-* 컨테이너 미감지</td><td>1m</td><td>critical</td></tr>
+<tr><td><strong>ContainerRestart</strong></td><td>5분 내 재시작 발생</td><td>1m</td><td>warning</td></tr>
+</table>
+
+<span class="file-path">infra/monitoring/grafana/provisioning/alerting/rules.yml</span>
+<pre>apiVersion: 1
+groups:
+  - orgId: 1
+    name: infrastructure
+    interval: 1m
+    folder: "infrastructure"
+    rules:
+      - alert: HighCPU
+        title: "High CPU"
+        expr: >
+          100 - (avg by(instance)
+            (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} CPU > 90%"
+
+      - alert: DiskAlmostFull
+        title: "Disk Almost Full"
+        expr: >
+          100 - (node_filesystem_avail_bytes{mountpoint="/"}
+            / node_filesystem_size_bytes{mountpoint="/"} * 100) > 80
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }} Disk > 80%"
+
+      - alert: ContainerDown
+        title: "Container Down"
+        expr: absent(container_last_seen{name=~"adelie-.*"})
+        for: 1m
+        labels:
+          severity: critical
+
+      - alert: ContainerRestart
+        title: "Container Restart"
+        expr: increase(container_restart_count{name=~"adelie-.*"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning</pre>
+
+<p><strong>HighCPU</strong>는 <code>irate</code>로 5분 간격 순간 CPU 사용률을 계산하고, <strong>ContainerDown</strong>은 <code>absent()</code> 함수로 adelie-* 패턴의 컨테이너가 아예 존재하지 않을 때 감지합니다.</p>
+</div>
+</div>
+
+<!-- Q3 -->
+<div class="qa-item">
+<div class="qa-q" onclick="toggle(this)">
+<span class="qa-num">Q3</span>
+<span class="qa-t">Alertmanager &rarr; Discord 알림 설정은?</span>
+<span class="qa-tog">+</span>
+</div>
+<div class="qa-a">
+<p>Grafana 내장 Alerting을 사용하여 <strong>Discord webhook</strong>과 <strong>이메일</strong> 두 채널로 알림을 발송합니다. contact point와 notification policy가 provisioning 파일로 관리됩니다.</p>
+
+<h3>Contact Points</h3>
+<span class="file-path">infra/monitoring/grafana/provisioning/alerting/contact_points.yml</span>
+<pre>apiVersion: 1
+contactPoints:
+  - orgId: 1
+    name: default-email
+    receivers:
+      - uid: email-default
+        type: email
+        settings:
+          addresses: "admin@adelie-invest.com"
+          singleEmail: true
+  - orgId: 1
+    name: discord-webhook
+    receivers:
+      - uid: discord-default
+        type: discord
+        settings:
+          url: "${GRAFANA_DISCORD_WEBHOOK_URL}"
+          use_discord_username: true
+          message: |
+            {{ if gt (len .Alerts.Firing) 0 }}
+              FIRING ({{ len .Alerts.Firing }}건)
+            {{ end }}
+            {{ range .Alerts }}
+            - **{{ .Labels.alertname }}**: {{ .Annotations.summary }}
+            {{ end }}</pre>
+
+<h3>Notification Policy (라우팅)</h3>
+<span class="file-path">infra/monitoring/grafana/provisioning/alerting/notification_policies.yml</span>
+<pre>apiVersion: 1
+policies:
+  - orgId: 1
+    receiver: discord-webhook       # 기본 수신자
+    group_by:
+      - alertname
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+    routes:
+      - receiver: discord-webhook   # critical → 10초 대기, 1시간 반복
+        matchers:
+          - severity=critical
+        group_wait: 10s
+        repeat_interval: 1h
+      - receiver: default-email     # warning → 이메일, 12시간 반복
+        matchers:
+          - severity=warning
+        repeat_interval: 12h</pre>
+
+<p>라우팅 전략: <strong>critical</strong> 알림은 Discord로 즉시(10초 대기) 전송되며 1시간마다 반복합니다. <strong>warning</strong> 알림은 이메일로 12시간 간격으로 발송됩니다. Discord webhook URL은 환경변수 <code>GRAFANA_DISCORD_WEBHOOK_URL</code>로 주입합니다.</p>
+</div>
+</div>
+
+<!-- Q4 -->
+<div class="qa-item">
+<div class="qa-q" onclick="toggle(this)">
+<span class="qa-num">Q4</span>
+<span class="qa-t">FastAPI 커스텀 메트릭 목록은?</span>
+<span class="qa-tog">+</span>
+</div>
+<div class="qa-a">
+<p><code>app/metrics.py</code>에 <strong>16개 커스텀 메트릭</strong>이 정의되어 있습니다. Counter 14개, Histogram 1개로 구성됩니다.</p>
+
+<span class="file-path">fastapi/app/metrics.py</span>
+<pre>from prometheus_client import Counter, Histogram
+
+# --- Auth 메트릭 (4개) ---
+AUTH_LOGIN_TOTAL = Counter("auth_login_total", "Login attempts", ["result"])
+AUTH_REFRESH_TOTAL = Counter("auth_refresh_total", "Refresh attempts", ["result"])
+AUTH_REGISTER_TOTAL = Counter("auth_register_total", "Register attempts", ["result"])
+AUTH_LOGOUT_TOTAL = Counter("auth_logout_total", "Logout attempts", ["result"])
+
+# --- Pipeline 메트릭 ---
+PIPELINE_JOB_TOTAL = Counter("pipeline_job_total", "Pipeline job attempts", ["type", "result"])
+
+# --- Trading 메트릭 ---
+TRADING_ORDER_TOTAL = Counter("trading_order_total", "Trading order attempts", ["side", "result"])
+
+# --- Portfolio 메트릭 ---
+PORTFOLIO_REFRESH_TOTAL = Counter("portfolio_refresh_total", "Portfolio refresh attempts", ["result"])
+
+# --- 외부 API 메트릭 (2개) ---
+EXTERNAL_API_REQUEST_TOTAL = Counter(
+    "external_api_request_total", "External API requests", ["provider", "result"])
+EXTERNAL_API_LATENCY_SECONDS = Histogram(
+    "external_api_latency_seconds", "External API latency in seconds", ["provider"])
+
+# --- Cache 메트릭 ---
+CACHE_HIT_TOTAL = Counter("cache_hit_total", "Cache hit/miss counts", ["cache", "hit"])
+
+# --- DB 메트릭 ---
+DB_QUERY_TOTAL = Counter("db_query_total", "Database query counts", ["operation", "result"])
+
+# --- Tutor 메트릭 (2개) ---
+TUTOR_CHAT_TOTAL = Counter("tutor_chat_total", "Tutor chat attempts", ["result"])
+TUTOR_CHAT_TOKENS_TOTAL = Counter("tutor_chat_tokens_total", "Tutor chat total tokens", ["model"])
+
+# --- Briefing / Quiz ---
+BRIEFING_TODAY_TOTAL = Counter("briefing_today_total", "Today briefing requests", ["result"])
+QUIZ_REWARD_TOTAL = Counter("quiz_reward_total", "Quiz reward attempts", ["result"])
+
+# --- HTTP 전역 ---
+HTTP_REQUESTS_TOTAL = Counter(
+    "http_requests_total", "Total HTTP requests", ["method", "path", "status"])</pre>
+
+<h3>메트릭 카테고리별 정리</h3>
+<table>
+<tr><th>카테고리</th><th>메트릭 수</th><th>주요 label</th></tr>
+<tr><td>auth_*</td><td>4</td><td>result (success/fail)</td></tr>
+<tr><td>trading_*</td><td>1</td><td>side (buy/sell), result</td></tr>
+<tr><td>tutor_*</td><td>2</td><td>result, model</td></tr>
+<tr><td>db_*</td><td>1</td><td>operation (select/insert/update/delete), result</td></tr>
+<tr><td>cache_*</td><td>1</td><td>cache, hit (true/false)</td></tr>
+<tr><td>external_api_*</td><td>2</td><td>provider (openai/perplexity/kis), result</td></tr>
+<tr><td>http_*, pipeline_*, etc.</td><td>5</td><td>method, path, status, type</td></tr>
+</table>
+</div>
+</div>
+
+<!-- Q5 -->
+<div class="qa-item">
+<div class="qa-q" onclick="toggle(this)">
+<span class="qa-num">Q5</span>
+<span class="qa-t">prometheus_fastapi_instrumentator 구성은?</span>
+<span class="qa-tog">+</span>
+</div>
+<div class="qa-a">
+<p><code>prometheus-fastapi-instrumentator</code> 라이브러리를 사용하여 FastAPI 앱의 HTTP 요청을 자동으로 계측합니다. <code>/metrics</code> 엔드포인트를 자동 노출합니다.</p>
+
+<span class="file-path">fastapi/app/main.py</span>
+<pre># Prometheus 메트릭 — /metrics 엔드포인트 자동 노출
+try:
+    from prometheus_fastapi_instrumentator import Instrumentator
+    Instrumentator(
+        should_group_status_codes=True,       # 2xx, 3xx 등으로 그룹화
+        should_ignore_untemplated=True,       # 템플릿 없는 경로 무시
+        should_instrument_requests_inprogress=True,  # 진행 중 요청 게이지
+        excluded_handlers=[
+            "/metrics", "/docs", "/redoc", "/openapi.json", "/"
+        ],
+    ).instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+except ImportError:
+    logger.warning("prometheus-fastapi-instrumentator 미설치 — /metrics 비활성화")</pre>
+
+<h3>주요 설정 옵션</h3>
+<ul>
+<li><strong>should_group_status_codes=True</strong>: HTTP 상태 코드를 2xx/3xx/4xx/5xx로 그룹화하여 카디널리티 감소</li>
+<li><strong>should_ignore_untemplated=True</strong>: 라우터에 등록되지 않은 경로의 메트릭 제외</li>
+<li><strong>should_instrument_requests_inprogress=True</strong>: 현재 처리 중인 요청 수를 Gauge로 추적</li>
+<li><strong>excluded_handlers</strong>: 문서, 메트릭, 루트 등 유틸리티 엔드포인트 제외</li>
+<li><strong>include_in_schema=False</strong>: OpenAPI 스키마에서 /metrics 숨김</li>
+</ul>
+
+<p><code>try/except</code>로 감싸서 라이브러리 미설치 시에도 애플리케이션이 정상 기동되도록 graceful하게 처리합니다.</p>
+
+<h3>자동 생성되는 메트릭</h3>
+<ul>
+<li><code>http_request_duration_seconds</code> (Histogram) &mdash; 요청 처리 시간</li>
+<li><code>http_requests_inprogress</code> (Gauge) &mdash; 현재 처리 중 요청 수</li>
+<li><code>http_request_size_bytes</code> (Histogram) &mdash; 요청 크기</li>
+<li><code>http_response_size_bytes</code> (Histogram) &mdash; 응답 크기</li>
+</ul>
+</div>
+</div>
+
+<!-- Q6 -->
+<div class="qa-item">
+<div class="qa-q" onclick="toggle(this)">
+<span class="qa-num">Q6</span>
+<span class="qa-t">DB 쿼리 메트릭은 어떻게 수집하나?</span>
+<span class="qa-tog">+</span>
+</div>
+<div class="qa-a">
+<p>SQLAlchemy의 <strong>이벤트 리스너</strong>를 활용하여 모든 DB 쿼리를 자동으로 계측합니다. 성공/실패 각각 별도의 이벤트 훅에서 Prometheus Counter를 증가시킵니다.</p>
+
+<span class="file-path">fastapi/app/core/database.py</span>
+<pre>from sqlalchemy import event
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from app.metrics import DB_QUERY_TOTAL
+
+engine = create_async_engine(
+    settings.DATABASE_URL,
+    echo=settings.DEBUG,
+    pool_pre_ping=True,
+    pool_size=50,
+    max_overflow=100,
+    pool_timeout=30,
+    pool_recycle=1800,
+)
+
+
+def _extract_db_operation(statement: str) -> str:
+    """SQL 문의 첫 키워드를 추출하여 operation 라벨로 사용."""
+    if not statement:
+        return "other"
+    op = statement.lstrip().split(None, 1)[0].lower()
+    if op in {"select", "insert", "update", "delete"}:
+        return op
+    return "other"
+
+
+@event.listens_for(engine.sync_engine, "after_cursor_execute")
+def _after_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+    DB_QUERY_TOTAL.labels(_extract_db_operation(statement), "success").inc()
+
+
+@event.listens_for(engine.sync_engine, "handle_error")
+def _handle_db_error(exception_context):
+    statement = getattr(exception_context, "statement", "") or ""
+    DB_QUERY_TOTAL.labels(_extract_db_operation(statement), "fail").inc()</pre>
+
+<h3>수집 흐름</h3>
+<ol>
+<li>SQLAlchemy <code>sync_engine</code>의 <code>after_cursor_execute</code> 이벤트에 리스너 등록</li>
+<li>쿼리 실행 후 SQL 문 첫 단어를 파싱하여 operation 라벨 결정 (select/insert/update/delete/other)</li>
+<li>성공 시 <code>DB_QUERY_TOTAL.labels(operation, "success").inc()</code></li>
+<li>에러 시 <code>handle_error</code> 이벤트에서 <code>DB_QUERY_TOTAL.labels(operation, "fail").inc()</code></li>
+</ol>
+
+<p>이를 통해 Grafana에서 <code>rate(db_query_total[1m])</code>로 초당 쿼리 수를, <code>db_query_total{result="fail"}</code>로 에러율을 실시간 확인할 수 있습니다.</p>
+</div>
+</div>
+
+<!-- Q7 -->
+<div class="qa-item">
+<div class="qa-q" onclick="toggle(this)">
+<span class="qa-num">Q7</span>
+<span class="qa-t">Grafana 대시보드 프로비저닝은?</span>
+<span class="qa-tog">+</span>
+</div>
+<div class="qa-a">
+<p>Grafana는 <strong>파일 기반 프로비저닝</strong>을 사용하여 데이터소스, 대시보드, 알림 설정을 코드로 관리합니다. 컨테이너 기동 시 자동으로 로드됩니다.</p>
+
+<h3>프로비저닝 디렉토리 구조</h3>
+<pre>infra/monitoring/grafana/provisioning/
+  datasources/
+    prometheus.yml         # Prometheus 데이터소스 설정
+  dashboards/
+    dashboard.yml          # 대시보드 프로바이더 설정
+    adelie-overview.json   # 전체 현황 대시보드
+    adelie-dev-api.json    # Backend API 대시보드
+    node-exporter.json     # 노드 리소스 대시보드
+    cadvisor.json          # 컨테이너 대시보드
+  alerting/
+    rules.yml              # 알림 규칙 5개
+    contact_points.yml     # Discord + Email 연락처
+    notification_policies.yml  # 라우팅 정책</pre>
+
+<h3>데이터소스 설정</h3>
+<span class="file-path">infra/monitoring/grafana/provisioning/datasources/prometheus.yml</span>
+<pre>apiVersion: 1
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true</pre>
+
+<h3>대시보드 프로바이더</h3>
+<span class="file-path">infra/monitoring/grafana/provisioning/dashboards/dashboard.yml</span>
+<pre>apiVersion: 1
+providers:
+  - name: 'default'
+    type: file
+    options:
+      path: /etc/grafana/provisioning/dashboards</pre>
+
+<h3>주요 대시보드 패널</h3>
+<p><strong>adelie-overview.json</strong>: 서버 7대의 UP/DOWN 상태 stat 위젯, 전체 CPU/메모리 게이지</p>
+<p><strong>adelie-dev-api.json</strong>: HTTP RPS (<code>sum(rate(http_requests_total[1m]))</code>), 4xx/5xx 에러율, DB 쿼리 카운트 등 Backend API 전용 패널</p>
+
+<span class="file-path">infra/monitoring/grafana/provisioning/dashboards/adelie-dev-api.json (발췌)</span>
+<pre>{
+  "uid": "adelie-dev-api",
+  "title": "Adelie Dev - Backend API",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "HTTP RPS",
+      "targets": [{
+        "expr": "sum(rate(http_requests_total[1m]))",
+        "legendFormat": "rps"
+      }]
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP 4xx/5xx",
+      "targets": [{
+        "expr": "sum(rate(http_requests_total{status=~\"4..\"}[1m]))",
+        "legendFormat": "4xx"
+      }]
+    }
+  ]
+}</pre>
+
+<p>Grafana 볼륨 마운트: <code>./grafana/provisioning:/etc/grafana/provisioning</code>으로 호스트 파일이 컨테이너에 직접 마운트됩니다.</p>
+</div>
+</div>
+
+<!-- Q8 -->
+<div class="qa-item">
+<div class="qa-q" onclick="toggle(this)">
+<span class="qa-num">Q8</span>
+<span class="qa-t">모니터링 스택 Docker Compose 구성은?</span>
+<span class="qa-tog">+</span>
+</div>
+<div class="qa-a">
+<p>모니터링 스택은 <strong>5개 서비스</strong>로 구성되며, <code>infra/monitoring/docker-compose.yml</code>에 정의되어 있습니다.</p>
+
+<table>
+<tr><th>서비스</th><th>이미지</th><th>포트</th><th>역할</th></tr>
+<tr><td><strong>prometheus</strong></td><td>prom/prometheus:latest</td><td>9090</td><td>메트릭 수집/저장/쿼리</td></tr>
+<tr><td><strong>grafana</strong></td><td>grafana/grafana:latest</td><td>3000</td><td>대시보드/알림</td></tr>
+<tr><td><strong>cadvisor</strong></td><td>gcr.io/cadvisor/cadvisor:latest</td><td>8080</td><td>컨테이너 메트릭</td></tr>
+<tr><td><strong>nginx</strong></td><td>nginx:alpine</td><td>8501</td><td>대시보드 프록시</td></tr>
+<tr><td><strong>dashboard</strong></td><td>(빌드)</td><td>8501 (내부)</td><td>Streamlit 대시보드</td></tr>
+</table>
+
+<span class="file-path">infra/monitoring/docker-compose.yml</span>
+<pre>services:
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: adelie-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=30d
+      - --web.enable-lifecycle
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: adelie-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-changeme}
+      GF_SERVER_ROOT_URL: https://monitoring.adelie-invest.com
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      - prometheus
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: adelie-cadvisor
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    privileged: true
+
+networks:
+  default: {}
+  adelie-network:
+    external: true
+    name: adelie-network
+
+volumes:
+  prometheus_data:
+  grafana_data:</pre>
+
+<p><strong>네트워크</strong>: <code>adelie-network</code>(external)와 default 두 네트워크를 사용합니다. dashboard 서비스가 adelie-network에 접속하여 프로덕션 DB에 읽기 전용 쿼리를 수행합니다.</p>
+<p><strong>node-exporter</strong>는 deploy-test 서버에 systemd 서비스로 설치되어 있어 별도 컨테이너가 필요 없습니다.</p>
+</div>
+</div>
+
+<!-- Q9 -->
+<div class="qa-item">
+<div class="qa-q" onclick="toggle(this)">
+<span class="qa-num">Q9</span>
+<span class="qa-t">Prometheus 데이터 보존 기간은?</span>
+<span class="qa-tog">+</span>
+</div>
+<div class="qa-a">
+<p>Prometheus TSDB 보존 기간은 환경별로 다르게 설정됩니다.</p>
+
+<table>
+<tr><th>환경</th><th>보존 기간</th><th>설정 위치</th></tr>
+<tr><td><strong>프로덕션 (deploy-test)</strong></td><td>30일</td><td>docker-compose.yml</td></tr>
+<tr><td><strong>개발 (dev)</strong></td><td>기본값 (15일)</td><td>prometheus.dev.yml (별도 지정 없음)</td></tr>
+</table>
+
+<h3>프로덕션 설정</h3>
+<span class="file-path">infra/monitoring/docker-compose.yml (prometheus 서비스)</span>
+<pre>  prometheus:
+    image: prom/prometheus:latest
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=30d    # 30일 보존
+      - --web.enable-lifecycle               # /-/reload API 활성화</pre>
+
+<p><strong>--web.enable-lifecycle</strong> 플래그로 <code>POST /-/reload</code> API가 활성화되어 있어, 설정 파일 변경 후 재시작 없이 <code>curl -X POST http://localhost:9090/-/reload</code>로 설정을 리로드할 수 있습니다.</p>
+
+<p>데이터 영속성은 Docker named volume <code>prometheus_data</code>에 저장되므로 컨테이너 재시작 시에도 유지됩니다.</p>
+</div>
+</div>
+
+<!-- Q10 -->
+<div class="qa-item">
+<div class="qa-q" onclick="toggle(this)">
+<span class="qa-num">Q10</span>
+<span class="qa-t">LangSmith로 LLM 호출 추적은 어떻게 하나?</span>
+<span class="qa-tog">+</span>
+</div>
+<div class="qa-a">
+<p>LangSmith를 사용하여 데이터 파이프라인의 모든 LLM 호출을 추적합니다. <code>shared/langsmith_config.py</code>에 공통 설정이 있고, 각 모듈에서 <code>@traceable</code> 데코레이터로 개별 함수를 계측합니다.</p>
+
+<h3>공통 설정 (shared)</h3>
+<span class="file-path">shared/langsmith_config.py</span>
+<pre>import os
+from langsmith import Client
+from langsmith.run_helpers import traceable
+
+def setup_langsmith() -> bool:
+    """LangSmith 환경 변수 설정."""
+    settings = get_settings()
+    if not settings.langsmith.tracing_enabled:
+        os.environ["LANGCHAIN_TRACING_V2"] = "false"
+        return False
+
+    # 환경에 따른 프로젝트명 설정
+    project_name = f"{settings.langsmith.project_name}-{settings.environment}"
+
+    os.environ["LANGCHAIN_TRACING_V2"] = "true"
+    os.environ["LANGCHAIN_API_KEY"] = settings.langsmith.api_key
+    os.environ["LANGCHAIN_PROJECT"] = project_name
+    os.environ["LANGCHAIN_ENDPOINT"] = settings.langsmith.endpoint
+    return True</pre>
+
+<h3>모듈별 바인딩</h3>
+<span class="file-path">datapipeline/core/langsmith_config.py</span>
+<pre>from functools import partial
+from shared.langsmith_config import (
+    setup_langsmith, get_langsmith_client,
+    with_metadata as _with_metadata, trace_context,
+    create_run_metadata as _create_run_metadata,
+)
+
+# module_name="datapipeline" 바인딩
+with_metadata = partial(_with_metadata, module_name="datapipeline")
+create_run_metadata = partial(_create_run_metadata, module_name="datapipeline")
+
+# 모듈 로드 시 LangSmith 설정
+_langsmith_enabled = setup_langsmith()</pre>
+
+<h3>@traceable 데코레이터 사용 (7개 노드 파일, 30개 함수)</h3>
+<span class="file-path">datapipeline/nodes/crawlers.py</span>
+<pre>from langsmith import traceable
+
+@traceable(name="crawl_news", run_type="tool",
+           metadata={"phase": "data_collection", "phase_name": "데이터 수집", "step": 1})
+def crawl_news_node(state: dict) -> dict:
+    """뉴스 RSS 크롤링."""
+    ...</pre>
+
+<span class="file-path">datapipeline/nodes/interface3.py (발췌)</span>
+<pre>@traceable(name="run_theme", run_type="llm",
+           metadata={"phase": "interface3"})
+def run_theme(state): ...
+
+@traceable(name="run_pages", run_type="llm",
+           metadata={"phase": "interface3"})
+def run_pages(state): ...
+
+@traceable(name="run_hallcheck_pages", run_type="llm",
+           metadata={"phase": "hallucination_check"})
+def run_hallcheck_pages(state): ...</pre>
+
+<h3>추적 가능 노드 목록</h3>
+<table>
+<tr><th>노드 파일</th><th>@traceable 수</th><th>run_type</th></tr>
+<tr><td>crawlers.py</td><td>3</td><td>tool</td></tr>
+<tr><td>screening.py</td><td>2</td><td>tool</td></tr>
+<tr><td>curation.py</td><td>5</td><td>llm, tool</td></tr>
+<tr><td>interface1.py</td><td>2</td><td>tool</td></tr>
+<tr><td>interface2.py</td><td>5</td><td>llm</td></tr>
+<tr><td>interface3.py</td><td>10</td><td>llm, chain, tool</td></tr>
+<tr><td>chart_agent.py</td><td>3</td><td>agent, llm</td></tr>
+</table>
+
+<p><strong>메타데이터 구조</strong>: 모든 트레이스에 <code>environment</code>(staging/production)와 <code>module</code>(datapipeline/chatbot) 정보가 자동 포함됩니다. <code>create_run_metadata()</code>로 user_id, session_id, company_code 등 추가 메타데이터를 부여할 수 있습니다.</p>
+</div>
+</div>
+
+</div>
+<script>
+function toggle(el){el.closest('.qa-item').classList.toggle('open')}
+function filterQA(q){document.querySelectorAll('.qa-item').forEach(i=>{i.classList.toggle('hidden',q&&!i.textContent.toLowerCase().includes(q.toLowerCase()))})}
+</script>
+</body>
+</html>

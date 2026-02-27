@@ -174,3 +174,8 @@ playwright-report/
 .entire/
 data-gen/
 .config/
+
+# ============================================
+# 발표 자료
+# ============================================
+# docs/presentation/ → git 추적 (qa.adelie-invest.com 배포용)

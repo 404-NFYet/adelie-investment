@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Adelie Investment — 기술 QA</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'IBM Plex Sans KR',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#ffffff;color:#333333;line-height:1.7;max-width:1200px;margin:0 auto;padding:24px}
+a{color:#FF6B00;text-decoration:none}a:hover{text-decoration:underline}
+.hero{text-align:center;padding:48px 0 32px;border-bottom:2px solid #FF6B00;margin-bottom:40px}
+.hero h1{font-size:36px;color:#FF6B00;margin-bottom:8px}
+.hero .subtitle{font-size:18px;color:#666666;margin-bottom:4px}
+.hero .meta{font-size:14px;color:#666666}
+.search-container{margin-bottom:32px}
+.search-input{width:100%;padding:14px 20px;background:#f5f5f5;border:1px solid #d0d7de;border-radius:10px;color:#333333;font-size:16px;outline:none}
+.search-input:focus{border-color:#FF6B00;box-shadow:0 0 0 3px rgba(255,107,0,0.15)}
+.search-input::placeholder{color:#aaaaaa}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px}
+.card{background:#ffffff;border:1px solid #e0e0e0;border-radius:12px;padding:24px;transition:all 0.2s;cursor:pointer;display:block}
+.card:hover{border-color:#FF6B00;transform:translateY(-2px);box-shadow:0 4px 20px rgba(255,107,0,0.15);text-decoration:none}
+.card .num{color:#FF6B00;font-size:13px;font-weight:700;margin-bottom:6px}
+.card h2{font-size:18px;color:#1a1a2e;margin-bottom:8px;font-weight:600}
+.card .desc{font-size:14px;color:#666666;margin-bottom:12px;line-height:1.5}
+.card .badge{display:inline-block;background:rgba(255,107,0,0.1);color:#FF6B00;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600}
+.card.hidden{display:none}
+.footer{text-align:center;margin-top:48px;padding-top:24px;border-top:1px solid #e0e0e0;color:#666666;font-size:13px}
+@media(max-width:480px){
+  body{padding:16px}
+  .hero h1{font-size:26px}
+  .hero{padding:32px 0 24px}
+  .grid{grid-template-columns:1fr}
+}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({startOnLoad:true,theme:'default',themeVariables:{primaryColor:'#fff3e6',primaryBorderColor:'#FF6B00',lineColor:'#FF6B00',textColor:'#333'}});</script>
+</head>
+<body>
+
+<div class="hero">
+  <h1>Adelie Investment</h1>
+  <div class="subtitle">프로젝트 기술 QA</div>
+  <div class="meta">12개 카테고리 · 132문항 · 2026.02</div>
+</div>
+
+<div class="search-container">
+  <input type="text" class="search-input" placeholder="전체 카테고리에서 검색..." oninput="filterCards(this.value)">
+</div>
+
+<div class="grid" id="card-grid">
+
+  <a class="card" href="01-architecture.html" data-keywords="아키텍처 구조 nginx SSE 미들웨어 모놀리식 cloudflare 예외처리">
+    <div class="num">01</div>
+    <h2>시스템 아키텍처</h2>
+    <div class="desc">전체 시스템 구조, nginx 리버스 프록시, SSE 스트리밍, 미들웨어 스택, Cloudflare Tunnel</div>
+    <span class="badge">12문항</span>
+  </a>
+
+  <a class="card" href="02-pipeline.html" data-keywords="파이프라인 LangGraph 크롤링 스크리닝 큐레이션 내러티브 할루시네이션 차트 스케줄러">
+    <div class="num">02</div>
+    <h2>데이터 파이프라인</h2>
+    <div class="desc">18노드 LangGraph, 뉴스/리서치 크롤링, 종목 스크리닝, 내러티브 생성, 할루시네이션 체크</div>
+    <span class="badge">14문항</span>
+  </a>
+
+  <a class="card" href="03-ai-llm.html" data-keywords="AI LLM OpenAI Claude Perplexity 프롬프트 할루시네이션 토큰 LangSmith 비용">
+    <div class="num">03</div>
+    <h2>AI/LLM 활용</h2>
+    <div class="desc">멀티 프로바이더 전략, 동시성 제어, 프롬프트 템플릿, 할루시네이션 방지, 비용 최적화</div>
+    <span class="badge">12문항</span>
+  </a>
+
+  <a class="card" href="04-chatbot.html" data-keywords="챗봇 튜터 가드레일 스트리밍 차트 난이도 세션 clarification">
+    <div class="num">04</div>
+    <h2>AI 튜터 챗봇</h2>
+    <div class="desc">LangGraph 튜터 에이전트, Chart-First, 가드레일, SSE 스트리밍, 난이도별 맞춤 교육</div>
+    <span class="badge">14문항</span>
+  </a>
+
+  <a class="card" href="05-backend.html" data-keywords="FastAPI JWT 인증 CSRF 라우터 비동기 trading 스케줄러 로깅 pydantic">
+    <div class="num">05</div>
+    <h2>백엔드 API</h2>
+    <div class="desc">FastAPI 동적 라우터, JWT 인증, CSRF 방어, Rate Limiting, 비동기 DB, 모의투자</div>
+    <span class="badge">12문항</span>
+  </a>
+
+  <a class="card" href="06-frontend.html" data-keywords="React Vite Context 다크모드 모바일 PWA SSE 차트 라우팅 빌드">
+    <div class="num">06</div>
+    <h2>프론트엔드</h2>
+    <div class="desc">React 19 + Vite, Context Provider, 코드 스플리팅, 다크모드, PWA, SSE 클라이언트</div>
+    <span class="badge">12문항</span>
+  </a>
+
+  <a class="card" href="07-analytics.html" data-keywords="PostHog Clarity 분석 이벤트 트래킹 세션 히트맵 autocapture">
+    <div class="num">07</div>
+    <h2>분석 시스템</h2>
+    <div class="desc">PostHog 자체 호스팅, MS Clarity, 이벤트 트래킹, 사용자 식별, 세션 레코딩</div>
+    <span class="badge">8문항</span>
+  </a>
+
+  <a class="card" href="08-database.html" data-keywords="PostgreSQL pgvector Redis MinIO 인덱스 마이그레이션 커넥션풀 벡터 캐싱">
+    <div class="num">08</div>
+    <h2>데이터베이스</h2>
+    <div class="desc">PostgreSQL + pgvector, 벡터 검색, Alembic 마이그레이션, Redis 캐싱, MinIO</div>
+    <span class="badge">12문항</span>
+  </a>
+
+  <a class="card" href="09-infrastructure.html" data-keywords="LXD Docker CI CD 배포 Terraform AWS runner 멀티스테이지 헬스체크">
+    <div class="num">09</div>
+    <h2>인프라 & 배포</h2>
+    <div class="desc">LXD 개발 환경, Docker Compose, CI/CD, Docker Hub, Terraform AWS 이전 계획</div>
+    <span class="badge">14문항</span>
+  </a>
+
+  <a class="card" href="10-monitoring.html" data-keywords="Prometheus Grafana Alertmanager 메트릭 알림 Discord LangSmith cadvisor">
+    <div class="num">10</div>
+    <h2>모니터링 & 알림</h2>
+    <div class="desc">Prometheus 메트릭, Grafana 대시보드, Alertmanager, FastAPI 커스텀 메트릭</div>
+    <span class="badge">10문항</span>
+  </a>
+
+  <a class="card" href="11-testing.html" data-keywords="pytest Playwright Locust E2E 단위 부하 비동기 mock CI">
+    <div class="num">11</div>
+    <h2>테스트</h2>
+    <div class="desc">pytest 단위/통합, Playwright E2E, Locust 부하, Docker 테스트 환경, CI 통합</div>
+    <span class="badge">10문항</span>
+  </a>
+
+  <a class="card" href="12-security.html" data-keywords="보안 JWT CSRF bcrypt SQL injection CORS rate limiting 토큰">
+    <div class="num">12</div>
+    <h2>보안</h2>
+    <div class="desc">JWT 토큰 관리, CSRF 방어, Rate Limiting, bcrypt, SQL Injection 방어, CORS</div>
+    <span class="badge">12문항</span>
+  </a>
+
+</div>
+
+<div class="footer">
+  Adelie Investment · History Repeats Itself · 2026
+</div>
+
+<script>
+function filterCards(query) {
+  const cards = document.querySelectorAll('.card');
+  const q = query.toLowerCase();
+  cards.forEach(card => {
+    const text = (card.textContent + ' ' + (card.dataset.keywords || '')).toLowerCase();
+    card.classList.toggle('hidden', q && !text.includes(q));
+  });
+}
+</script>
+</body>
+</html>

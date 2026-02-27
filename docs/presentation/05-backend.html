@@ -1,0 +1,1060 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>백엔드 API — Adelie Investment Tech QA</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'IBM Plex Sans KR',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#ffffff;color:#333333;line-height:1.7;max-width:900px;margin:0 auto;padding:24px}
+a{color:#FF6B00;text-decoration:none}a:hover{text-decoration:underline}
+.nav{margin-bottom:24px}.nav a{font-size:14px;display:inline-flex;align-items:center;gap:6px}
+.header{margin-bottom:24px;border-bottom:2px solid #FF6B00;padding-bottom:16px}
+.header h1{color:#FF6B00;font-size:28px;margin-bottom:4px}
+.header .meta{color:#666666;font-size:14px}
+.search-box{margin-bottom:24px}
+.search-box input{width:100%;padding:12px 16px;background:#f5f5f5;border:1px solid #d0d7de;border-radius:8px;color:#333333;font-size:15px;outline:none}
+.search-box input:focus{border-color:#FF6B00}
+.search-box input::placeholder{color:#aaaaaa}
+.qa-item{margin-bottom:12px;border:1px solid #e0e0e0;border-radius:8px;overflow:hidden;background:#ffffff}
+.qa-item.hidden{display:none}
+.qa-q{display:flex;align-items:center;padding:16px 20px;cursor:pointer;user-select:none;gap:12px;transition:background 0.2s}
+.qa-q:hover{background:#f5f5f5}
+.qa-num{color:#FF6B00;font-weight:700;font-size:14px;min-width:28px}
+.qa-t{flex:1;font-weight:600;font-size:15px}
+.qa-tog{color:#FF6B00;font-size:18px;transition:transform 0.3s}
+.qa-item.open .qa-tog{transform:rotate(45deg)}
+.qa-a{display:none;padding:0 20px 20px;border-top:1px solid #e0e0e0}
+.qa-item.open .qa-a{display:block}
+.qa-a p{margin-bottom:12px}
+.qa-a ul,.qa-a ol{margin:8px 0 12px 24px}
+.qa-a li{margin-bottom:6px}
+.qa-a strong{color:#FF6B00}
+.qa-a h3{color:#FF6B00;font-size:15px;margin:16px 0 8px}
+.qa-a h4{color:#555555;font-size:14px;margin:12px 0 6px}
+pre{background:#f6f8fa;border:1px solid #d0d7de;border-radius:6px;padding:16px;margin:12px 0;overflow-x:auto;font-family:'JetBrains Mono','Fira Code',monospace;font-size:13px;line-height:1.5;color:#24292e}
+.file-path{color:#666666;font-size:12px;margin-bottom:4px;display:block;font-family:monospace}
+.file-ref{color:#0550ae;font-family:monospace;font-size:13px;background:#f6f8fa;padding:2px 6px;border-radius:4px}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px}
+th,td{padding:8px 12px;border:1px solid #d0d7de;text-align:left}
+th{background:#f6f8fa;color:#FF6B00;font-weight:600}
+.mermaid-box{background:#f6f8fa;border:1px solid #d0d7de;border-radius:6px;padding:16px;margin:12px 0;overflow-x:auto;font-family:monospace;font-size:13px;white-space:pre;color:#24292e}
+@media(max-width:480px){body{padding:16px}.header h1{font-size:22px}.qa-q{padding:12px 14px}.qa-a{padding:0 14px 14px}pre{font-size:11px;padding:12px}}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({startOnLoad:true,theme:'default',themeVariables:{primaryColor:'#fff3e6',primaryBorderColor:'#FF6B00',lineColor:'#FF6B00',textColor:'#333'}});</script>
+</head>
+<body>
+<nav class="nav"><a href="index.html">&larr; 목차로 돌아가기</a></nav>
+<div class="header"><h1>백엔드 API</h1><div class="meta">12문항 &middot; Adelie Investment 기술 QA</div></div>
+<div class="search-box"><input type="text" placeholder="이 카테고리에서 검색..." oninput="filterQA(this.value)"></div>
+<div id="qa-list">
+
+<!-- Q1 -->
+<div class="qa-item">
+<div class="qa-q" onclick="toggle(this)">
+<span class="qa-num">Q1</span>
+<span class="qa-t">FastAPI 라우터 동적 등록 방식은?</span>
+<span class="qa-tog">+</span>
+</div>
+<div class="qa-a">
+<p><strong>importlib 기반 동적 로딩</strong>으로 18개 라우트 모듈을 런타임에 등록합니다. Docker 환경에서 일부 모듈이 존재하지 않을 수 있으므로, 각 모듈을 개별적으로 import하고 실패 시 warning 로그를 남기며 건너뜁니다.</p>
+
+<h3>1단계: 모듈 동적 로딩</h3>
+<span class="file-path">fastapi/app/main.py (L20-46)</span>
+<pre>_route_modules = {}
+for _mod_name in [
+    "health", "auth", "briefing", "glossary", "cases",
+    "tutor", "pipeline", "keywords", "feedback", "trading",
+    "narrative", "portfolio", "tutor_sessions", "visualization",
+    "notification", "briefings", "quiz_reward", "learning", "reports",
+]:
+    try:
+        _route_modules[_mod_name] = importlib.import_module(
+            f"app.api.routes.{_mod_name}"
+        )
+    except Exception as _e:
+        _logging.getLogger("startup").warning(
+            f"라우터 '{_mod_name}' 로드 실패 (무시): {_e}"
+        )</pre>
+
+<h3>2단계: 라우터 설정 매핑 + 등록</h3>
+<span class="file-path">fastapi/app/main.py (L264-291)</span>
+<pre>_router_config = {
+    "health":          ("health",            "/api/v1"),
+    "auth":            ("auth",              "/api/v1"),
+    "briefing":        ("briefing",          "/api/v1"),
+    "glossary":        ("glossary",          "/api/v1"),
+    "cases":           ("cases",             "/api/v1"),
+    "tutor":           ("AI tutor",          "/api/v1"),
+    "pipeline":        ("pipeline",          "/api/v1"),
+    "keywords":        ("keywords",          "/api/v1"),
+    "feedback":        ("feedback",          "/api/v1"),
+    "trading":         ("trading",           "/api/v1"),
+    "narrative":       ("narrative",         "/api/v1"),
+    "portfolio":       ("portfolio",         "/api/v1"),
+    "tutor_sessions":  ("tutor sessions",    "/api/v1"),
+    "visualization":   ("visualization",     "/api/v1"),
+    "notification":    ("notifications",     "/api/v1"),
+    "briefings":       ("briefings",         "/api/v1"),
+    "quiz_reward":     ("quiz",              "/api/v1"),
+    "learning":        ("learning progress", "/api/v1"),
+    "reports":         ("broker reports",    "/api/v1"),
+}
+
+for _name, (_tag, _prefix) in _router_config.items():
+    _mod = _route_modules.get(_name)
+    if _mod and hasattr(_mod, "router"):
+        app.include_router(_mod.router, prefix=_prefix, tags=[_tag])
+    else:
+        logger.warning(f"라우터 '{_name}' 건너뜀 (미로드)")</pre>
+
+<div class="mermaid-box"><pre class="mermaid">
+graph TD
+    A[앱 시작] --> B[importlib로<br/>18개 모듈 로드]
+    B --> C{모듈 존재?}
+    C -->|성공| D[_route_modules에 저장]
+    C -->|실패| E[warning 로그<br/>건너뛰기]
+    D --> F[_router_config 매핑<br/>모듈→태그/prefix]
+    F --> G[app.include_router<br/>prefix=/api/v1]
+
+    style A fill:#fff3e6,stroke:#FF6B00,color:#333
+    style B fill:#fff3e6,stroke:#FF6B00,color:#333
+    style C fill:#fff3e6,stroke:#FF6B00,color:#333
+    style D fill:#fff3e6,stroke:#FF6B00,color:#333
+    style E fill:#ffcccc,stroke:#cc0000,color:#333
+    style F fill:#fff3e6,stroke:#FF6B00,color:#333
+    style G fill:#fff3e6,stroke:#FF6B00,color:#333
+</pre></div>
+
+<h3>핵심 설계 원칙</h3>
+<ul>
+<li><strong>Graceful Degradation</strong>: 모듈 import 실패 시 전체 서버가 죽지 않고 해당 라우터만 비활성화</li>
+<li><strong>2단계 분리</strong>: (1) import 수집 &rarr; (2) 라우터 등록. 설정(태그, prefix)을 한 곳에서 관리</li>
+<li><strong>레거시 호환</strong>: <code>/api/health</code> 경로를 <code>include_in_schema=False</code>로 추가 등록하여 이전 클라이언트 지원</li>
+<li><strong>OpenAPI 태그</strong>: 각 라우터에 한글/영문 태그를 부여하여 <code>/docs</code> Swagger UI에서 그룹 분류</li>
+</ul>
+</div>
+</div>
+
+<!-- Q2 -->
+<div class="qa-item">
+<div class="qa-q" onclick="toggle(this)">
+<span class="qa-num">Q2</span>
+<span class="qa-t">전체 API 라우트 목록은?</span>
+<span class="qa-tog">+</span>
+</div>
+<div class="qa-a">
+<p>총 <strong>18개 라우트 모듈</strong>이 <code>/api/v1</code> prefix 아래에 등록됩니다. 각 모듈은 <code>fastapi/app/api/routes/</code> 디렉토리에 개별 파일로 존재합니다.</p>
+
+<table>
+<tr><th>모듈</th><th>경로 prefix</th><th>OpenAPI 태그</th><th>설명</th></tr>
+<tr><td>health</td><td>/api/v1/health</td><td>health</td><td>헬스체크 (DB, Redis 상태)</td></tr>
+<tr><td>auth</td><td>/api/v1/auth</td><td>auth</td><td>인증 (로그인, 회원가입, JWT 갱신)</td></tr>
+<tr><td>briefing</td><td>/api/v1/briefing</td><td>briefing</td><td>단일 브리핑 조회</td></tr>
+<tr><td>briefings</td><td>/api/v1/briefings</td><td>briefings</td><td>브리핑 목록/검색</td></tr>
+<tr><td>glossary</td><td>/api/v1/glossary</td><td>glossary</td><td>금융 용어 사전</td></tr>
+<tr><td>cases</td><td>/api/v1/cases</td><td>cases</td><td>과거-현재 매칭 케이스 상세</td></tr>
+<tr><td>tutor</td><td>/api/v1/tutor</td><td>AI tutor</td><td>AI 튜터 채팅 (SSE 스트리밍)</td></tr>
+<tr><td>tutor_sessions</td><td>/api/v1/tutor_sessions</td><td>tutor sessions</td><td>튜터 세션 관리/이력</td></tr>
+<tr><td>pipeline</td><td>/api/v1/pipeline</td><td>pipeline</td><td>데이터 파이프라인 수동 실행</td></tr>
+<tr><td>keywords</td><td>/api/v1/keywords</td><td>keywords</td><td>오늘의 키워드 카드</td></tr>
+<tr><td>feedback</td><td>/api/v1/feedback</td><td>feedback</td><td>사용자 피드백 수집</td></tr>
+<tr><td>trading</td><td>/api/v1/trading</td><td>trading</td><td>모의투자 (종목검색, 주문, 관심종목)</td></tr>
+<tr><td>narrative</td><td>/api/v1/narrative</td><td>narrative</td><td>내러티브 콘텐츠</td></tr>
+<tr><td>portfolio</td><td>/api/v1/portfolio</td><td>portfolio</td><td>포트폴리오 관리</td></tr>
+<tr><td>visualization</td><td>/api/v1/visualization</td><td>visualization</td><td>차트/시각화 데이터</td></tr>
+<tr><td>notification</td><td>/api/v1/notification</td><td>notifications</td><td>알림 시스템</td></tr>
+<tr><td>quiz_reward</td><td>/api/v1/quiz_reward</td><td>quiz</td><td>데일리 퀴즈 + 리워드</td></tr>
+<tr><td>learning</td><td>/api/v1/learning</td><td>learning progress</td><td>학습 진도 관리</td></tr>
+<tr><td>reports</td><td>/api/v1/reports</td><td>broker reports</td><td>증권사 리서치 리포트</td></tr>
+</table>
+
+<p>추가로 <strong>Prometheus 메트릭</strong> 엔드포인트(<code>/metrics</code>)와 루트(<code>/</code>)가 별도로 등록되어 있습니다.</p>
+</div>
+</div>
+
+<!-- Q3 -->
+<div class="qa-item">
+<div class="qa-q" onclick="toggle(this)">
+<span class="qa-num">Q3</span>
+<span class="qa-t">JWT 인증 + HttpOnly 쿠키 구현은?</span>
+<span class="qa-tog">+</span>
+</div>
+<div class="qa-a">
+<p>JWT 기반 인증에서 <strong>Access Token과 Refresh Token을 모두 HttpOnly 쿠키로 전송</strong>합니다. XSS 공격 시에도 JavaScript에서 토큰에 접근할 수 없으므로 보안성이 높습니다.</p>
+
+<h3>토큰 생성 (auth_service.py)</h3>
+<span class="file-path">fastapi/app/services/auth_service.py (L48-62)</span>
+<pre>def _build_token(subject: str, expires_in: int,
+                 extra_claims: dict | None = None) -> str:
+    settings = get_settings()
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": subject,       # 이메일 (사용자 식별자)
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(seconds=expires_in)).timestamp()),
+    }
+    if extra_claims:
+        payload.update(extra_claims)  # refresh엔 jti, uid 추가
+    return jwt.encode(
+        payload,
+        _get_jwt_key(settings.JWT_SECRET),
+        algorithm=settings.JWT_ALGORITHM,  # HS256
+    )</pre>
+
+<h3>HttpOnly 쿠키 설정 (auth.py)</h3>
+<span class="file-path">fastapi/app/api/routes/auth.py (L44-69)</span>
+<pre>def _set_access_cookie(response: Response, access_token: str) -> None:
+    settings = get_settings()
+    response.set_cookie(
+        key=settings.AUTH_ACCESS_COOKIE_NAME,   # "accessToken"
+        value=access_token,
+        httponly=True,              # JavaScript 접근 차단
+        secure=settings.AUTH_ACCESS_COOKIE_SECURE,  # HTTPS only (prod)
+        samesite=settings.AUTH_ACCESS_COOKIE_SAMESITE,  # "lax"
+        path=settings.AUTH_ACCESS_COOKIE_PATH,  # "/"
+        domain=settings.AUTH_ACCESS_COOKIE_DOMAIN,
+        max_age=_get_access_cookie_max_age(),   # 60분 (기본)
+    )
+
+def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
+    settings = get_settings()
+    response.set_cookie(
+        key=settings.AUTH_REFRESH_COOKIE_NAME,  # "refreshToken"
+        value=refresh_token,
+        httponly=True,
+        secure=settings.AUTH_REFRESH_COOKIE_SECURE,
+        samesite=settings.AUTH_REFRESH_COOKIE_SAMESITE,  # "lax"
+        path=settings.AUTH_REFRESH_COOKIE_PATH,
+        domain=settings.AUTH_REFRESH_COOKIE_DOMAIN,
+        max_age=_get_refresh_cookie_max_age(),  # 7일 (기본)
+    )</pre>
+
+<h3>토큰 해석 + 사용자 조회 (core/auth.py)</h3>
+<span class="file-path">fastapi/app/core/auth.py (L104-125)</span>
+<pre>async def get_current_user(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    settings = get_settings()
+    # 1. Authorization 헤더 우선, 없으면 쿠키에서 추출
+    token = credentials.credentials if credentials else None
+    if not token and request:
+        token = request.cookies.get(settings.AUTH_ACCESS_COOKIE_NAME)
+    if not token:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    payload = _decode_token(token)  # JWT 검증 + 만료 체크
+    return await _resolve_user_from_payload(payload, db)  # DB에서 사용자 조회</pre>
+
+<h3>인증 흐름 요약</h3>
+<table>
+<tr><th>단계</th><th>동작</th><th>세부사항</th></tr>
+<tr><td>로그인/회원가입</td><td>Access + Refresh 토큰 생성</td><td>Access 60분, Refresh 7일</td></tr>
+<tr><td>응답 전달</td><td>HttpOnly 쿠키로 설정</td><td>SameSite=Lax, JS 접근 불가</td></tr>
+<tr><td>후속 요청</td><td>쿠키 자동 전송</td><td>Authorization 헤더도 병렬 지원</td></tr>
+<tr><td>토큰 만료</td><td>/auth/refresh 호출</td><td>Refresh 토큰으로 Access 갱신</td></tr>
+<tr><td>로그아웃</td><td>쿠키 3개 삭제</td><td>Access + Refresh + CSRF 쿠키 제거</td></tr>
+</table>
+</div>
+</div>
+
+<!-- Q4 -->
+<div class="qa-item">
+<div class="qa-q" onclick="toggle(this)">
+<span class="qa-num">Q4</span>
+<span class="qa-t">CSRF 방어 (Double-Submit Cookie) 구현은?</span>
+<span class="qa-tog">+</span>
+</div>
+<div class="qa-a">
+<p>HttpOnly 쿠키 인증 사용 시 CSRF 공격을 방어하기 위해 <strong>Double-Submit Cookie 패턴</strong>을 구현합니다. 서버가 랜덤 토큰을 <code>csrfToken</code> 쿠키(httponly=<strong>false</strong>)에 저장하고, 클라이언트가 이를 읽어 <code>X-CSRF-Token</code> 헤더로 전송해야 합니다.</p>
+
+<h3>CSRF 토큰 발급</h3>
+<span class="file-path">fastapi/app/api/routes/auth.py (L91-103)</span>
+<pre>def _set_csrf_cookie(response: Response) -> str:
+    settings = get_settings()
+    token = secrets.token_urlsafe(32)  # 256-bit 랜덤 토큰
+    response.set_cookie(
+        key=settings.AUTH_CSRF_COOKIE_NAME,  # "csrfToken"
+        value=token,
+        httponly=False,    # JS에서 읽을 수 있어야 함 (핵심!)
+        secure=settings.AUTH_CSRF_COOKIE_SECURE,
+        samesite=settings.AUTH_CSRF_COOKIE_SAMESITE,
+        path=settings.AUTH_CSRF_COOKIE_PATH,
+        domain=settings.AUTH_CSRF_COOKIE_DOMAIN,
+    )
+    return token</pre>
+
+<h3>CSRF 미들웨어 검증</h3>
+<span class="file-path">fastapi/app/main.py (L199-227)</span>
+<pre>@app.middleware("http")
+async def csrf_middleware(request: Request, call_next):
+    settings = get_settings()
+    # GET, HEAD, OPTIONS는 검증 생략 (안전 메서드)
+    if request.method in {"GET", "HEAD", "OPTIONS"}:
+        return await call_next(request)
+
+    # 인증 관련 경로는 CSRF 검증 제외
+    path = request.url.path
+    csrf_exempt_prefixes = {
+        "/api/v1/auth/login", "/api/v1/auth/register",
+        "/api/v1/auth/refresh", "/api/v1/auth/csrf",
+    }
+    if path in csrf_exempt_prefixes:
+        return await call_next(request)
+
+    csrf_cookie = request.cookies.get(settings.AUTH_CSRF_COOKIE_NAME)
+    if not csrf_cookie:
+        # 쿠키 없음 = Authorization 헤더 방식 → CSRF 불필요
+        return await call_next(request)
+
+    # 쿠키 값과 헤더 값 비교 (Double-Submit)
+    csrf_header = request.headers.get(settings.AUTH_CSRF_HEADER_NAME)
+    if not csrf_header or csrf_cookie != csrf_header:
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "CSRF token missing or invalid"},
+        )
+    return await call_next(request)</pre>
+
+<h3>CSRF 설정값</h3>
+<span class="file-path">fastapi/app/core/config.py (L65-70)</span>
+<pre>AUTH_CSRF_COOKIE_NAME: str = "csrfToken"
+AUTH_CSRF_COOKIE_SAMESITE: str = "lax"
+AUTH_CSRF_COOKIE_SECURE: bool = False    # prod에서 True
+AUTH_CSRF_COOKIE_PATH: str = "/"
+AUTH_CSRF_COOKIE_DOMAIN: str | None = None
+AUTH_CSRF_HEADER_NAME: str = "X-CSRF-Token"</pre>
+
+<h3>보안 설계 포인트</h3>
+<ul>
+<li><strong>Authorization 헤더 방식은 CSRF에 면역</strong>: CSRF 쿠키가 없으면 검증을 건너뛰어, Bearer 토큰 방식 클라이언트도 정상 동작</li>
+<li><strong>SameSite=Lax</strong>: 크로스사이트 POST에서 쿠키가 전송되지 않아 추가 방어층 제공</li>
+<li><strong>secrets.token_urlsafe(32)</strong>: 256비트 암호학적 안전 랜덤 토큰 사용</li>
+<li><strong>로그인/회원가입/리프레시 제외</strong>: 인증 전 상태에서 CSRF 토큰이 없으므로 exemption 처리</li>
+</ul>
+</div>
+</div>
+
+<!-- Q5 -->
+<div class="qa-item">
+<div class="qa-q" onclick="toggle(this)">
+<span class="qa-num">Q5</span>
+<span class="qa-t">Rate Limiting (Redis Lua 슬라이딩 윈도우) 구현은?</span>
+<span class="qa-tog">+</span>
+</div>
+<div class="qa-a">
+<p><strong>IP 기반 슬라이딩 윈도우 100 req/min</strong> 제한을 Redis의 Sorted Set + Lua 스크립트로 원자적으로 처리합니다. Redis 장애 시에는 rate limit을 적용하지 않고 요청을 통과시키는 graceful degradation 전략을 사용합니다.</p>
+
+<h3>Lua 스크립트 (원자적 연산)</h3>
+<span class="file-path">fastapi/app/middleware/rate_limit.py (L15-33)</span>
+<pre>SLIDING_WINDOW_LUA = """
+local key = KEYS[1]
+local now = tonumber(ARGV[1])       -- 현재 시각 (ms)
+local window = tonumber(ARGV[2])    -- 윈도우 크기 (60000ms = 1분)
+local limit = tonumber(ARGV[3])     -- 최대 요청 수 (100)
+
+-- 1. 윈도우 밖의 오래된 요청 제거
+redis.call('ZREMRANGEBYSCORE', key, 0, now - window)
+-- 2. 현재 윈도우 내 요청 수 계산
+local count = redis.call('ZCARD', key)
+
+if count < limit then
+    -- 허용: 현재 시각을 score/member로 추가
+    redis.call('ZADD', key, now, now)
+    redis.call('EXPIRE', key, math.ceil(window / 1000))
+    return {1, limit - count - 1, 0}   -- {allowed, remaining, reset}
+else
+    -- 거부: 가장 오래된 요청의 만료 시각 계산
+    local oldest = redis.call('ZRANGE', key, 0, 0, 'WITHSCORES')
+    local reset = oldest[2] and (tonumber(oldest[2]) + window)
+                  or (now + window)
+    return {0, 0, reset}                -- {denied, 0, reset_ms}
+end
+"""</pre>
+
+<h3>미들웨어 실행</h3>
+<span class="file-path">fastapi/app/middleware/rate_limit.py (L42-77)</span>
+<pre>class RateLimitMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if request.url.path in _EXEMPT_PATHS:  # /metrics, /docs 등 제외
+            return await call_next(request)
+
+        client_ip = request.client.host if request.client else "unknown"
+        try:
+            cache = await get_redis_cache()
+            if cache.client:
+                now_ms = int(time.time() * 1000)
+                k = key_rate_limit("ip", client_ip)  # "dev:rl:ip:1.2.3.4"
+                result = await cache.client.eval(
+                    SLIDING_WINDOW_LUA, 1, k,
+                    now_ms, WINDOW_MS, RATE_LIMIT
+                )
+                allowed, remaining, reset_ms = result
+                if not allowed:
+                    retry_after = max(1, int((reset_ms - now_ms) / 1000))
+                    return Response(
+                        status_code=429,
+                        headers={
+                            "X-RateLimit-Limit": str(RATE_LIMIT),
+                            "X-RateLimit-Remaining": "0",
+                            "X-RateLimit-Reset": str(int(reset_ms / 1000)),
+                            "Retry-After": str(retry_after),
+                        },
+                    )
+        except Exception as e:
+            # Redis 장애 시 rate limit 미적용 (서비스 가용성 우선)
+            logger.warning(f"RateLimit Redis error (fallback=allow): {e}")
+
+        return await call_next(request)</pre>
+
+<h3>Redis 키 스키마</h3>
+<span class="file-path">fastapi/app/core/redis_keys.py (L24-25)</span>
+<pre>def key_rate_limit(scope: str, identifier: str) -> str:
+    return f"{ENV}:rl:{scope}:{identifier}"
+    # 예: "dev:rl:ip:192.168.1.100"</pre>
+
+<h3>2중 Rate Limiter 구조</h3>
+<p>slowapi(<code>Limiter</code>)와 커스텀 Lua 기반 미들웨어가 <strong>동시에 적용</strong>됩니다:</p>
+<ul>
+<li><strong>slowapi (Limiter)</strong>: 라우트별 데코레이터 기반 제한 (<code>@limiter.limit("10/minute")</code> 등)</li>
+<li><strong>RateLimitMiddleware</strong>: 전역 IP 기반 100 req/min (Lua 원자적 처리)</li>
+<li><strong>429 응답 시</strong> 표준 헤더 제공: <code>X-RateLimit-Limit</code>, <code>X-RateLimit-Remaining</code>, <code>Retry-After</code></li>
+</ul>
+</div>
+</div>
+
+<!-- Q6 -->
+<div class="qa-item">
+<div class="qa-q" onclick="toggle(this)">
+<span class="qa-num">Q6</span>
+<span class="qa-t">비동기 DB 접근 패턴은?</span>
+<span class="qa-tog">+</span>
+</div>
+<div class="qa-a">
+<p><strong>SQLAlchemy 2.0 async</strong> + <strong>asyncpg 드라이버</strong>로 완전한 비동기 DB 접근을 구현합니다. 커넥션 풀 크기 50, 최대 오버플로우 100으로 동시 150개 연결을 지원합니다.</p>
+
+<h3>엔진 + 세션 팩토리</h3>
+<span class="file-path">fastapi/app/core/database.py (L19-55)</span>
+<pre>engine = create_async_engine(
+    settings.DATABASE_URL,    # "postgresql+asyncpg://..."
+    echo=settings.DEBUG,       # 디버그 시 SQL 로깅
+    pool_pre_ping=True,        # 커넥션 유효성 사전 검사
+    pool_size=50,              # 기본 풀 크기
+    max_overflow=100,          # 최대 추가 커넥션 (총 150)
+    pool_timeout=30,           # 풀 대기 타임아웃 (초)
+    pool_recycle=1800,         # 30분마다 커넥션 재활용
+)
+
+AsyncSessionLocal = async_sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
+    expire_on_commit=False,    # 커밋 후에도 속성 접근 가능
+    autocommit=False,
+    autoflush=False,
+)</pre>
+
+<h3>의존성 주입 (get_db)</h3>
+<span class="file-path">fastapi/app/core/database.py (L58-64)</span>
+<pre>async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """Dependency for getting async database session."""
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+        finally:
+            await session.close()</pre>
+
+<h3>DB 쿼리 Prometheus 메트릭 (자동 계측)</h3>
+<span class="file-path">fastapi/app/core/database.py (L30-47)</span>
+<pre>def _extract_db_operation(statement: str) -> str:
+    """SQL 문에서 연산 유형 추출 (select/insert/update/delete)."""
+    if not statement:
+        return "other"
+    op = statement.lstrip().split(None, 1)[0].lower()
+    if op in {"select", "insert", "update", "delete"}:
+        return op
+    return "other"
+
+@event.listens_for(engine.sync_engine, "after_cursor_execute")
+def _after_cursor_execute(conn, cursor, statement,
+                          parameters, context, executemany):
+    DB_QUERY_TOTAL.labels(_extract_db_operation(statement), "success").inc()
+
+@event.listens_for(engine.sync_engine, "handle_error")
+def _handle_db_error(exception_context):
+    statement = getattr(exception_context, "statement", "") or ""
+    DB_QUERY_TOTAL.labels(_extract_db_operation(statement), "fail").inc()</pre>
+
+<h3>커넥션 풀 설계</h3>
+<table>
+<tr><th>파라미터</th><th>값</th><th>설명</th></tr>
+<tr><td>pool_size</td><td>50</td><td>기본 유지 커넥션 수</td></tr>
+<tr><td>max_overflow</td><td>100</td><td>초과 시 최대 추가 생성 (총 150)</td></tr>
+<tr><td>pool_timeout</td><td>30초</td><td>풀에서 커넥션 대기 최대 시간</td></tr>
+<tr><td>pool_recycle</td><td>1800초</td><td>30분 후 커넥션 재활용 (stale 방지)</td></tr>
+<tr><td>pool_pre_ping</td><td>True</td><td>사용 전 PING으로 유효성 확인</td></tr>
+</table>
+</div>
+</div>
+
+<!-- Q7 -->
+<div class="qa-item">
+<div class="qa-q" onclick="toggle(this)">
+<span class="qa-num">Q7</span>
+<span class="qa-t">Refresh Token 회전 및 재사용 탐지는?</span>
+<span class="qa-tog">+</span>
+</div>
+<div class="qa-a">
+<p><strong>Refresh Token Rotation</strong>: 매 갱신 시 기존 토큰을 폐기하고 새 토큰을 발급합니다. <strong>Reuse Detection</strong>: 이미 사용된 토큰이 다시 제출되면 해당 사용자의 <strong>모든 Refresh Token을 즉시 폐기</strong>합니다(토큰 탈취 대응).</p>
+
+<h3>Redis 저장 구조</h3>
+<span class="file-path">fastapi/app/services/auth_service.py (L108-116)</span>
+<pre>async def _store_refresh_token(*, user_id: int, jti: str,
+                               token_hash: str, ttl: int) -> None:
+    client = await _require_redis()
+    token_key = f"auth:rt:{jti}"           # 개별 토큰 해시 저장
+    user_key = f"auth:rt:uid:{user_id}"    # 사용자별 jti 집합
+    async with client.pipeline(transaction=True) as pipe:
+        pipe.setex(token_key, ttl, token_hash)  # SET + EXPIRE 원자적
+        pipe.sadd(user_key, jti)                 # 사용자의 jti 목록에 추가
+        pipe.expire(user_key, ttl)
+        await pipe.execute()</pre>
+
+<h3>재사용 탐지 + 토큰 회전</h3>
+<span class="file-path">fastapi/app/services/auth_service.py (L275-350)</span>
+<pre>async def refresh_tokens(db: AsyncSession, *, refresh_token: str) -> dict:
+    # 1. JWT 디코딩 → email, jti, uid 추출
+    payload = jwt.decode(refresh_token, ...)
+    jti = payload.get("jti")
+    uid = payload.get("uid")
+
+    # 2. Redis에서 저장된 해시 조회
+    client = await _require_redis()
+    token_key = f"auth:rt:{jti}"
+    stored_hash = await client.get(token_key)
+    incoming_hash = _hash_token(refresh_token)  # SHA-256
+
+    # 3. 재사용 탐지: 해시 불일치 또는 미존재
+    if not stored_hash or stored_hash != incoming_hash:
+        # 모든 Refresh Token 즉시 폐기 (보안 조치)
+        await _revoke_user_refresh_tokens(user.id)
+        raise HTTPException(
+            status_code=401,
+            detail="Refresh token reuse detected",
+        )
+
+    # 4. 토큰 회전: 기존 삭제 + 새 토큰 생성 (원자적)
+    new_refresh_jti = uuid.uuid4().hex
+    new_refresh_token = _build_token(
+        email, refresh_ttl,
+        extra_claims={"jti": new_refresh_jti, "uid": user.id},
+    )
+    async with client.pipeline(transaction=True) as pipe:
+        pipe.delete(token_key)              # 기존 토큰 삭제
+        pipe.srem(user_key, jti)            # 기존 jti 제거
+        pipe.setex(f"auth:rt:{new_refresh_jti}", refresh_ttl,
+                   _hash_token(new_refresh_token))  # 새 토큰 저장
+        pipe.sadd(user_key, new_refresh_jti)
+        pipe.expire(user_key, refresh_ttl)
+        await pipe.execute()</pre>
+
+<h3>전체 폐기 (보안 비상)</h3>
+<span class="file-path">fastapi/app/services/auth_service.py (L119-131)</span>
+<pre>async def _revoke_user_refresh_tokens(user_id: int) -> None:
+    """사용자의 모든 Refresh Token 폐기 (탈취 의심 시)."""
+    client = await _require_redis()
+    user_key = f"auth:rt:uid:{user_id}"
+    jtis = await client.smembers(user_key)     # 모든 jti 조회
+    if not jtis:
+        await client.delete(user_key)
+        return
+    async with client.pipeline(transaction=True) as pipe:
+        for jti in jtis:
+            pipe.delete(f"auth:rt:{jti}")      # 개별 토큰 모두 삭제
+        pipe.delete(user_key)                   # jti 집합 삭제
+        await pipe.execute()</pre>
+
+<h3>보안 흐름 요약</h3>
+<ol>
+<li><strong>정상 갱신</strong>: 기존 RT 삭제 &rarr; 새 RT 발급 &rarr; Redis에 새 해시 저장 (1회성)</li>
+<li><strong>탈취된 RT 사용</strong>: 이미 삭제된 jti이므로 stored_hash == None &rarr; 재사용 감지</li>
+<li><strong>재사용 감지 시</strong>: 해당 사용자의 모든 RT를 Redis에서 삭제 &rarr; 공격자와 정상 사용자 모두 재로그인 필요</li>
+<li><strong>해시 저장</strong>: SHA-256으로 해시 후 저장하여 Redis 데이터 유출 시에도 원본 토큰 복원 불가</li>
+</ol>
+</div>
+</div>
+
+<!-- Q8 -->
+<div class="qa-item">
+<div class="qa-q" onclick="toggle(this)">
+<span class="qa-num">Q8</span>
+<span class="qa-t">Dependency Injection 패턴은?</span>
+<span class="qa-tog">+</span>
+</div>
+<div class="qa-a">
+<p>FastAPI의 <code>Depends()</code> 시스템을 활용하여 <strong>DB 세션, 인증 정보, 외부 서비스</strong>를 주입합니다. 주요 의존성은 3가지: <code>get_db</code>, <code>get_current_user</code>, <code>get_current_user_optional</code>.</p>
+
+<h3>get_db &mdash; 비동기 DB 세션</h3>
+<span class="file-path">fastapi/app/core/database.py (L58-64)</span>
+<pre>async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+        finally:
+            await session.close()</pre>
+<p>AsyncSession을 생성하고 요청 처리 후 자동으로 닫습니다. <code>expire_on_commit=False</code>이므로 commit 후에도 속성 접근이 가능합니다.</p>
+
+<h3>get_current_user &mdash; 필수 인증</h3>
+<span class="file-path">fastapi/app/core/auth.py (L104-125)</span>
+<pre>async def get_current_user(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    settings = get_settings()
+    # Authorization 헤더 우선, 없으면 쿠키 fallback
+    token = credentials.credentials if credentials else None
+    if not token and request:
+        token = request.cookies.get(settings.AUTH_ACCESS_COOKIE_NAME)
+    if not token:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    payload = _decode_token(token)
+    return await _resolve_user_from_payload(payload, db)
+    # 반환: {"id": int, "email": str, "username": str, "difficulty_level": str}</pre>
+
+<h3>get_current_user_optional &mdash; 선택적 인증</h3>
+<span class="file-path">fastapi/app/core/auth.py (L84-101)</span>
+<pre>async def get_current_user_optional(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: AsyncSession = Depends(get_db),
+) -> Optional[dict]:
+    """토큰이 있으면 검증 후 사용자 반환, 없으면 None."""
+    token = credentials.credentials if credentials else None
+    if not token and request:
+        token = request.cookies.get(settings.AUTH_ACCESS_COOKIE_NAME)
+    if not token:
+        return None          # 미인증도 허용
+    payload = _decode_token(token)
+    return await _resolve_user_from_payload(payload, db)</pre>
+
+<h3>라우트에서의 사용 예시</h3>
+<pre># 필수 인증 (trading/order)
+@router.post("/order")
+async def execute_order(
+    order: OrderRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),    # 401 if no auth
+):
+    user_id = current_user["id"]
+    ...
+
+# 선택 인증 (tutor/logout)
+@router.post("/logout")
+async def logout(
+    response: Response,
+    user: dict | None = Depends(get_current_user_optional),  # None if no auth
+):
+    ...</pre>
+
+<h3>의존성 체인</h3>
+<p><code>get_current_user</code>는 내부적으로 <code>get_db</code>를 의존하므로, 라우트에서 둘 다 주입할 때 <strong>같은 세션 인스턴스</strong>를 공유합니다. FastAPI가 의존성 캐싱을 자동 처리합니다:</p>
+<pre>get_current_user
+  ├── Depends(security)    # HTTPBearer → Authorization 헤더 추출
+  └── Depends(get_db)      # AsyncSession (캐싱됨)
+         └── AsyncSessionLocal() → session</pre>
+</div>
+</div>
+
+<!-- Q9 -->
+<div class="qa-item">
+<div class="qa-q" onclick="toggle(this)">
+<span class="qa-num">Q9</span>
+<span class="qa-t">모의투자(Trading) 시스템 구현은?</span>
+<span class="qa-tog">+</span>
+</div>
+<div class="qa-a">
+<p>실시간 한국증시 데이터를 기반으로 <strong>시장가 매수/매도, 관심종목, 종목 랭킹</strong>을 제공하는 모의투자 시스템입니다. 한국투자증권 Open API(KIS)와 자체 가격 조회 서비스를 병행합니다.</p>
+
+<h3>API 엔드포인트 전체 목록</h3>
+<span class="file-path">fastapi/app/api/routes/trading.py</span>
+<table>
+<tr><th>메서드</th><th>경로</th><th>인증</th><th>설명</th></tr>
+<tr><td>GET</td><td>/trading/search?q=</td><td>-</td><td>종목 검색 (KIS API)</td></tr>
+<tr><td>GET</td><td>/trading/stocks/{code}</td><td>-</td><td>종목 상세 시세</td></tr>
+<tr><td>GET</td><td>/trading/ranking?type=</td><td>-</td><td>종목 랭킹 (거래량 등)</td></tr>
+<tr><td>GET</td><td>/trading/market-status</td><td>-</td><td>오늘 한국시장 개장 여부</td></tr>
+<tr><td>POST</td><td>/trading/order</td><td>JWT 필수</td><td>매수/매도 주문 실행</td></tr>
+<tr><td>GET</td><td>/trading/orders</td><td>JWT 필수</td><td>지정가 주문 목록</td></tr>
+<tr><td>DELETE</td><td>/trading/orders/{id}</td><td>JWT 필수</td><td>주문 취소</td></tr>
+<tr><td>GET</td><td>/trading/watchlist</td><td>JWT 필수</td><td>관심종목 목록</td></tr>
+<tr><td>POST</td><td>/trading/watchlist</td><td>JWT 필수</td><td>관심종목 추가</td></tr>
+<tr><td>DELETE</td><td>/trading/watchlist/{code}</td><td>JWT 필수</td><td>관심종목 삭제</td></tr>
+</table>
+
+<h3>주문 실행 로직</h3>
+<span class="file-path">fastapi/app/api/routes/trading.py (L73-110)</span>
+<pre>@router.post("/order")
+async def execute_order(
+    order: OrderRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    user_id = current_user["id"]
+
+    if order.order_kind == "limit":
+        # 지정가 주문 비활성화 (매칭/체결 로직 미구현)
+        TRADING_ORDER_TOTAL.labels(order.order_type, "fail").inc()
+        raise HTTPException(status_code=400,
+                          detail="현재 시장가 주문만 지원됩니다")
+
+    # 시장가 주문: 실시간 가격 조회 후 즉시 체결
+    price_data = await get_current_price(order.stock_code)
+    if not price_data:
+        raise HTTPException(status_code=404, detail="가격 조회 불가")
+
+    from app.services.portfolio_service import (
+        get_or_create_portfolio, execute_trade
+    )
+    portfolio = await get_or_create_portfolio(db, user_id)
+    result = await execute_trade(
+        db=db, portfolio=portfolio,
+        stock_code=order.stock_code,
+        stock_name=order.stock_name,
+        trade_type=order.order_type,  # "buy" or "sell"
+        quantity=order.quantity,
+        trade_reason="자유매매",
+    )
+    TRADING_ORDER_TOTAL.labels(order.order_type, "success").inc()
+    return result</pre>
+
+<h3>주문 요청 스키마</h3>
+<pre>class OrderRequest(BaseModel):
+    stock_code: str                                 # 종목코드 (예: "005930")
+    stock_name: str                                 # 종목명 (예: "삼성전자")
+    order_type: str = Field(..., description="buy or sell")
+    quantity: int = Field(..., ge=1)                 # 최소 1주
+    order_kind: str = Field(default="market")       # market (시장가만 지원)
+    target_price: Optional[int] = None              # 지정가용 (미사용)</pre>
+
+<h3>가격 조회 우선순위</h3>
+<pre># KIS API 우선, 실패 시 자체 서비스 fallback
+result = None
+if kis.is_configured:
+    result = await kis.get_current_price(stock_code)  # 한국투자증권 API
+if not result:
+    result = await get_current_price(stock_code)       # 자체 가격 서비스</pre>
+</div>
+</div>
+
+<!-- Q10 -->
+<div class="qa-item">
+<div class="qa-q" onclick="toggle(this)">
+<span class="qa-num">Q10</span>
+<span class="qa-t">스케줄러(APScheduler) 구성은?</span>
+<span class="qa-tog">+</span>
+</div>
+<div class="qa-a">
+<p><strong>APScheduler의 AsyncIOScheduler</strong>로 2개의 데이터 파이프라인을 cron 스케줄로 자동 실행합니다. FastAPI lifespan에서 시작/종료됩니다.</p>
+
+<h3>스케줄러 등록</h3>
+<span class="file-path">fastapi/app/core/scheduler.py (L164-193)</span>
+<pre>def start_scheduler():
+    """모닝(KST 09:00) + 데일리(KST 16:10), 월-금."""
+    global _scheduler
+    if _scheduler is not None:
+        return
+
+    _scheduler = AsyncIOScheduler()
+
+    # 모닝 파이프라인: KST 09:00 = UTC 00:00
+    _scheduler.add_job(
+        run_morning_pipeline,
+        trigger=CronTrigger(hour=0, minute=0,
+                           day_of_week="mon,tue,wed,thu,fri"),
+        id="morning_pipeline",
+        name="Morning Data Pipeline (09:00 KST)",
+        misfire_grace_time=3600,      # 1시간 유예
+        replace_existing=True,
+    )
+
+    # 레거시 데일리: KST 16:10 = UTC 07:10
+    _scheduler.add_job(
+        run_daily_pipeline,
+        trigger=CronTrigger(hour=7, minute=10,
+                           day_of_week="mon,tue,wed,thu,fri"),
+        id="daily_pipeline",
+        name="Daily Data Pipeline (16:10 KST)",
+        misfire_grace_time=3600,
+        replace_existing=True,
+    )
+
+    _scheduler.start()</pre>
+
+<h3>Lifespan 연동</h3>
+<span class="file-path">fastapi/app/main.py (L62-80)</span>
+<pre>@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    logger.info("Starting %s v%s ...", settings.APP_NAME, settings.APP_VERSION)
+    redis_cache = await get_redis_cache()
+    start_scheduler()       # 스케줄러 시작
+    yield
+    # Shutdown
+    stop_scheduler()        # 스케줄러 종료
+    await close_kis_service()
+    await close_redis_cache()</pre>
+
+<h3>파이프라인 실행 방식</h3>
+<span class="file-path">fastapi/app/core/scheduler.py (L26-57)</span>
+<pre>async def _run_datapipeline_subprocess() -> bool:
+    """datapipeline.run을 subprocess로 실행 (30분 타임아웃)."""
+    cwd = Path("/app") if Path("/app/datapipeline").exists() \
+          else Path(__file__).resolve().parents[3]
+
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable, "-m", "datapipeline.run",
+        "--backend", "live", "--market", "KR", "--topic-count", "3",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        cwd=str(cwd),
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(
+            proc.communicate(), timeout=1800  # 30분 타임아웃
+        )
+    except asyncio.TimeoutError:
+        proc.kill()
+        return False</pre>
+
+<h3>스케줄 요약</h3>
+<table>
+<tr><th>잡 ID</th><th>실행 시각</th><th>요일</th><th>내용</th><th>타임아웃</th></tr>
+<tr><td>morning_pipeline</td><td>KST 09:00</td><td>월-금</td><td>LangGraph 18노드 파이프라인 (뉴스 크롤링 &rarr; 브리핑 생성)</td><td>30분</td></tr>
+<tr><td>daily_pipeline</td><td>KST 16:10</td><td>월-금</td><td>레거시 키워드 파이프라인 (장 마감 후)</td><td>10분</td></tr>
+</table>
+
+<h3>후처리 훅</h3>
+<p>파이프라인 성공 후 자동으로 실행:</p>
+<ul>
+<li><strong>Redis 캐시 무효화</strong>: <code>api:keywords:today:*</code> 패턴 스캔 + 삭제</li>
+<li><strong>Materialized View 리프레시</strong>: <code>REFRESH MATERIALIZED VIEW CONCURRENTLY mv_keyword_frequency</code></li>
+</ul>
+</div>
+</div>
+
+<!-- Q11 -->
+<div class="qa-item">
+<div class="qa-q" onclick="toggle(this)">
+<span class="qa-num">Q11</span>
+<span class="qa-t">Pydantic Settings 주요 설정값은?</span>
+<span class="qa-tog">+</span>
+</div>
+<div class="qa-a">
+<p><strong>pydantic-settings</strong>의 <code>BaseSettings</code>를 사용하여 환경변수에서 자동으로 설정을 로딩합니다. <code>@lru_cache</code>로 싱글톤 인스턴스를 캐싱합니다.</p>
+
+<h3>설정 클래스 전체</h3>
+<span class="file-path">fastapi/app/core/config.py</span>
+<pre>class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=str(
+            Path(__file__).resolve().parent.parent.parent.parent / ".env"
+        ),
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",        # 알 수 없는 환경변수 무시
+    )</pre>
+
+<h3>설정 카테고리별 상세</h3>
+<table>
+<tr><th>카테고리</th><th>변수명</th><th>기본값</th><th>설명</th></tr>
+<tr><td rowspan="2">Database</td><td>DATABASE_URL</td><td>postgresql+asyncpg://...localhost:5432/narrative_investment</td><td>비동기 DB 연결</td></tr>
+<tr><td>REDIS_URL</td><td>redis://localhost:6379/0</td><td>Redis 연결</td></tr>
+<tr><td rowspan="5">JWT/Auth</td><td>JWT_SECRET</td><td>(기본값, prod에서 변경 필수)</td><td>JWT 서명 키</td></tr>
+<tr><td>JWT_ALGORITHM</td><td>HS256</td><td>JWT 알고리즘</td></tr>
+<tr><td>ACCESS_TOKEN_EXPIRE_MINUTES</td><td>60</td><td>Access 토큰 만료 (분)</td></tr>
+<tr><td>JWT_ACCESS_EXPIRATION</td><td>0 (ms, 미사용 시 위 값)</td><td>밀리초 단위 오버라이드</td></tr>
+<tr><td>JWT_REFRESH_EXPIRATION</td><td>0 (ms, 기본 7일)</td><td>Refresh 토큰 만료</td></tr>
+<tr><td rowspan="3">API Keys</td><td>OPENAI_API_KEY</td><td>""</td><td>OpenAI API</td></tr>
+<tr><td>PERPLEXITY_API_KEY</td><td>""</td><td>Perplexity API</td></tr>
+<tr><td>ANTHROPIC_API_KEY</td><td>""</td><td>Claude API</td></tr>
+<tr><td rowspan="2">Registration</td><td>REGISTRATION_BLOCKED_DOMAINS</td><td>tempmail.com, throwaway.email, ...</td><td>차단 이메일 도메인</td></tr>
+<tr><td>REGISTRATION_BLOCKED_USERNAME_PATTERN</td><td>.*(admin|test|root|관리자|운영자|...).*</td><td>금지 사용자명 정규식</td></tr>
+<tr><td>CORS</td><td>CORS_ALLOWED_ORIGINS</td><td>http://localhost:3000,5173</td><td>허용 출처 (쉼표 구분)</td></tr>
+<tr><td rowspan="2">App</td><td>DEBUG</td><td>False</td><td>디버그 모드</td></tr>
+<tr><td>APP_VERSION</td><td>0.1.0</td><td>앱 버전</td></tr>
+</table>
+
+<h3>쿠키 설정 (Auth)</h3>
+<table>
+<tr><th>쿠키</th><th>Name</th><th>HttpOnly</th><th>SameSite</th><th>Max-Age</th></tr>
+<tr><td>Access Token</td><td>accessToken</td><td>true</td><td>lax</td><td>60분</td></tr>
+<tr><td>Refresh Token</td><td>refreshToken</td><td>true</td><td>lax</td><td>7일</td></tr>
+<tr><td>CSRF Token</td><td>csrfToken</td><td>false</td><td>lax</td><td>-</td></tr>
+</table>
+
+<h3>싱글톤 캐싱</h3>
+<pre>@lru_cache
+def get_settings() -> Settings:
+    """Get cached settings instance."""
+    return Settings()
+
+settings = get_settings()  # 모듈 로딩 시 1회 생성, 이후 재사용</pre>
+
+<p><strong>.env 파일 위치</strong>: <code>Path(__file__).resolve().parent.parent.parent.parent / ".env"</code>로 프로젝트 루트의 <code>.env</code>를 자동 탐지합니다.</p>
+</div>
+</div>
+
+<!-- Q12 -->
+<div class="qa-item">
+<div class="qa-q" onclick="toggle(this)">
+<span class="qa-num">Q12</span>
+<span class="qa-t">로깅 구조 및 글로벌 예외 처리는?</span>
+<span class="qa-tog">+</span>
+</div>
+<div class="qa-a">
+<p><strong>narrative.*</strong> 네임스페이스의 계층적 로깅 구조와, 모든 응답을 통일된 JSON 형식으로 래핑하는 글로벌 예외 핸들러를 제공합니다.</p>
+
+<h3>로깅 설정</h3>
+<span class="file-path">fastapi/app/core/logging.py</span>
+<pre>def setup_logging(level: str = "INFO", json_format: bool = False):
+    logger = logging.getLogger("narrative")
+    logger.setLevel(getattr(logging, level.upper(), logging.INFO))
+
+    if json_format:
+        # 프로덕션: JSON 포맷
+        class JsonFormatter(logging.Formatter):
+            def format(self, record):
+                log_data = {
+                    "timestamp": self.formatTime(record),
+                    "level": record.levelname,
+                    "logger": record.name,
+                    "message": record.getMessage(),
+                }
+                if record.exc_info and record.exc_info[0]:
+                    log_data["exception"] = self.formatException(
+                        record.exc_info
+                    )
+                return json.dumps(log_data, ensure_ascii=False)
+        handler.setFormatter(JsonFormatter())
+    else:
+        # 개발: 텍스트 포맷
+        formatter = logging.Formatter(
+            "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )</pre>
+
+<h3>네임스페이스 계층</h3>
+<pre># main.py에서 모드 설정 (DEBUG 시 텍스트, prod 시 JSON)
+setup_logging(
+    level="DEBUG" if settings.DEBUG else "INFO",
+    json_format=not settings.DEBUG,
+)
+
+# 모듈별 로거 사용
+logging.getLogger("narrative")           # 루트 (main.py)
+logging.getLogger("narrative.auth")      # 인증 모듈
+logging.getLogger("narrative.scheduler") # 스케줄러</pre>
+
+<span class="file-path">fastapi/app/core/logging.py (L56-61)</span>
+<pre>def get_logger(name: Optional[str] = None) -> logging.Logger:
+    """모듈별 로거 반환."""
+    base = "narrative"
+    if name:
+        return logging.getLogger(f"{base}.{name}")
+    return logging.getLogger(base)</pre>
+
+<h3>글로벌 예외 핸들러 (3종)</h3>
+<span class="file-path">fastapi/app/main.py (L110-183)</span>
+
+<p><strong>1. 처리되지 않은 예외 (500)</strong></p>
+<pre>@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    error_id = uuid.uuid4().hex[:12]  # 추적용 고유 ID
+    logger.error("Unhandled exception [error_id=%s] %s %s: %s\n%s",
+                 error_id, request.method, request.url.path,
+                 exc, traceback.format_exc())
+    return JSONResponse(status_code=500, content={
+        "status": "error",
+        "message": "Internal server error",
+        "error": {
+            "code": "internal_error",
+            "error_id": error_id,   # 클라이언트에게 추적 ID만 노출
+            "detail": "An unexpected error occurred.",
+        },
+    })</pre>
+
+<p><strong>2. HTTP 예외 (4xx)</strong></p>
+<pre>@app.exception_handler(HTTPException)
+async def http_exception_handler(request, exc):
+    return JSONResponse(status_code=exc.status_code, content={
+        "status": "error",
+        "message": str(exc.detail),
+        "error": None,
+    })</pre>
+
+<p><strong>3. 유효성 검사 오류 (422)</strong></p>
+<pre>@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc):
+    return JSONResponse(status_code=422, content={
+        "status": "error",
+        "message": "Validation error",
+        "error": {
+            "code": "validation_error",
+            "detail": [{"loc": [...], "msg": "...", "type": "..."}],
+        },
+    })</pre>
+
+<h3>응답 Envelope 미들웨어</h3>
+<span class="file-path">fastapi/app/main.py (L230-261)</span>
+<pre>@app.middleware("http")
+async def response_envelope_middleware(request, call_next):
+    """모든 JSON 응답을 통일된 형식으로 래핑."""
+    response = await call_next(request)
+
+    # 스트리밍/문서/비JSON 응답은 제외
+    if isinstance(response, StreamingResponse):
+        return response
+    if "application/json" not in content_type:
+        return response
+
+    # 이미 래핑된 응답은 그대로 통과
+    if payload.get("status") in {"success", "error"}:
+        return response
+
+    # 자동 래핑
+    if response.status_code >= 400:
+        wrapped = {"status": "error", "message": "Request failed",
+                    "error": payload}
+    else:
+        wrapped = {"status": "success", "data": payload}</pre>
+
+<h3>Prometheus 메트릭 (15종 커스텀)</h3>
+<span class="file-path">fastapi/app/metrics.py</span>
+<table>
+<tr><th>메트릭</th><th>타입</th><th>라벨</th></tr>
+<tr><td>auth_login_total</td><td>Counter</td><td>result (success/fail)</td></tr>
+<tr><td>auth_register_total</td><td>Counter</td><td>result</td></tr>
+<tr><td>auth_refresh_total</td><td>Counter</td><td>result</td></tr>
+<tr><td>trading_order_total</td><td>Counter</td><td>side, result</td></tr>
+<tr><td>db_query_total</td><td>Counter</td><td>operation, result</td></tr>
+<tr><td>cache_hit_total</td><td>Counter</td><td>cache, hit</td></tr>
+<tr><td>external_api_latency_seconds</td><td>Histogram</td><td>provider</td></tr>
+<tr><td>tutor_chat_tokens_total</td><td>Counter</td><td>model</td></tr>
+<tr><td>http_requests_total</td><td>Counter</td><td>method, path, status</td></tr>
+</table>
+
+<p><strong>prometheus-fastapi-instrumentator</strong>가 자동으로 HTTP 요청/응답 메트릭을 수집하며, <code>/metrics</code> 엔드포인트로 노출합니다.</p>
+</div>
+</div>
+
+</div>
+
+<script>
+function toggle(el){el.closest('.qa-item').classList.toggle('open')}
+function filterQA(q){document.querySelectorAll('.qa-item').forEach(i=>{i.classList.toggle('hidden',q&&!i.textContent.toLowerCase().includes(q.toLowerCase()))})}
+</script>
+</body>
+</html>
