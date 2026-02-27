@@ -34,6 +34,11 @@ graph TB
         LSMITH[LangSmith<br/>Observability]
     end
 
+    subgraph Analytics["Analytics"]
+        POSTHOG[PostHog<br/>사용자 분석]
+        CLARITY[MS Clarity<br/>히트맵/세션]
+    end
+
     subgraph Infra["Infrastructure"]
         PG[(PostgreSQL 16<br/>+ pgvector<br/>:5432)]
         REDIS[(Redis 7<br/>:6379)]
@@ -43,6 +48,8 @@ graph TB
     end
 
     FE --> API
+    FE --> POSTHOG
+    FE --> CLARITY
     API --> AGENT
     AGENT --> OPENAI
     AGENT --> PPLX
