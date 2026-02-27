@@ -616,13 +616,13 @@ make dev-down     # Stop
 # docker-compose.prod.yml
 services:
   frontend:
-    image: dorae222/adelie-frontend:latest
+    image: dorae222/adelie-frontend:${TAG}  # TAG=prod-YYYYMMDD
     ports: ["80:80", "443:443"]
     volumes:
       - /etc/letsencrypt:/etc/letsencrypt:ro
 
   backend-api:
-    image: dorae222/adelie-backend-api:latest
+    image: dorae222/adelie-backend-api:${TAG}  # :latest 사용 중지
     ports: ["8082:8082"]
 
   postgres:
@@ -658,9 +658,11 @@ docker compose -f docker-compose.prod.yml up -d
 
 | 이미지 | 태그 | 용도 |
 |--------|------|------|
-| dorae222/adelie-frontend | dev, latest | React SPA + nginx |
-| dorae222/adelie-backend-api | dev, latest | FastAPI + Chatbot |
-| dorae222/adelie-datapipeline | dev, latest | LangGraph Pipeline |
+| dorae222/adelie-frontend | dev, prod-YYYYMMDD | React SPA + nginx |
+| dorae222/adelie-backend-api | dev, prod-YYYYMMDD | FastAPI + Chatbot |
+| dorae222/adelie-datapipeline | dev, prod-YYYYMMDD | LangGraph Pipeline |
+
+> `:latest` 태그는 2026-02-24부터 사용 중지. 배포 시 `TAG=prod-YYYYMMDD` 명시.
 
 ### 네트워크 구성
 
@@ -835,11 +837,12 @@ location /api/v1/ {
 
 ### 3. 모니터링
 
-**Grafana + Prometheus (계획):**
-- API 응답 시간
+**Grafana + Prometheus (운영 중):**
+- API 응답 시간 — https://monitoring.adelie-invest.com
 - DB 쿼리 성능
 - Pipeline 실행 시간
 - LLM API 호출 비용
+- Alertmanager Discord 알림 연동
 
 **LangSmith (AI 모니터링):**
 - Tutor agent 대화 기록
@@ -959,7 +962,6 @@ datapipeline.exceptions.LLMAPIError: OpenAI API key not found
 
 ## 참고 문서
 
-- [개발 환경 설정](./02_개발환경설정.md)
-- [Git 워크플로우](./03_Git워크플로우.md)
-- [인프라 운영](./infra-ops.md)
-- [API 문서](./API문서.md) (계획)
+- [빠른 시작](../getting-started/setup.md)
+- [브랜치 전략 & 워크플로우](../getting-started/workflow.md)
+- [인프라 구성](../../infra/README.md)
