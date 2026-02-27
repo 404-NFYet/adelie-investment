@@ -331,13 +331,12 @@ docker compose -f docker-compose.dev.yml restart backend-api
 
 ## 9. 다음 단계
 
-- [02_git-workflow.md](./02_git-workflow.md) - Git 브랜치 전략 및 커밋 규칙
-- [03_테스트가이드.md](./03_테스트가이드.md) - 테스트 작성 및 실행
-- [04_배포가이드.md](./04_배포가이드.md) - deploy-test 서버 배포
+- [브랜치 전략 & 워크플로우](./workflow.md) - Git 브랜치 전략 및 커밋 규칙
+- [도커 가이드](./docker-guide.md) - Docker Compose 명령어, 서비스별 설명
 
 역할별 상세 가이드:
-- [A_backend개발.md](./A_backend개발.md) - FastAPI 백엔드 개발
-- [B_chatbot개발.md](./B_chatbot개발.md) - LangGraph 튜터 에이전트 개발
-- [C_frontend개발.md](./C_frontend개발.md) - React 프론트엔드 개발
-- [D_pipeline개발.md](./D_pipeline개발.md) - 데이터 파이프라인 개발
-- [E_인프라운영.md](./E_인프라운영.md) - Docker, LXD, CI/CD
+- [프론트엔드 — 손영진](../team-guides/A_프론트엔드_손영진.md) - React 프론트엔드 개발
+- [백엔드 — 허진서](../team-guides/B_백엔드_허진서.md) - FastAPI 백엔드 개발
+- [챗봇 — 정지훈](../team-guides/C_챗봇_정지훈.md) - LangGraph 튜터 에이전트 개발
+- [파이프라인 — 안례진](../team-guides/D_파이프라인_안례진.md) - 데이터 파이프라인 개발
+- [인프라 — 도형준](../team-guides/E_인프라_도형준.md) - Docker, LXD, CI/CD
