@@ -18,7 +18,9 @@
 |------|------|
 | [시스템 개요](architecture/overview.md) | 시스템 구조, 디렉토리 구조, 팀 간 의존성 |
 | [챗봇 설계](architecture/chatbot-design.md) | LangGraph 기반 튜터 에이전트 설계 |
+| [하이브리드 명확화 설계](architecture/chatbot-hybrid-clarification-architecture-2026-02-26.md) | Hybrid Clarification Flow 아키텍처 |
 | [프론트엔드](architecture/frontend.md) | React 19 + Vite 프론트엔드 아키텍처 |
+| [프론트엔드 분석](architecture/frontend-analytics-posthog-clarity.md) | PostHog + Clarity 분석 시스템 아키텍처 |
 
 ## 역할별 가이드 (Team Guides)
 
@@ -55,7 +57,13 @@
 - [LLM 모델](reference/llm-models.md)
 - [분석 시스템 (Analytics)](reference/analytics.md) — Clarity + PostHog + 자체 DB 통합 가이드
 - [공용 계정 관리](reference/shared-accounts.md) — 외부 서비스 접속 정보, API Key 관리
+- [홈 아이콘 키 매핑](reference/home-icon-keys.md) — 홈 피드 아이콘 키 목록
 - [변경이력 (changes/)](../changes/) — 팀원별 Phase 단위 상세 변경이력
+
+## PM 의사결정 로그 (Decision Log)
+
+- [홈 리디자인 아이데이션](pm-decision-log/001-home-redesign-ideation.md)
+- [홈 리디자인](pm-decision-log/001-home-redesign.md)
 
 ## 아카이브 (Archive)
 
