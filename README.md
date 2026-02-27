@@ -7,8 +7,6 @@
 금융 시장 초보자들이 겪는 가장 큰 어려움은 "지금 무슨 일이 일어나고 있는지" 맥락을 이해하지 못하는 것입니다.
 아델리에는 과거의 유사한 사례를 스토리텔링 방식으로 제공하여, 사용자가 현재 시장 상황을 직관적으로 이해할 수 있도록 돕습니다.
 
----
-
 ## 아키텍처
 
 ```mermaid
@@ -60,8 +58,6 @@ graph TB
     GRAF --> PROM
 ```
 
----
-
 ## 주요 기능
 
 | 기능 | 설명 |
@@ -72,8 +68,6 @@ graph TB
 | AI 튜터 | SSE 스트리밍 챗봇 — 난이도별 맞춤 금융 교육 |
 | 모의 투자 | 가상 자금으로 주식 매매 체험 (지정가/시장가) |
 | 차트 시각화 | Plotly/ECharts 기반 주가 차트, AI 생성 비교 차트 |
-
----
 
 ## 기술 스택
 
@@ -87,8 +81,6 @@ graph TB
 | **Storage** | MinIO (S3 호환) | - |
 | **Infra** | Docker Compose, LXD, Nginx | - |
 | **CI/CD** | GitHub Actions, Self-hosted Runner | - |
-
----
 
 ## 디렉토리 구조
 
@@ -144,8 +136,6 @@ adelie-investment/
 └── .env.example             # 환경 변수 템플릿
 ```
 
----
-
 ## 빠른 시작
 
 ### 사전 요구사항
@@ -198,21 +188,14 @@ python -m datapipeline.run --backend live --market KR    # 실서비스
 python -m datapipeline.run --backend mock                # 테스트 (LLM 미호출)
 ```
 
----
-
 ## 서비스 URL
 
-| 서비스 | URL | 설명 |
-|--------|-----|------|
-| Frontend (프로덕션) | http://10.10.10.20 | Nginx SPA + 리버스 프록시 |
-| FastAPI API | http://10.10.10.20:8082 | AI/Data/Auth API |
-| API 문서 (Swagger) | http://10.10.10.20:8082/docs | OpenAPI 자동 문서 |
-| Prometheus | http://10.10.10.10:9090 | 메트릭 수집 |
-| Grafana | https://monitoring.adelie-invest.com | 모니터링 대시보드 |
-| Streamlit | http://10.10.10.10:8501 | 운영 대시보드 |
-| MinIO Console | http://10.10.10.10:9001 | S3 호환 스토리지 |
-
----
+| 서비스 | URL |
+|--------|-----|
+| Frontend | https://demo.adelie-invest.com |
+| Grafana | https://monitoring.adelie-invest.com |
+| 대시보드 | https://dashboard.adelie-invest.com |
+| Analytics | https://analytics.adelie-invest.com |
 
 ## 환경 변수
 
@@ -226,8 +209,6 @@ python -m datapipeline.run --backend mock                # 테스트 (LLM 미호
 | `REDIS_URL` | Redis 연결 문자열 | 기본값 제공 |
 
 자세한 내용은 `.env.example` 파일을 참조하세요.
-
----
 
 ## 팀 — 404 NFYet
 
@@ -288,14 +269,13 @@ python -m datapipeline.run --backend mock                # 테스트 (LLM 미호
 </table>
 </div>
 
----
-
 ## 문서
 
 | 문서 | 설명 |
 |------|------|
 | [PRD](docs/reference/prd.md) | 제품 요구사항 정의서 |
-| [챗봇 설계](docs/chatbot-design.md) | AI 튜터 설계 문서 |
+| [챗봇 설계](docs/architecture/chatbot-design.md) | AI 튜터 설계 문서 |
 | [LLM 모델 레퍼런스](docs/reference/llm-models.md) | 사용 모델 + 프로바이더별 가격 |
-| [AWS 가이드](docs/aws/) | AWS 이전 가이드 11종 |
+| [분석 시스템](docs/reference/analytics.md) | Clarity + PostHog + 자체 DB 통합 가이드 |
 | [인프라 설정](infra/README.md) | LXD, Docker, 모니터링 |
+| [docs/ 전체 목록](docs/README.md) | 전체 문서 인덱스 |
